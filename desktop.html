@@ -807,7 +807,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
           <div id="sync-gist-info" style="font-size:12px;color:var(--muted);margin:8px 0 10px"></div>
           <div class="field"><div class="field-label">Paste your OTHER device's Gist ID here</div><input id="sync-gistid-inp" type="text" placeholder="Not this device's own ID — the OTHER device's"/></div>
           <button class="btn btn-ghost" onclick="deskSaveGistId()" style="width:100%;margin-bottom:8px">🔗 Link to this Gist</button>
-          <button class="btn btn-ghost" onclick="changeTokenPrompt()" style="width:100%">🔑 Change GitHub Token</button>
+          <button class="btn btn-ghost" onclick="changeTokenPrompt()" style="width:100%;margin-bottom:8px">🔑 Change GitHub Token</button>
+          <button class="btn btn-ghost" onclick="bpResetSyncOnDevice()" style="width:100%;color:#FF6961;border-color:#FF6961">🔌 Reset Sync on This Device</button>
+          <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:8px">Clears only this computer's sync settings (token, cloud link, remembered pairing links). Your jobs, photos and finances are not touched.</div>
         </details>
       </div>
       <div id="sync-result-box" style="display:none;margin-top:10px;padding:10px;border-radius:8px;font-size:13px"></div>
@@ -5116,7 +5118,21 @@ function joinWithPairCode() {
   var inp = document.getElementById('sync-paircode');
   var o = bpParsePairCode(inp ? inp.value : '');
   if (!o) { toast('That doesn\'t look like a pairing code — it starts with BP1.'); return; }
+  if (inp) inp.value = ''; // never leave a used code sitting in the box
   bpApplyPairCode(o);
+}
+
+/* Escape hatch — see index.html. Disconnects this device from sync; job data untouched. */
+function bpResetSyncOnDevice() {
+  if (!confirm('Disconnect this computer from cloud sync?\n\nYour jobs, photos and finances on this computer are NOT touched — only the sync connection is cleared.')) return;
+  _syncToken=''; _syncGistId=''; _lastSync='';
+  try { localStorage.removeItem('bp_pair_used'); localStorage.removeItem('bp_orphan_gist'); } catch(e) {}
+  _suppressNextAutoPush = true;
+  saveDB();
+  var inp=document.getElementById('sync-paircode'); if(inp) inp.value='';
+  renderSyncPage();
+  var res=document.getElementById('sync-result-box'); if(res) res.style.display='none';
+  toast('🔌 Sync disconnected — your data is untouched');
 }
 function bpPairUrl() {
   var base = location.href.split('#')[0].split('?')[0].replace(/[^\/]*$/, '');
