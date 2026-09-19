@@ -1321,7 +1321,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.24';
+var APP_VERSION = '2.26';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1590,11 +1590,13 @@ function ensureDbShape() {
   if(!DB.deletedJobIds) DB.deletedJobIds={};
   if(!DB.deletedPhotoIds) DB.deletedPhotoIds={};
   if(!DB.deletedContractorIds) DB.deletedContractorIds={};
+  if(!DB.tombstones) DB.tombstones={};
   if(!DB.nextId) DB.nextId=1;
   purgeArchivedJobsLocally();
   purgeDeletedJobsLocally();
   purgeDeletedPhotosLocally();
   purgeDeletedContractorsLocally();
+  purgeTombstonedLocally();
   migrateChecklistToPunchlist();
 }
 /* v2.16: Checklist → Punchlist merge — see the matching function/comment in
@@ -2282,7 +2284,7 @@ function emailEstimateDesktop(id) {
 }
 function deleteEstimateDesktop(id) {
   if (!confirm('Delete this estimate?')) return;
-  DB.estimates = (DB.estimates||[]).filter(function(x){ return x.id!==id; });
+  bpRemoveFrom('estimates', function(x){ return x.id!==id; });
   saveDB();
   renderDesktopEstimates();
 }
@@ -2369,7 +2371,7 @@ window.bpClockOutDesktop = function(id) {
 };
 window.bpDeleteTimeEntryDesktop = function(id) {
   if (!confirm('Delete this time entry?')) return;
-  DB.timeEntries = (DB.timeEntries||[]).filter(function(x){ return x.id!==id; });
+  bpRemoveFrom('timeEntries', function(x){ return x.id!==id; });
   saveDB();
   renderDesktopTimeView();
   bpRenderTimeClockDesktop();
@@ -2495,7 +2497,7 @@ function saveNewRoom(){
   // several trades), then close. Still reachable later via "+ Add Punch Item".
   setTimeout(function(){ openRoomTradePicker(room.jobId, room.id); }, 350);
 }
-function deleteRoom(id){if(!confirm('Delete room?'))return; DB.rooms=DB.rooms.filter(function(r){return r.id!==id;}); saveDB(); renderDesktopRooms();}
+function deleteRoom(id){if(!confirm('Delete room?'))return; bpRemoveFrom('rooms', function(r){return r.id!==id;}); saveDB(); renderDesktopRooms();}
 
 /* ── Room Detail modal — the desktop equivalent of the field app's tap-to-open
    room screen. The rooms table alone never had a way to see the full picture
@@ -2806,7 +2808,7 @@ function saveNewTask(){
   closeModal('modal-new-task');saveDB();renderDesktopTasks();toast('✅ Task added');
 }
 function toggleTask(id){var t=DB.tasks.find(function(x){return x.id===id;});if(!t)return;t.done=!t.done;if(t.done){t.completedAt=now();}else{delete t.completedAt;}saveDB();renderDesktopTasks();}
-function deleteTask(id){DB.tasks=DB.tasks.filter(function(x){return x.id!==id;});saveDB();renderDesktopTasks();}
+function deleteTask(id){bpRemoveFrom('tasks', function(x){return x.id!==id;});saveDB();renderDesktopTasks();}
 
 /* ══ PHOTOS ══════════════════════════════════════════════════ */
 function renderDesktopPhotos() {
@@ -2864,7 +2866,7 @@ window.deletePhoto = function(id) {
   var ph = DB.photos.find(function(p){ return p.id===id; });
   if (!ph) return;
   if (!confirm('Delete this photo? This cannot be undone.')) return;
-  DB.photos = DB.photos.filter(function(p){ return p.id!==id; });
+  bpRemoveFrom('photos', function(p){ return p.id!==id; });
   if (!DB.deletedPhotoIds) DB.deletedPhotoIds = {};
   DB.deletedPhotoIds[id] = now();
   closeModal('modal-photo-viewer');
@@ -3598,7 +3600,7 @@ function printEOD(id) {
   w.print();
 }
 
-function deleteEOD(id){if(!confirm('Delete this report?'))return;DB.reports=DB.reports.filter(function(r){return r.id!==id;});saveDB();renderDesktopEOD();toast('Report deleted');}
+function deleteEOD(id){if(!confirm('Delete this report?'))return;bpRemoveFrom('reports', function(r){return r.id!==id;});saveDB();renderDesktopEOD();toast('Report deleted');}
 
 function emailEOD(id) {
   var r=(DB.reports||[]).find(function(x){return x.id===id;}); if(!r) return;
@@ -3903,7 +3905,7 @@ function editInvoice(id) {
 function deleteInvoice(id) {
   var inv=(DB.invoices||[]).find(function(x){return x.id===id;});
   if(!confirm('Delete invoice'+(inv?' "'+inv.desc+'"':'')+'?')) return;
-  DB.invoices=(DB.invoices||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('invoices', function(x){return x.id!==id;});
   saveDB(); renderDesktopFinance(); toast('Invoice deleted');
 }
 function emailInvoice(id) {
@@ -3988,7 +3990,7 @@ function editExpense(id) {
 function deleteExpense(id) {
   var e=(DB.expenses||[]).find(function(x){return x.id===id;});
   if(!confirm('Delete expense'+(e?' "'+e.desc+'"':'')+'?')) return;
-  DB.expenses=(DB.expenses||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('expenses', function(x){return x.id!==id;});
   saveDB(); renderDesktopFinance(); toast('Expense deleted');
 }
 
@@ -4249,8 +4251,8 @@ function editContractor(id) {
 function deleteContractor(id) {
   var c=(DB.contractors||[]).find(function(x){return x.id===id;});
   if(!confirm('Delete contractor'+(c?' "'+c.name+'"':'')+'?')) return;
-  DB.contractors=(DB.contractors||[]).filter(function(x){return x.id!==id;});
-  DB.payments=(DB.payments||[]).filter(function(x){return x.contractorId!==id;});
+  bpRemoveFrom('contractors', function(x){return x.id!==id;});
+  bpRemoveFrom('payments', function(x){return x.contractorId!==id;});
   // v2.15: without a tombstone this looked deleted locally but silently came back —
   // the pre-push pull-and-merge re-pulls the still-present remote copy and the
   // merge treats its id as "new" again. Same fix already applied to job delete
@@ -4304,6 +4306,11 @@ function editPayment(id){
     p.date=document.getElementById('np-date').value||todayISO();
     p.method=document.getElementById('np-method').value;
     p.notes=document.getElementById('np-notes').value.trim();
+    // v2.25: without this the edit had the SAME timestamp as the stale copy on the
+    // other device, so the merge's last-write-wins saw a tie, each device kept its
+    // own version, and whichever pushed last silently overwrote the other — the
+    // "my edit came back" bug. Bumping it makes the newer edit actually win.
+    p.updatedAt=now();
     closeModal('modal-new-payment');saveDB();renderDesktopFinance();toast('✅ Payment updated');
     btn.textContent='Save Payment'; btn.onclick=saveNewPayment;
     document.querySelector('#modal-new-payment .modal-title').textContent='Log Payment';
@@ -4312,7 +4319,7 @@ function editPayment(id){
 }
 function deletePayment(id){
   if(!confirm('Delete this payment?')) return;
-  DB.payments=(DB.payments||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('payments', function(x){return x.id!==id;});
   saveDB(); renderDesktopFinance(); toast('Payment deleted');
 }
 
@@ -4468,6 +4475,7 @@ function editAppointment(id){
     a.title=title; a.type=document.getElementById('ap-type').value; a.date=date;
     a.time=document.getElementById('ap-time').value||''; a.jobId=document.getElementById('ap-job').value||'';
     a.notes=document.getElementById('ap-notes').value.trim();
+    a.updatedAt=now(); // v2.25 — see editPayment: without this the edit loses to a stale copy on a tie
     closeModal('modal-new-appointment');saveDB();renderDesktopCalendar();toast('✅ Updated');
     btn.textContent='Save'; btn.onclick=saveNewAppointment;
   };}
@@ -4475,7 +4483,7 @@ function editAppointment(id){
 }
 function deleteAppointment(id){
   if(!confirm('Delete this?')) return;
-  DB.appointments=(DB.appointments||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('appointments', function(x){return x.id!==id;});
   saveDB(); renderDesktopCalendar(); toast('Deleted');
 }
 
@@ -4522,7 +4530,7 @@ function buildPermitDocCell(p){
 }
 function deletePermit(id){
   if(!confirm('Delete this permit?'))return;
-  DB.permits=(DB.permits||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('permits', function(x){return x.id!==id;});
   saveDB();renderDesktopFinance();renderDashboard();toast('Permit deleted');
 }
 
@@ -4757,7 +4765,7 @@ function addPunchCompletionPhotoDesktop(input,itemId){
   input.value='';
 }
 function deletePunch(id){
-  DB.punchlist=(DB.punchlist||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('punchlist', function(x){return x.id!==id;});
   saveDB();renderDesktopPunchlist();
 }
 function openNewWalkthrough(){
@@ -4780,7 +4788,7 @@ function saveNewWalkthrough(){
 }
 function deleteWalkthroughDesktop(id){
   if(!confirm('Delete this walkthrough record?'))return;
-  DB.walkthroughs=(DB.walkthroughs||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('walkthroughs', function(x){return x.id!==id;});
   saveDB();renderDesktopPunchlist();
 }
 // A room counts as "tracked" once it has at least one punch item; it's "complete"
@@ -4936,7 +4944,7 @@ function saveNewDocument(){
 }
 function deleteDocument(id){
   if(!confirm('Delete this document?'))return;
-  DB.documents=(DB.documents||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('documents', function(x){return x.id!==id;});
   saveDB();renderDesktopDocuments();
 }
 function renderDesktopDocuments(){
@@ -5181,17 +5189,77 @@ function syncCatchMessage(e) {
    edited since creation, else its created time, else treated as timestamp 0 (oldest
    possible) so it never wins against a record that HAS a real timestamp. */
 function bpRecordTs(x) {
-  var t = Date.parse(x && (x.updatedAt || x.created));
+  // Reads every "when was this last touched" field name used across the app —
+  // records were added over many versions and don't all agree (updatedAt /
+  // updated / createdAt / created). Missing them all = 0 = oldest.
+  var t = Date.parse(x && (x.updatedAt || x.updated || x.createdAt || x.created));
   return isNaN(t) ? 0 : t;
 }
+
+/* ── Universal delete tombstones (v2.25) ──────────────────────
+   THE BUG: deleting anything other than a job, photo or contractor — a payment,
+   an expense, an invoice, a punch item, an appointment — looked like it worked,
+   then the record reappeared within ~8 seconds. A delete only removed the record
+   from the local array; the shared gist still had it. Every sync pulls-and-merges
+   the remote copy first, and to the merge loop a record this device no longer has
+   is indistinguishable from one this device hasn't seen yet — so it gets re-added.
+   Three collections had one-off tombstone maps bolted on over time (jobs, photos,
+   contractors); the other fourteen never did.
+
+   Now EVERY delete anywhere records one tombstone in DB.tombstones, keyed
+   "<collection>:<id>". The merge unions tombstones first, refuses to re-add
+   anything tombstoned, then purges. Permanent by design: there's no undelete UI
+   anywhere in this app, so a grow-only set is correct here (unlike archiveState,
+   which has a Restore button and therefore needs last-write-wins instead).
+   This engine must stay identical in index.html and desktop.html — same lesson
+   as the v2.4 "contacts" bug. */
+var BP_COLLECTIONS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','reports','contacts','permits','punchlist','walkthroughs','documents','payments','appointments','estimates','timeEntries'];
+function bpTombstone(coll, id) {
+  if (!id) return;
+  if (!DB.tombstones) DB.tombstones = {};
+  DB.tombstones[coll + ':' + id] = now();
+}
+function bpIsTombstoned(coll, id) {
+  return !!(DB.tombstones && DB.tombstones[coll + ':' + id]);
+}
+/* Removes records AND tombstones each one in a single step — every delete path
+   in the app goes through this, so none can silently forget the tombstone again
+   and let the record resurrect on the next sync. keepFn returns true to KEEP. */
+function bpRemoveFrom(coll, keepFn) {
+  var arr = DB[coll] || [];
+  var kept = [], removed = 0;
+  arr.forEach(function(r){
+    if (keepFn(r)) kept.push(r);
+    else { bpTombstone(coll, r.id); removed++; }
+  });
+  DB[coll] = kept;
+  return removed;
+}
+function purgeTombstonedLocally() {
+  if (!DB.tombstones) return;
+  BP_COLLECTIONS.forEach(function(coll){
+    if (!Array.isArray(DB[coll])) return;
+    DB[coll] = DB[coll].filter(function(r){ return !bpIsTombstoned(coll, r.id); });
+  });
+}
+
 function mergeIncomingDB(remote) {
   var incoming = remote.db || remote;
   var _addedCount = 0, _updatedCount = 0;
-  ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','reports','contacts','permits','punchlist','walkthroughs','documents','payments','appointments','estimates','timeEntries'].forEach(function(k){
+  // Union incoming tombstones FIRST, so the array-merge loop below already knows
+  // what another device deleted and refuses to resurrect it.
+  if (incoming.tombstones && typeof incoming.tombstones === 'object') {
+    if (!DB.tombstones) DB.tombstones = {};
+    Object.keys(incoming.tombstones).forEach(function(tk){
+      if (!DB.tombstones[tk]) DB.tombstones[tk] = incoming.tombstones[tk];
+    });
+  }
+  BP_COLLECTIONS.forEach(function(k){
     if(!incoming[k]||!Array.isArray(incoming[k]))return;
-    if(!DB[k]){DB[k]=incoming[k];_addedCount+=incoming[k].length;return;}
+    if(!DB[k]){DB[k]=incoming[k].filter(function(x){return !bpIsTombstoned(k,x.id);});_addedCount+=DB[k].length;return;}
     var byId={};DB[k].forEach(function(x,i){byId[x.id]=i;});
     incoming[k].forEach(function(x){
+      if (bpIsTombstoned(k, x.id)) return; // deleted on some device — never bring it back
       var idx = byId[x.id];
       if (idx===undefined) { DB[k].push(x); byId[x.id]=DB[k].length-1; _addedCount++; return; }
       if (bpRecordTs(x) > bpRecordTs(DB[k][idx])) { DB[k][idx]=x; _updatedCount++; }
@@ -5259,6 +5327,7 @@ function mergeIncomingDB(remote) {
   purgeDeletedJobsLocally();
   purgeDeletedPhotosLocally();
   purgeDeletedContractorsLocally();
+  purgeTombstonedLocally();
   migrateChecklistToPunchlist();
   return { added: _addedCount, updated: _updatedCount };
 }
@@ -5765,7 +5834,7 @@ function saveContact() {
 function deleteContact(id) {
   var con = (DB.contacts||[]).find(function(c){return c.id===id;});
   if (!confirm('Delete "'+( con ? con.name : 'this contact')+'"?')) return;
-  DB.contacts = (DB.contacts||[]).filter(function(c){return c.id!==id;});
+  bpRemoveFrom('contacts', function(c){return c.id!==id;});
   saveDB(); renderContacts(); toast('Contact deleted');
 }
 

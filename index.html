@@ -90,7 +90,12 @@ button,input,textarea,select{font-family:inherit}
 .screen.active{display:block}
 
 /* TOPBAR */
-.topbar{padding:54px 18px 16px;display:flex;align-items:center;justify-content:space-between}
+/* v2.26: every screen header clears the iPhone status bar / Dynamic Island by
+   reading the device's real safe-area inset instead of the old hardcoded ~52px
+   guess, which was SHORTER than the island on modern iPhones — so the header sat
+   behind it, hazed and half-unreadable. The 14px floor keeps it looking right on
+   a desktop browser and older non-notch phones, where the inset is 0. */
+.topbar{padding:calc(max(env(safe-area-inset-top,14px),14px) + 10px) 18px 16px;display:flex;align-items:center;justify-content:space-between}
 .topbar-title{font-size:28px;font-weight:800;letter-spacing:-.5px}
 .topbar-sub{font-size:13px;color:var(--muted);margin-top:2px}
 .hdr-datetime{font-size:12px;font-weight:600;color:var(--accent);margin-top:2px}
@@ -185,7 +190,7 @@ button,input,textarea,select{font-family:inherit}
 .kpi-lbl{font-family:var(--font-condensed);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
 
 /* DETAIL HEADER */
-.detail-header{position:sticky;top:0;z-index:10;background:var(--bg);padding:50px 16px 12px;border-bottom:1px solid var(--border);transform:translateZ(0);-webkit-transform:translateZ(0);backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.detail-header{position:sticky;top:0;z-index:10;background:var(--bg);padding:calc(max(env(safe-area-inset-top,14px),14px) + 10px) 16px 12px;border-bottom:1px solid var(--border);transform:translateZ(0);-webkit-transform:translateZ(0);backface-visibility:hidden;-webkit-backface-visibility:hidden}
 .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--accent);font-size:15px;font-weight:600;cursor:pointer;padding:0;margin-bottom:10px}
 .back-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 .detail-title{font-size:22px;font-weight:800;letter-spacing:-.3px;line-height:1.2}
@@ -392,54 +397,45 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <!-- HOME -->
 <div class="screen active" id="s-home">
-  <div style="position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--border);padding:52px 16px 12px;transform:translateZ(0);-webkit-transform:translateZ(0);backface-visibility:hidden;-webkit-backface-visibility:hidden">
+  <!-- v2.26 header rebuild. Two problems fixed together:
+       (1) ISLAND: the old 52px top padding was a hardcoded guess, SHORTER than the
+           Dynamic Island on modern iPhones, so the top of the header sat behind it —
+           hazed over and unreadable. Now reads the device's real safe-area inset.
+       (2) HEIGHT: the 5 buttons were stacked in 3 vertical rows next to a 60px logo
+           and a 28px greeting, then 3 more info lines — roughly half the screen
+           before any actual work showed up, and worse at Large/XL text size. Now:
+           one horizontal button row, smaller logo, greeting and info lines
+           tightened. Same 5 functions, all visible, ~60% less header. -->
+  <div style="position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--border);padding:calc(max(env(safe-area-inset-top,14px),14px) + 10px) 16px 10px;transform:translateZ(0);-webkit-transform:translateZ(0);backface-visibility:hidden;-webkit-backface-visibility:hidden">
 
-    <!-- Row 1: Greeting (left) + Controls (right) -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-
-      <!-- Left: Logo (bigger), Greeting stacked below -->
-      <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:2px"><svg viewBox="0 0 100 100" width="60" height="60" style="color:var(--text);flex-shrink:0" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="4"/><text x="50" y="67" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-weight="700" font-size="54" fill="currentColor">B</text><rect x="27" y="76" width="46" height="6" rx="3" fill="#D4262C"/></svg><span id="home-version-badge" style="font-family:var(--font-condensed);font-size:10px;font-weight:800;color:var(--faint)">v?</span></div>
-        <div id="home-greeting" style="font-size:28px;font-weight:900;line-height:1.1;background:linear-gradient(135deg,#0A84FF,#FFAA33);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Good Morning</div>
-      </div>
-
-      <!-- Right: Buttons -->
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
-        <!-- Buttons row 1: Font + Theme -->
-        <div style="display:flex;gap:6px">
-          <button onclick="cycleFontSize()" style="width:36px;height:36px;border-radius:10px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;font-family:inherit">AA</button>
-          <button onclick="toggleTheme()" style="width:36px;height:36px;border-radius:10px;background:var(--card2);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px">☀️</button>
-        </div>
-        <!-- Buttons row 2: Search + Calendar -->
-        <div style="display:flex;gap:6px">
-          <button onclick="showScreen('s-search')" style="width:36px;height:36px;border-radius:10px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px">🔍</button>
-          <button onclick="showScreen('s-calendar')" style="width:36px;height:36px;border-radius:10px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px">📅</button>
-        </div>
-        <!-- Buttons row 3: Sync -->
-        <div style="display:flex;gap:6px">
-          <button onclick="openSync()" style="width:36px;height:36px;border-radius:10px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">
-            <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-          </button>
-        </div>
-
-      </div>
+    <!-- Row 1: compact logo + greeting -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0"><svg viewBox="0 0 100 100" width="42" height="42" style="color:var(--text);flex-shrink:0" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="4"/><text x="50" y="67" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-weight="700" font-size="54" fill="currentColor">B</text><rect x="27" y="76" width="46" height="6" rx="3" fill="#D4262C"/></svg><span id="home-version-badge" style="font-family:var(--font-condensed);font-size:9px;font-weight:800;color:var(--faint)">v?</span></div>
+      <div id="home-greeting" style="font-size:23px;font-weight:900;line-height:1.1;flex:1;min-width:0;background:linear-gradient(135deg,#0A84FF,#FFAA33);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Good Morning</div>
     </div>
 
-    <!-- Info stack, dropped below the logo/greeting row: Location, then Day+Date+Time, then Weather (enlarged) -->
-    <!-- Line 1: Location -->
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+    <!-- Row 2: all 5 controls in ONE row, glove-sized, always visible -->
+    <div style="display:flex;gap:8px;margin-bottom:9px">
+      <button onclick="cycleFontSize()" title="Text &amp; button size" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;font-family:inherit">AA</button>
+      <button onclick="toggleTheme()" title="Light / dark" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px">☀️</button>
+      <button onclick="showScreen('s-search')" title="Search" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px">🔍</button>
+      <button onclick="showScreen('s-calendar')" title="Calendar" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px">📅</button>
+      <button onclick="openSync()" title="Sync" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">
+        <svg viewBox="0 0 24 24" style="width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+    </div>
+
+    <!-- Row 3: location + time on one line (was two) -->
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
       <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:#0A84FF;fill:none;stroke-width:2.5;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <span id="info-loc-text" style="font-size:13px;font-weight:700;color:var(--text)">Detecting...</span>
+      <span id="info-loc-text" style="font-size:13px;font-weight:700;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Detecting...</span>
+      <span id="info-time" style="font-size:18px;font-weight:900;color:#0A84FF;letter-spacing:-.3px;flex-shrink:0">--:--</span>
     </div>
-    <!-- Line 2: Day + Date + Time -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-      <div id="home-date" style="font-size:14px;font-weight:600;color:var(--muted);margin-left:19px"></div>
-      <div id="info-time" style="font-size:18px;font-weight:900;color:#0A84FF;letter-spacing:-.3px">--:--</div>
-    </div>
-    <!-- Line 3: Weather (bigger font + icon) -->
-    <div style="display:flex;align-items:center;gap:8px">
-      <span id="info-weather-icon" style="font-size:22px">🌡️</span>
-      <span id="info-weather-text" style="font-size:17px;font-weight:700;color:var(--muted)">Loading...</span>
+    <!-- Row 4: date + weather on one line (was two) -->
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div id="home-date" style="font-size:13px;font-weight:600;color:var(--muted);margin-left:19px"></div>
+      <span id="info-weather-icon" style="font-size:17px">🌡️</span>
+      <span id="info-weather-text" style="font-size:14px;font-weight:700;color:var(--muted)">Loading...</span>
     </div>
 
   </div>
@@ -1118,7 +1114,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.24';
+var APP_VERSION = '2.26';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1501,11 +1497,13 @@ function ensureDbShape() {
   if (!DB.deletedJobIds) DB.deletedJobIds = {};
   if (!DB.deletedPhotoIds) DB.deletedPhotoIds = {};
   if (!DB.deletedContractorIds) DB.deletedContractorIds = {};
+  if (!DB.tombstones) DB.tombstones = {};
   if (!DB.nextId) DB.nextId = 1;
   purgeArchivedJobsLocally();
   purgeDeletedJobsLocally();
   purgeDeletedPhotosLocally();
   purgeDeletedContractorsLocally();
+  purgeTombstonedLocally();
   migrateChecklistToPunchlist();
 }
 /* Loads DB from IndexedDB. The very first time this runs after upgrading from an older version,
@@ -1766,7 +1764,7 @@ function toggleTask(id) {
 }
 
 function deleteTask(id) {
-  DB.tasks = DB.tasks.filter(function(t){return t.id!==id;});
+  bpRemoveFrom('tasks', function(t){return t.id!==id;});
   save(); renderAll();
   if (currentJobId) renderJobDetail(currentJobId);
 }
@@ -1908,7 +1906,7 @@ window.deletePhoto = function(id) {
   var ph = DB.photos.find(function(p){ return p.id===id; });
   if (!ph) return;
   if (!confirm('Delete this photo? This cannot be undone.')) return;
-  DB.photos = DB.photos.filter(function(p){ return p.id!==id; });
+  bpRemoveFrom('photos', function(p){ return p.id!==id; });
   if (!DB.deletedPhotoIds) DB.deletedPhotoIds = {};
   DB.deletedPhotoIds[id] = now();
   closePhotoViewer();
@@ -2820,17 +2818,75 @@ function syncCatchMessage(e) {
    edited since creation, else its created time, else treated as timestamp 0 (oldest
    possible) so it never wins against a record that HAS a real timestamp. */
 function bpRecordTs(x) {
-  var t = Date.parse(x && (x.updatedAt || x.created));
+  // Reads every "when was this last touched" field name used across the app —
+  // records were added over many versions and don't all agree (updatedAt /
+  // updated / createdAt / created). Missing them all = 0 = oldest.
+  var t = Date.parse(x && (x.updatedAt || x.updated || x.createdAt || x.created));
   return isNaN(t) ? 0 : t;
 }
+
+/* ── Universal delete tombstones (v2.25) ──────────────────────
+   THE BUG: deleting anything other than a job, photo or contractor — a payment,
+   an expense, an invoice, a punch item, an appointment — looked like it worked,
+   then the record reappeared within ~8 seconds. A delete only removed the record
+   from the local array; the shared gist still had it. Every sync pulls-and-merges
+   the remote copy first, and to the merge loop a record this device no longer has
+   is indistinguishable from one this device hasn't seen yet — so it gets re-added.
+   Three collections had one-off tombstone maps bolted on over time (jobs, photos,
+   contractors); the other fourteen never did.
+
+   Now EVERY delete anywhere records one tombstone in DB.tombstones, keyed
+   "<collection>:<id>". The merge unions tombstones first, refuses to re-add
+   anything tombstoned, then purges. Permanent by design: there's no undelete UI
+   anywhere in this app, so a grow-only set is correct here (unlike archiveState,
+   which has a Restore button and therefore needs last-write-wins instead). */
+var BP_COLLECTIONS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','reports','contacts','permits','punchlist','walkthroughs','documents','payments','appointments','estimates','timeEntries'];
+function bpTombstone(coll, id) {
+  if (!id) return;
+  if (!DB.tombstones) DB.tombstones = {};
+  DB.tombstones[coll + ':' + id] = now();
+}
+function bpIsTombstoned(coll, id) {
+  return !!(DB.tombstones && DB.tombstones[coll + ':' + id]);
+}
+/* Removes records AND tombstones each one in a single step — every delete path
+   in the app goes through this, so none can silently forget the tombstone again
+   and let the record resurrect on the next sync. keepFn returns true to KEEP. */
+function bpRemoveFrom(coll, keepFn) {
+  var arr = DB[coll] || [];
+  var kept = [], removed = 0;
+  arr.forEach(function(r){
+    if (keepFn(r)) kept.push(r);
+    else { bpTombstone(coll, r.id); removed++; }
+  });
+  DB[coll] = kept;
+  return removed;
+}
+function purgeTombstonedLocally() {
+  if (!DB.tombstones) return;
+  BP_COLLECTIONS.forEach(function(coll){
+    if (!Array.isArray(DB[coll])) return;
+    DB[coll] = DB[coll].filter(function(r){ return !bpIsTombstoned(coll, r.id); });
+  });
+}
+
 function mergeIncomingDB(remote) {
   var incoming = remote.db || remote;
   var _addedCount = 0, _updatedCount = 0;
-  ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','permits','punchlist','walkthroughs','documents','payments','appointments','reports','estimates','timeEntries','contacts'].forEach(function(k) {
+  // Union incoming tombstones FIRST, so the array-merge loop below already knows
+  // what another device deleted and refuses to resurrect it.
+  if (incoming.tombstones && typeof incoming.tombstones === 'object') {
+    if (!DB.tombstones) DB.tombstones = {};
+    Object.keys(incoming.tombstones).forEach(function(tk){
+      if (!DB.tombstones[tk]) DB.tombstones[tk] = incoming.tombstones[tk];
+    });
+  }
+  BP_COLLECTIONS.forEach(function(k) {
     if (!incoming[k] || !Array.isArray(incoming[k])) return;
-    if (!DB[k]) { DB[k] = incoming[k]; _addedCount += incoming[k].length; return; }
+    if (!DB[k]) { DB[k] = incoming[k].filter(function(x){ return !bpIsTombstoned(k, x.id); }); _addedCount += DB[k].length; return; }
     var byId = {}; DB[k].forEach(function(x, i){ byId[x.id] = i; });
     incoming[k].forEach(function(x){
+      if (bpIsTombstoned(k, x.id)) return; // deleted on some device — never bring it back
       var idx = byId[x.id];
       if (idx === undefined) { DB[k].push(x); byId[x.id] = DB[k].length - 1; _addedCount++; return; }
       // Same id on both sides — last-write-wins by timestamp. A tie (or missing
@@ -2904,6 +2960,7 @@ function mergeIncomingDB(remote) {
   purgeDeletedJobsLocally();
   purgeDeletedPhotosLocally();
   purgeDeletedContractorsLocally();
+  purgeTombstonedLocally();
   migrateChecklistToPunchlist();
   return { added: _addedCount, updated: _updatedCount };
 }
@@ -3808,7 +3865,7 @@ function closeRoomDetail() {
 function deleteRoom(roomId) {
   var room = (DB.rooms||[]).find(function(r){return r.id===roomId;});
   if (!confirm('Delete room "' + (room?room.name:'') + '"? Its punchlist items will remain.')) return;
-  DB.rooms = (DB.rooms||[]).filter(function(r){ return r.id!==roomId; });
+  bpRemoveFrom('rooms', function(r){ return r.id!==roomId; });
   save(); renderAll();
   closeRoomDetail();
   toast('Room deleted');
@@ -4101,9 +4158,9 @@ window.erDeleteRoom = function(roomId) {
   var room = (DB.rooms||[]).find(function(r){return r.id===roomId;});
   var itemCount = (DB.punchlist||[]).filter(function(n){return n.roomId===roomId;}).length;
   if (!confirm('Delete "' + (room ? room.name : 'this room') + '"?' + (itemCount ? '\n\nThis also deletes ' + itemCount + ' linked punchlist item(s).' : ''))) return;
-  DB.rooms = (DB.rooms||[]).filter(function(r){return r.id!==roomId;});
-  DB.tasks = (DB.tasks||[]).filter(function(t){return t.roomId!==roomId;});
-  DB.punchlist = (DB.punchlist||[]).filter(function(n){return n.roomId!==roomId;});
+  bpRemoveFrom('rooms', function(r){return r.id!==roomId;});
+  bpRemoveFrom('tasks', function(t){return t.roomId!==roomId;});
+  bpRemoveFrom('punchlist', function(n){return n.roomId!==roomId;});
   document.getElementById('edit-room-modal') && document.getElementById('edit-room-modal').remove();
   var detail = document.getElementById('s-room-detail');
   if (detail) detail.remove();
@@ -4553,7 +4610,7 @@ window.toggleChecklistItem = function(id) {
 
 window.deleteChecklistItem = function(id) {
   if (!confirm('Delete this checklist item?')) return;
-  DB.punchlist = (DB.punchlist||[]).filter(function(n){ return n.id!==id; });
+  bpRemoveFrom('punchlist', function(n){ return n.id!==id; });
   save(); refreshChecklistViews();
 };
 
@@ -5674,6 +5731,11 @@ window.savePaymentModal = function(conId, paymentId) {
     var p = (DB.payments||[]).find(function(x){ return x.id===paymentId; });
     if (!p) return;
     p.amount = amount; p.date = date; p.method = method; p.notes = notes;
+    // v2.25: without this the edit had the SAME timestamp as the stale copy on the
+    // other device, so the merge's last-write-wins saw a tie, each device kept its
+    // own version, and whichever pushed last silently overwrote the other — the
+    // "my edit came back" bug. Bumping it makes the newer edit actually win.
+    p.updatedAt = now();
     toast('✅ Payment updated');
   } else {
     if (!DB.payments) DB.payments = [];
@@ -5686,7 +5748,7 @@ window.savePaymentModal = function(conId, paymentId) {
 
 window.deletePayment = function(paymentId) {
   if (!confirm('Delete this payment?')) return;
-  DB.payments = (DB.payments||[]).filter(function(x){ return x.id!==paymentId; });
+  bpRemoveFrom('payments', function(x){ return x.id!==paymentId; });
   save(); renderFinance();
   toast('Payment deleted');
 };
@@ -5863,6 +5925,7 @@ window.saveAppointmentModal = function(id) {
     var a = (DB.appointments||[]).find(function(x){ return x.id===id; });
     if (!a) return;
     a.title=title; a.type=type; a.date=date; a.time=time; a.jobId=jobId; a.notes=notes;
+    a.updatedAt = now(); // v2.25 — see the payment edit above: a tie loses to a stale copy
     toast('✅ Updated');
   } else {
     if (!DB.appointments) DB.appointments = [];
@@ -5875,7 +5938,7 @@ window.saveAppointmentModal = function(id) {
 };
 window.deleteAppointment = function(id) {
   if (!confirm('Delete this?')) return;
-  DB.appointments = (DB.appointments||[]).filter(function(x){ return x.id!==id; });
+  bpRemoveFrom('appointments', function(x){ return x.id!==id; });
   save(); renderFieldCalendar();
   toast('Deleted');
 };
@@ -5943,7 +6006,7 @@ window.emailInvoice = function(id) {
 window.deleteFinItem = function(type, id) {
   if (!confirm('Delete this item?')) return;
   DB[type] = (DB[type]||[]).filter(function(x){return x.id!==id;});
-  if (type === 'contractors') DB.payments = (DB.payments||[]).filter(function(p){return p.contractorId!==id;});
+  if (type === 'contractors') bpRemoveFrom('payments', function(p){return p.contractorId!==id;});
   save(); renderFinance();
 };
 
@@ -6770,7 +6833,7 @@ window.addPunchCompletionPhoto = function(input, itemId) {
   input.value = '';
 };
 window.deletePunchItem = function(id) {
-  DB.punchlist = (DB.punchlist||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('punchlist', function(x){return x.id!==id;});
   save();
   if (currentJobId) renderJobDetail(currentJobId);
 };
@@ -6816,7 +6879,7 @@ window.saveWalkthrough = function(jobId) {
 };
 window.deleteWalkthrough = function(id) {
   if (!confirm('Delete this walkthrough record?')) return;
-  DB.walkthroughs = (DB.walkthroughs||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('walkthroughs', function(x){return x.id!==id;});
   save();
   if (currentJobId) renderJobDetail(currentJobId);
 };
@@ -6967,7 +7030,7 @@ window.saveDocument = function() {
 };
 window.deleteDocument = function(id) {
   if (!confirm('Delete this document?')) return;
-  DB.documents = (DB.documents||[]).filter(function(x){return x.id!==id;});
+  bpRemoveFrom('documents', function(x){return x.id!==id;});
   save();
   if (currentJobId) renderJobDetail(currentJobId);
 };
@@ -7104,7 +7167,7 @@ window.saveEODField = function() {
 
 window.deleteEODField = function(id) {
   if (!confirm('Delete this report?')) return;
-  DB.reports = (DB.reports||[]).filter(function(x){ return x.id!==id; });
+  bpRemoveFrom('reports', function(x){ return x.id!==id; });
   save();
   if (currentJobId) renderJobDetail(currentJobId);
 };
@@ -7672,7 +7735,7 @@ window.emailEstimate = function(id) {
 
 window.deleteEstimate = function(id) {
   if (!confirm('Delete this estimate?')) return;
-  DB.estimates = (DB.estimates||[]).filter(function(x){ return x.id!==id; });
+  bpRemoveFrom('estimates', function(x){ return x.id!==id; });
   save();
   renderEstimates();
 };
@@ -7762,7 +7825,7 @@ window.bpClockOut = function(id) {
 };
 window.bpDeleteTimeEntry = function(id) {
   if (!confirm('Delete this time entry?')) return;
-  DB.timeEntries = (DB.timeEntries||[]).filter(function(x){ return x.id!==id; });
+  bpRemoveFrom('timeEntries', function(x){ return x.id!==id; });
   save();
   bpRenderTimeLog();
   bpRenderTimeClock();
