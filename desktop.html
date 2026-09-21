@@ -9282,9 +9282,19 @@ console.log('[BP] v2.42 Send to Client ready');
 .grid-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 
-/* A seven-figure contract value used to overrun its tile. */
-.kpi { padding: 18px 14px; }
-.kpi-val { font-size: clamp(26px, 3vw, 42px); overflow-wrap: anywhere; }
+/* A seven-figure contract value used to overrun its tile. The first attempt at
+   this used clamp() on vw plus overflow-wrap:anywhere — which is how "$45,000"
+   ended up rendering as "$45,0 / 00". A dollar figure must never break across
+   lines: nowrap forbids it, and bpFitKpiVals() below then measures each tile and
+   shrinks that number's font until it actually fits. Measuring beats guessing
+   with vw, because the tile width depends on the grid's own reflow, not the
+   window. Same treatment for the label, so "CONTRACTOR PAYMENTS" still reads. */
+.kpi { padding: 18px 12px; min-width: 0; }
+/* No font-size here on purpose — the original stylesheet's 42px (36px under
+   1300px) stays the starting point, and the JS pass scales down from whatever
+   that computes to. Setting it here would override the 1300px rule. */
+.kpi-val { white-space: nowrap; overflow: hidden; }
+.kpi-lbl { overflow-wrap: break-word; hyphens: none; }
 
 /* Titles and their action buttons wrap as a unit. */
 .view-header { flex-wrap: wrap; gap: 12px; }
@@ -9848,6 +9858,29 @@ if (document.readyState === 'loading') {
    scroll to them. Rather than hunting every render function, this walks the
    DOM after each render and gives any table without a scrolling ancestor one.
    It is idempotent, so running it on every render and every resize is safe. */
+/* ── v2.42: shrink a KPI number to fit its tile, never break it ────────────
+   Dollar figures are nowrap in CSS, so this is what keeps them readable: it
+   measures the number's natural width against the tile's actual inner width
+   and scales the font down by exactly that ratio. It resets the inline size
+   first, so repeated runs never ratchet the number smaller and smaller, and it
+   re-reads the stylesheet's size each time — which means the existing 1300px
+   breakpoint still owns the starting point. Floor of 15px; below that the tile
+   is too narrow to be worth reading and the grid has already reflowed. */
+function bpFitKpiVals() {
+  try {
+    [].slice.call(document.querySelectorAll('.kpi-val')).forEach(function(el){
+      el.style.fontSize = '';                                  /* back to CSS */
+      var max = parseFloat(getComputedStyle(el).fontSize) || 42;
+      var avail = el.clientWidth;
+      var natural = el.scrollWidth;
+      if (!avail || !natural || natural <= avail) return;
+      var px = Math.max(15, Math.floor(max * (avail / natural)) - 1);
+      el.style.fontSize = px + 'px';
+    });
+  } catch (e) {}
+}
+window.bpFitKpiVals = bpFitKpiVals;
+
 function bpMakeTablesScrollable() {
   try {
     [].slice.call(document.querySelectorAll('table.tbl')).forEach(function(t){
@@ -9881,6 +9914,7 @@ window.bpMakeTablesScrollable = bpMakeTablesScrollable;
   window[name] = function(){
     var r = orig.apply(this, arguments);
     bpMakeTablesScrollable();
+    bpFitKpiVals();
     return r;
   };
 });
@@ -9890,6 +9924,7 @@ window.addEventListener('resize', function(){
   if (_bpResizeTimer) clearTimeout(_bpResizeTimer);
   _bpResizeTimer = setTimeout(function(){
     bpMakeTablesScrollable();
+    bpFitKpiVals();
     /* the Areas screen draws a card grid whose column count it decides itself */
     if (typeof renderDesktopRooms === 'function' && document.getElementById('rooms-table-wrap')) {
       try { renderDesktopRooms(); } catch(e) {}
@@ -9897,6 +9932,17 @@ window.addEventListener('resize', function(){
   }, 140);
 });
 bpMakeTablesScrollable();
+bpFitKpiVals();
+/* The Spending Monitor KPI row is written straight into innerHTML by
+   renderSpendingOverview, which the wrappers above do not cover. */
+if (typeof window.renderSpendingOverview === 'function') {
+  var _origSpend = window.renderSpendingOverview;
+  window.renderSpendingOverview = function(){
+    var r = _origSpend.apply(this, arguments);
+    bpFitKpiVals();
+    return r;
+  };
+}
 
 console.log('[BP] v2.42 desktop port ready — money tiles, duplicate room, checklist clipboard, fluid layout');
 })();

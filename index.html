@@ -5939,14 +5939,19 @@ function renderFinanceSummary() {
    opens the records behind that number. Called with 3 arguments elsewhere
    (Room Detail), which still renders a plain, non-tappable tile. */
 function mkKpi(label, val, color, tileKind) {
+  /* v2.42: the number carries class bp-kpi-num and white-space:nowrap, so a
+     dollar figure can never break mid-digit the way "$45,000" was rendering as
+     "$45,0 / 00" on the Command Center. bpFitNums() then shrinks it to fit the
+     tile. min-width:0 lets the tile actually narrow inside its grid column. */
+  var numStyle = 'font-size:18px;font-weight:900;white-space:nowrap;overflow:hidden;color:';
   if (!tileKind) {
-    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;text-align:center">'
-      + '<div style="font-size:18px;font-weight:900;color:'+color+'">'+val+'</div>'
+    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 10px;text-align:center;min-width:0">'
+      + '<div class="bp-kpi-num" style="'+numStyle+color+'">'+val+'</div>'
       + '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:3px">'+label+'</div>'
       + '</div>';
   }
-  return '<div onclick="bpOpenMoneyTile(\''+tileKind+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;text-align:center;cursor:pointer;position:relative">'
-    + '<div style="font-size:18px;font-weight:900;color:'+color+'">'+val+'</div>'
+  return '<div onclick="bpOpenMoneyTile(\''+tileKind+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 10px;text-align:center;cursor:pointer;position:relative;min-width:0">'
+    + '<div class="bp-kpi-num" style="'+numStyle+color+'">'+val+'</div>'
     + '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:3px">'+label+' <span style="color:var(--faint);font-weight:800">›</span></div>'
     + '</div>';
 }
@@ -6098,7 +6103,7 @@ window.bpOpenMoneyTile = function(kind) {
     + '<div style="font-size:24px;font-weight:900;letter-spacing:-.4px">' + esc(d.title) + '</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5">' + esc(d.note) + (jobName ? ' <span style="color:#0A84FF;font-weight:700">· ' + esc(jobName) + ' only</span>' : '') + '</div>'
     + '<div style="margin-top:12px;display:flex;align-items:baseline;gap:8px">'
-    + '<div style="font-size:30px;font-weight:900;color:#0A84FF">' + bpMoneyFmt(d.total) + '</div>'
+    + '<div class="bp-kpi-num" style="font-size:30px;font-weight:900;white-space:nowrap;overflow:hidden;color:#0A84FF">' + bpMoneyFmt(d.total) + '</div>'
     + '<div style="font-size:12px;color:var(--muted);font-weight:700">' + d.rows.length + ' item' + (d.rows.length!==1?'s':'') + '</div>'
     + '</div></div>';
 
@@ -11223,6 +11228,43 @@ console.log('[BP] v2.42 Send to Client ready');
    final renderRooms in the chain. Duplicate is also on Room Detail, which is
    one tap away and where the rest of the room's actions live.
    ══════════════════════════════════════════════════════════════════════════ */
+/* ── v2.42: shrink a dollar figure to fit its tile, never break it ─────────
+   Every .bp-kpi-num is nowrap, so this is what keeps it readable: measure the
+   number's natural width against the tile's real inner width and scale the font
+   by exactly that ratio. The inline size is cleared first so repeated runs
+   never ratchet it smaller, and 12px is the floor. Runs after any render and
+   after a text-size change, since raising the text size is what squeezes it. */
+window.bpFitNums = function() {
+  try {
+    [].slice.call(document.querySelectorAll('.bp-kpi-num')).forEach(function(el){
+      el.style.fontSize = '';
+      var base = parseFloat(el.getAttribute('data-bp-base'));
+      if (!base) {
+        base = parseFloat(getComputedStyle(el).fontSize) || 18;
+        el.setAttribute('data-bp-base', base);
+      }
+      el.style.fontSize = base + 'px';
+      var avail = el.clientWidth, natural = el.scrollWidth;
+      if (!avail || !natural || natural <= avail) return;
+      el.style.fontSize = Math.max(12, Math.floor(base * (avail / natural)) - 1) + 'px';
+    });
+  } catch (e) {}
+};
+(function(){
+  ['renderFinance','renderFinanceSummary','openRoomDetail','renderJobDetail',
+   'bpOpenMoneyTile','renderAll','bpSetZoom'].forEach(function(name){
+    var orig = window[name];
+    if (typeof orig !== 'function') return;
+    window[name] = function(){
+      var r = orig.apply(this, arguments);
+      window.bpFitNums();
+      return r;
+    };
+  });
+  window.addEventListener('orientationchange', function(){ setTimeout(window.bpFitNums, 300); });
+  window.addEventListener('resize', function(){ window.bpFitNums(); });
+})();
+
 (function(){
   function addDupBadges() {
     var list = document.getElementById('rooms-list');
