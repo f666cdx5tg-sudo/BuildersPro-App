@@ -1128,6 +1128,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
           <div id="pair-qr-wrap" style="display:flex;justify-content:center;background:#fff;border-radius:10px;padding:12px;margin-bottom:10px"></div>
           <div style="font-size:11px;color:var(--faint);margin-bottom:6px">Pairing code (tap to select):</div>
           <code id="pair-code-text" style="display:block;user-select:all;-webkit-user-select:all;font-size:11px;word-break:break-all;background:var(--card);border-radius:8px;padding:10px;color:var(--text)"></code>
+          <button id="pair-reveal-btn" class="btn btn-ghost" onclick="bpTogglePairReveal()" style="width:100%;margin-top:8px">👁 Reveal pairing code</button>
+          <div id="pair-warning" style="display:none;margin-top:8px;padding:10px 12px;border-radius:9px;background:rgba(255,69,58,.1);border:1px solid rgba(255,69,58,.35);color:#FF453A;font-size:11px;font-weight:700;line-height:1.5">⚠️ This is your GitHub token in disguise. Do not screenshot, photograph or paste it anywhere but your own device's Sync screen. Hide it again when you're done.</div>
           <button class="btn btn-ghost" onclick="copyPairCode()" style="width:100%;margin-top:8px">📋 Copy Pairing Code</button>
         </div>
         <details style="margin-bottom:10px">
@@ -1295,7 +1297,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.47';
+var APP_VERSION = '2.48';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -3273,8 +3275,22 @@ function renderSyncSetupSections() {
   var codeEl = document.getElementById('pair-code-text');
   if (_syncGistId) {
     var code = bpPairCode();
-    if (codeEl) codeEl.textContent = code;
+    /* v2.48: this "code" is your GitHub token in base64. Printed in full it
+       leaks out of any screenshot of this screen, so it is hidden until asked
+       for — and the QR encodes the same payload, so it is behind the same tap. */
+    if (codeEl) codeEl.textContent = bpMaskPairCode(code);
+    var revEl = document.getElementById('pair-reveal-btn');
+    if (revEl) revEl.textContent = _pairRevealed ? '🙈 Hide pairing code' : '👁 Reveal pairing code';
+    var warnEl = document.getElementById('pair-warning');
+    if (warnEl) warnEl.style.display = _pairRevealed ? 'block' : 'none';
     if (wrap) {
+      if (!_pairRevealed) {
+        wrap.innerHTML = '<div onclick="bpTogglePairReveal()" style="cursor:pointer;padding:34px 16px;text-align:center;border:1.5px dashed var(--border,#ccc);border-radius:12px;color:#666;font-size:13px;line-height:1.6">'
+          + '<div style="font-size:26px;margin-bottom:6px">🔒</div>'
+          + '<strong>QR hidden</strong><br>It carries your GitHub token.<br>Tap to show it only when the other device is in front of you.'
+          + '</div>';
+        return;
+      }
       try {
         var qr = qrcode(0, 'M');
         qr.addData(bpPairUrl());
@@ -3715,11 +3731,102 @@ function driveAuth(onToken) {
   _gDriveTokenClient.requestAccessToken();
 }
 
+
+/* ══ v2.48 — GOOGLE DRIVE SPEAKS FOR ITSELF ════════════════════════════
+   Every Drive failure was being run through syncErrorMessage(), which is
+   GITHUB's error text. A Drive 403 therefore told people to go check the
+   "gist" checkbox on a GitHub token — advice that has nothing to do with
+   Google and cannot possibly help. Drive gets its own messages now, and
+   the 404 case says the thing that is actually true and actually useful:
+   the file is probably still in your Drive, this app just cannot see it
+   any more.
+
+   Why that happens: the app asks for the `drive.file` scope, which grants
+   access ONLY to files this app created. If Drive access is ever removed
+   and re-granted in your Google account, the old backup stays in your
+   Drive but becomes invisible to the app forever — and the app then
+   quietly creates a SECOND builderspro-backup.json beside it. */
+async function driveErrorMessage(res) {
+  var gMsg = '';
+  try {
+    var body = await res.clone().json();
+    gMsg = (body && body.error && (body.error.message || body.error.status)) || '';
+  } catch (e) {
+    try { gMsg = (await res.clone().text() || '').slice(0, 200); } catch (e2) {}
+  }
+  var hint;
+  if (res.status === 401) {
+    hint = 'Google signed you out. Tap the Drive button again to sign back in. If it keeps happening every few days, the Google Cloud project is still in "Testing" mode — those sign-ins expire after 7 days.';
+  } else if (res.status === 403) {
+    var low = (gMsg || '').toLowerCase();
+    /* Storage is tested FIRST: Google's out-of-space message is "The user does
+       not have enough storage quota", which contains the word quota and would
+       otherwise be reported as rate limiting — telling someone to wait a minute
+       when what they need is to free up space. */
+    if (low.indexOf('storage') > -1) {
+      hint = 'Your Google Drive is full. Free up space and try again.';
+    } else if (low.indexOf('quota') > -1 || low.indexOf('rate') > -1) {
+      hint = 'Google is rate-limiting this — wait a minute and try again.';
+    } else {
+      hint = 'Google refused the request. Usually the app was not granted Drive permission — tap the Drive button again and accept the permission prompt.';
+    }
+  } else if (res.status === 404) {
+    hint = 'Google could not find that backup file. It may still be sitting in your Drive — this app can only see files IT created, so if Drive access was ever removed and re-granted, the old backup becomes invisible to it. Search drive.google.com for "builderspro-backup.json" to check.';
+  } else if (res.status >= 500) {
+    hint = 'Google Drive is having trouble right now — try again in a few minutes.';
+  } else {
+    hint = 'Google Drive returned an error.';
+  }
+  return hint + (gMsg ? '\n\nGoogle said: "' + gMsg + '"' : '') + '\n(HTTP ' + res.status + ')';
+}
+/* Kept sync-shaped for the existing .then() chains: they throw immediately,
+   then the async text lands in the banner a tick later. */
+function driveThrow(res) {
+  var e = new Error('Google Drive error (HTTP ' + res.status + ') — reading the reason…');
+  driveErrorMessage(res).then(function(m) {
+    if (typeof showSyncResult === 'function') showSyncResult('❌ Google Drive: ' + m, '#EF5350');
+  });
+  e.driveHandled = true;
+  return e;
+}
+
+/* Thrown fetches (no HTTP response at all) were still being explained with
+   syncCatchMessage(), GitHub's text — which is how "Google Drive save failed"
+   ended up followed by "GitHub refused the upload". Drive gets its own. */
+function driveCatchMessage(e) {
+  if (e && e.driveHandled) return '';          // already reported by driveThrow
+  if (e instanceof TypeError) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return 'You appear to be offline. Reconnect and try again — nothing was lost.';
+    }
+    return 'The request to Google never completed. On a backup with photos this is almost always SIZE: the Drive save sends your whole database, photos and all, in a single request, while Push to the cloud splits photos into chunks. Use "Download backup" instead; it writes the same data straight to this device with no upload limit.';
+  }
+  return (e && e.message) || 'Unknown Google Drive error.';
+}
+
+/* The Drive save was reporting "✅ Saved to Google Drive!" for a 7 KB file that
+   contained essentially nothing, which is worse than failing — it looks like a
+   backup and is not one. Size is now measured up front, reported on success,
+   and a payload big enough to fail the single-shot upload is called out BEFORE
+   the attempt rather than after. */
+function drivePayloadInfo() {
+  var payload = JSON.stringify({ db: DB, pushedAt: now(), version: '2.0' });
+  var recs = 0;
+  try {
+    (typeof BP_COLLECTIONS !== 'undefined' ? BP_COLLECTIONS : []).forEach(function(k){
+      if (Array.isArray(DB[k])) recs += DB[k].length;
+    });
+  } catch (e) {}
+  return { payload: payload, bytes: payload.length, records: recs };
+}
+function driveFmtSize(b) {
+  return b >= 1048576 ? (b/1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b/1024)) + ' KB';
+}
 function driveFindFile(cb) {
   fetch('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent("name='" + GOOGLE_DRIVE_FILENAME + "' and trashed=false") + '&fields=files(id,name,modifiedTime)&spaces=drive', {
     headers: { 'Authorization': 'Bearer ' + _gDriveToken }
   }).then(function(res) {
-    if (!res.ok) throw new Error(syncErrorMessage(res.status));
+    if (!res.ok) throw driveThrow(res);
     return res.json();
   }).then(function(data) {
     cb(null, (data.files && data.files[0]) || null);
@@ -3727,12 +3834,32 @@ function driveFindFile(cb) {
 }
 
 function driveSave() {
+  /* Checked BEFORE signing in or touching the network. The first cut put this
+     inside the driveFindFile callback, which means a device that could not
+     reach Drive at all never got the warning that its backup was empty or
+     oversized — the two cases worth stopping for. */
+  var _info = drivePayloadInfo();
+  if (_info.records === 0) {
+    showSyncResult('\u26a0\ufe0f Nothing to back up \u2014 this device has no records yet. Saving now would replace a good Drive backup with an empty one, so it was stopped. Pull your data down first.', '#FF9F0A');
+    return;
+  }
+  /* No size BLOCK here, deliberately. An earlier cut of this refused anything
+     over 8 MB on the theory that a single-request upload would fail — then a
+     54 MB backup uploaded to Drive without complaint, which falsified it. A
+     guess that blocks a working feature is worse than no guard at all, so the
+     size is reported and the save is attempted. Only the empty-database case
+     above is blocked, because that one is proven: it is what quietly replaced
+     a real backup with a 7 KB shell. */
+
   showSyncResult('⏳ Connecting to Google...', 'var(--muted)');
   driveAuth(function() {
-    showSyncResult('⏳ Saving to Google Drive...', 'var(--muted)');
+    /* Size goes HERE, not in a banner before sign-in — that one is painted
+       over by "Connecting to Google" a moment later and never seen. */
+    showSyncResult('\u23f3 Saving ' + driveFmtSize(_info.bytes) + ' to Google Drive'
+      + (_info.bytes > 25 * 1048576 ? ' \u2014 mostly photos, this may take a minute. Leave this screen open.' : '\u2026'), 'var(--muted)');
     driveFindFile(function(err, existing) {
-      if (err) { showSyncResult('❌ Google Drive save failed: ' + syncCatchMessage(err), 'var(--red)'); return; }
-      var payload = JSON.stringify({ db: DB, pushedAt: now(), version: '2.0' });
+      if (err) { showSyncResult('❌ Google Drive save failed: ' + driveCatchMessage(err), 'var(--red)'); return; }
+      var payload = _info.payload;
       var req;
       if (existing) {
         req = fetch('https://www.googleapis.com/upload/drive/v3/files/' + existing.id + '?uploadType=media', {
@@ -3757,10 +3884,10 @@ function driveSave() {
         });
       }
       req.then(function(res) {
-        if (!res.ok) throw new Error(syncErrorMessage(res.status));
+        if (!res.ok) throw driveThrow(res);
         showSyncResult('✅ Saved to Google Drive!', 'var(--green)');
       }).catch(function(e) {
-        showSyncResult('❌ Google Drive save failed: ' + syncCatchMessage(e), 'var(--red)');
+        showSyncResult('❌ Google Drive save failed: ' + driveCatchMessage(e), 'var(--red)');
       });
     });
   });
@@ -3771,12 +3898,12 @@ function driveLoad() {
   driveAuth(function() {
     showSyncResult('⏳ Loading from Google Drive...', 'var(--muted)');
     driveFindFile(function(err, existing) {
-      if (err) { showSyncResult('❌ Google Drive load failed: ' + syncCatchMessage(err), 'var(--red)'); return; }
+      if (err) { showSyncResult('❌ Google Drive load failed: ' + driveCatchMessage(err), 'var(--red)'); return; }
       if (!existing) { showSyncResult('⚠️ No backup found in Google Drive yet — tap "Save to Google Drive" first.', 'var(--accent)'); return; }
       fetch('https://www.googleapis.com/drive/v3/files/' + existing.id + '?alt=media', {
         headers: { 'Authorization': 'Bearer ' + _gDriveToken }
       }).then(function(res) {
-        if (!res.ok) throw new Error(syncErrorMessage(res.status));
+        if (!res.ok) throw driveThrow(res);
         return res.text();
       }).then(function(text) {
         var remote = JSON.parse(text);
@@ -3784,7 +3911,7 @@ function driveLoad() {
         save(); renderAll();
         showSyncResult((_merge.added||_merge.updated) ? ('✅ Loaded from Google Drive! ' + _merge.added + ' new, ' + _merge.updated + ' updated') : '✅ Already up to date', 'var(--green)');
       }).catch(function(e) {
-        showSyncResult('❌ Google Drive load failed: ' + syncCatchMessage(e), 'var(--red)');
+        showSyncResult('❌ Google Drive load failed: ' + driveCatchMessage(e), 'var(--red)');
       });
     });
   });
@@ -3881,6 +4008,111 @@ function bpChunkBlobs(blobs) {
 }
 
 /* Carries the HTTP status so callers can still special-case 404 (gist deleted). */
+
+/* ══ v2.48 — GITHUB ERRORS, HONESTLY ═══════════════════════════════════
+   Three problems, one root cause between them: the app was guessing.
+
+   1. bpHttpError(status) only ever saw a NUMBER. GitHub sends the actual
+      reason in the response body — "You have exceeded a secondary rate
+      limit", "Bad credentials", "Resource not accessible" — and the app
+      threw it away, then displayed a guess about the "gist" checkbox. So
+      a rate-limit problem read as a token problem and sent people off to
+      regenerate a perfectly good token. Now the real message is read and
+      shown, with a hint matched to what GitHub actually said.
+
+   2. The chunk loop PATCHed the SAME gist back to back with no pause.
+      GitHub's own guidance: make mutative requests to one resource
+      serially and wait about a second between them. Ignoring that earns a
+      403 secondary rate limit — which is exactly the 403 people were
+      being told to fix with a new token. Now paced, and retried with
+      backoff that honours Retry-After.
+   ══════════════════════════════════════════════════════════════════════ */
+function bpSleep(ms) { return new Promise(function(r){ setTimeout(r, ms); }); }
+
+/* Reads GitHub's own explanation out of the response before deciding what
+   to tell the user. Never throws on a malformed body. */
+async function bpGitHubError(res) {
+  var ghMsg = '', body = null;
+  try { body = await res.clone().json(); ghMsg = (body && body.message) || ''; }
+  catch (e) {
+    try { ghMsg = (await res.clone().text() || '').slice(0, 300); } catch (e2) {}
+  }
+  var low = (ghMsg || '').toLowerCase();
+  var hint;
+
+  if (res.status === 403 && (low.indexOf('secondary rate') > -1 || low.indexOf('abuse') > -1)) {
+    hint = 'GitHub is asking you to slow down, not refusing your token. This clears on its own — wait a minute and push again. Nothing was lost.';
+  } else if (res.status === 429 || (res.status === 403 && low.indexOf('rate limit') > -1)) {
+    hint = 'You have hit GitHub\'s hourly request limit. It resets within the hour — wait and push again. Nothing was lost.';
+  } else if (low.indexOf('bad credentials') > -1) {
+    hint = 'That token is no longer valid. GitHub also revokes tokens automatically if it ever sees one published anywhere. Generate a new CLASSIC token with the "gist" box checked, then tap Fix Token.';
+  } else if (res.status === 403 && (low.indexOf('not accessible') > -1 || low.indexOf('scope') > -1 || low.indexOf('permission') > -1)) {
+    hint = 'The token is valid but not allowed to touch gists. That is the "gist" checkbox on a CLASSIC token — fine-grained tokens cannot do gists at all. Tap Fix Token.';
+  } else if (res.status === 401) {
+    hint = 'GitHub would not accept the token — it has expired, been revoked, or is a fine-grained token. Use a CLASSIC token with "gist" checked, then tap Fix Token.';
+  } else if (res.status === 404) {
+    hint = 'That backup could not be found (404) — it may have been deleted. Push again to create a new one.';
+  } else if (res.status === 422) {
+    hint = 'GitHub rejected the upload (422) — the data may be too large or malformed.';
+  } else if (res.status >= 500) {
+    hint = 'GitHub\'s servers are having trouble right now — try again in a few minutes.';
+  } else {
+    hint = 'Unexpected error from GitHub.';
+  }
+
+  var msg = hint + (ghMsg ? '\n\nGitHub said: "' + ghMsg + '"' : '') + '\n(HTTP ' + res.status + ')';
+  var e = new Error(msg);
+  e.status = res.status;
+  e.ghMessage = ghMsg;
+  e.retryable = (res.status === 429) ||
+                (res.status === 403 && (low.indexOf('rate limit') > -1 || low.indexOf('secondary') > -1 || low.indexOf('abuse') > -1)) ||
+                (res.status >= 500);
+  try { e.retryAfter = parseInt(res.headers.get('Retry-After') || '', 10) || 0; } catch (e3) { e.retryAfter = 0; }
+  return e;
+}
+
+/* One place every gist write goes through, so the pacing and the retry
+   cannot be forgotten at a new call site. */
+async function bpGitHubFetch(url, opts, attempt) {
+  attempt = attempt || 0;
+  var res = await fetch(url, opts);
+  if (res.ok) return res;
+  var err = await bpGitHubError(res);
+  if (err.retryable && attempt < 3) {
+    var waitMs = err.retryAfter ? (err.retryAfter * 1000) : (Math.pow(2, attempt) * 2000 + 1000);
+    if (typeof bpSyncProgressMsg === 'function') {
+      bpSyncProgressMsg('⏳ GitHub asked us to slow down — retrying in ' + Math.ceil(waitMs/1000) + 's…');
+    }
+    await bpSleep(waitMs);
+    return bpGitHubFetch(url, opts, attempt + 1);
+  }
+  throw err;
+}
+function bpSyncProgressMsg(m) {
+  if (typeof showSyncResult === 'function') showSyncResult(m, 'var(--muted)');
+}
+
+/* ══ v2.48 — THE PAIRING CODE CONTAINS A LIVE TOKEN ════════════════════
+   It is base64 of {t: <your GitHub token>, g: <gist id>} — not a code, a
+   credential in a thin disguise. It was printed on screen in full, which
+   means any screenshot of the Sync page hands over gist access. Masked by
+   default now, with one tap to reveal and a plain warning about what it
+   is. The QR carries the same payload, so it is behind the same tap.
+   ══════════════════════════════════════════════════════════════════════ */
+var _pairRevealed = false;
+window.bpTogglePairReveal = function() {
+  _pairRevealed = !_pairRevealed;
+  /* renderSyncSetupSections is the one that actually paints this block in both
+     apps. The first cut guessed three other names, flipped the flag and left
+     the screen exactly as it was. */
+  if (typeof renderSyncSetupSections === 'function') renderSyncSetupSections();
+  else if (typeof renderSyncScreen === 'function') renderSyncScreen();
+};
+function bpMaskPairCode(code) {
+  if (!code) return '';
+  if (_pairRevealed) return code;
+  return 'BP1.' + '•'.repeat(48) + '  (hidden)';
+}
 function bpHttpError(status) { var e = new Error(syncErrorMessage(status)); e.status = status; return e; }
 function bpAuthHeaders() {
   return {'Authorization':'token ' + _syncToken, 'Accept':'application/vnd.github.v3+json', 'Content-Type':'application/json'};
@@ -3911,22 +4143,24 @@ async function bpPushAll() {
   var meta = JSON.stringify({db: lean, blobChunks: names, pushedAt: now(), version: '3.0'});
 
   var gistId = _syncGistId;
-  var res = await fetch(gistId ? 'https://api.github.com/gists/' + gistId : 'https://api.github.com/gists', {
+  var res = await bpGitHubFetch(gistId ? 'https://api.github.com/gists/' + gistId : 'https://api.github.com/gists', {
     method: gistId ? 'PATCH' : 'POST',
     headers: bpAuthHeaders(),
     body: JSON.stringify({description:'BuildersPro-sync', public:false, files:{'bp_data.json':{content: meta}}})
   });
-  if (!res.ok) throw bpHttpError(res.status);
   var gist = await res.json();
   gistId = gist.id;
   var existing = Object.keys(gist.files || {});
 
   for (var i = 0; i < names.length; i++) {
     bpSyncProgress(i + 1, names.length);
+    /* v2.48: GitHub wants mutative requests to one resource spaced out. These
+       all PATCH the SAME gist, so firing them back to back is what earned the
+       403 secondary rate limit that used to read as a bad token. */
+    if (i > 0) await bpSleep(1100);
     var f = {}; f[names[i]] = {content: JSON.stringify(chunks[names[i]])};
-    var r2 = await fetch('https://api.github.com/gists/' + gistId, {
+    await bpGitHubFetch('https://api.github.com/gists/' + gistId, {
       method:'PATCH', headers: bpAuthHeaders(), body: JSON.stringify({files: f})});
-    if (!r2.ok) throw bpHttpError(r2.status);
   }
 
   var stale = {};
@@ -3934,7 +4168,8 @@ async function bpPushAll() {
     if (/^bp_blobs_\d+\.json$/.test(n) && names.indexOf(n) < 0) stale[n] = null;
   });
   if (Object.keys(stale).length) {
-    await fetch('https://api.github.com/gists/' + gistId, {
+    await bpSleep(1100);   // v2.48: same gist again — keep the spacing
+    await bpGitHubFetch('https://api.github.com/gists/' + gistId, {
       method:'PATCH', headers: bpAuthHeaders(), body: JSON.stringify({files: stale})});
   }
   return gistId;
@@ -3944,8 +4179,10 @@ async function bpPushAll() {
    A chunk that is missing or unreadable throws rather than returning a partial
    database — merging half a backup would drop photos on every device it reached. */
 async function bpFetchRemote() {
-  var res = await fetch('https://api.github.com/gists/' + _syncGistId, {headers: bpAuthHeaders()});
-  if (!res.ok) throw bpHttpError(res.status);
+  /* v2.48: pull goes through the same truthful/retrying helper as push. It was
+     still on the old status-only path, so a revoked token on PULL produced the
+     same misleading "check the gist checkbox" guess. */
+  var res = await bpGitHubFetch('https://api.github.com/gists/' + _syncGistId, {headers: bpAuthHeaders()});
   var gist = await res.json();
   var file = gist.files && gist.files['bp_data.json'];
   if (!file) throw new Error('No data file found in this backup.');
