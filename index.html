@@ -417,6 +417,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     <div id="bp-lock-title" style="opacity:0;animation:bpTitleIn .4s ease-out .45s forwards;font-size:19px;font-weight:800;color:#f0f0f0;margin-bottom:6px">BuildersPro <span id="bp-lock-version" style="font-size:12px;font-weight:600;color:#888;vertical-align:middle">v?</span></div>
     <div id="bp-lock-sub" style="opacity:0;animation:bpTitleIn .4s ease-out .52s forwards;font-size:13px;color:#888;margin-bottom:22px;line-height:1.5">Enter this device's passcode</div>
     <div id="bp-lock-form" style="opacity:0;animation:bpFormIn .45s ease-out .8s forwards">
+    <button id="bp-lock-faceid" onclick="bpLockFaceID()" style="display:none;width:100%;padding:15px;border-radius:12px;border:1.5px solid #0A84FF;background:rgba(10,132,255,.14);color:#0A84FF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;margin-bottom:12px;align-items:center;justify-content:center;gap:8px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M9 15c.5 1 1.5 1.5 3 1.5s2.5-.5 3-1.5"/></svg>Unlock with Face ID</button>
     <input id="bp-lock-input" type="password" inputmode="numeric" autocomplete="off" placeholder="Passcode" style="width:100%;box-sizing:border-box;padding:16px;border-radius:12px;border:1.5px solid #2a2a2a;background:#1a1a1a;color:#f0f0f0;font-size:20px;text-align:center;letter-spacing:4px;margin-bottom:12px;font-family:inherit"/>
     <div id="bp-lock-input2-wrap" style="display:none;margin-bottom:12px">
       <input id="bp-lock-input2" type="password" inputmode="numeric" autocomplete="off" placeholder="Confirm passcode" style="width:100%;box-sizing:border-box;padding:16px;border-radius:12px;border:1.5px solid #2a2a2a;background:#1a1a1a;color:#f0f0f0;font-size:20px;text-align:center;letter-spacing:4px;font-family:inherit"/>
@@ -439,14 +440,101 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var errEl = document.getElementById('bp-lock-error');
   var btn = document.getElementById('bp-lock-btn');
 
-  function getCode(){ try { return localStorage.getItem('bp_passcode') || ''; } catch(e){ return ''; } }
-  function setCode(v){ try { localStorage.setItem('bp_passcode', v); } catch(e){} }
-  function clearCode(){ try { localStorage.removeItem('bp_passcode'); } catch(e){} }
+  /* v2.63 — Passcode is now stored as a salted SHA-256 hash, never as plain
+     text. An old plain-text bp_passcode (from before v2.63) is migrated to a
+     hash automatically the first time it's used to unlock — no re-entry
+     needed, and nothing changes for the person typing it in. */
+  function b64(buf){ var b=new Uint8Array(buf), s=''; for(var i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return btoa(s); }
+  function bufFromB64(s){ var bin=atob(s), a=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i); return a.buffer; }
+  function randB64(n){ var a=new Uint8Array(n); crypto.getRandomValues(a); return b64(a.buffer); }
+  async function sha(saltB64, v){
+    var enc = new TextEncoder().encode(saltB64 + ':' + v);
+    var d = await crypto.subtle.digest('SHA-256', enc);
+    return b64(d);
+  }
+  window.bpHasPasscode = function(){
+    try { return !!(localStorage.getItem('bp_passcode_hash') || localStorage.getItem('bp_passcode')); } catch(e){ return false; }
+  };
+  window.bpSetPasscode = async function(v){
+    var salt = randB64(16), h = await sha(salt, v);
+    try {
+      localStorage.setItem('bp_passcode_salt', salt);
+      localStorage.setItem('bp_passcode_hash', h);
+      localStorage.removeItem('bp_passcode');
+    } catch(e){}
+  };
+  window.bpCheckPasscode = async function(v){
+    var old = null;
+    try { old = localStorage.getItem('bp_passcode'); } catch(e){}
+    if (old !== null && old !== '') {
+      if (v === old) { await window.bpSetPasscode(v); return true; }   // migrate on first correct entry
+      return false;
+    }
+    var salt = '', hash = '';
+    try { salt = localStorage.getItem('bp_passcode_salt')||''; hash = localStorage.getItem('bp_passcode_hash')||''; } catch(e){}
+    if (!hash) return false;
+    return (await sha(salt, v)) === hash;
+  };
+  window.bpClearPasscode = function(){
+    try {
+      localStorage.removeItem('bp_passcode');
+      localStorage.removeItem('bp_passcode_hash');
+      localStorage.removeItem('bp_passcode_salt');
+      localStorage.removeItem('bp_webauthn_id');
+    } catch(e){}
+  };
+
+  /* v2.63 — Face ID unlock via WebAuthn's platform authenticator. iOS itself
+     checks your face against the Secure Enclave and only tells the browser
+     yes/no — this app never sees or stores anything about your face, just a
+     credential ID it can ask the phone to check again later. The passcode
+     always stays as a fallback (Face ID can fail — sunglasses, a mask, bad
+     light — and this app has no server to reset it for you). */
+  window.bpFaceIDSupported = async function(){
+    try {
+      if (!window.PublicKeyCredential || !navigator.credentials) return false;
+      if (!PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) return false;
+      return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    } catch(e){ return false; }
+  };
+  window.bpFaceIDRegistered = function(){
+    try { return !!localStorage.getItem('bp_webauthn_id'); } catch(e){ return false; }
+  };
+  window.bpFaceIDSetup = async function(){
+    try {
+      var challenge = new Uint8Array(32); crypto.getRandomValues(challenge);
+      var userId = new Uint8Array(16); crypto.getRandomValues(userId);
+      var cred = await navigator.credentials.create({ publicKey: {
+        challenge: challenge,
+        rp: { name: 'BuildersPro' },
+        user: { id: userId, name: 'builderspro-device', displayName: 'BuildersPro' },
+        pubKeyCredParams: [{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+        authenticatorSelection: { authenticatorAttachment:'platform', userVerification:'required' },
+        timeout: 60000
+      }});
+      if (!cred) return false;
+      localStorage.setItem('bp_webauthn_id', b64(cred.rawId));
+      return true;
+    } catch(e){ return false; }
+  };
+  window.bpFaceIDUnlock = async function(){
+    try {
+      var idB64 = localStorage.getItem('bp_webauthn_id'); if (!idB64) return false;
+      var challenge = new Uint8Array(32); crypto.getRandomValues(challenge);
+      var cred = await navigator.credentials.get({ publicKey: {
+        challenge: challenge,
+        allowCredentials: [{ type:'public-key', id: bufFromB64(idB64) }],
+        userVerification: 'required',
+        timeout: 60000
+      }});
+      return !!cred;
+    } catch(e){ return false; }
+  };
 
   function renderMode(){
     errEl.textContent = '';
     input.value=''; input2.value='';
-    if (getCode()) {
+    if (window.bpHasPasscode()) {
       subEl.textContent = "Enter this device's passcode";
       input2wrap.style.display = 'none';
       btn.textContent = 'Unlock';
@@ -456,14 +544,15 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       input2wrap.style.display = 'block';
       btn.textContent = 'Set Passcode';
       document.getElementById('bp-lock-forgot').style.display = 'none';
+      document.getElementById('bp-lock-faceid').style.display = 'none';
     }
     input.focus();
   }
 
-  window.bpLockSubmit = function(){
-    var code = getCode();
-    if (code) {
-      if (input.value === code && input.value.length > 0) {
+  window.bpLockSubmit = async function(){
+    if (window.bpHasPasscode()) {
+      var ok = await window.bpCheckPasscode(input.value);
+      if (ok && input.value.length > 0) {
         el.remove();
         if (typeof bpForceRepaintNudge === 'function') bpForceRepaintNudge();
       } else {
@@ -474,20 +563,42 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       var a = input.value, b = input2.value;
       if (!a || a.length < 4) { errEl.textContent = 'Use at least 4 characters'; return; }
       if (a !== b) { errEl.textContent = "Passcodes don't match"; input2.value=''; input2.focus(); return; }
-      setCode(a);
+      await window.bpSetPasscode(a);
       el.remove();
       if (typeof bpForceRepaintNudge === 'function') bpForceRepaintNudge();
     }
   };
   window.bpLockForgot = function(){
     if (!confirm('Reset the passcode on this device? Your job data is untouched — you\'ll just set a new passcode.')) return;
-    clearCode();
+    window.bpClearPasscode();
     renderMode();
+  };
+  window.bpLockFaceID = async function(){
+    var faceBtn = document.getElementById('bp-lock-faceid');
+    if (faceBtn) { faceBtn.disabled = true; }
+    var ok = await window.bpFaceIDUnlock();
+    if (ok) {
+      el.remove();
+      if (typeof bpForceRepaintNudge === 'function') bpForceRepaintNudge();
+      return;
+    }
+    if (faceBtn) { faceBtn.disabled = false; }
+    errEl.textContent = "Face ID didn't confirm — use your passcode below";
   };
   input.addEventListener('keydown', function(e){ if (e.key==='Enter') { if (input2wrap.style.display==='block') input2.focus(); else bpLockSubmit(); } });
   input2.addEventListener('keydown', function(e){ if (e.key==='Enter') bpLockSubmit(); });
 
   renderMode();
+
+  // Offer Face ID right away, like a native app would — the passcode form
+  // stays visible underneath as the fallback if it's cancelled or fails.
+  (async function(){
+    if (window.bpHasPasscode() && window.bpFaceIDRegistered() && await window.bpFaceIDSupported()) {
+      var faceBtn = document.getElementById('bp-lock-faceid');
+      if (faceBtn) faceBtn.style.display = 'flex';
+      window.bpLockFaceID();
+    }
+  })();
 })();
 </script>
 
@@ -1171,6 +1282,11 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         <div style="font-size:11px;color:var(--faint);margin-bottom:10px;line-height:1.5">A soft lock for this phone only — not real security. Change it here, or use "Forgot passcode" on the lock screen.</div>
         <button class="btn btn-ghost" onclick="bpChangePasscode()" style="width:100%">Change Passcode</button>
       </div>
+      <div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px;display:none" id="bp-faceid-card">
+        <div class="field-label" style="margin-bottom:8px">Face ID Unlock</div>
+        <div id="bp-faceid-status" style="font-size:11px;color:var(--faint);margin-bottom:10px;line-height:1.5">Checking this device…</div>
+        <button class="btn btn-ghost" id="bp-faceid-btn" onclick="bpFaceIDToggle()" style="width:100%">…</button>
+      </div>
       <div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px">
         <div class="field-label" style="margin-bottom:8px">Export Data (CSV)</div>
         <div style="font-size:11px;color:var(--faint);margin-bottom:10px;line-height:1.5">Download a spreadsheet-ready file — opens in Excel, Google Sheets, or Numbers.</div>
@@ -1298,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.61';
+var APP_VERSION = '2.63';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -3226,21 +3342,57 @@ function saveUserName() {
   toast(n ? '✅ Reports from this device will show "'+n+'"' : 'Saved');
 }
 
-function bpChangePasscode() {
-  var cur = '';
-  try { cur = localStorage.getItem('bp_passcode') || ''; } catch(e) {}
-  if (cur) {
+async function bpChangePasscode() {
+  var hasCur = window.bpHasPasscode && window.bpHasPasscode();
+  if (hasCur) {
     var check = prompt('Enter the current passcode to change it:');
     if (check === null) return;
-    if (check !== cur) { toast('❌ Incorrect current passcode'); return; }
+    var ok = await window.bpCheckPasscode(check);
+    if (!ok) { toast('❌ Incorrect current passcode'); return; }
   }
   var next = prompt('Enter a new passcode (4+ characters):');
   if (next === null) return;
   if (!next || next.length < 4) { toast('Use at least 4 characters'); return; }
   var confirm2 = prompt('Confirm the new passcode:');
   if (confirm2 !== next) { toast("Passcodes didn't match — try again"); return; }
-  try { localStorage.setItem('bp_passcode', next); } catch(e) {}
+  await window.bpSetPasscode(next);
   toast('✅ Passcode updated');
+}
+
+/* v2.63 — Face ID settings card: shows only on devices that actually support
+   a platform authenticator (Face ID / Touch ID); hidden everywhere else. */
+async function bpFaceIDRefreshCard() {
+  var card = document.getElementById('bp-faceid-card');
+  if (!card) return;
+  var statusEl = document.getElementById('bp-faceid-status');
+  var btn = document.getElementById('bp-faceid-btn');
+  var supported = await window.bpFaceIDSupported();
+  if (!supported) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  if (!window.bpHasPasscode()) {
+    statusEl.textContent = 'Set a device passcode above first — Face ID uses it as a fallback.';
+    btn.textContent = 'Set a Passcode First';
+    btn.disabled = true;
+  } else if (window.bpFaceIDRegistered()) {
+    statusEl.textContent = 'Face ID is set up on this device. Your passcode still works as a backup.';
+    btn.textContent = 'Turn Off Face ID';
+    btn.disabled = false;
+  } else {
+    statusEl.textContent = 'Unlock this app with Face ID instead of typing your passcode every time. Your passcode still works as a backup if Face ID doesn\'t confirm.';
+    btn.textContent = 'Set Up Face ID';
+    btn.disabled = false;
+  }
+}
+async function bpFaceIDToggle() {
+  if (window.bpFaceIDRegistered()) {
+    if (!confirm('Turn off Face ID unlock on this device? You\'ll go back to typing your passcode.')) return;
+    try { localStorage.removeItem('bp_webauthn_id'); } catch(e){}
+    toast('Face ID turned off');
+  } else {
+    var ok = await window.bpFaceIDSetup();
+    toast(ok ? '✅ Face ID is set up' : '❌ Could not set up Face ID — try again');
+  }
+  bpFaceIDRefreshCard();
 }
 
 function openSync() {
@@ -3258,6 +3410,7 @@ function openSync() {
   updateGistIdDisplay();
   renderSyncSetupSections();
   bpRenderZoomButtons();
+  bpFaceIDRefreshCard();
   // Surface the last sync failure here instead of blindly hiding it — most syncs
   // happen automatically in the background, so opening this sheet (by tapping the
   // red status dot) is usually the FIRST chance to actually read why it failed.
@@ -5611,7 +5764,7 @@ window.openDuplicateRoom = function(roomId) {
 
   var mo = document.createElement('div');
   mo.id = 'dup-room-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
   var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
@@ -5869,8 +6022,8 @@ window.openEditRoom = function(roomId) {
     : '<div style="font-size:13px;color:var(--faint);padding:4px 0">No contractors for this job yet — add one from Finance &gt; Contractors, then come back here.</div>';
   var mo = document.createElement('div');
   mo.id  = 'edit-room-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">Edit Location</div>';
@@ -6619,8 +6772,8 @@ window.openEditChecklistItem = function(itemId) {
   var priOpts  = ['Normal','High','Critical'].map(function(p){ return '<option'+(p===item.priority?' selected':'')+'>'+p+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'edit-cli-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">Edit Checklist Item</div>';
@@ -6671,8 +6824,8 @@ window.openCopyChecklistItem = function(itemId) {
   var roomOpts = rooms.map(function(r){ return '<option value="'+r.id+'">'+esc(r.name)+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'copy-cli-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">Copy "'+esc(item.text)+'" to Location</div>';
@@ -7492,8 +7645,9 @@ window.openJobBudget = function(jobId) {
   var s = 'width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:14px;font-family:inherit';
   var mo = document.createElement('div');
   mo.id = 'budget-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  /* v2.62 — same safe-top/zoom fix as the Change Order sheet (see buildCOSheet). */
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">Budget — '+esc(job.name)+'</div>';
@@ -7637,8 +7791,8 @@ window.openEditInvoice = function(invId) {
   var statusOpts = ['Draft','Sent','Paid','Overdue'].map(function(st){ return '<option'+(st===inv.status?' selected':'')+'>'+st+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'edit-inv-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">Edit Invoice</div>';
@@ -8556,8 +8710,15 @@ function buildCOSheet(co, jid) {
 
   var mo = document.createElement('div');
   mo.id = 'co-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var h = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:92vh;overflow-y:auto">';
+  /* v2.62 — was a flat max-height:92vh with no --safe-top reservation, so at
+     Large/XL/XXL text zoom the sheet grew taller than the visible screen and
+     its own header (title + close button) slid up behind the Dynamic Island —
+     the exact bug already fixed for .sheet-overlay/.sheet back in v2.29.
+     Reserving padding-top:var(--safe-top) on the overlay and capping the box
+     at max-height:100% (of that now-shorter overlay) instead of a vh number
+     makes this zoom-proof the same way. */
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var h = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   h += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   h += '<div style="font-size:17px;font-weight:800">'+(co?'Edit ':'New ')+esc(num)+'</div>';
@@ -8862,8 +9023,8 @@ window.openEditContractor = function(conId) {
   var statusOpts = ['Active','Pending','Completed','On Hold'].map(function(st){ return '<option'+(st===con.status?' selected':'')+'>'+st+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'edit-con-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">Edit Contractor</div>';
@@ -8924,8 +9085,8 @@ function buildPaymentModal(con, payment) {
   var methodOpts = METHODS.map(function(m){ return '<option'+(payment&&m===payment.method?' selected':'')+'>'+m+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'log-payment-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">'+(payment?'Edit Payment':'Log Payment')+' — '+esc(con.name)+'</div>';
@@ -9084,8 +9245,8 @@ window.openCalendarDay = function(ds) {
   document.getElementById('cal-day-modal') && document.getElementById('cal-day-modal').remove();
   var mo = document.createElement('div');
   mo.id = 'cal-day-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:80vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:16px;font-weight:700">'+d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})+'</div>';
@@ -9124,8 +9285,8 @@ function buildAppointmentModal(appt, prefillDate, presetType) {
   var typeOpts = ['Appointment','Due Date','Delivery'].map(function(t){ return '<option'+(t===type?' selected':'')+'>'+t+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'appointment-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">'+(appt?'Edit '+esc(appt.type||'Appointment'):'New '+esc(type)) +'</div>';
@@ -10106,8 +10267,8 @@ window.openAddWalkthrough = function(jobId) {
   var s = 'width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit';
   var mo = document.createElement('div');
   mo.id = 'walkthrough-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">Final Walkthrough Inspection</div>';
@@ -10364,8 +10525,8 @@ function buildEODModal(r) {
   var lbl = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px';
   var mo = document.createElement('div');
   mo.id = 'eod-field-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">' + (r ? 'Edit Report' + (r.dprNumber ? ' — ' + r.dprNumber : '') : 'New EOD Report') + '</div>';
@@ -10553,8 +10714,8 @@ window.openEditJob = function(jobId) {
   var conOpts = '<option value="">Unassigned</option>'+(DB.contractors||[]).map(function(c){ return '<option value="'+c.id+'"'+(c.id===job.contractorId?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'edit-job-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">Edit Job</div>';
@@ -10916,8 +11077,8 @@ function buildEstimateModal(e) {
   var lbl = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px';
   var mo = document.createElement('div');
   mo.id = 'estimate-modal';
-  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
-  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
   html += '<div style="font-size:17px;font-weight:700">'+(e?'Edit Estimate':'New Estimate')+'</div>';
@@ -11922,11 +12083,11 @@ window.bpOpenSpacePicker = function(preJobId){
   var wrap = document.createElement('div');
   wrap.id = 'bp-space-picker';
   wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;'
-    + 'align-items:flex-end;justify-content:center';
+    + 'align-items:flex-end;justify-content:center;padding-top:var(--safe-top);box-sizing:border-box';
   wrap.onclick = function(e){ if (e.target === wrap) wrap.remove(); };
   wrap.innerHTML =
     '<div style="background:var(--bg,#111);border-radius:20px 20px 0 0;width:100%;max-width:560px;'
-    + 'max-height:86vh;overflow-y:auto;padding:18px 18px calc(28px + env(safe-area-inset-bottom,0px))">'
+    + 'max-height:100%;overflow-y:auto;padding:18px 18px calc(28px + env(safe-area-inset-bottom,0px))">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
     + '<div style="font-size:19px;font-weight:900">Add Locations</div>'
     + '<button onclick="document.getElementById(\'bp-space-picker\').remove()" '
@@ -12098,7 +12259,7 @@ window.bpOpenTradeSheet = function(trade){
   var wrap = document.createElement('div');
   wrap.id = 'bp-trade-sheet';
   wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;'
-    + 'align-items:flex-end;justify-content:center';
+    + 'align-items:flex-end;justify-content:center;padding-top:var(--safe-top);box-sizing:border-box';
   wrap.onclick = function(e){ if (e.target === wrap) wrap.remove(); };
 
   var body = Object.keys(byRoom).map(function(rid){
@@ -12124,7 +12285,7 @@ window.bpOpenTradeSheet = function(trade){
   }).join('');
 
   wrap.innerHTML = '<div style="background:var(--bg,#111);border-radius:20px 20px 0 0;width:100%;max-width:560px;'
-    + 'max-height:86vh;overflow-y:auto;padding:18px 18px calc(28px + env(safe-area-inset-bottom,0px))">'
+    + 'max-height:100%;overflow-y:auto;padding:18px 18px calc(28px + env(safe-area-inset-bottom,0px))">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
     + '<div style="font-size:19px;font-weight:900;color:'+col+'">'
     + (window.BP_TRADE_ICON[trade]||'')+' '+esc(trade)+'</div>'
@@ -12611,10 +12772,10 @@ function areaSheet(title, jobId, onPick){
   var wrap = document.createElement('div');
   wrap.id = 'bp-file-sheet';
   wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10000;display:flex;'
-    + 'align-items:flex-end;justify-content:center';
+    + 'align-items:flex-end;justify-content:center;padding-top:var(--safe-top);box-sizing:border-box';
   wrap.onclick = function(e){ if (e.target === wrap) wrap.remove(); };
   wrap.innerHTML = '<div style="background:var(--bg,#111);border-radius:20px 20px 0 0;width:100%;max-width:560px;'
-    + 'max-height:80vh;overflow-y:auto;padding:18px 18px calc(28px + env(safe-area-inset-bottom,0px))">'
+    + 'max-height:100%;overflow-y:auto;padding:18px 18px calc(28px + env(safe-area-inset-bottom,0px))">'
     + '<div style="display:flex;align-items:center;justify-content:space-between">'
     + '<div style="font-size:18px;font-weight:900">'+title+'</div>'
     + '<button onclick="document.getElementById(\'bp-file-sheet\').remove()" style="background:none;border:none;'
@@ -13415,7 +13576,7 @@ window.bpSendEod = function(id){
   var wrap = document.createElement('div');
   wrap.id = 'bp-send-sheet';
   wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100000;'
-    + 'display:flex;align-items:flex-end;justify-content:center';
+    + 'display:flex;align-items:flex-end;justify-content:center;padding-top:var(--safe-top);box-sizing:border-box';
   wrap.onclick = function(e){ if (e.target === wrap) wrap.remove(); };
 
   function row(icon, title, sub, fn, primary){
@@ -13432,7 +13593,7 @@ window.bpSendEod = function(id){
   var close = "document.getElementById('bp-send-sheet').remove()";
   wrap.innerHTML = '<div style="width:100%;max-width:460px;background:var(--bg,#000);'
     + 'border:1px solid var(--border,#333);border-radius:20px 20px 0 0;padding:18px 16px 26px;'
-    + 'max-height:88vh;overflow:auto">'
+    + 'max-height:100%;overflow:auto">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
     + '<div style="font-size:19px;font-weight:900">Send to client</div>'
     + '<button onclick="' + close + '" style="background:none;border:none;color:var(--muted,#8e8e93);'
