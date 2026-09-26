@@ -1599,7 +1599,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.65';
+var APP_VERSION = '2.66';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -12792,17 +12792,25 @@ var BPI_MAP={"🔍": "search", "📅": "calendar", "🧾": "file-invoice", "💸
 })();
 </script>
 <script>
-/* ══ v2.65 — AUTOMATIC iCLOUD SYNC (CloudKit JS) ════════════════════════
+/* ══ v2.65–2.66 — AUTOMATIC iCLOUD SYNC (CloudKit JS) ════════════════════════
    Same code in BOTH apps. Switched OFF until BP_CK_CFG below has Stan's
    container ID and web API token — until then the Settings card just says
    "waiting on Apple" and nothing here touches the network.
 
    How it stores things, in Stan's OWN private iCloud database:
-     · one record "bp_state" (type BPState) — the whole job database with the
-       photos pulled out, as a file (CloudKit "asset"), plus a pushedAt stamp.
-     · one record per photo "b_<hash>" (type BPBlob) — the picture itself,
-       also as an asset. Named by the photo's content hash, so the same photo
-       is never uploaded twice and an unchanged photo is never re-sent.
+     · one small record "bp_state" (type BPState) — says which save is current
+       (pushId), how many pieces it has, and when it was pushed.
+     · the job database itself (photos pulled out) as text pieces
+       "m_<pushId>_<i>" (type BPChunk, field `data`).
+     · each photo as text pieces "b_<hash>_<i>" (type BPChunk). Named by the
+       photo's content hash, so the same photo is never uploaded twice.
+
+   v2.65 field test: the first version stored these as CloudKit "assets",
+   which go through Apple's separate file-upload service. On Stan's iPhone
+   that upload died with NETWORK_ERROR right after AssetUploadTokenFetch.
+   Plain string fields ride the same request as everything that DID work
+   (sign-in, record fetch), so there is no second service to fail. Pieces
+   are kept well under CloudKit's 1 MB-per-record limit.
 
    It reuses the GitHub sync's proven pieces unchanged: bpSplitBlobs /
    bpJoinBlobs to pull photos out and put them back, and mergeIncomingDB to
@@ -12871,10 +12879,21 @@ var BP_CK_CFG = {
       THROTTLED:               'iCloud asked us to slow down. It will retry by itself shortly.',
       TRY_AGAIN_LATER:         'iCloud is busy right now. It will retry by itself shortly.',
       SERVICE_UNAVAILABLE:     'iCloud is temporarily unavailable. It will retry by itself shortly.',
+      NETWORK_ERROR:           'Couldn\'t reach iCloud (no connection or it dropped). It will try again by itself.',
+      LIMIT_EXCEEDED:          'iCloud said one piece was too big. Please tell Claude — this needs a fix.',
       ACCESS_DENIED:           'iCloud refused access. The app\'s iCloud setup may need fixing.',
       BAD_REQUEST:             'iCloud rejected the request. The app\'s iCloud setup may need fixing.'
     };
     return m[code] || fallback || ('iCloud error' + (code ? ' (' + code + ')' : ''));
+  }
+  /* CloudKit JS throws its own CKError objects whose .message is a huge dump
+     of every field (that is what showed on Stan's phone). Turn any error into
+     one plain sentence. */
+  function friendly(e){
+    if (!e) return 'Unknown iCloud error.';
+    var code = e.ckCode || e.ckErrorCode || '';
+    if (code) return ckWords(code, e.reason);
+    return (e.message || String(e)).slice(0, 200);
   }
   function throwIfErrors(resp, allowNotFound){
     if (!resp || !resp.hasErrors) return;
@@ -12900,13 +12919,33 @@ var BP_CK_CFG = {
     return S.user;
   }
 
-  function blobName(ref){ return 'b_' + String(ref).slice(4).replace(/[^A-Za-z0-9_-]/g, '_'); }
-  async function readAsset(field){
-    var url = field && field.value && field.value.downloadURL;
-    if (!url) throw new Error('A file in your iCloud copy has no download link.');
-    var r = await fetch(url);
-    if (!r.ok) throw new Error('Could not download part of your iCloud copy (HTTP ' + r.status + ').');
-    return await r.text();
+  /* ── pieces ── Every stored string is cut into pieces. Photos are plain
+     ASCII (base64), so 700k chars ≈ 700 KB. The job database is JSON that can
+     hold any character (up to 3 bytes each in UTF-8), so its pieces are
+     smaller: 250k chars ≤ 750 KB. Both stay under CloudKit's 1 MB/record. */
+  var PIECE_BLOB = 700000, PIECE_META = 250000;
+  function cut(str, n){ var out = []; for (var i = 0; i < str.length; i += n) out.push(str.slice(i, i + n)); return out.length ? out : ['']; }
+  function blobKey(ref){ return 'b_' + String(ref).slice(4).replace(/[^A-Za-z0-9_-]/g, '_'); }
+  function pieceName(key, i){ return key + '_' + i; }
+
+  async function fetchPieces(db, names, per){
+    var got = {};
+    for (var i = 0; i < names.length; i += per) {
+      var r = await db.fetchRecords(names.slice(i, i + per));
+      throwIfErrors(r, true);
+      (r.records || []).forEach(function(x){ got[x.recordName] = x.fields && x.fields.data ? x.fields.data.value : ''; });
+    }
+    return got;
+  }
+  async function savePieces(db, key, pieces, per, progress){
+    for (var i = 0; i < pieces.length; i += per) {
+      var batch = [];
+      for (var j = i; j < Math.min(i + per, pieces.length); j++)
+        batch.push({ recordType: 'BPChunk', recordName: pieceName(key, j), fields: { data: { value: pieces[j] }, n: { value: pieces.length } } });
+      var sr = await db.saveRecords(batch);
+      throwIfErrors(sr);
+      if (progress) progress();
+    }
   }
 
   /* Download the iCloud copy and rebuild it with photos in place.
@@ -12915,57 +12954,63 @@ var BP_CK_CFG = {
     var resp = await db.fetchRecords([STATE_NAME]);
     throwIfErrors(resp, true);
     var rec = (resp.records || [])[0];
-    if (!rec) return { remote: null, tag: null };
-    var meta = JSON.parse(await readAsset(rec.fields.meta));
-    var refs = meta.blobRefs || [];
-    var have = {}; bpSplitBlobs(DB, have);
-    var need = refs.filter(function(r){ return !have[r]; });
-    var got = {};
-    for (var i = 0; i < need.length; i += 50) {
-      var batch = need.slice(i, i + 50);
-      var br = await db.fetchRecords(batch.map(blobName));
-      throwIfErrors(br, true);
-      var found = {};
-      (br.records || []).forEach(function(x){ found[x.recordName] = x; });
-      for (var j = 0; j < batch.length; j++) {
-        var x = found[blobName(batch[j])];
-        if (!x) throw new Error('A photo in your iCloud copy is missing, so nothing was changed on this device. Sync again from the device that has the photos.');
-        got[batch[j]] = await readAsset(x.fields.data);
-      }
+    if (!rec) return { remote: null, tag: null, pushId: null };
+    var f = rec.fields || {}, pushId = f.pushId && f.pushId.value, n = +(f.pieces && f.pieces.value) || 0;
+    if (!pushId || !n) return { remote: null, tag: rec.recordChangeTag, pushId: null };
+    var mnames = []; for (var i = 0; i < n; i++) mnames.push(pieceName('m_' + pushId, i));
+    var mp = await fetchPieces(db, mnames, 3);
+    var text = '';
+    for (var k = 0; k < mnames.length; k++) {
+      if (!(mnames[k] in mp)) throw new Error('Part of your iCloud copy is missing, so nothing was changed on this device. It will try again.');
+      text += mp[mnames[k]];
     }
-    var all = {}; var k;
-    for (k in have) all[k] = have[k];
-    for (k in got)  all[k] = got[k];
+    var meta = JSON.parse(text);
+    var counts = meta.blobPieces || {};
+    var have = {}; bpSplitBlobs(DB, have);
+    var need = Object.keys(counts).filter(function(r){ return !have[r]; });
+    var got = {};
+    for (var q = 0; q < need.length; q++) {
+      var ref = need[q], names = [];
+      for (var z = 0; z < counts[ref]; z++) names.push(pieceName(blobKey(ref), z));
+      var bp = await fetchPieces(db, names, 2), str = '';
+      for (var y = 0; y < names.length; y++) {
+        if (!(names[y] in bp)) throw new Error('A photo in your iCloud copy is missing, so nothing was changed on this device. Sync again from the device that has the photos.');
+        str += bp[names[y]];
+      }
+      got[ref] = str;
+      paint('Downloading photos from iCloud… ' + (q + 1) + ' of ' + need.length);
+    }
+    var all = {}, key;
+    for (key in have) all[key] = have[key];
+    for (key in got)  all[key] = got[key];
     meta.db = bpJoinBlobs(meta.db, all);
-    return { remote: meta, tag: rec.recordChangeTag };
+    return { remote: meta, tag: rec.recordChangeTag, pushId: pushId, pieces: n };
   }
 
   /* Upload only the photos iCloud doesn't have yet. The "already uploaded"
-     list is a speed-up only — anything not on it is checked with iCloud. */
-  function knownUp(){ try { return JSON.parse(localStorage.getItem('bp_ck_up') || '{}'); } catch(e){ return {}; } }
-  function saveKnownUp(m){ try { localStorage.setItem('bp_ck_up', JSON.stringify(m)); } catch(e){} }
-  async function pushBlobs(db, blobs, progress){
-    var known = knownUp(), refs = Object.keys(blobs).filter(function(r){ return !known[blobName(r)]; });
+     list is a speed-up only — anything not on it is checked with iCloud by
+     asking for its LAST piece (a photo only counts once every piece is in). */
+  function knownUp(){ try { return JSON.parse(localStorage.getItem('bp_ck_up2') || '{}'); } catch(e){ return {}; } }
+  function saveKnownUp(m){ try { localStorage.setItem('bp_ck_up2', JSON.stringify(m)); } catch(e){} }
+  async function pushBlobs(db, blobs, counts, progress){
+    var known = knownUp(), refs = Object.keys(blobs).filter(function(r){ return !known[blobKey(r)]; });
     var missing = [];
     for (var i = 0; i < refs.length; i += 100) {
       var batch = refs.slice(i, i + 100);
-      var r = await db.fetchRecords(batch.map(blobName), { desiredKeys: ['ref'] });
+      var r = await db.fetchRecords(batch.map(function(ref){ return pieceName(blobKey(ref), counts[ref] - 1); }), { desiredKeys: ['n'] });
       throwIfErrors(r, true);
-      var found = {}; (r.records || []).forEach(function(x){ found[x.recordName] = 1; known[x.recordName] = 1; });
-      batch.forEach(function(ref){ if (!found[blobName(ref)]) missing.push(ref); });
-    }
-    for (var j = 0; j < missing.length; j += 5) {
-      var up = missing.slice(j, j + 5).map(function(ref){
-        return { recordType: 'BPBlob', recordName: blobName(ref),
-          fields: { ref: { value: ref }, data: { value: new Blob([blobs[ref]], { type: 'text/plain' }) } } };
+      var found = {}; (r.records || []).forEach(function(x){ found[x.recordName] = 1; });
+      batch.forEach(function(ref){
+        if (found[pieceName(blobKey(ref), counts[ref] - 1)]) known[blobKey(ref)] = 1; else missing.push(ref);
       });
-      var sr = await db.saveRecords(up);
-      throwIfErrors(sr);
-      up.forEach(function(u){ known[u.recordName] = 1; });
-      saveKnownUp(known);
-      if (progress) progress(Math.min(j + 5, missing.length), missing.length);
     }
     saveKnownUp(known);
+    for (var j = 0; j < missing.length; j++) {
+      var ref = missing[j];
+      await savePieces(db, blobKey(ref), cut(blobs[ref], PIECE_BLOB), 1);
+      known[blobKey(ref)] = 1; saveKnownUp(known);
+      if (progress) progress(j + 1, missing.length);
+    }
     return missing.length;
   }
 
@@ -12993,11 +13038,15 @@ var BP_CK_CFG = {
       }
       var sent = 0;
       if (mode !== 'pull') {
-        var blobs = {}, lean = bpSplitBlobs(DB, blobs);
-        sent = await pushBlobs(db, blobs, function(i, n){ paint('Uploading photos to iCloud… ' + i + ' of ' + n); });
-        var meta = JSON.stringify({ db: lean, blobRefs: Object.keys(blobs), pushedAt: nowIso(), version: 'ck1', app: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '') });
+        var blobs = {}, lean = bpSplitBlobs(DB, blobs), counts = {};
+        Object.keys(blobs).forEach(function(ref){ counts[ref] = cut(blobs[ref], PIECE_BLOB).length; });
+        sent = await pushBlobs(db, blobs, counts, function(i, n){ paint('Uploading photos to iCloud… ' + i + ' of ' + n); });
+        var pushId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        var meta = JSON.stringify({ db: lean, blobPieces: counts, pushedAt: nowIso(), version: 'ck2', app: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '') });
+        var mp = cut(meta, PIECE_META);
+        await savePieces(db, 'm_' + pushId, mp, 2);
         var rec = { recordType: 'BPState', recordName: STATE_NAME,
-          fields: { meta: { value: new Blob([meta], { type: 'application/json' }) }, pushedAt: { value: nowIso() } } };
+          fields: { pushId: { value: pushId }, pieces: { value: mp.length }, pushedAt: { value: nowIso() } } };
         if (r.tag) rec.recordChangeTag = r.tag;
         var sr = await db.saveRecords([rec]);
         if (sr && sr.hasErrors && sr.errors[0] && /CONFLICT|OPLOCK/.test(sr.errors[0].ckErrorCode || '') && !_retry) {
@@ -13005,14 +13054,19 @@ var BP_CK_CFG = {
           return await window.bpICloudSync(mode, true);
         }
         throwIfErrors(sr);
+        /* tidy: the previous save's database pieces are no longer pointed at */
+        if (r.pushId && r.pieces && r.pushId !== pushId) {
+          var old = []; for (var oi = 0; oi < r.pieces; oi++) old.push(pieceName('m_' + r.pushId, oi));
+          try { await db.deleteRecords(old); } catch(e){}
+        }
       }
       S.lastOk = nowIso();
       try { localStorage.setItem('bp_ck_last', S.lastOk); } catch(e){}
       var n = merged ? (merged.added + merged.updated) : 0;
       return { pulled: n, photosUp: sent };
     } catch (e) {
-      S.lastErr = (e && e.message) ? e.message : String(e);
-      if (e && /AUTH/.test(e.ckCode || '')) S.user = null;
+      S.lastErr = friendly(e);
+      if (e && /AUTH/.test(e.ckCode || e.ckErrorCode || '')) S.user = null;
       return null;
     } finally {
       S.busy = false; paint();
@@ -13028,7 +13082,7 @@ var BP_CK_CFG = {
   function autoPull(){
     if (!cfgReady() || !isOn()) return;
     var t = Date.now(); if (t - S.lastPullAt < 60000) return; S.lastPullAt = t;
-    ensureSignedIn(false).then(function(u){ if (u) window.bpICloudSync('both'); }).catch(function(e){ S.lastErr = e.message; paint(); });
+    ensureSignedIn(false).then(function(u){ if (u) window.bpICloudSync('both'); }).catch(function(e){ S.lastErr = friendly(e); paint(); });
   }
   ['save','saveDB'].forEach(function(fn){
     var o = window[fn];
@@ -13044,7 +13098,7 @@ var BP_CK_CFG = {
     try {
       var u = await ensureSignedIn(true);
       if (u) await window.bpICloudSync('both');
-    } catch(e){ S.lastErr = e.message; }
+    } catch(e){ S.lastErr = friendly(e); }
     paint();
   };
   window.bpICloudTurnOff = function(){
