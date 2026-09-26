@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.64';
+var APP_VERSION = '2.65';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -15049,5 +15049,338 @@ var BPI_MAP={"🔍": "search", "📅": "calendar", "🧾": "file-invoice", "💸
     if (!raf) raf = requestAnimationFrame(function(){ raf = 0; var b = q; q = []; b.forEach(function(n){ if (n.isConnected) run(n); }); });
   }).observe(document.body, { childList: true, subtree: true });
   run(document.body);
+})();
+</script>
+<script>
+/* ══ v2.65 — AUTOMATIC iCLOUD SYNC (CloudKit JS) ════════════════════════
+   Same code in BOTH apps. Switched OFF until BP_CK_CFG below has Stan's
+   container ID and web API token — until then the Settings card just says
+   "waiting on Apple" and nothing here touches the network.
+
+   How it stores things, in Stan's OWN private iCloud database:
+     · one record "bp_state" (type BPState) — the whole job database with the
+       photos pulled out, as a file (CloudKit "asset"), plus a pushedAt stamp.
+     · one record per photo "b_<hash>" (type BPBlob) — the picture itself,
+       also as an asset. Named by the photo's content hash, so the same photo
+       is never uploaded twice and an unchanged photo is never re-sent.
+
+   It reuses the GitHub sync's proven pieces unchanged: bpSplitBlobs /
+   bpJoinBlobs to pull photos out and put them back, and mergeIncomingDB to
+   merge (newer edit wins, deletes stay deleted). So iCloud and GitHub can
+   both be on at once — they merge the same way and can't fight each other.
+
+   Every sync is pull-merge-then-push, exactly like GitHub's, so a stale
+   device can never wipe out another device's newer work. The state record's
+   change tag makes iCloud refuse a push that raced another device's; we then
+   pull again and retry once.
+
+   A photo that is referenced but can't be downloaded aborts the pull with
+   nothing changed locally — same rule as the GitHub side: never merge half a
+   backup.
+   ══════════════════════════════════════════════════════════════════════ */
+var BP_CK_CFG = {
+  container: '',        /* e.g. 'iCloud.com.probuilders.builderspro' — set after Apple setup */
+  apiToken:  '',        /* CloudKit web API token for that container */
+  env:       'development'   /* switch to 'production' after the schema is deployed */
+};
+(function(){
+  var CK_SRC = 'https://cdn.apple-cloudkit.com/ck/2/cloudkit.js';
+  var STATE_NAME = 'bp_state';
+  var S = { configured:false, user:null, busy:false, timer:null, lastErr:'', lastOk:'', suppress:false, lastPullAt:0, authTried:false };
+
+  function cfgReady(){ return !!(BP_CK_CFG.container && BP_CK_CFG.apiToken); }
+  function isOn(){ try { return localStorage.getItem('bp_ck_on') === '1'; } catch(e){ return false; } }
+  function setOn(v){ try { v ? localStorage.setItem('bp_ck_on','1') : localStorage.removeItem('bp_ck_on'); } catch(e){} }
+  function lastSync(){ try { return localStorage.getItem('bp_ck_last') || ''; } catch(e){ return ''; } }
+  function nowIso(){ return new Date().toISOString(); }
+  function nap(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+  function loadLib(){
+    if (window.CloudKit) return Promise.resolve();
+    return new Promise(function(res, rej){
+      var s = document.createElement('script');
+      s.src = CK_SRC; s.async = true;
+      s.onload = function(){ window.CloudKit ? res() : rej(new Error("Apple's iCloud service didn't load.")); };
+      s.onerror = function(){ rej(new Error("Couldn't reach Apple's iCloud service. Check the internet connection and try again.")); };
+      document.head.appendChild(s);
+    });
+  }
+
+  async function getContainer(){
+    await loadLib();
+    if (!S.configured) {
+      CloudKit.configure({ containers: [{
+        containerIdentifier: BP_CK_CFG.container,
+        apiTokenAuth: { apiToken: BP_CK_CFG.apiToken, persist: true,
+          signInButton:  { id: 'bp-ck-signin',  theme: 'black' },
+          signOutButton: { id: 'bp-ck-signout', theme: 'black' } },
+        environment: BP_CK_CFG.env
+      }]});
+      S.configured = true;
+    }
+    return CloudKit.getDefaultContainer();
+  }
+
+  /* Plain words for CloudKit's error codes. */
+  function ckWords(code, fallback){
+    var m = {
+      AUTHENTICATION_REQUIRED: 'You need to sign in to iCloud again.',
+      AUTHENTICATION_FAILED:   'iCloud sign-in failed. Sign in again.',
+      NOT_AUTHENTICATED:       'You need to sign in to iCloud again.',
+      QUOTA_EXCEEDED:          'Your iCloud storage is full. Free up space or upgrade your iCloud plan.',
+      THROTTLED:               'iCloud asked us to slow down. It will retry by itself shortly.',
+      TRY_AGAIN_LATER:         'iCloud is busy right now. It will retry by itself shortly.',
+      SERVICE_UNAVAILABLE:     'iCloud is temporarily unavailable. It will retry by itself shortly.',
+      ACCESS_DENIED:           'iCloud refused access. The app\'s iCloud setup may need fixing.',
+      BAD_REQUEST:             'iCloud rejected the request. The app\'s iCloud setup may need fixing.'
+    };
+    return m[code] || fallback || ('iCloud error' + (code ? ' (' + code + ')' : ''));
+  }
+  function throwIfErrors(resp, allowNotFound){
+    if (!resp || !resp.hasErrors) return;
+    var errs = (resp.errors || []).filter(function(e){ return !(allowNotFound && e.ckErrorCode === 'NOT_FOUND'); });
+    if (!errs.length) return;
+    var e = errs[0], err = new Error(ckWords(e.ckErrorCode, e.reason));
+    err.ckCode = e.ckErrorCode; throw err;
+  }
+
+  async function ensureSignedIn(interactive){
+    var c = await getContainer();
+    if (interactive && !S.user) paint();           /* make sure #bp-ck-signin exists first */
+    var u = await c.setUpAuth();
+    S.user = u || null;
+    paint();
+    if (!u) {
+      if (interactive && !S.authTried) {
+        S.authTried = true;
+        c.whenUserSignsIn().then(function(u2){ S.user = u2; S.authTried = false; paint(); bpICloudSync('both'); })
+                           .catch(function(){ S.authTried = false; });
+      }
+    }
+    return S.user;
+  }
+
+  function blobName(ref){ return 'b_' + String(ref).slice(4).replace(/[^A-Za-z0-9_-]/g, '_'); }
+  async function readAsset(field){
+    var url = field && field.value && field.value.downloadURL;
+    if (!url) throw new Error('A file in your iCloud copy has no download link.');
+    var r = await fetch(url);
+    if (!r.ok) throw new Error('Could not download part of your iCloud copy (HTTP ' + r.status + ').');
+    return await r.text();
+  }
+
+  /* Download the iCloud copy and rebuild it with photos in place.
+     Photos this device already has are reused, not downloaded again. */
+  async function fetchRemote(db){
+    var resp = await db.fetchRecords([STATE_NAME]);
+    throwIfErrors(resp, true);
+    var rec = (resp.records || [])[0];
+    if (!rec) return { remote: null, tag: null };
+    var meta = JSON.parse(await readAsset(rec.fields.meta));
+    var refs = meta.blobRefs || [];
+    var have = {}; bpSplitBlobs(DB, have);
+    var need = refs.filter(function(r){ return !have[r]; });
+    var got = {};
+    for (var i = 0; i < need.length; i += 50) {
+      var batch = need.slice(i, i + 50);
+      var br = await db.fetchRecords(batch.map(blobName));
+      throwIfErrors(br, true);
+      var found = {};
+      (br.records || []).forEach(function(x){ found[x.recordName] = x; });
+      for (var j = 0; j < batch.length; j++) {
+        var x = found[blobName(batch[j])];
+        if (!x) throw new Error('A photo in your iCloud copy is missing, so nothing was changed on this device. Sync again from the device that has the photos.');
+        got[batch[j]] = await readAsset(x.fields.data);
+      }
+    }
+    var all = {}; var k;
+    for (k in have) all[k] = have[k];
+    for (k in got)  all[k] = got[k];
+    meta.db = bpJoinBlobs(meta.db, all);
+    return { remote: meta, tag: rec.recordChangeTag };
+  }
+
+  /* Upload only the photos iCloud doesn't have yet. The "already uploaded"
+     list is a speed-up only — anything not on it is checked with iCloud. */
+  function knownUp(){ try { return JSON.parse(localStorage.getItem('bp_ck_up') || '{}'); } catch(e){ return {}; } }
+  function saveKnownUp(m){ try { localStorage.setItem('bp_ck_up', JSON.stringify(m)); } catch(e){} }
+  async function pushBlobs(db, blobs, progress){
+    var known = knownUp(), refs = Object.keys(blobs).filter(function(r){ return !known[blobName(r)]; });
+    var missing = [];
+    for (var i = 0; i < refs.length; i += 100) {
+      var batch = refs.slice(i, i + 100);
+      var r = await db.fetchRecords(batch.map(blobName), { desiredKeys: ['ref'] });
+      throwIfErrors(r, true);
+      var found = {}; (r.records || []).forEach(function(x){ found[x.recordName] = 1; known[x.recordName] = 1; });
+      batch.forEach(function(ref){ if (!found[blobName(ref)]) missing.push(ref); });
+    }
+    for (var j = 0; j < missing.length; j += 5) {
+      var up = missing.slice(j, j + 5).map(function(ref){
+        return { recordType: 'BPBlob', recordName: blobName(ref),
+          fields: { ref: { value: ref }, data: { value: new Blob([blobs[ref]], { type: 'text/plain' }) } } };
+      });
+      var sr = await db.saveRecords(up);
+      throwIfErrors(sr);
+      up.forEach(function(u){ known[u.recordName] = 1; });
+      saveKnownUp(known);
+      if (progress) progress(Math.min(j + 5, missing.length), missing.length);
+    }
+    saveKnownUp(known);
+    return missing.length;
+  }
+
+  function rerender(){
+    try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
+    try { if (typeof bpRefreshCurrentScreen === 'function') bpRefreshCurrentScreen(); } catch(e){}
+    try { if (typeof refreshCurrentView === 'function') refreshCurrentView(); } catch(e){}
+  }
+  function saveQuietly(){ S.suppress = true; try { bpSave(); } finally { S.suppress = false; } }
+
+  /* mode: 'pull' | 'both'. Returns a short result for the card. */
+  window.bpICloudSync = async function(mode, _retry){
+    if (!cfgReady() || !isOn()) return null;
+    if (S.busy) return null;
+    S.busy = true; S.lastErr = ''; paint('Syncing with iCloud…');
+    try {
+      var u = S.user || await ensureSignedIn(false);
+      if (!u) { S.lastErr = 'Sign in to iCloud to start syncing.'; return null; }
+      var c = await getContainer(), db = c.privateCloudDatabase;
+
+      var r = await fetchRemote(db), merged = null;
+      if (r.remote) {
+        merged = mergeIncomingDB(r.remote);
+        if (merged && (merged.added || merged.updated)) { saveQuietly(); rerender(); }
+      }
+      var sent = 0;
+      if (mode !== 'pull') {
+        var blobs = {}, lean = bpSplitBlobs(DB, blobs);
+        sent = await pushBlobs(db, blobs, function(i, n){ paint('Uploading photos to iCloud… ' + i + ' of ' + n); });
+        var meta = JSON.stringify({ db: lean, blobRefs: Object.keys(blobs), pushedAt: nowIso(), version: 'ck1', app: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '') });
+        var rec = { recordType: 'BPState', recordName: STATE_NAME,
+          fields: { meta: { value: new Blob([meta], { type: 'application/json' }) }, pushedAt: { value: nowIso() } } };
+        if (r.tag) rec.recordChangeTag = r.tag;
+        var sr = await db.saveRecords([rec]);
+        if (sr && sr.hasErrors && sr.errors[0] && /CONFLICT|OPLOCK/.test(sr.errors[0].ckErrorCode || '') && !_retry) {
+          S.busy = false;               /* another device saved first — pull its work in and try again */
+          return await window.bpICloudSync(mode, true);
+        }
+        throwIfErrors(sr);
+      }
+      S.lastOk = nowIso();
+      try { localStorage.setItem('bp_ck_last', S.lastOk); } catch(e){}
+      var n = merged ? (merged.added + merged.updated) : 0;
+      return { pulled: n, photosUp: sent };
+    } catch (e) {
+      S.lastErr = (e && e.message) ? e.message : String(e);
+      if (e && /AUTH/.test(e.ckCode || '')) S.user = null;
+      return null;
+    } finally {
+      S.busy = false; paint();
+    }
+  };
+
+  /* Automatic: a few seconds after any change, and when the app is opened. */
+  function schedule(){
+    if (S.suppress || !cfgReady() || !isOn() || !S.user) return;
+    clearTimeout(S.timer);
+    S.timer = setTimeout(function(){ window.bpICloudSync('both'); }, 12000);
+  }
+  function autoPull(){
+    if (!cfgReady() || !isOn()) return;
+    var t = Date.now(); if (t - S.lastPullAt < 60000) return; S.lastPullAt = t;
+    ensureSignedIn(false).then(function(u){ if (u) window.bpICloudSync('both'); }).catch(function(e){ S.lastErr = e.message; paint(); });
+  }
+  ['save','saveDB'].forEach(function(fn){
+    var o = window[fn];
+    if (typeof o !== 'function') return;
+    window[fn] = function(){ var r = o.apply(this, arguments); try { schedule(); } catch(e){} return r; };
+  });
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) autoPull(); });
+  window.addEventListener('load', function(){ setTimeout(autoPull, 2500); });
+
+  /* ── Settings card ── */
+  window.bpICloudTurnOn = async function(){
+    setOn(true); S.lastErr = ''; paint('Connecting to iCloud…');
+    try {
+      var u = await ensureSignedIn(true);
+      if (u) await window.bpICloudSync('both');
+    } catch(e){ S.lastErr = e.message; }
+    paint();
+  };
+  window.bpICloudTurnOff = function(){
+    if (!confirm('Turn off automatic iCloud sync on this device?\n\nNothing is deleted — your iCloud copy and this device\'s data both stay as they are.')) return;
+    setOn(false); clearTimeout(S.timer); paint();
+  };
+  window.bpICloudSyncNow = async function(){
+    var res = await window.bpICloudSync('both');
+    if (res && typeof toast === 'function') toast('☁️ iCloud synced' + (res.pulled ? ' — ' + res.pulled + ' change(s) pulled in' : ''));
+  };
+
+  function ago(iso){
+    if (!iso) return 'never';
+    var s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 90) return 'just now';
+    if (s < 3600) return Math.round(s/60) + ' min ago';
+    if (s < 86400) return Math.round(s/3600) + ' hr ago';
+    return new Date(iso).toLocaleDateString();
+  }
+  var BTNS = 'width:100%;padding:14px;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;margin-top:8px;';
+  function mode(){ return !cfgReady() ? 'wait' : (!isOn() ? 'off' : (!S.user ? 'signin' : 'on')); }
+  /* Rebuilds the card only when its mode changes. That matters in sign-in
+     mode: Apple draws its own "Sign in with Apple ID" button INSIDE
+     #bp-ck-signin, and a full repaint would wipe it out. Busy/error lines
+     live in #bp-ck-status and update on their own. */
+  function paint(busyText){
+    var el = document.getElementById('bp-cksync-card');
+    if (!el) return;
+    var m = mode();
+    if (el.getAttribute('data-mode') !== m) {
+      var h = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">☁️ iCloud Sync (automatic)</div>';
+      if (m === 'wait') {
+        h += '<div style="font-size:12px;color:var(--muted);line-height:1.55">Not set up yet — waiting on the Apple Developer setup. Once it is, this keeps your iPhone, iPad and Mac in step through your own iCloud, on its own.</div>';
+      } else if (m === 'off') {
+        h += '<div style="font-size:12px;color:var(--muted);line-height:1.55">Keeps every job, checklist and photo in your own private iCloud, and in step across your iPhone, iPad and Mac — automatically. Turn it on once on each device.</div>'
+          +  '<button onclick="bpICloudTurnOn()" style="' + BTNS + 'border:none;background:#0A84FF;color:#fff">Turn on iCloud Sync</button>';
+      } else if (m === 'signin') {
+        h += '<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:6px">Sign in with your Apple ID to start. You only do this once on this device.</div>'
+          +  '<div id="bp-ck-signin" style="min-height:44px;display:flex;justify-content:center;margin-top:6px"></div>'
+          +  '<button onclick="bpICloudTurnOn()" style="' + BTNS + 'border:1.5px solid var(--border);background:var(--card);color:var(--text)">Show Apple sign-in / check again</button>'
+          +  '<button onclick="bpICloudTurnOff()" style="' + BTNS + 'border:none;background:none;color:var(--muted);font-size:13px">Turn off</button>';
+      } else {
+        h += '<div id="bp-ck-last" style="font-size:12px;font-weight:700;color:var(--green)"></div>'
+          +  '<div style="font-size:11px;color:var(--faint);line-height:1.5;margin-top:4px">Syncs by itself a few seconds after each change and whenever you open the app.</div>'
+          +  '<button onclick="bpICloudSyncNow()" style="' + BTNS + 'border:none;background:#0A84FF;color:#fff">Sync now</button>'
+          +  '<button onclick="bpICloudTurnOff()" style="' + BTNS + 'border:none;background:none;color:var(--muted);font-size:13px">Turn off on this device</button>';
+      }
+      h += '<div id="bp-ck-status"></div>';
+      el.innerHTML = h;
+      el.setAttribute('data-mode', m);
+    }
+    var last = document.getElementById('bp-ck-last');
+    if (last) last.textContent = 'On · last synced ' + ago(lastSync());
+    var st = document.getElementById('bp-ck-status'), sh = '';
+    if (busyText || S.busy) sh += '<div style="font-size:12px;font-weight:700;color:#0A84FF;margin-top:8px">⏳ ' + (busyText || 'Syncing with iCloud…') + '</div>';
+    if (S.lastErr) sh += '<div style="font-size:12px;font-weight:700;color:#FF6961;line-height:1.5;margin-top:8px">⚠️ ' + S.lastErr.replace(/</g,'&lt;') + '</div>';
+    if (st) st.innerHTML = sh;
+  }
+  function mount(){
+    var anchor = document.getElementById('bp-icloud-card');
+    if (!anchor || !anchor.parentElement) return;
+    if (!document.getElementById('bp-cksync-card')) {
+      var d = document.createElement('div');
+      d.id = 'bp-cksync-card';
+      d.style.cssText = 'background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px';
+      anchor.parentElement.insertBefore(d, anchor);
+    }
+    paint();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(mount, 0); }); else setTimeout(mount, 0);
+  ['openSheet','openSync','showView'].forEach(function(fn){
+    var o = window[fn];
+    if (typeof o !== 'function') return;
+    window[fn] = function(){ var r = o.apply(this, arguments); try { mount(); } catch(e){} return r; };
+  });
+  window.bpCk = { cfg: BP_CK_CFG, state: S, paint: paint, mount: mount };   /* for tests + the setup step */
+  console.log('[BP] v2.65 iCloud sync ready (' + (cfgReady() ? 'configured' : 'waiting on Apple setup') + ')');
 })();
 </script>
