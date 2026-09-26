@@ -1600,7 +1600,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.71';
+var APP_VERSION = '2.72';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -13259,6 +13259,14 @@ window.bpLevelRank = function(l){
   if (l === 'Outside') return 2000;
   return 3000;
 };
+/* v2.72: Stan's own order inside a level (room.order), set on the Arrange sheet.
+   Rooms he hasn't arranged yet keep the old order, after the arranged ones. */
+window.bpRoomCmp = function(a, b){
+  var d = window.bpLevelRank(window.bpLevelOf(a)) - window.bpLevelRank(window.bpLevelOf(b));
+  if (d) return d;
+  var ao = (a && typeof a.order === 'number') ? a.order : 1e9, bo = (b && typeof b.order === 'number') ? b.order : 1e9;
+  return ao - bo;
+};
 window.bpLevelOf = function(r){
   if (!r) return '';
   if (r.level) return r.level;
@@ -13292,7 +13300,7 @@ if (window.BPX && BPX.areas && !BPX.areas.__lvl) {
   BPX.areas = function(){
     var list = _areas.apply(this, arguments);
     return list.map(function(r,i){ return {r:r,i:i}; })
-      .sort(function(a,b){ return window.bpLevelRank(window.bpLevelOf(a.r)) - window.bpLevelRank(window.bpLevelOf(b.r)) || a.i - b.i; })
+      .sort(function(a,b){ return window.bpRoomCmp(a.r, b.r) || a.i - b.i; })
       .map(function(o){ return o.r; });
   };
   BPX.areas.__lvl = 1;
@@ -13303,7 +13311,7 @@ if (typeof window.bpJobPunchGroupsHtml === 'function' && !window.bpJobPunchGroup
     var orig = DB.rooms;
     if (!orig) return _groups.apply(this, arguments);
     var sorted = orig.map(function(r,i){ return {r:r,i:i}; })
-      .sort(function(a,b){ return window.bpLevelRank(window.bpLevelOf(a.r)) - window.bpLevelRank(window.bpLevelOf(b.r)) || a.i - b.i; })
+      .sort(function(a,b){ return window.bpRoomCmp(a.r, b.r) || a.i - b.i; })
       .map(function(o){ return o.r; });
     DB.rooms = sorted;
     try { return _groups.apply(this, arguments); } finally { DB.rooms = orig; }
@@ -13323,9 +13331,9 @@ function addLevelHeaders(){
   var rows = cards.filter(function(c){ return c.parentNode === grid; }).map(function(c, i){
     var m = /openRoomDetail\('([^']+)'\)/.exec(c.getAttribute('onclick')||'');
     var r = m && byId[m[1]];
-    return {c:c, i:i, l: window.bpLevelOf(r)};
+    return {c:c, i:i, r:r||{}, l: window.bpLevelOf(r)};
   });
-  rows.sort(function(a,b){ return window.bpLevelRank(a.l) - window.bpLevelRank(b.l) || a.i - b.i; });
+  rows.sort(function(a,b){ return window.bpRoomCmp(a.r, b.r) || a.i - b.i; });
   var addTile = [].find.call(grid.children, function(x){ return /bpOpenSpacePicker/.test(x.getAttribute('onclick')||''); });
   var last = null;
   rows.forEach(function(o){
@@ -13338,8 +13346,10 @@ function addLevelHeaders(){
       h.innerHTML = '<span style="font-size:13px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:' + LVL_COLOR(o.l) + '">'
         + E(o.l || 'Level not set') + '</span>'
         + '<span style="font-size:12px;font-weight:700;color:var(--muted)">' + n + ' location' + (n !== 1 ? 's' : '') + '</span>'
-        + (o.l ? '' : '<button onclick="bpOpenSetLevels()" style="margin-left:auto;background:#0A84FF;border:none;color:#fff;'
-            + 'border-radius:9px;padding:8px 14px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Set levels</button>');
+        + '<button onclick="bpOpenSetLevels()" data-bp-arrange="1" style="margin-left:auto;background:' + (o.l ? 'transparent' : '#0A84FF') + ';'
+            + 'border:1.5px solid ' + (o.l ? 'var(--border)' : '#0A84FF') + ';color:' + (o.l ? 'var(--muted)' : '#fff') + ';'
+            + 'border-radius:9px;padding:7px 12px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">'
+            + (o.l ? '<svg viewBox="0 0 24 24" style="width:15px;height:15px;vertical-align:-2px;margin-right:4px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M7 3v18M3 7l4-4l4 4M17 21V3M13 17l4 4l4-4"/></svg>Arrange' : 'Set levels') + '</button>';
       grid.insertBefore(h, addTile || null);
       last = o.l;
     }
@@ -13380,28 +13390,71 @@ function levelSelect(id, levels, cur, extra){
     + '</select>';
 }
 window.bpOpenSetLevels = function(){
+  /* v2.72: Arrange Locations — Stan's own order inside each level (arrows),
+     and the level itself (dropdown). Saves on every tap. */
   var jobId = window._bpAreaJob || '';
   var rooms = (DB.rooms||[]).filter(function(r){ return !jobId || r.jobId === jobId; })
-    .sort(function(a,b){ return (window.bpLevelOf(a) ? 1 : 0) - (window.bpLevelOf(b) ? 1 : 0) || String(a.name).localeCompare(String(b.name)); });
-  var body = '<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Pick a level for each location. It saves as you pick.</div>'
-    + rooms.map(function(r){
-        var levels = window.bpJobLevels(r.jobId);
-        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border,#2a2a2a)">'
-          + '<div style="flex:1;min-width:0;font-size:15px;font-weight:700">' + E(r.name) + '</div>'
-          + levelSelect('', levels, window.bpLevelOf(r), 'onchange="bpSetRoomLevel(\'' + r.id + '\',this.value)"')
-          + '</div>';
-      }).join('')
-    + '<button onclick="document.getElementById(\'bp-set-levels\').remove()" style="width:100%;margin-top:16px;background:#0A84FF;'
+    .map(function(r,i){ return {r:r,i:i}; })
+    .sort(function(a,b){ return window.bpRoomCmp(a.r, b.r) || String(a.r.name).localeCompare(String(b.r.name)); })
+    .map(function(o){ return o.r; });
+  var ab = 'width:46px;height:46px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);'
+    + 'display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex-shrink:0';
+  var last = null, body = '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">Use the arrows to put the rooms in your order. '
+    + 'Change a room\'s level on the right. It saves as you go.</div>';
+  rooms.forEach(function(r, idx){
+    var l = window.bpLevelOf(r);
+    if (l !== last) {
+      body += '<div style="font-size:13px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:' + LVL_COLOR(l) + ';'
+        + 'margin:16px 0 4px;padding-bottom:4px;border-bottom:2px solid ' + LVL_COLOR(l) + '55">' + E(l || 'Level not set') + '</div>';
+      last = l;
+    }
+    var first = idx === 0 || window.bpLevelOf(rooms[idx-1]) !== l;
+    var lastIn = idx === rooms.length - 1 || window.bpLevelOf(rooms[idx+1]) !== l;
+    body += '<div data-arr-room="' + r.id + '" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border,#2a2a2a)">'
+      + '<button onclick="bpMoveRoom(\'' + r.id + '\',-1)" aria-label="Move up" style="' + ab + (first ? ';opacity:.25' : '') + '"' + (first ? ' disabled' : '') + '><svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><path d="M6 15l6-6l6 6"/></svg></button>'
+      + '<button onclick="bpMoveRoom(\'' + r.id + '\',1)" aria-label="Move down" style="' + ab + (lastIn ? ';opacity:.25' : '') + '"' + (lastIn ? ' disabled' : '') + '><svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><path d="M6 9l6 6l6-6"/></svg></button>'
+      + '<div style="flex:1;min-width:0;font-size:15px;font-weight:700;line-height:1.25;overflow-wrap:anywhere">' + E(r.name) + '</div>'
+      + levelSelect('', window.bpJobLevels(r.jobId), l, 'onchange="bpSetRoomLevel(\'' + r.id + '\',this.value)"').replace('min-width:130px', 'width:112px;flex-shrink:0;padding-left:8px;padding-right:4px')
+      + '</div>';
+  });
+  body += '<button onclick="document.getElementById(\'bp-set-levels\').remove()" style="width:100%;margin-top:16px;background:#0A84FF;'
     + 'border:none;color:#fff;border-radius:12px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Done</button>';
-  sheet('bp-set-levels', 'Set Levels', body);
+  var old = document.querySelector('#bp-set-levels > div'); var st = old ? old.scrollTop : 0;
+  var w = sheet('bp-set-levels', 'Arrange Locations', body);
+  if (st) w.firstChild.scrollTop = st;
+};
+window.bpMoveRoom = function(roomId, dir){
+  var r = (DB.rooms||[]).find(function(x){ return x.id === roomId; });
+  if (!r) return;
+  var l = window.bpLevelOf(r);
+  var list = (DB.rooms||[]).filter(function(x){ return x.jobId === r.jobId && window.bpLevelOf(x) === l; })
+    .map(function(x,i){ return {r:x,i:i}; })
+    .sort(function(a,b){ return window.bpRoomCmp(a.r, b.r) || String(a.r.name).localeCompare(String(b.r.name)); })
+    .map(function(o){ return o.r; });
+  var i = list.indexOf(r), j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  list.splice(i, 1); list.splice(j, 0, r);
+  var ts = (typeof now === 'function') ? now() : new Date().toISOString();
+  list.forEach(function(x, k){ if (x.order !== k) { x.order = k; x.updatedAt = ts; } });
+  persist(); rerender();
+  if (document.getElementById('bp-set-levels')) window.bpOpenSetLevels();
 };
 window.bpSetRoomLevel = function(roomId, level){
   var r = (DB.rooms||[]).find(function(x){ return x.id === roomId; });
   if (!r) return;
   r.level = level || '';
   if (level) r.space = spaceFor(level);
-  r.updatedAt = (typeof now === 'function') ? now() : new Date().toISOString();
+  /* lands at the end of its new level: number that level's rooms as they sit now, then put this one last */
+  var ts = (typeof now === 'function') ? now() : new Date().toISOString();
+  var list = (DB.rooms||[]).filter(function(x){ return x !== r && x.jobId === r.jobId && window.bpLevelOf(x) === window.bpLevelOf(r); })
+    .map(function(x,i){ return {r:x,i:i}; })
+    .sort(function(a,b){ return window.bpRoomCmp(a.r, b.r) || String(a.r.name).localeCompare(String(b.r.name)); })
+    .map(function(o){ return o.r; });
+  list.forEach(function(x, k){ if (x.order !== k) { x.order = k; x.updatedAt = ts; } });
+  r.order = list.length;
+  r.updatedAt = ts;
   persist(); rerender();
+  if (document.getElementById('bp-set-levels')) window.bpOpenSetLevels();
 };
 
 /* ── Add Locations picker, by level ── */
@@ -13668,7 +13721,7 @@ function lvlOf(r){ return window.bpLevelOf ? window.bpLevelOf(r) : ''; }
 function rank(l){ return window.bpLevelRank ? window.bpLevelRank(l) : 0; }
 function byLevel(rooms){
   return rooms.map(function(r,i){ return {r:r,i:i}; })
-    .sort(function(a,b){ return rank(lvlOf(a.r)) - rank(lvlOf(b.r)) || a.i - b.i; })
+    .sort(function(a,b){ return (window.bpRoomCmp ? window.bpRoomCmp(a.r, b.r) : rank(lvlOf(a.r)) - rank(lvlOf(b.r))) || a.i - b.i; })
     .map(function(o){ return o.r; });
 }
 function refresh(){
