@@ -1600,7 +1600,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.72';
+var APP_VERSION = '2.73';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -14057,5 +14057,63 @@ window.bpDuplicateRoom = function(roomId){
   toast('⧉ Created ' + names.length + ' location' + (names.length !== 1 ? 's' : '') + (made ? ' · ' + made + ' checklist items' : ''));
 };
 console.log('[BP] v2.71 select / copy / move + duplicate by level ready');
+})();
+</script>
+<script>
+/* ══ v2.73 — BETTER LOCATION ICONS: steps, sidewalk, handicap ramp ══════════
+   Stan (Sep 26, 2026) didn't like the ladder / highway emoji and sent his own
+   picks: a line-drawn staircase with a railing, and a wheelchair on a ramp.
+   Drawn as inline SVG in the text color, so they read in dark mode too.
+   Name wins: "Front Steps", "Rear Steps", "Stairs", "Stoop" → staircase;
+   "Sidewalk", "Walkway" → sidewalk; "Ramp", "Handicap Ramp", "ADA" → ramp.
+   Adds "Handicap Ramp" to the Outside presets.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var S = '<svg viewBox="0 0 24 24" style="width:30px;height:30px;display:block;color:var(--text,#f0f0f0)" aria-hidden="true">';
+var STAIRS = '<svg viewBox="0 0 32 32" style="width:30px;height:30px;display:block;color:var(--text,#f0f0f0)" aria-hidden="true">'
+  + '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M2 30h6v-5h6v-5h6v-5h6v-5h4"/>'
+  + '<path d="M3 22.7L28 1.9"/>'
+  + '<path d="M5 30v-9M11 25v-9M17 20v-9M23 15v-9"/></g></svg>';
+var RAMP = S + '<g fill="currentColor">'
+  + '<path d="M1.5 23h21v-5.2z"/>'
+  + '<circle cx="10.6" cy="2.9" r="1.9"/></g>'
+  + '<g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M10.2 6.3l-.4 6.5h5.1l2.1 4.9"/>'
+  + '<path d="M10.1 9.2h4.2"/>'
+  + '<path d="M13.1 15.4a4.4 4.4 0 1 1-5.9-5.3"/></g></svg>';
+var WALK = '<svg viewBox="0 0 32 32" style="width:30px;height:30px;display:block;color:var(--text,#f0f0f0)" aria-hidden="true">'
+  + '<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+  + '<circle cx="17" cy="3.6" r="1.9" fill="currentColor"/>'
+  + '<path d="M11 22l3.5-5M20.5 22l-2.5-5l-3.5-3.5l1.2-6.5"/>'
+  + '<path d="M10 14l2.5-3.5l4.5-1.2l3.5 3.7l3.5 1"/>'
+  + '<path d="M1.5 25.5h29v4.5h-29z"/>'
+  + '<path d="M9 25.5v4.5M16 25.5v4.5M23 25.5v4.5"/></g></svg>';
+window.BP_LOC_SVG = { stairs: STAIRS, ramp: RAMP, sidewalk: WALK };
+function pick(room){
+  var n = String(room && room.name || '');
+  if (/\bramps?\b|handicap|wheelchair|\bada\b/i.test(n)) return RAMP;
+  if (/\bstairs?\b|\bsteps?\b|\bstoops?\b|stairway|staircase/i.test(n)) return STAIRS;
+  if (/sidewalk|walkway|pathway|front walk/i.test(n)) return WALK;
+  return null;
+}
+if (window.BPX && BPX.icon && !BPX.icon.__v273) {
+  var _i = BPX.icon;
+  BPX.icon = function(room){ return pick(room) || _i.apply(this, arguments); };
+  BPX.icon.__v273 = 1;
+}
+if (typeof window.areaIcon === 'function' && !window.areaIcon.__v273) {
+  var _a = window.areaIcon;
+  window.areaIcon = function(room){ return pick(room) || _a.apply(this, arguments); };
+  window.areaIcon.__v273 = 1;
+}
+if (window.BP_SPACE_PRESETS && !window.BP_SPACE_PRESETS.Exterior.some(function(p){ return p.n === 'Handicap Ramp'; })) {
+  var ext = window.BP_SPACE_PRESETS.Exterior;
+  var at = ext.findIndex(function(p){ return p.n === 'Rear Steps'; });
+  ext.splice(at < 0 ? ext.length : at + 1, 0, {n:'Handicap Ramp', type:'Exterior'});
+}
+try { if (typeof renderDesktopRooms === 'function' && document.getElementById('modal-new-room')) renderDesktopRooms(); else if (typeof renderRooms === 'function') renderRooms(); } catch(e){}
+console.log('[BP] v2.73 location icons ready');
 })();
 </script>
