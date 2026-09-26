@@ -1260,7 +1260,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       </div>
       <div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px">
         <div class="field-label" style="margin-bottom:6px">Text &amp; Button Size</div>
-        <div style="font-size:11px;color:var(--faint);margin-bottom:10px;line-height:1.5">Bigger text AND bigger buttons everywhere — for direct sunlight and work gloves. This setting is per-device.</div>
+        <div style="font-size:11px;color:var(--faint);margin-bottom:10px;line-height:1.5">Bigger text AND bigger buttons everywhere — for direct sunlight and work gloves. This setting is per-device. On an iPad, each size goes further still, since the same text reads smaller on a bigger screen viewed from farther away.</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="zoom-btn-row">
           <button class="btn btn-ghost" data-z="1" onclick="bpSetZoom(1)">Normal</button>
           <button class="btn btn-ghost" data-z="1.15" onclick="bpSetZoom(1.15)">Large</button>
@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.63';
+var APP_VERSION = '2.64';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1531,19 +1531,37 @@ function bpCalibrateSafeTop() {
   } catch (e) {}
 }
 
+/* v2.64 — the 4 sizes were tuned for an iPhone held close. On an iPad, the
+   exact same text reads smaller (same physical text size, viewed from
+   farther away, on a screen with much more room to fill) — so even XXL
+   still looked too small to Stan on his iPad. Rather than re-tune the whole
+   scale (and risk shrinking things back down for anyone on an iPhone), we
+   detect a tablet-sized screen and layer an extra boost on top of whichever
+   of the 4 sizes is picked. An iPhone gets exactly what it always got.
+   Math.min(width,height) is used so this can't misfire on an iPhone turned
+   sideways (its long edge, in landscape, is still shorter than an iPad's
+   short edge). */
+function bpZoomBoost() {
+  try { return Math.min(window.innerWidth, window.innerHeight) >= 700 ? 1.4 : 1; } catch(e) { return 1; }
+}
 /* Single funnel for body zoom, so nothing can change the scale without the
    island clearance being recomputed for it. */
 function bpSetBodyZoom(z) {
-  try { document.body.style.zoom = String(z); } catch(e) {}
+  var effective = z * bpZoomBoost();
+  try { document.body.style.zoom = String(effective); } catch(e) {}
   /* v2.43: expose the scale to CSS. Two things need it:
      - vh maths. `zoom` multiplies an element's computed size, so a plain
        `max-height:40vh` on a zoomed body is really 40vh x zoom and blows past
        the viewport at XL. Dividing by the scale gives a true 40% of screen.
      - compact mode. At XL/XXL the Money header's counts and subtitle are
        dead weight; the rules below drop them instead of shrinking everything
-       for people reading at Normal. */
+       for people reading at Normal.
+     v2.64: --bp-zoom must track the REAL applied zoom (effective, boost
+     included) since that's what the vh maths is undoing — but data-zoom
+     (which only picks compact mode on/off) stays keyed to the raw button
+     value z, so an iPad doesn't lose subtitles/counts it has the width for. */
   try {
-    document.body.style.setProperty('--bp-zoom', String(z));
+    document.body.style.setProperty('--bp-zoom', String(effective));
     document.body.setAttribute('data-zoom', z >= 1.4 ? 'xxl' : (z >= 1.28 ? 'xl' : (z >= 1.1 ? 'lg' : 'normal')));
   } catch(e) {}
   bpCalibrateSafeTop();
