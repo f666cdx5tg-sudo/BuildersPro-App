@@ -1599,7 +1599,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.66';
+var APP_VERSION = '2.67';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -12828,8 +12828,8 @@ var BPI_MAP={"🔍": "search", "📅": "calendar", "🧾": "file-invoice", "💸
    ══════════════════════════════════════════════════════════════════════ */
 var BP_CK_CFG = {
   container: 'iCloud.com.stanleyrobinson.builderspro',   /* registered Sep 26, 2026 */
-  apiToken:  '7fe246dad522d8e138a7e3b11220204169f9ec4bf344acd7de0638ce7bc8d7ce',   /* "BuildersPro Web" — Development env; only f666cdx5tg-sudo.github.io allowed */
-  env:       'development'   /* switch to 'production' after the schema is deployed */
+  apiToken:  '449d091fa0e59fabbcf3bd64dd81a9cb48352bdfaf938ed6d390bef430ca9411',   /* "BuildersPro Web Production" — only f666cdx5tg-sudo.github.io allowed */
+  env:       'production'    /* v2.67: schema deployed to Production Sep 26, 2026. (Development token "BuildersPro Web": 7fe246da…d7ce) */
 };
 (function(){
   var CK_SRC = 'https://cdn.apple-cloudkit.com/ck/2/cloudkit.js';
@@ -12839,7 +12839,7 @@ var BP_CK_CFG = {
   function cfgReady(){ return !!(BP_CK_CFG.container && BP_CK_CFG.apiToken); }
   function isOn(){ try { return localStorage.getItem('bp_ck_on') === '1'; } catch(e){ return false; } }
   function setOn(v){ try { v ? localStorage.setItem('bp_ck_on','1') : localStorage.removeItem('bp_ck_on'); } catch(e){} }
-  function lastSync(){ try { return localStorage.getItem('bp_ck_last') || ''; } catch(e){ return ''; } }
+  function lastSync(){ try { return localStorage.getItem('bp_ck_last_' + BP_CK_CFG.env) || ''; } catch(e){ return ''; } }
   function nowIso(){ return new Date().toISOString(); }
   function nap(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
 
@@ -12924,6 +12924,10 @@ var BP_CK_CFG = {
      hold any character (up to 3 bytes each in UTF-8), so its pieces are
      smaller: 250k chars ≤ 750 KB. Both stay under CloudKit's 1 MB/record. */
   var PIECE_BLOB = 700000, PIECE_META = 250000;
+  /* v2.67: the "already uploaded" list and last-sync time are kept PER
+     ENVIRONMENT. Development and Production are separate databases; carrying
+     Development's list into Production would have made every device skip
+     uploading photos Production has never seen. */
   function cut(str, n){ var out = []; for (var i = 0; i < str.length; i += n) out.push(str.slice(i, i + n)); return out.length ? out : ['']; }
   function blobKey(ref){ return 'b_' + String(ref).slice(4).replace(/[^A-Za-z0-9_-]/g, '_'); }
   function pieceName(key, i){ return key + '_' + i; }
@@ -12990,8 +12994,8 @@ var BP_CK_CFG = {
   /* Upload only the photos iCloud doesn't have yet. The "already uploaded"
      list is a speed-up only — anything not on it is checked with iCloud by
      asking for its LAST piece (a photo only counts once every piece is in). */
-  function knownUp(){ try { return JSON.parse(localStorage.getItem('bp_ck_up2') || '{}'); } catch(e){ return {}; } }
-  function saveKnownUp(m){ try { localStorage.setItem('bp_ck_up2', JSON.stringify(m)); } catch(e){} }
+  function knownUp(){ try { return JSON.parse(localStorage.getItem('bp_ck_up2_' + BP_CK_CFG.env) || '{}'); } catch(e){ return {}; } }
+  function saveKnownUp(m){ try { localStorage.setItem('bp_ck_up2_' + BP_CK_CFG.env, JSON.stringify(m)); } catch(e){} }
   async function pushBlobs(db, blobs, counts, progress){
     var known = knownUp(), refs = Object.keys(blobs).filter(function(r){ return !known[blobKey(r)]; });
     var missing = [];
@@ -13061,7 +13065,7 @@ var BP_CK_CFG = {
         }
       }
       S.lastOk = nowIso();
-      try { localStorage.setItem('bp_ck_last', S.lastOk); } catch(e){}
+      try { localStorage.setItem('bp_ck_last_' + BP_CK_CFG.env, S.lastOk); } catch(e){}
       var n = merged ? (merged.added + merged.updated) : 0;
       return { pulled: n, photosUp: sent };
     } catch (e) {
