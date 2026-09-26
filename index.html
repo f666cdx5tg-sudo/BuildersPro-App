@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.69';
+var APP_VERSION = '2.70';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -15440,5 +15440,466 @@ var BP_CK_CFG = {
   });
   window.bpCk = { cfg: BP_CK_CFG, state: S, paint: paint, mount: mount };   /* for tests + the setup step */
   console.log('[BP] v2.65 iCloud sync ready (' + (cfgReady() ? 'configured' : 'waiting on Apple setup') + ')');
+})();
+</script>
+<script>
+/* ══ v2.70 — LOCATIONS BY LEVEL + FOYER TYPE ═══════════════════════════════
+   Stan (Sep 26, 2026): "locations should be able to arrange by levels …
+   Basement, Level 1, Level 2, Level 3 … continue to whichever level there is
+   work, add Roof." Plus Foyer / Hallway / Roof in the Type list (the Mac's
+   Type list only had 7 types).
+
+   - room.level: 'Basement' | 'Level N' | 'Roof' | 'Outside' | '' (not set).
+     Old rooms have no level; bpLevelOf() makes a display-only guess
+     (roof words → Roof, outside → Outside, basement words → Basement) and
+     never saves the guess — everything else shows under "Level not set"
+     with a Set Levels button.
+   - Locations grid, Photos-by-location and Punch groups are ordered
+     Basement → Level 1 → Level 2 → … → Roof → Outside → not set.
+   - Add Locations picker: level chips on top; the same preset can be added
+     on several levels ("Bathroom – Level 2" when a Bathroom already exists).
+   - Add / Edit Location forms get a Level picker (both apps).
+   Same block in both apps; UI parts check which app's elements exist.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function rerender(){
+  try { if (IS_DESK) { if (typeof renderDesktopRooms === 'function') renderDesktopRooms(); }
+        else if (typeof renderRooms === 'function') renderRooms(); } catch(e){}
+}
+function E(s){ return (typeof esc === 'function') ? esc(s) : String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+/* ── Types: Foyer is new; make sure every picker has the full list ── */
+window.BP_ROOM_TYPES = ['Kitchen','Bathroom','Bedroom','Living Room','Foyer','Hallway','Basement','Attic',
+  'Garage','Office','Laundry','Exterior','Roof','HVAC','Electrical','Plumbing','Other'];
+try {
+  if (typeof ROOM_CHECKLIST_TEMPLATES !== 'undefined' && !ROOM_CHECKLIST_TEMPLATES.Foyer)
+    ROOM_CHECKLIST_TEMPLATES.Foyer = ['Patch & repair walls','Paint walls & trim','Install flooring',
+      'Entry door & hardware','Install light fixture','Install outlets & switches','Final punch list / clean'];
+} catch(e){}
+try { if (typeof TYPE_SPACE !== 'undefined') TYPE_SPACE.Foyer = 'Interior'; } catch(e){}
+if (window.BP_SPACE_PRESETS) {
+  var inside = window.BP_SPACE_PRESETS.Interior;
+  if (!inside.some(function(p){ return p.n === 'Foyer'; })) {
+    var at = inside.findIndex(function(p){ return p.n === 'Hallway'; });
+    inside.splice(at < 0 ? inside.length : at, 0, {n:'Foyer', type:'Foyer'});
+  }
+}
+if (window.BPX && BPX.icon && !BPX.icon.__lvl) {
+  var _icon = BPX.icon;
+  BPX.icon = function(room){ return /foyer|entry/i.test(room && room.name || '') ? '🚪' : _icon(room); };
+  BPX.icon.__lvl = 1;
+}
+function fillTypes(sel){
+  if (!sel) return;
+  var have = [].map.call(sel.options, function(o){ return o.value || o.text; });
+  var cur = sel.value;
+  window.BP_ROOM_TYPES.forEach(function(t, i){
+    if (have.indexOf(t) >= 0) return;
+    var o = document.createElement('option'); o.textContent = t; o.value = t;
+    var next = null;
+    for (var k = i + 1; k < window.BP_ROOM_TYPES.length && !next; k++) {
+      next = [].find.call(sel.options, function(x){ return (x.value||x.text) === window.BP_ROOM_TYPES[k]; });
+    }
+    sel.insertBefore(o, next || null);
+  });
+  if (cur) sel.value = cur;
+}
+
+/* ── Levels ── */
+var ROOF_RX = /\b(roof|gutter|downspout|leader|chimney|skylight|shingle)/i;
+var BASE_RX = /\b(basement|cellar|boiler|sump)\b/i;
+window.bpLevelRank = function(l){
+  if (l === 'Basement') return 0;
+  var m = /^Level (\d+)$/.exec(l||''); if (m) return +m[1];
+  if (l === 'Roof') return 1000;
+  if (l === 'Outside') return 2000;
+  return 3000;
+};
+window.bpLevelOf = function(r){
+  if (!r) return '';
+  if (r.level) return r.level;
+  var n = String(r.name||'');
+  if (r.type === 'Roof' || ROOF_RX.test(n)) return 'Roof';
+  if (window.bpSpaceOf && window.bpSpaceOf(r) === 'Exterior') return 'Outside';
+  if (r.type === 'Basement' || BASE_RX.test(n)) return 'Basement';
+  return '';
+};
+window.bpJobLevels = function(jobId){
+  var max = 3;
+  (DB.rooms||[]).forEach(function(r){
+    if (jobId && r.jobId !== jobId) return;
+    var m = /^Level (\d+)$/.exec(window.bpLevelOf(r)); if (m) max = Math.max(max, +m[1]);
+  });
+  var job = (DB.jobs||[]).find(function(j){ return j.id === jobId; });
+  if (job && job.levelsMax) max = Math.max(max, +job.levelsMax);
+  var out = ['Basement'];
+  for (var i = 1; i <= max; i++) out.push('Level ' + i);
+  return out.concat(['Roof','Outside']);
+};
+var LVL_COLOR = function(l){
+  return l === 'Basement' ? '#A2845E' : l === 'Roof' ? '#FF453A' : l === 'Outside' ? '#FF9F0A'
+       : /^Level/.test(l) ? '#0A84FF' : '#8E8E93';
+};
+function spaceFor(l){ return (l === 'Outside' || l === 'Roof') ? 'Exterior' : 'Interior'; }
+
+/* Order everything that lists locations: level first, then the old order. */
+if (window.BPX && BPX.areas && !BPX.areas.__lvl) {
+  var _areas = BPX.areas;
+  BPX.areas = function(){
+    var list = _areas.apply(this, arguments);
+    return list.map(function(r,i){ return {r:r,i:i}; })
+      .sort(function(a,b){ return window.bpLevelRank(window.bpLevelOf(a.r)) - window.bpLevelRank(window.bpLevelOf(b.r)) || a.i - b.i; })
+      .map(function(o){ return o.r; });
+  };
+  BPX.areas.__lvl = 1;
+}
+if (typeof window.bpJobPunchGroupsHtml === 'function' && !window.bpJobPunchGroupsHtml.__lvl) {
+  var _groups = window.bpJobPunchGroupsHtml;
+  window.bpJobPunchGroupsHtml = function(){
+    var orig = DB.rooms;
+    if (!orig) return _groups.apply(this, arguments);
+    var sorted = orig.map(function(r,i){ return {r:r,i:i}; })
+      .sort(function(a,b){ return window.bpLevelRank(window.bpLevelOf(a.r)) - window.bpLevelRank(window.bpLevelOf(b.r)) || a.i - b.i; })
+      .map(function(o){ return o.r; });
+    DB.rooms = sorted;
+    try { return _groups.apply(this, arguments); } finally { DB.rooms = orig; }
+  };
+  window.bpJobPunchGroupsHtml.__lvl = 1;
+}
+
+/* ── Locations grid: level headers ── */
+function addLevelHeaders(){
+  var host = document.getElementById(IS_DESK ? 'rooms-table-wrap' : 'rooms-list');
+  if (!host || window._bpAreaView === 'trade') return;
+  var cards = [].slice.call(host.querySelectorAll('[onclick^="openRoomDetail("]'));
+  if (!cards.length) return;
+  var grid = cards[0].parentNode;
+  if (getComputedStyle(grid).display !== 'grid') return;
+  var byId = {}; (DB.rooms||[]).forEach(function(r){ byId[r.id] = r; });
+  var rows = cards.filter(function(c){ return c.parentNode === grid; }).map(function(c, i){
+    var m = /openRoomDetail\('([^']+)'\)/.exec(c.getAttribute('onclick')||'');
+    var r = m && byId[m[1]];
+    return {c:c, i:i, l: window.bpLevelOf(r)};
+  });
+  rows.sort(function(a,b){ return window.bpLevelRank(a.l) - window.bpLevelRank(b.l) || a.i - b.i; });
+  var addTile = [].find.call(grid.children, function(x){ return /bpOpenSpacePicker/.test(x.getAttribute('onclick')||''); });
+  var last = null;
+  rows.forEach(function(o){
+    if (o.l !== last) {
+      var n = rows.filter(function(x){ return x.l === o.l; }).length;
+      var h = document.createElement('div');
+      h.setAttribute('data-bp-level', o.l || 'none');
+      h.style.cssText = 'grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:' + (last === null ? '0' : '8px') + ' 0 -2px;'
+        + 'padding-bottom:5px;border-bottom:2px solid ' + LVL_COLOR(o.l) + '55';
+      h.innerHTML = '<span style="font-size:13px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:' + LVL_COLOR(o.l) + '">'
+        + E(o.l || 'Level not set') + '</span>'
+        + '<span style="font-size:12px;font-weight:700;color:var(--muted)">' + n + ' location' + (n !== 1 ? 's' : '') + '</span>'
+        + (o.l ? '' : '<button onclick="bpOpenSetLevels()" style="margin-left:auto;background:#0A84FF;border:none;color:#fff;'
+            + 'border-radius:9px;padding:8px 14px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Set levels</button>');
+      grid.insertBefore(h, addTile || null);
+      last = o.l;
+    }
+    grid.insertBefore(o.c, addTile || null);
+  });
+}
+function wrapRender(name){
+  var prev = window[name];
+  if (typeof prev !== 'function' || prev.__lvl) return;
+  window[name] = function(){ var r = prev.apply(this, arguments); try { addLevelHeaders(); } catch(e){ console.warn('[BP] levels', e); } return r; };
+  window[name].__lvl = 1;
+}
+wrapRender(IS_DESK ? 'renderDesktopRooms' : 'renderRooms');
+
+/* ── Set Levels sheet: every location in the current job filter, one row each ── */
+function sheet(id, title, body){
+  var old = document.getElementById(id); if (old) old.remove();
+  var w = document.createElement('div');
+  w.id = id;
+  w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;'
+    + 'align-items:' + (IS_DESK ? 'center' : 'flex-end') + ';justify-content:center;padding-top:var(--safe-top,0px);box-sizing:border-box';
+  w.onclick = function(e){ if (e.target === w) w.remove(); };
+  w.innerHTML = '<div style="background:var(--card,#1a1a1a);color:var(--text,#f0f0f0);border-radius:' + (IS_DESK ? '16px' : '20px 20px 0 0') + ';'
+    + 'width:100%;max-width:' + (IS_DESK ? '720px' : '560px') + ';max-height:' + (IS_DESK ? '90vh' : '100%') + ';overflow-y:auto;box-sizing:border-box;'
+    + 'padding:18px 18px calc(24px + env(safe-area-inset-bottom,0px))">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+    + '<div style="font-size:19px;font-weight:900">' + title + '</div>'
+    + '<button onclick="document.getElementById(\'' + id + '\').remove()" style="background:none;border:none;color:var(--muted);'
+    + 'font-size:28px;cursor:pointer;line-height:1;padding:0 4px">×</button></div>' + body + '</div>';
+  document.body.appendChild(w);
+  return w;
+}
+function levelSelect(id, levels, cur, extra){
+  return '<select ' + (id ? 'id="' + id + '" ' : '') + (extra||'') + ' style="padding:10px 12px;border-radius:10px;border:1px solid var(--border,#2a2a2a);'
+    + 'background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:15px;font-family:inherit;min-width:130px">'
+    + '<option value="">Not set</option>'
+    + levels.map(function(l){ return '<option' + (l === cur ? ' selected' : '') + '>' + l + '</option>'; }).join('')
+    + '</select>';
+}
+window.bpOpenSetLevels = function(){
+  var jobId = window._bpAreaJob || '';
+  var rooms = (DB.rooms||[]).filter(function(r){ return !jobId || r.jobId === jobId; })
+    .sort(function(a,b){ return (window.bpLevelOf(a) ? 1 : 0) - (window.bpLevelOf(b) ? 1 : 0) || String(a.name).localeCompare(String(b.name)); });
+  var body = '<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Pick a level for each location. It saves as you pick.</div>'
+    + rooms.map(function(r){
+        var levels = window.bpJobLevels(r.jobId);
+        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border,#2a2a2a)">'
+          + '<div style="flex:1;min-width:0;font-size:15px;font-weight:700">' + E(r.name) + '</div>'
+          + levelSelect('', levels, window.bpLevelOf(r), 'onchange="bpSetRoomLevel(\'' + r.id + '\',this.value)"')
+          + '</div>';
+      }).join('')
+    + '<button onclick="document.getElementById(\'bp-set-levels\').remove()" style="width:100%;margin-top:16px;background:#0A84FF;'
+    + 'border:none;color:#fff;border-radius:12px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Done</button>';
+  sheet('bp-set-levels', 'Set Levels', body);
+};
+window.bpSetRoomLevel = function(roomId, level){
+  var r = (DB.rooms||[]).find(function(x){ return x.id === roomId; });
+  if (!r) return;
+  r.level = level || '';
+  if (level) r.space = spaceFor(level);
+  r.updatedAt = (typeof now === 'function') ? now() : new Date().toISOString();
+  persist(); rerender();
+};
+
+/* ── Add Locations picker, by level ── */
+var ROOF_PRESETS = function(){
+  return (window.BP_SPACE_PRESETS.Exterior||[]).filter(function(p){ return ROOF_RX.test(p.n); });
+};
+function presetsFor(level){
+  if (level === 'Roof') return ROOF_PRESETS();
+  if (level === 'Outside') return (window.BP_SPACE_PRESETS.Exterior||[]).filter(function(p){ return !ROOF_RX.test(p.n); });
+  return window.BP_SPACE_PRESETS.Interior || [];
+}
+function roomOnLevel(jobId, level, base){
+  var b = String(base).toLowerCase();
+  return (DB.rooms||[]).find(function(r){
+    if (r.jobId !== jobId || window.bpLevelOf(r) !== level) return false;
+    var n = String(r.name).toLowerCase();
+    return String(r.baseName||'').toLowerCase() === b || n === b || n === (b + ' – ' + level.toLowerCase());
+  });
+}
+function addOnLevel(jobId, level, base, type){
+  var taken = (DB.rooms||[]).some(function(r){ return r.jobId === jobId && String(r.name).toLowerCase() === String(base).toLowerCase(); });
+  var r = {
+    id: uid(), name: taken ? (base + ' – ' + level) : base, baseName: base, type: type || 'Other',
+    level: level, space: spaceFor(level), jobId: jobId, notes: '',
+    created: now(), updatedAt: now()
+  };
+  DB.rooms = DB.rooms || [];
+  DB.rooms.push(r);
+  return r;
+}
+window.bpOpenSpacePicker = function(preJobId){
+  var jobId = preJobId || window._bpAreaJob || '';
+  if (!jobId) {
+    var jobs = DB.jobs || [];
+    if (!jobs.length) { toast('Create a job first'); return; }
+    if (jobs.length === 1) jobId = jobs[0].id;
+    else { toast('Pick a job first (filter above)'); return; }
+  }
+  var levels = window.bpJobLevels(jobId);
+  var lvl = window._bpPickLevel && levels.indexOf(window._bpPickLevel) >= 0 ? window._bpPickLevel : 'Level 1';
+  window._bpPickLevel = lvl;
+  var job = (DB.jobs||[]).find(function(j){ return j.id === jobId; });
+  var col = LVL_COLOR(lvl);
+  var chip = function(l){
+    var on = l === lvl, c = LVL_COLOR(l);
+    return '<button onclick="bpPickLevel(\'' + jobId + '\',\'' + l + '\')" style="padding:10px 14px;border-radius:10px;'
+      + 'border:2px solid ' + (on ? c : 'var(--border,#2a2a2a)') + ';background:' + (on ? c + '26' : 'transparent') + ';'
+      + 'color:' + (on ? c : 'var(--muted)') + ';font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">' + l + '</button>';
+  };
+  var chips = levels.map(chip).join('')
+    + '<button onclick="bpAddLevel(\'' + jobId + '\')" style="padding:10px 14px;border-radius:10px;border:2px dashed rgba(10,132,255,.5);'
+    + 'background:transparent;color:#0A84FF;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">+ Level</button>';
+  var presets = presetsFor(lvl).map(function(p){
+    var on = !!roomOnLevel(jobId, lvl, p.n);
+    return '<button onclick="bpTogglePreset(\'' + jobId + '\',\'' + p.n.replace(/'/g, "\\'") + '\')" '
+      + 'style="padding:10px 14px;border-radius:99px;border:1.5px solid ' + (on ? col : 'var(--border,#2a2a2a)') + ';'
+      + 'background:' + (on ? col + '22' : 'transparent') + ';color:' + (on ? col : 'var(--muted)') + ';'
+      + 'font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">' + (on ? '✓ ' : '+ ') + E(p.n) + '</button>';
+  }).join('');
+  var lab = function(t, c){ return '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:' + (c||'var(--muted)') + ';margin:16px 0 8px">' + t + '</div>'; };
+  var body = '<div style="font-size:13px;color:var(--muted)">' + (job ? E(job.name) : '') + ' · pick the level, then tap to add (tap again to remove)</div>'
+    + lab('Level') + '<div style="display:flex;flex-wrap:wrap;gap:7px">' + chips + '</div>'
+    + lab('Add to ' + lvl, col) + '<div style="display:flex;flex-wrap:wrap;gap:7px">' + presets + '</div>'
+    + lab('✏️ Custom on ' + lvl)
+    + '<div style="display:flex;gap:8px">'
+    + '<input id="bp-custom-area" placeholder="Type any location name…" style="flex:1;min-width:0;background:var(--card2,#222);'
+    + 'border:1px solid var(--border,#2a2a2a);border-radius:10px;color:var(--text,#f0f0f0);font-size:15px;padding:12px 14px;font-family:inherit"/>'
+    + '<button onclick="bpAddCustomArea(\'' + jobId + '\')" style="background:#0A84FF;border:none;color:#fff;border-radius:10px;'
+    + 'padding:12px 18px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">Add</button></div>'
+    + '<button onclick="document.getElementById(\'bp-space-picker\').remove()" style="width:100%;margin-top:18px;background:#0A84FF;'
+    + 'border:none;color:#fff;border-radius:12px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Done</button>';
+  var keepScroll = document.querySelector('#bp-space-picker > div');
+  var top = keepScroll ? keepScroll.scrollTop : 0;
+  var w = sheet('bp-space-picker', 'Add Locations', body);
+  if (top) w.firstChild.scrollTop = top;
+};
+window.bpPickLevel = function(jobId, l){ window._bpPickLevel = l; window.bpOpenSpacePicker(jobId); };
+window.bpAddLevel = function(jobId){
+  var job = (DB.jobs||[]).find(function(j){ return j.id === jobId; });
+  if (!job) return;
+  var levels = window.bpJobLevels(jobId).filter(function(l){ return /^Level/.test(l); });
+  job.levelsMax = levels.length + 1;
+  window._bpPickLevel = 'Level ' + job.levelsMax;
+  persist();
+  window.bpOpenSpacePicker(jobId);
+};
+window.bpTogglePreset = function(jobId, name){
+  var lvl = window._bpPickLevel || 'Level 1';
+  var hit = roomOnLevel(jobId, lvl, name);
+  if (hit) {
+    var n = (DB.punchlist||[]).filter(function(x){ return x.roomId === hit.id; }).length;
+    if (n && !confirm('"' + hit.name + '" has ' + n + ' checklist item' + (n !== 1 ? 's' : '') + '.\n\nRemove the location and its items?')) return;
+    bpRemoveFrom('rooms', function(r){ return r.id !== hit.id; });
+    bpRemoveFrom('punchlist', function(x){ return x.roomId !== hit.id; });
+    toast('Removed ' + hit.name);
+  } else {
+    var p = presetsFor(lvl).concat(window.BP_SPACE_PRESETS.Interior, window.BP_SPACE_PRESETS.Exterior)
+      .find(function(x){ return x.n === name; });
+    var r = addOnLevel(jobId, lvl, name, p ? p.type : 'Other');
+    toast('Added ' + r.name);
+  }
+  persist();
+  window.bpOpenSpacePicker(jobId);
+  rerender();
+};
+window.bpAddCustomArea = function(jobId){
+  var inp = document.getElementById('bp-custom-area');
+  var name = (inp && inp.value || '').trim();
+  if (!name) { toast('Type a name first'); return; }
+  var lvl = window._bpPickLevel || 'Level 1';
+  if (roomOnLevel(jobId, lvl, name)) { toast(name + ' is already on ' + lvl); return; }
+  var r = addOnLevel(jobId, lvl, name, 'Other');
+  persist();
+  toast('Added ' + r.name);
+  window.bpOpenSpacePicker(jobId);
+  rerender();
+};
+
+/* ── Add / Edit Location forms: Level picker ── */
+function levelField(id, jobId, cur){
+  var levels = window.bpJobLevels(jobId);
+  if (cur && levels.indexOf(cur) < 0) levels.push(cur);
+  return levelSelect(id, levels, cur, '');
+}
+function injectLevel(afterSel, id, jobId, cur){
+  var sel = document.getElementById(afterSel);
+  if (!sel) return;
+  var old = document.getElementById(id + '-wrap'); if (old) old.remove();
+  var field = sel.closest('.field') || sel.parentNode;
+  var d = document.createElement('div');
+  d.id = id + '-wrap';
+  d.className = field.className || '';
+  d.style.cssText = IS_DESK ? '' : 'margin-bottom:14px';
+  var labelCls = field.querySelector('.field-label');
+  d.innerHTML = labelCls
+    ? '<div class="field-label">Level</div>' + levelField(id, jobId, cur)
+    : '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Level</div>'
+      + levelField(id, jobId, cur);
+  var s = d.querySelector('select');
+  s.style.width = '100%'; s.style.boxSizing = 'border-box';
+  if (IS_DESK && field.parentNode && field.parentNode.classList.contains('field-row')) {
+    var row = field.parentNode;   /* desktop: Job | Type row — Level gets its own row under it */
+    var nr = document.createElement('div'); nr.className = 'field-row'; nr.id = id + '-wrap';
+    d.id = ''; nr.appendChild(d);
+    row.parentNode.insertBefore(nr, row.nextSibling);
+  } else {
+    field.parentNode.insertBefore(d, field.nextSibling);
+  }
+}
+function setNewRoomLevel(before){
+  var sel = document.getElementById(IS_DESK ? 'bp-nr-level' : 'bp-ar-level');
+  var lvl = sel ? sel.value : '';
+  if ((DB.rooms||[]).length > before) {
+    var r = DB.rooms[DB.rooms.length - 1];
+    if (lvl) { r.level = lvl; r.space = spaceFor(lvl); persist(); rerender(); }
+  }
+}
+if (!IS_DESK) {
+  if (typeof window.openAddRoom === 'function' && !window.openAddRoom.__lvl) {
+    var _oar = window.openAddRoom;
+    window.openAddRoom = function(jobId){
+      var r = _oar.apply(this, arguments);
+      fillTypes(document.getElementById('ar-type'));
+      var jid = jobId || (document.getElementById('ar-job')||{}).value || '';
+      injectLevel('ar-type', 'bp-ar-level', jid, window._bpPickLevel || 'Level 1');
+      return r;
+    };
+    window.openAddRoom.__lvl = 1;
+  }
+  if (typeof window.saveRoom === 'function' && !window.saveRoom.__lvl) {
+    var _sr = window.saveRoom;
+    window.saveRoom = function(){ var n = (DB.rooms||[]).length; var r = _sr.apply(this, arguments); setNewRoomLevel(n); return r; };
+    window.saveRoom.__lvl = 1;
+  }
+  if (typeof window.openEditRoom === 'function' && !window.openEditRoom.__lvl) {
+    var _oer = window.openEditRoom;
+    window.openEditRoom = function(roomId){
+      var res = _oer.apply(this, arguments);
+      var room = (DB.rooms||[]).find(function(r){ return r.id === roomId; });
+      fillTypes(document.getElementById('er-type'));
+      if (room) injectLevel('er-type', 'bp-er-level', room.jobId, window.bpLevelOf(room));
+      return res;
+    };
+    window.openEditRoom.__lvl = 1;
+  }
+  if (typeof window.saveEditRoom === 'function' && !window.saveEditRoom.__lvl) {
+    var _ser = window.saveEditRoom;
+    window.saveEditRoom = function(roomId){
+      var sel = document.getElementById('bp-er-level');
+      var room = (DB.rooms||[]).find(function(r){ return r.id === roomId; });
+      if (sel && room) { room.level = sel.value; if (sel.value) room.space = spaceFor(sel.value); }
+      return _ser.apply(this, arguments);
+    };
+    window.saveEditRoom.__lvl = 1;
+  }
+  fillTypes(document.getElementById('ar-type'));
+} else {
+  fillTypes(document.getElementById('nr-type'));
+  if (typeof window.openModal === 'function' && !window.openModal.__lvl) {
+    var _om = window.openModal;
+    window.openModal = function(id){
+      var r = _om.apply(this, arguments);
+      if (id === 'modal-new-room') {
+        fillTypes(document.getElementById('nr-type'));
+        var editing = window._bpEditRoomId ? (DB.rooms||[]).find(function(x){ return x.id === window._bpEditRoomId; }) : null;
+        var jid = editing ? editing.jobId : ((document.getElementById('nr-job')||{}).value || window._bpAreaJob || '');
+        injectLevel('nr-type', 'bp-nr-level', jid, editing ? window.bpLevelOf(editing) : (window._bpPickLevel || 'Level 1'));
+      }
+      return r;
+    };
+    window.openModal.__lvl = 1;
+  }
+  if (typeof window.editRoom === 'function' && !window.editRoom.__lvl) {
+    var _edr = window.editRoom;
+    window.editRoom = function(id){
+      window._bpEditRoomId = id;
+      var res;
+      try { res = _edr.apply(this, arguments); } finally { window._bpEditRoomId = null; }
+      var btn = document.querySelector('#modal-new-room .btn-pink');
+      var room = (DB.rooms||[]).find(function(x){ return x.id === id; });
+      if (btn && room && typeof btn.onclick === 'function') {
+        var upd = btn.onclick;
+        btn.onclick = function(){
+          var sel = document.getElementById('bp-nr-level');
+          if (sel) { room.level = sel.value; if (sel.value) room.space = spaceFor(sel.value); }
+          return upd.apply(this, arguments);
+        };
+      }
+      return res;
+    };
+    window.editRoom.__lvl = 1;
+  }
+  if (typeof window.saveNewRoom === 'function' && !window.saveNewRoom.__lvl) {
+    var _snr = window.saveNewRoom;
+    window.saveNewRoom = function(){ var n = (DB.rooms||[]).length; var r = _snr.apply(this, arguments); setNewRoomLevel(n); return r; };
+    window.saveNewRoom.__lvl = 1;
+  }
+}
+try { rerender(); } catch(e){}
+console.log('[BP] v2.70 locations by level ready');
 })();
 </script>
