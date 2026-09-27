@@ -1600,7 +1600,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.75';
+var APP_VERSION = '2.76';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -12608,7 +12608,9 @@ console.log('[BP] v2.42 desktop port ready — money tiles, duplicate room, chec
           var val = rrec && getPath(rrec, s.path);
           if (typeof val !== 'string' || val === s.curRef || val === s.val) continue;
           if (s.tried && s.tried[val]) continue;
-          (s.tried = s.tried || {})[val] = true;
+          var _ref = val;   /* v2.76: only a version that actually HAS the picture counts as tried —
+                               with chunk-then-data-file pushes, an in-between version can list a
+                               photo whose chunk isn't there yet */
           if (val.slice(0, 4) === 'bpb:') {
             if (!chunks) {
               chunks = {};
@@ -12619,6 +12621,7 @@ console.log('[BP] v2.42 desktop port ready — money tiles, duplicate room, chec
             }
             val = chunks[val];
           }
+          if (typeof val === 'string') (s.tried = s.tried || {})[_ref] = true;
           if (typeof val !== 'string' || val.slice(0, 11) !== 'data:image/') continue;
           if (await bpIsBlankDataUrl(val)) continue;
           var live = (DB[s.coll] || []).find(function(r){ return r && r.id === s.id; });
@@ -14381,5 +14384,140 @@ if (typeof window.bpDuplicateRoom === 'function' && !window.bpDuplicateRoom.__de
   window.bpDuplicateRoom.__design = 1;
 }
 console.log('[BP] v2.75 room design ready');
+})();
+</script>
+<script>
+/* ══ v2.76 — GITHUB SYNC: ONLY SEND WHAT CHANGED ═══════════════════════════
+   Stan (Sep 26, 2026, 10:02 PM) hit "API rate limit exceeded" (HTTP 403).
+   Cause: every save auto-pushed 8 s later, and every push re-uploaded EVERY
+   photo chunk (1 request per 3 MB of photos) whether it changed or not. With
+   a few hundred MB of photos and three devices, a busy evening burns through
+   GitHub's 5,000-requests-an-hour allowance.
+   Fix:
+   1. Photo chunks keep a stable layout (meta.blobIndex: photo → chunk file,
+      meta.chunkSigs: chunk → list of photos in it). A push only uploads the
+      chunks whose contents changed — usually none, or one for new photos.
+      The data file goes LAST, so nobody ever reads a list that points at
+      photos not uploaded yet. Old backups (no index) are read by looking at
+      the chunk contents on the first pull, so nothing needs re-uploading.
+   2. Pulls reuse chunks already downloaded this session when their
+      signature hasn't changed (saves phone data too).
+   3. Automatic pushes wait at least 60 s between each other (a manual Push
+      still goes right away). iCloud keeps syncing in between.
+   Same block in both apps; files stay readable by older versions.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+var CACHE = {};                 /* chunk name → {sig, obj}, this session only */
+var REMOTE = null;              /* last remote layout seen: {gistId, index, sigs, files, at} */
+function sigOf(refs){ return refs.slice().sort().join(','); }
+
+window.bpFetchRemote = async function(){
+  var res = await bpGitHubFetch('https://api.github.com/gists/' + _syncGistId, {headers: bpAuthHeaders()});
+  var gist = await res.json();
+  var file = gist.files && gist.files['bp_data.json'];
+  if (!file) throw new Error('No data file found in this backup.');
+  var content = file.truncated ? await (await fetch(file.raw_url)).text() : file.content;
+  var remote = JSON.parse(content);
+  var names = remote.blobChunks || [];
+  var sigs = remote.chunkSigs || {}, index = {}, seenSigs = {};
+  if (names.length) {
+    var blobs = {};
+    for (var i = 0; i < names.length; i++) {
+      var nm = names[i], bf = gist.files[nm];
+      if (!bf) throw new Error('Part of this backup (' + nm + ') is missing from GitHub — nothing was changed locally. Push again from the device that has the photos.');
+      var obj = null;
+      if (sigs[nm] && CACHE[nm] && CACHE[nm].sig === sigs[nm]) obj = CACHE[nm].obj;
+      if (!obj) {
+        var bc = bf.truncated ? await (await fetch(bf.raw_url)).text() : bf.content;
+        try { obj = JSON.parse(bc); }
+        catch (e) { throw new Error('Part of this backup (' + nm + ') could not be read — nothing was changed locally.'); }
+      }
+      var refs = Object.keys(obj);
+      seenSigs[nm] = sigOf(refs);
+      CACHE[nm] = { sig: seenSigs[nm], obj: obj };
+      refs.forEach(function(r){ index[r] = nm; blobs[r] = obj[r]; });
+    }
+    remote.db = bpJoinBlobs(remote.db, blobs);
+  }
+  REMOTE = { gistId: _syncGistId, index: index, sigs: seenSigs, files: Object.keys(gist.files || {}), at: Date.now() };
+  return remote;
+};
+
+function layout(blobs){
+  var prev = (REMOTE && REMOTE.gistId === _syncGistId) ? REMOTE : { index: {}, sigs: {}, files: [] };
+  var chunks = {}, sizes = {};
+  var add = function(nm, ref){ (chunks[nm] = chunks[nm] || {})[ref] = blobs[ref]; sizes[nm] = (sizes[nm] || 0) + blobs[ref].length + ref.length + 8; };
+  var fresh = [];
+  Object.keys(blobs).forEach(function(ref){
+    var nm = prev.index[ref];
+    if (nm) add(nm, ref); else fresh.push(ref);
+  });
+  var used = {};
+  Object.keys(prev.sigs).concat(Object.keys(chunks)).forEach(function(n){ used[n] = 1; });
+  var nextName = function(){ for (var i = 0; i < 1000; i++) { var n = bpChunkName(i); if (!used[n]) { used[n] = 1; return n; } } };
+  var open = Object.keys(chunks).sort().pop() || null;   /* newest chunk takes new photos while it has room */
+  fresh.sort().forEach(function(ref){
+    var need = blobs[ref].length + ref.length + 8;
+    if (!open || (sizes[open] || 0) + need > BP_BLOB_CHUNK_BYTES) { open = nextName(); }
+    add(open, ref);
+  });
+  var names = Object.keys(chunks).sort();
+  var sigs = {}, changed = [];
+  names.forEach(function(n){ sigs[n] = sigOf(Object.keys(chunks[n])); if (prev.sigs[n] !== sigs[n] || prev.files.indexOf(n) < 0) changed.push(n); });
+  var stale = prev.files.filter(function(n){ return /^bp_blobs_\d+\.json$/.test(n) && !chunks[n]; });
+  var index = {}; names.forEach(function(n){ Object.keys(chunks[n]).forEach(function(r){ index[r] = n; }); });
+  return { chunks: chunks, names: names, sigs: sigs, changed: changed, stale: stale, index: index };
+}
+
+window.bpPushAll = async function(){
+  var blobs = {}, lean = bpSplitBlobs(DB, blobs);
+  var gistId = _syncGistId;
+  if (gistId && !(REMOTE && REMOTE.gistId === gistId && Date.now() - REMOTE.at < 5 * 60000)) {
+    try { await window.bpFetchRemote(); } catch (e) { REMOTE = null; }   /* fresh layout; worst case everything uploads, like before */
+  }
+  var L = layout(blobs);
+  var meta = function(){ return JSON.stringify({ db: lean, blobChunks: L.names, chunkSigs: L.sigs, pushedAt: now(), version: '3.1' }); };
+  var calls = 0;
+  if (!gistId) {
+    var res = await bpGitHubFetch('https://api.github.com/gists', { method: 'POST', headers: bpAuthHeaders(),
+      body: JSON.stringify({ description: 'BuildersPro-sync', public: false, files: { 'bp_data.json': { content: JSON.stringify({ db: lean, blobChunks: [], pushedAt: now(), version: '3.1' }) } } }) });
+    gistId = (await res.json()).id; calls++;
+    _syncGistId = gistId;
+  }
+  for (var i = 0; i < L.changed.length; i++) {
+    bpSyncProgress(i + 1, L.changed.length);
+    if (calls) await bpSleep(1100);   /* v2.48 pacing: same gist, mutative requests spaced out */
+    var f = {}; f[L.changed[i]] = { content: JSON.stringify(L.chunks[L.changed[i]]) };
+    await bpGitHubFetch('https://api.github.com/gists/' + gistId, { method: 'PATCH', headers: bpAuthHeaders(), body: JSON.stringify({ files: f }) });
+    calls++;
+  }
+  var files = { 'bp_data.json': { content: meta() } };
+  L.stale.forEach(function(n){ files[n] = null; });
+  if (calls) await bpSleep(1100);
+  await bpGitHubFetch('https://api.github.com/gists/' + gistId, { method: 'PATCH', headers: bpAuthHeaders(), body: JSON.stringify({ files: files }) });
+  calls++;
+  L.names.forEach(function(n){ CACHE[n] = { sig: L.sigs[n], obj: L.chunks[n] }; });
+  REMOTE = { gistId: gistId, index: L.index, sigs: L.sigs, files: ['bp_data.json'].concat(L.names), at: Date.now() };
+  window._bpLastPushCalls = calls;   /* for tests / troubleshooting */
+  return gistId;
+};
+
+/* Automatic pushes: at most one a minute. Manual Push is untouched. */
+var MIN_GAP = 60000, lastAuto = 0;
+window.scheduleAutoPush = function(){
+  if (!_syncToken) return;
+  if (_suppressNextAutoPush) { _suppressNextAutoPush = false; return; }
+  if (_autoSyncTimer) clearTimeout(_autoSyncTimer);
+  var wait = Math.max(8000, MIN_GAP - (Date.now() - lastAuto));
+  _autoSyncTimer = setTimeout(function(){
+    if (_isSyncing) return;
+    lastAuto = Date.now();
+    if (IS_DESK) deskPush(); else doPush();
+  }, wait);
+};
+window.bpGhSyncInfo = function(){ return { minGapMs: MIN_GAP, lastAuto: lastAuto, remote: REMOTE && { chunks: Object.keys(REMOTE.sigs).length, at: REMOTE.at } }; };
+console.log('[BP] v2.76 GitHub sync sends only what changed');
 })();
 </script>
