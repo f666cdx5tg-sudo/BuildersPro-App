@@ -1600,7 +1600,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.79';
+var APP_VERSION = '2.80';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -15025,5 +15025,124 @@ function mount(){
 }
 mount(); setTimeout(mount, 1500);
 console.log('[BP] v2.79 BuildersCam ready');
+})();
+</script>
+<script>
+/* ══ v2.80 — DATE & ADDRESS STAMP ON NEW PHOTOS (BuildersCam) ══════════════
+   Stan (Sep 27, 2026) asked for the stamp CompanyCam puts on photos. Every
+   NEW photo (gallery, location, checklist before/after, completion) gets a
+   band along the bottom, burned into the picture:
+        Sep 27, 2026 · 6:42 PM                           BuildersPro
+        Smith Reno · Bathroom
+        12 Main St, Bergenfield, NJ
+   Proof that holds up when a photo is texted, printed or forwarded — the
+   words travel with the picture. Per-device switch (default ON) on the
+   Photos screen. Existing photos are not changed.
+   Hooks bpCompressFor('photo', …) — the one door every camera photo goes
+   through — and remembers which job / location / checklist item it's for.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+function E(s){ return (typeof esc === 'function') ? esc(s) : String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+window.bpStampOn = function(){ try { return localStorage.getItem('bp_stamp') !== '0'; } catch(e){ return true; } };
+window.bpSetStamp = function(on){ try { localStorage.setItem('bp_stamp', on ? '1' : '0'); } catch(e){} paint(); toast(on ? 'New photos will be stamped' : 'Stamp turned off'); };
+
+/* what the next photo is for */
+var CTX = { jobId:'', roomId:'', item:'' , at:0 };
+function setCtx(jobId, roomId, item){ CTX = { jobId: jobId || '', roomId: roomId || '', item: item || '', at: Date.now() }; }
+function cur(name){ try { return window[name] || ''; } catch(e){ return ''; } }
+function wrap(name, fn){
+  var o = window[name]; if (typeof o !== 'function' || o.__stamp) return;
+  window[name] = function(){ try { fn.apply(this, arguments); } catch(e){} return o.apply(this, arguments); };
+  window[name].__stamp = 1;
+}
+wrap('addPhotos', function(input, jobId, roomId){ setCtx(jobId || cur('currentJobId'), roomId || cur('currentRoomId'), ''); });
+wrap('addDesktopPhotos', function(){ var f = document.getElementById('photo-filter'); setCtx(f && f.value || '', '', ''); });
+function itemCtx(id){ var it = (DB.punchlist||[]).find(function(x){ return x.id === id; }); if (it) setCtx(it.jobId, it.roomId, it.text); }
+wrap('addChecklistPhoto', function(a, b, c){ [a, b, c].forEach(function(v){ if (typeof v === 'string' && (DB.punchlist||[]).some(function(x){ return x.id === v; })) itemCtx(v); }); });
+wrap('addPunchCompletionPhoto', function(input, itemId){ itemCtx(itemId); });
+
+function lines(){
+  var ctx = (Date.now() - CTX.at < 10 * 60000) ? CTX : { jobId: cur('currentJobId'), roomId: cur('currentRoomId'), item: '' };
+  var j = ctx.jobId && (DB.jobs||[]).find(function(x){ return x.id === ctx.jobId; });
+  var r = ctx.roomId && (DB.rooms||[]).find(function(x){ return x.id === ctx.roomId; });
+  var d = new Date();
+  var when = d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) + ' · ' + d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+  var where = j ? [j.address, j.city, [j.state, j.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
+  if (!where) where = window._currentGeo || '';
+  var out = [when];
+  var mid = [j && j.name, r && r.name].filter(Boolean).join(' · ');
+  if (ctx.item) mid = (mid ? mid + ' · ' : '') + ctx.item;
+  if (mid) out.push(mid);
+  if (where) out.push(where);
+  return out;
+}
+window.bpStampLines = lines;
+function stamp(src){
+  return new Promise(function(res, rej){
+    var i = new Image();
+    i.onload = function(){
+      try {
+        var W = i.naturalWidth, H = i.naturalHeight;
+        if (!W || !H) return rej();
+        var L = lines(), fs = Math.max(14, Math.round(Math.min(W, H * 1.4) * 0.03)), lh = Math.round(fs * 1.32), pad = Math.round(fs * 0.7);
+        var band = pad * 2 + lh * L.length;
+        var c = document.createElement('canvas'); c.width = W; c.height = H;
+        var x = c.getContext('2d');
+        x.drawImage(i, 0, 0, W, H);
+        x.fillStyle = 'rgba(0,0,0,.58)'; x.fillRect(0, H - band, W, band);
+        x.textBaseline = 'top'; x.fillStyle = '#fff';
+        var maxW = W - pad * 2;
+        L.forEach(function(t, k){
+          x.font = (k === 0 ? '800 ' : '600 ') + fs + 'px -apple-system,Helvetica,Arial,sans-serif';
+          var s = t; while (x.measureText(s).width > maxW - (k === 0 ? fs * 6 : 0) && s.length > 4) s = s.slice(0, -2);
+          if (s !== t) s = s.slice(0, -1) + '…';
+          x.fillText(s, pad, H - band + pad + lh * k);
+        });
+        x.font = '800 ' + Math.round(fs * 0.85) + 'px -apple-system,Helvetica,Arial,sans-serif';
+        x.textAlign = 'right'; x.fillStyle = '#FF453A'; x.fillText('BuildersPro', W - pad, H - band + pad + Math.round(fs * 0.1));
+        res(c.toDataURL('image/jpeg', 0.86));
+      } catch (e) { rej(e); }
+    };
+    i.onerror = rej;
+    i.src = src;
+  });
+}
+window.bpStampImage = stamp;
+if (typeof window.bpCompressFor === 'function' && !window.bpCompressFor.__stamp) {
+  var _c = window.bpCompressFor;
+  window.bpCompressFor = function(kind, dataUrl, cb){
+    if (kind !== 'photo' || !window.bpStampOn()) return _c.apply(this, arguments);
+    return _c.call(this, kind, dataUrl, function(src){
+      if (typeof src !== 'string' || src.slice(0, 11) !== 'data:image/') return cb(src);
+      stamp(src).then(function(s){ cb(s); }, function(){ cb(src); });
+    });
+  };
+  window.bpCompressFor.__stamp = 1;
+}
+
+/* switch on the Photos screen */
+function paint(){
+  var on = window.bpStampOn();
+  var html = '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:700;color:var(--text)">'
+    + '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="bpSetStamp(this.checked)" style="width:22px;height:22px;accent-color:#0A84FF;flex-shrink:0"/>'
+    + '<span>Stamp date, time &amp; address on new photos</span></label>';
+  if (IS_DESK) {
+    var acts = document.querySelector('#view-photos .view-actions');
+    if (!acts) return;
+    var el = document.getElementById('bp-stamp-sw');
+    if (!el) { el = document.createElement('div'); el.id = 'bp-stamp-sw'; el.style.cssText = 'display:flex;align-items:center;padding:0 6px'; acts.appendChild(el); }
+    el.innerHTML = html;
+  } else {
+    var bar = document.getElementById('bp-cam-bar');
+    if (!bar) return;
+    var sw = document.getElementById('bp-stamp-sw');
+    if (!sw) { sw = document.createElement('div'); sw.id = 'bp-stamp-sw'; sw.style.cssText = 'padding:0 16px 10px'; bar.parentNode.insertBefore(sw, bar.nextSibling); }
+    sw.innerHTML = html;
+  }
+}
+paint(); setTimeout(paint, 1600);
+console.log('[BP] v2.80 photo stamp ready (' + (window.bpStampOn() ? 'on' : 'off') + ')');
 })();
 </script>
