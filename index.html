@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.73';
+var APP_VERSION = '2.74';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -16349,12 +16349,21 @@ var WALK = '<svg viewBox="0 0 32 32" style="width:30px;height:30px;display:block
   + '<path d="M10 14l2.5-3.5l4.5-1.2l3.5 3.7l3.5 1"/>'
   + '<path d="M1.5 25.5h29v4.5h-29z"/>'
   + '<path d="M9 25.5v4.5M16 25.5v4.5M23 25.5v4.5"/></g></svg>';
-window.BP_LOC_SVG = { stairs: STAIRS, ramp: RAMP, sidewalk: WALK };
+var DRIVE = '<svg viewBox="0 0 32 32" style="width:30px;height:30px;display:block;color:var(--text,#f0f0f0)" aria-hidden="true">'
+  + '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M1 29.5h30"/>'
+  + '<path d="M18.5 29.5V15.5L24.5 10l6 5.5v14"/>'
+  + '<path d="M21 29.5v-9h7v9M21 23.5h7M21 26.5h7"/>'
+  + '<path d="M3.5 26H2v-4.2l2.8-4.8h6.9l3.3 4.8h1.3V26h-1.4M7.4 26h3.8"/>'
+  + '<path d="M4.3 21.8h10.4"/>'
+  + '<circle cx="5.5" cy="26.4" r="1.9"/><circle cx="13.1" cy="26.4" r="1.9"/></g></svg>';
+window.BP_LOC_SVG = { stairs: STAIRS, ramp: RAMP, sidewalk: WALK, driveway: DRIVE };
 function pick(room){
   var n = String(room && room.name || '');
   if (/\bramps?\b|handicap|wheelchair|\bada\b/i.test(n)) return RAMP;
   if (/\bstairs?\b|\bsteps?\b|\bstoops?\b|stairway|staircase/i.test(n)) return STAIRS;
   if (/sidewalk|walkway|pathway|front walk/i.test(n)) return WALK;
+  if (/driveway|\bapron\b|curb cut/i.test(n)) return DRIVE;   /* v2.74 */
   return null;
 }
 if (window.BPX && BPX.icon && !BPX.icon.__v273) {
