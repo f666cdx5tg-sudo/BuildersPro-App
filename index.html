@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.77';
+var APP_VERSION = '2.78';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -16680,6 +16680,7 @@ function sigOf(refs){ return refs.slice().sort().join(','); }
 window.bpFetchRemote = async function(){
   var res = await bpGitHubFetch('https://api.github.com/gists/' + _syncGistId, {headers: bpAuthHeaders()});
   var gist = await res.json();
+  try { if (gist.owner && gist.owner.login) localStorage.setItem('bp_gist_owner', gist.owner.login); } catch(e){}   /* v2.78 calendar link */
   var file = gist.files && gist.files['bp_data.json'];
   if (!file) throw new Error('No data file found in this backup.');
   var content = file.truncated ? await (await fetch(file.raw_url)).text() : file.content;
@@ -16747,7 +16748,8 @@ window.bpPushAll = async function(){
   if (!gistId) {
     var res = await bpGitHubFetch('https://api.github.com/gists', { method: 'POST', headers: bpAuthHeaders(),
       body: JSON.stringify({ description: 'BuildersPro-sync', public: false, files: { 'bp_data.json': { content: JSON.stringify({ db: lean, blobChunks: [], pushedAt: now(), version: '3.1' }) } } }) });
-    gistId = (await res.json()).id; calls++;
+    var created = await res.json(); gistId = created.id; calls++;
+    try { if (created.owner && created.owner.login) localStorage.setItem('bp_gist_owner', created.owner.login); } catch(e){}
     _syncGistId = gistId;
   }
   for (var i = 0; i < L.changed.length; i++) {
@@ -16758,6 +16760,7 @@ window.bpPushAll = async function(){
     calls++;
   }
   var files = { 'bp_data.json': { content: meta() } };
+  try { if (window.bpBuildICS) files['bp_calendar.ics'] = { content: window.bpBuildICS() }; } catch(e){}   /* v2.78: live calendar feed, same request */
   L.stale.forEach(function(n){ files[n] = null; });
   if (calls) await bpSleep(1100);
   await bpGitHubFetch('https://api.github.com/gists/' + gistId, { method: 'PATCH', headers: bpAuthHeaders(), body: JSON.stringify({ files: files }) });
@@ -16783,5 +16786,196 @@ window.scheduleAutoPush = function(){
 };
 window.bpGhSyncInfo = function(){ return { minGapMs: MIN_GAP, lastAuto: lastAuto, remote: REMOTE && { chunks: Object.keys(REMOTE.sigs).length, at: REMOTE.at } }; };
 console.log('[BP] v2.76 GitHub sync sends only what changed');
+})();
+</script>
+<script>
+/* ══ v2.78 — APPLE / GOOGLE CALENDAR ═══════════════════════════════════════
+   Stan (Sep 27, 2026): "I need to be able to sync info with my calendars,
+   Apple or Google."
+   What a single-file app with no server can honestly do:
+   1. LIVE FEED (automatic, one way: BuildersPro → calendar). Every GitHub
+      backup also writes bp_calendar.ics into the same private gist. Apple
+      Calendar and Google Calendar SUBSCRIBE to its link and re-check it on
+      their own (Apple: every 5 min–1 week, you pick; Google: every few hours,
+      Google picks). Events made in Apple/Google do NOT come back into
+      BuildersPro — that would need a server.
+   2. ADD ONE EVENT: every saved appointment gets "Apple Calendar" (.ics file
+      → iPhone/Mac asks "Add to Calendar") and "Google Calendar" (opens
+      Google's own add-event page, pre-filled).
+   3. Download the whole calendar as a .ics file (one-time import).
+   Card sits under iCloud Sync on the Sync screen (both apps).
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+function E(s){ return (typeof esc === 'function') ? esc(s) : String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+/* ── .ics ── */
+function icsEsc(s){ return String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n'); }
+function fold(line){
+  var out = [], s = line;
+  while (s.length > 74) { out.push(s.slice(0, 74)); s = ' ' + s.slice(74); }
+  out.push(s); return out.join('\r\n');
+}
+function pad(n){ return (n < 10 ? '0' : '') + n; }
+function utc(d){ return d.getUTCFullYear() + pad(d.getUTCMonth()+1) + pad(d.getUTCDate()) + 'T' + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()) + 'Z'; }
+function ymd(s){ return String(s).replace(/-/g,''); }
+function nextDay(s){ var d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + 1); return d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()); }
+function jobOf(a){ return a && a.jobId ? (DB.jobs||[]).find(function(j){ return j.id === a.jobId; }) : null; }
+function jobAddress(j){ if (!j) return ''; return [j.address, j.city, j.state, j.zip].filter(Boolean).join(', ') || ''; }
+function evTimes(a){
+  if (a.time && /^\d{1,2}:\d{2}/.test(a.time)) {
+    var st = new Date(a.date + 'T' + a.time + ':00');
+    if (isNaN(st)) return null;
+    var en = new Date(st.getTime() + 60 * 60000);
+    return { allDay: false, start: st, end: en };
+  }
+  return { allDay: true };
+}
+function vevent(a){
+  if (!a || !a.date || !/^\d{4}-\d{2}-\d{2}$/.test(a.date)) return '';
+  var t = evTimes(a); if (!t) return '';
+  var j = jobOf(a);
+  var desc = [(a.type || 'Appointment') + (j ? ' · ' + j.name : ''), a.notes || '', 'From BuildersPro'].filter(Boolean).join('\n');
+  var L = ['BEGIN:VEVENT', 'UID:' + a.id + '@builderspro', 'DTSTAMP:' + utc(new Date(a.updatedAt || a.created || Date.now()))];
+  if (t.allDay) { L.push('DTSTART;VALUE=DATE:' + ymd(a.date)); L.push('DTEND;VALUE=DATE:' + nextDay(a.date)); }
+  else { L.push('DTSTART:' + utc(t.start)); L.push('DTEND:' + utc(t.end)); }
+  L.push('SUMMARY:' + icsEsc(a.title || a.type || 'Appointment'));
+  if (jobAddress(j)) L.push('LOCATION:' + icsEsc(jobAddress(j)));
+  L.push('DESCRIPTION:' + icsEsc(desc));
+  if (a.type) L.push('CATEGORIES:' + icsEsc(a.type));
+  L.push('END:VEVENT');
+  return L.map(fold).join('\r\n');
+}
+function wrap(evs){
+  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//BuildersPro//Calendar//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+          'X-WR-CALNAME:BuildersPro','X-PUBLISHED-TTL:PT1H','REFRESH-INTERVAL;VALUE=DURATION:PT1H']
+    .concat(evs.filter(Boolean)).concat(['END:VCALENDAR']).join('\r\n') + '\r\n';
+}
+window.bpBuildICS = function(){ return wrap((DB.appointments||[]).map(vevent)); };
+window.bpEventICS = function(id){ var a = (DB.appointments||[]).find(function(x){ return x.id === id; }); return a ? wrap([vevent(a)]) : ''; };
+
+function download(name, text){
+  var blob = new Blob([text], { type: 'text/calendar;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href = url; a.download = name; a.rel = 'noopener';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ a.remove(); URL.revokeObjectURL(url); }, 4000);
+}
+window.bpDownloadICS = function(){ download('BuildersPro-calendar.ics', window.bpBuildICS()); toast('Calendar file saved — open it to import'); };
+window.bpAddToApple = function(id){
+  var t = window.bpEventICS(id); if (!t) return;
+  var a = (DB.appointments||[]).find(function(x){ return x.id === id; });
+  download(String((a && a.title) || 'event').replace(/[^\w\- ]+/g,'').slice(0,40) + '.ics', t);
+};
+window.bpGoogleEventUrl = function(id){
+  var a = (DB.appointments||[]).find(function(x){ return x.id === id; });
+  if (!a || !a.date) return '';
+  var t = evTimes(a), j = jobOf(a);
+  var dates = t && !t.allDay ? utc(t.start) + '/' + utc(t.end) : ymd(a.date) + '/' + nextDay(a.date);
+  var details = [(a.type || 'Appointment') + (j ? ' · ' + j.name : ''), a.notes || '', 'From BuildersPro'].filter(Boolean).join('\n');
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(a.title || 'Appointment')
+    + '&dates=' + dates + '&details=' + encodeURIComponent(details) + (jobAddress(j) ? '&location=' + encodeURIComponent(jobAddress(j)) : '');
+};
+window.bpAddToGoogle = function(id){ var u = window.bpGoogleEventUrl(id); if (u) window.open(u, '_blank', 'noopener'); };
+
+/* ── Live feed link ── */
+function owner(){ try { return localStorage.getItem('bp_gist_owner') || ''; } catch(e){ return ''; } }
+window.bpCalFeedUrl = function(){
+  var gid = (typeof _syncGistId !== 'undefined' && _syncGistId) || '', o = owner();
+  return gid && o ? 'https://gist.githubusercontent.com/' + o + '/' + gid + '/raw/bp_calendar.ics' : '';
+};
+window.bpCopyCalFeed = function(){
+  var u = window.bpCalFeedUrl(); if (!u) return;
+  var done = function(){ toast('Calendar link copied'); };
+  try { navigator.clipboard.writeText(u).then(done, function(){ prompt('Copy this link:', u); }); } catch(e){ prompt('Copy this link:', u); }
+};
+
+/* ── Sync screen card ── */
+var CAL = '<svg viewBox="0 0 24 24" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M16 3v4M8 3v4M4 11h16"/></svg>';
+var B = 'display:block;width:100%;box-sizing:border-box;text-align:center;text-decoration:none;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;margin-top:8px';
+function cardHtml(){
+  var u = window.bpCalFeedUrl(), n = (DB.appointments||[]).length;
+  var h = '<div style="font-size:17px;font-weight:900;margin-bottom:4px">' + CAL + 'Apple / Google Calendar</div>'
+    + '<div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:6px">Your BuildersPro appointments, due dates and deliveries (' + n + ') show up in your phone\'s calendar. '
+    + '<b>One way:</b> changes made in BuildersPro flow to the calendar; events you add in Apple or Google stay there.</div>';
+  if (u) {
+    h += '<a href="' + u.replace(/^https:/, 'webcal:') + '" style="' + B + ';background:#0A84FF;color:#fff">Subscribe in Apple Calendar</a>'
+      + '<a href="https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(u.replace(/^https:/, 'webcal:')) + '" target="_blank" rel="noopener" style="' + B + ';background:transparent;color:#0A84FF;border:1.5px solid #0A84FF">Add to Google Calendar</a>'
+      + '<button onclick="bpCopyCalFeed()" style="' + B + ';background:transparent;color:var(--muted);border:1px solid var(--border,#2a2a2a)">Copy calendar link</button>'
+      + '<div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:8px">Updates every time BuildersPro backs up to GitHub. Apple re-checks as often as you set it (Settings → Calendar → Accounts → Subscribed → Fetch). '
+      + 'Google re-checks on its own every few hours. Keep the link private — anyone who has it can see these events.</div>';
+  } else {
+    h += '<div style="font-size:13px;color:#FF9F0A;line-height:1.5;margin:6px 0">The live calendar link needs GitHub backup on this device. Set up Sync above (or use a pairing code), tap Push once, then come back here.</div>';
+  }
+  h += '<button onclick="bpDownloadICS()" style="' + B + ';background:transparent;color:var(--muted);border:1px solid var(--border,#2a2a2a)">Download calendar file (.ics)</button>';
+  return h;
+}
+function mountCard(){
+  var anchor = document.getElementById('bp-cksync-card');
+  if (!anchor || !anchor.parentNode) return;
+  var c = document.getElementById('bp-cal-card');
+  if (!c) {
+    c = document.createElement('div'); c.id = 'bp-cal-card';
+    c.className = anchor.className || '';
+    c.style.cssText = anchor.getAttribute('style') || 'margin:12px 0;padding:16px;border-radius:14px;background:var(--card);border:1px solid var(--border)';
+    anchor.parentNode.insertBefore(c, anchor.nextSibling);
+  }
+  var html = cardHtml();
+  if (c.__html !== html) { c.innerHTML = html; c.__html = html; }
+}
+window.bpCalMount = mountCard;
+setInterval(function(){ try { if (document.getElementById('bp-cksync-card')) mountCard(); } catch(e){} }, 1500);
+
+/* ── Per-appointment buttons ── */
+function evButtons(id){
+  return '<div data-bp-cal-btns="1" style="display:flex;gap:8px;margin:0 0 12px">'
+    + '<button onclick="bpAddToApple(\'' + id + '\')" style="flex:1;padding:12px 8px;border-radius:12px;border:1.5px solid #0A84FF;background:transparent;color:#0A84FF;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">' + CAL + 'Apple Calendar</button>'
+    + '<button onclick="bpAddToGoogle(\'' + id + '\')" style="flex:1;padding:12px 8px;border-radius:12px;border:1.5px solid #34A853;background:transparent;color:#34A853;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">' + CAL + 'Google Calendar</button></div>';
+}
+if (!IS_DESK && typeof window.openNewAppointment === 'function') {
+  /* field app: the editor is #appointment-modal built by buildAppointmentModal(appt) */
+  var _bam = window.buildAppointmentModal;
+  if (typeof _bam === 'function' && !_bam.__cal) {
+    window.buildAppointmentModal = function(appt){
+      var r = _bam.apply(this, arguments);
+      try {
+        var mo = document.getElementById('appointment-modal');
+        if (appt && appt.id && mo && !mo.querySelector('[data-bp-cal-btns]')) {
+          var notes = mo.querySelector('#ap-notes');
+          var box = notes ? notes.parentNode : null;
+          if (box) { var d = document.createElement('div'); d.innerHTML = '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Add to my phone\'s calendar</div>' + evButtons(appt.id); box.parentNode.insertBefore(d, box.nextSibling); }
+        }
+      } catch(e){}
+      return r;
+    };
+    window.buildAppointmentModal.__cal = 1;
+  }
+}
+if (IS_DESK && typeof window.editAppointment === 'function' && !window.editAppointment.__cal) {
+  var _ea = window.editAppointment;
+  window.editAppointment = function(id){
+    var r = _ea.apply(this, arguments);
+    try {
+      var mo = document.getElementById('modal-new-appointment');
+      var old = mo && mo.querySelector('[data-bp-cal-wrap]'); if (old) old.remove();
+      var notes = document.getElementById('ap-notes');
+      var field = notes && (notes.closest('.field') || notes.parentNode);
+      if (field) { var d = document.createElement('div'); d.setAttribute('data-bp-cal-wrap','1'); d.innerHTML = '<div class="field-label">Add to my calendar</div>' + evButtons(id); field.parentNode.insertBefore(d, field.nextSibling); }
+    } catch(e){}
+    return r;
+  };
+  window.editAppointment.__cal = 1;
+  if (typeof window.openNewAppointment === 'function' && !window.openNewAppointment.__cal) {
+    var _ona = window.openNewAppointment;
+    window.openNewAppointment = function(){
+      var mo = document.getElementById('modal-new-appointment');
+      var old = mo && mo.querySelector('[data-bp-cal-wrap]'); if (old) old.remove();
+      return _ona.apply(this, arguments);
+    };
+    window.openNewAppointment.__cal = 1;
+  }
+}
+console.log('[BP] v2.78 calendar feed ready');
 })();
 </script>
