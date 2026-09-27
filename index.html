@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.76';
+var APP_VERSION = '2.77';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -3005,16 +3005,21 @@ window.saveMarkup = function() {
 
   if (t.type === 'photo') {
     var orig = DB.photos.find(function(p){ return p.id === t.id; });
-    DB.photos.push({
+    /* v2.77: the marked-up copy stays where the original was filed — same job,
+       same location, same caption/notes — instead of landing in Unfiled. */
+    var np = Object.assign({}, orig || {}, {
       id: uid(), src: dataUrl,
-      jobId: orig ? orig.jobId : '',
+      jobId: orig ? (orig.jobId || '') : '',
       date: now(),
       size: Math.round(dataUrl.length * 0.75 / 1024) + 'KB',
       annotated: true,
-      geo:     window._currentGeo || '',
-      weather: window._currentWeather || '',
+      annotatedFrom: orig ? orig.id : '',
+      geo:     (orig && orig.geo) || window._currentGeo || '',
+      weather: (orig && orig.weather) || window._currentWeather || '',
       createdBy: _userName || '',
+      created: now(), updatedAt: now()
     });
+    DB.photos.push(np);
     save(); renderAll();
     if (currentJobId) renderJobDetail(currentJobId);
   } else if (t.type === 'checklist') {
