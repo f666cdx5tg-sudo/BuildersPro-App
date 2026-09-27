@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.78';
+var APP_VERSION = '2.79';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -16977,5 +16977,315 @@ if (IS_DESK && typeof window.editAppointment === 'function' && !window.editAppoi
   }
 }
 console.log('[BP] v2.78 calendar feed ready');
+})();
+</script>
+<script>
+/* ══ v2.79 — BUILDERSCAM (CompanyCam-style photo tools, built into BuildersPro) ══
+   Stan (Sep 27, 2026): "add BuildersCam to BuildersPro" → build its features
+   in rather than a separate app. BuildersPro already had photos by job and
+   location, markup, before/after on checklist items, GPS + weather, and a
+   photo report. What was missing, now added (both apps):
+   1. TIMELINE — every photo from every job in one feed, newest first,
+      grouped by day, labelled with job and location. Filter by job, by tag,
+      and search words.
+   2. PHOTO DETAILS — tap a photo: caption (what it shows), tags (Before,
+      Progress, After, Damage, Leak, Rough-in…, or your own), when/where it
+      was taken, job and location. Mark up / delete still use the viewer.
+   3. BEFORE / AFTER — pick two photos, get one side-by-side picture with
+      BEFORE and AFTER labels and dates, saved to the same location, ready
+      to text or email to a client.
+   Stored on the photo record (caption, tags[]) so it syncs like everything
+   else. Checklist photos show in the timeline too (read-only caption = the
+   checklist item). Opens from the camera bar on the Photos screen.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+function E(s){ return (typeof esc === 'function') ? esc(s) : String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function ts(){ return (typeof now === 'function') ? now() : new Date().toISOString(); }
+function img(s){ return window.bpImgSrc ? window.bpImgSrc(s) : s; }
+var TAGS = ['Before','Progress','After','Damage','Leak','Rough-in','Inspection','Delivery','Safety','Issue'];
+var TAGC = { BEFORE:'#FF9F0A', AFTER:'#30D158', DONE:'#0A84FF', Before:'#FF9F0A', After:'#30D158', Progress:'#64D2FF',
+             Damage:'#FF453A', Leak:'#0A84FF', Issue:'#FF453A', Safety:'#FFD60A', Inspection:'#BF5AF2', 'Before/After':'#30D158' };
+var ICON = {
+  cam: '<svg viewBox="0 0 24 24" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M5 7h1a2 2 0 0 0 2-2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/></svg>',
+  cmp: '<svg viewBox="0 0 24 24" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>'
+};
+
+/* ── All photos: gallery + checklist ── */
+function roomName(id){ var r = id && (DB.rooms||[]).find(function(x){ return x.id === id; }); return r ? r.name : ''; }
+function jobName(id){ var j = id && (DB.jobs||[]).find(function(x){ return x.id === id; }); return j ? j.name : ''; }
+window.bpCamEntries = function(){
+  var out = [];
+  (DB.photos||[]).forEach(function(p){
+    if (!p || !p.src) return;
+    out.push({ key:p.id, gallery:true, src:p.src, date:p.date || p.created || '', jobId:p.jobId||'', roomId:p.roomId||'',
+               caption:p.caption||'', tags:(p.tags||[]).slice(), geo:p.geo||'', weather:p.weather||'', by:p.createdBy||'' });
+  });
+  (DB.punchlist||[]).forEach(function(it){
+    if (!it) return;
+    [['before', it.photosBefore, 'BEFORE'], ['after', it.photosAfter, 'AFTER']].forEach(function(g){
+      (Array.isArray(g[1]) ? g[1] : []).forEach(function(p, i){
+        if (!p || !p.src) return;
+        out.push({ key:'cl|' + it.id + '|' + g[0] + '|' + i, gallery:false, src:p.src, date:p.date || it.created || '', jobId:it.jobId||'', roomId:it.roomId||'',
+                   caption:it.text||'', tags:[g[2]], geo:p.geo||'', weather:p.weather||'', by:'' });
+      });
+    });
+    if (it.completionPhoto) out.push({ key:'cl|' + it.id + '|completion|0', gallery:false, src:it.completionPhoto, date:it.completionPhotoDate || it.completedAt || '',
+      jobId:it.jobId||'', roomId:it.roomId||'', caption:it.text||'', tags:['DONE'], geo:'', weather:'', by:'' });
+  });
+  out.sort(function(a,b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+  return out;
+};
+
+/* ── Overlay ── */
+function overlay(id, title, body, foot, full){
+  var old = document.getElementById(id); var st = old ? (old.querySelector('.bp-sheet-body')||{}).scrollTop : 0; if (old) old.remove();
+  var w = document.createElement('div'); w.id = id;
+  w.style.cssText = 'position:fixed;inset:0;background:' + (full ? 'var(--bg,#0d0d0d)' : 'rgba(0,0,0,.72)') + ';z-index:10001;display:flex;align-items:'
+    + (full || !IS_DESK ? 'stretch' : 'center') + ';justify-content:center;padding-top:var(--safe-top,0px);box-sizing:border-box';
+  w.innerHTML = '<div style="background:var(--bg,#111);color:var(--text,#f0f0f0);width:100%;max-width:' + (IS_DESK ? '1100px' : '100%') + ';'
+    + (full ? 'height:100%' : 'max-height:100%;margin-top:auto;border-radius:20px 20px 0 0') + ';display:flex;flex-direction:column;box-sizing:border-box">'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px 8px">'
+    + '<div style="font-size:20px;font-weight:900;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + '</div>'
+    + '<button onclick="document.getElementById(\'' + id + '\').remove()" aria-label="Close" style="background:var(--card2,#222);border:none;color:var(--text);'
+    + 'width:40px;height:40px;border-radius:50%;font-size:22px;cursor:pointer;flex-shrink:0">×</button></div>'
+    + '<div class="bp-sheet-body" style="overflow-y:auto;padding:0 16px 16px;flex:1;min-height:0">' + body + '</div>'
+    + (foot ? '<div style="padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border,#2a2a2a)">' + foot + '</div>' : '')
+    + '</div>';
+  document.body.appendChild(w);
+  if (st) w.querySelector('.bp-sheet-body').scrollTop = st;
+  return w;
+}
+
+/* ── 1. Timeline ── */
+var TL = { job:'', tag:'', q:'', pick:false, picked:[] };
+function dayLabel(iso){
+  if (!iso) return 'No date';
+  var d = new Date(iso); if (isNaN(d)) return 'No date';
+  var t = new Date(); t.setHours(0,0,0,0);
+  var dd = new Date(d); dd.setHours(0,0,0,0);
+  var diff = Math.round((t - dd) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year: d.getFullYear() === t.getFullYear() ? undefined : 'numeric' });
+}
+function dayKey(iso){ var d = new Date(iso); return isNaN(d) ? 'none' : d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate(); }
+function filtered(){
+  var q = TL.q.trim().toLowerCase();
+  return window.bpCamEntries().filter(function(e){
+    if (TL.job && e.jobId !== TL.job) return false;
+    if (TL.tag && e.tags.indexOf(TL.tag) < 0 && !(TL.tag === 'Before' && e.tags.indexOf('BEFORE') >= 0) && !(TL.tag === 'After' && e.tags.indexOf('AFTER') >= 0)) return false;
+    if (q) { var hay = [e.caption, e.tags.join(' '), jobName(e.jobId), roomName(e.roomId), e.weather].join(' ').toLowerCase(); if (hay.indexOf(q) < 0) return false; }
+    return true;
+  });
+}
+function tile(e){
+  var sel = TL.picked.indexOf(e.key), tag = e.tags[0];
+  return '<div data-cam-key="' + E(e.key) + '" onclick="bpCamTap(\'' + E(e.key).replace(/'/g, "\\'") + '\')" style="position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;cursor:pointer;background:#222;'
+    + (sel >= 0 ? 'outline:4px solid ' + (sel === 0 ? '#FF9F0A' : '#30D158') + ';outline-offset:-4px' : '') + '">'
+    + '<img src="' + img(e.src) + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block"/>'
+    + (tag ? '<div style="position:absolute;top:5px;left:5px;background:' + (TAGC[tag] || '#8E8E93') + ';color:#000;font-size:10px;font-weight:900;padding:2px 7px;border-radius:6px">' + E(String(tag).toUpperCase()) + '</div>' : '')
+    + (sel >= 0 ? '<div style="position:absolute;top:5px;right:5px;background:' + (sel === 0 ? '#FF9F0A' : '#30D158') + ';color:#000;font-size:11px;font-weight:900;padding:3px 8px;border-radius:6px">' + (sel === 0 ? 'BEFORE' : 'AFTER') + '</div>' : '')
+    + '<div style="position:absolute;left:0;right:0;bottom:0;padding:14px 6px 5px;background:linear-gradient(transparent,rgba(0,0,0,.85));color:#fff;font-size:11px;font-weight:700;line-height:1.25">'
+    + '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(e.caption || roomName(e.roomId) || jobName(e.jobId) || 'Unfiled') + '</div>'
+    + '<div style="opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E([jobName(e.jobId), roomName(e.roomId)].filter(Boolean).join(' · ')) + '</div></div></div>';
+}
+window.bpOpenCam = function(opts){
+  opts = opts || {};
+  if (opts.pick) { TL.pick = true; TL.picked = []; }
+  var list = filtered(), all = window.bpCamEntries();
+  var usedTags = {}; all.forEach(function(e){ e.tags.forEach(function(t){ var n = t === 'BEFORE' ? 'Before' : t === 'AFTER' ? 'After' : t; if (n !== 'DONE') usedTags[n] = 1; }); });
+  var jobs = DB.jobs || [];
+  var S = 'padding:11px 12px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text);font-size:15px;font-family:inherit';
+  var top = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+    + '<select onchange="bpCamSet(\'job\',this.value)" style="flex:1;min-width:140px;' + S + '"><option value="">All jobs</option>'
+    + jobs.map(function(j){ return '<option value="' + j.id + '"' + (TL.job === j.id ? ' selected' : '') + '>' + E(j.name) + '</option>'; }).join('') + '</select>'
+    + '<input type="search" placeholder="Search captions, tags, rooms…" value="' + E(TL.q) + '" oninput="bpCamSearch(this.value)" style="flex:2;min-width:160px;' + S + '"/></div>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'
+    + ['All'].concat(Object.keys(usedTags).sort()).map(function(t){ var on = (t === 'All' && !TL.tag) || TL.tag === t;
+        return '<button onclick="bpCamSet(\'tag\',\'' + (t === 'All' ? '' : t.replace(/'/g, "\\'")) + '\')" style="padding:8px 13px;border-radius:99px;border:1.5px solid ' + (on ? '#0A84FF' : 'var(--border,#2a2a2a)')
+          + ';background:' + (on ? 'rgba(10,132,255,.15)' : 'transparent') + ';color:' + (on ? '#0A84FF' : 'var(--muted)') + ';font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">' + E(t) + '</button>'; }).join('')
+    + '</div>';
+  if (TL.pick) top += '<div style="padding:12px 14px;border-radius:12px;background:rgba(48,209,88,.12);border:1.5px dashed #30D158;margin-bottom:12px;font-size:14px;font-weight:700;line-height:1.45">'
+    + (TL.picked.length === 0 ? 'Tap the <span style="color:#FF9F0A">BEFORE</span> photo.' : TL.picked.length === 1 ? 'Now tap the <span style="color:#30D158">AFTER</span> photo.' : 'Ready — tap <b>Make Before / After</b> below.') + '</div>';
+  var body = top, last = null, cols = IS_DESK ? 'repeat(auto-fill,minmax(170px,1fr))' : 'repeat(3,1fr)';
+  if (!list.length) body += '<div style="padding:40px 0;text-align:center;color:var(--muted);font-size:15px">No photos match.</div>';
+  var grp = {}; list.forEach(function(e){ var k = dayKey(e.date); (grp[k] = grp[k] || []).push(e); });
+  var seen = {};
+  list.forEach(function(e){
+    var k = dayKey(e.date); if (seen[k]) return; seen[k] = 1;
+    body += '<div style="display:flex;align-items:baseline;gap:8px;margin:' + (last ? '16px' : '4px') + ' 0 8px"><div style="font-size:16px;font-weight:900">' + E(dayLabel(e.date)) + '</div>'
+      + '<div style="font-size:13px;color:var(--muted);font-weight:700">' + grp[k].length + ' photo' + (grp[k].length !== 1 ? 's' : '') + '</div></div>'
+      + '<div style="display:grid;grid-template-columns:' + cols + ';gap:6px">' + grp[k].map(tile).join('') + '</div>';
+    last = k;
+  });
+  var B = 'flex:1;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
+  var foot = TL.pick
+    ? '<div style="display:flex;gap:8px"><button onclick="bpCamPickOff()" style="' + B + ';background:var(--card2,#222);color:var(--text)">Cancel</button>'
+      + '<button onclick="bpCamMakeCompare()" ' + (TL.picked.length === 2 ? '' : 'disabled') + ' style="' + B + ';flex:2;background:#30D158;color:#000;opacity:' + (TL.picked.length === 2 ? 1 : .4) + '">' + ICON.cmp + 'Make Before / After</button></div>'
+    : '<div style="display:flex;gap:8px"><button onclick="bpCamPickOn()" style="' + B + ';background:#30D158;color:#000">' + ICON.cmp + 'Before / After</button></div>';
+  overlay('bp-cam', ICON.cam + 'BuildersCam · ' + list.length + ' photo' + (list.length !== 1 ? 's' : ''), body, foot, true);
+};
+window.bpCamSet = function(k, v){ TL[k] = v; window.bpOpenCam(); };
+var qT = null;
+window.bpCamSearch = function(v){ TL.q = v; clearTimeout(qT); qT = setTimeout(function(){ window.bpOpenCam(); var i = document.querySelector('#bp-cam input[type=search]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 350); };
+window.bpCamPickOn = function(){ TL.pick = true; TL.picked = []; window.bpOpenCam(); };
+window.bpCamPickOff = function(){ TL.pick = false; TL.picked = []; window.bpOpenCam(); };
+window.bpCamTap = function(key){
+  if (TL.pick) {
+    var i = TL.picked.indexOf(key);
+    if (i >= 0) TL.picked.splice(i, 1); else if (TL.picked.length < 2) TL.picked.push(key);
+    window.bpOpenCam(); return;
+  }
+  window.bpOpenCamPhoto(key);
+};
+
+/* ── 2. Photo details ── */
+var PD = { key:'', tags:[] };
+window.bpOpenCamPhoto = function(key){
+  var e = window.bpCamEntries().find(function(x){ return x.key === key; });
+  if (!e) return;
+  PD.key = key; PD.tags = e.tags.slice(); PD.roomId = e.roomId; PD.jobId = e.jobId;
+  var d = e.date ? new Date(e.date) : null;
+  var when = d && !isNaN(d) ? d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' }) + ' · ' + d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) : '';
+  var meta = [['Job', jobName(e.jobId) || '—'], ['Location', roomName(e.roomId) || 'Unfiled'], ['Taken', when || '—']];
+  if (e.geo) meta.push(['Where', e.geo]); if (e.weather) meta.push(['Weather', e.weather]); if (e.by) meta.push(['By', e.by]);
+  var body = '<img src="' + img(e.src) + '" style="width:100%;max-height:52vh;object-fit:contain;border-radius:12px;background:#000;display:block;margin-bottom:12px"/>';
+  if (e.gallery) {
+    body += '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:4px 0 6px">Caption</div>'
+      + '<textarea id="bp-cam-cap" rows="2" placeholder="What does this show? e.g. Leak at tub drain, new PEX run to vanity…" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;'
+      + 'border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text);font-size:16px;font-family:inherit;resize:vertical">' + E(e.caption) + '</textarea>'
+      + '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:12px 0 6px">Tags</div>'
+      + '<div id="bp-cam-tags" style="display:flex;flex-wrap:wrap;gap:7px">' + tagChips() + '</div>'
+      + '<div style="display:flex;gap:8px;margin-top:8px"><input id="bp-cam-newtag" placeholder="Add your own tag…" style="flex:1;min-width:0;padding:11px 12px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text);font-size:15px;font-family:inherit"/>'
+      + '<button onclick="bpCamAddTag()" style="padding:0 16px;border-radius:10px;border:none;background:#0A84FF;color:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit">Add</button></div>';
+  } else {
+    body += '<div style="padding:12px 14px;border-radius:12px;background:var(--card,#1a1a1a);border:1px solid var(--border,#2a2a2a);font-size:15px;line-height:1.45">'
+      + '<span style="font-weight:900;color:' + (TAGC[e.tags[0]] || '#8E8E93') + '">' + E(e.tags[0]) + '</span> photo on checklist item: <b>' + E(e.caption) + '</b></div>';
+  }
+  body += '<div style="margin-top:14px;padding:4px 14px;border-radius:12px;background:var(--card,#1a1a1a);border:1px solid var(--border,#2a2a2a)">'
+    + meta.map(function(m){ return '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border,#2a2a2a);font-size:14px"><span style="width:78px;color:var(--muted);font-weight:700;flex-shrink:0">' + m[0] + '</span><span style="flex:1;min-width:0">' + E(m[1]) + '</span></div>'; }).join('')
+    + '</div>';
+  var B = 'flex:1;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
+  var canView = e.gallery || !IS_DESK;
+  var foot = '<div style="display:flex;gap:8px">'
+    + (canView ? '<button onclick="bpCamViewer()" style="' + B + ';background:var(--card2,#222);color:var(--text);border:1px solid var(--border,#2a2a2a)">Mark up / Delete</button>' : '')
+    + (e.gallery ? '<button onclick="bpCamSaveDetails()" style="' + B + ';background:#0A84FF;color:#fff;border:none">Save</button>' : '')
+    + '</div>';
+  overlay('bp-cam-photo', E(roomName(e.roomId) || jobName(e.jobId) || 'Photo'), body, foot, false);
+};
+function tagChips(){
+  var list = TAGS.slice(); PD.tags.forEach(function(t){ if (list.indexOf(t) < 0) list.push(t); });
+  return list.map(function(t){ var on = PD.tags.indexOf(t) >= 0, c = TAGC[t] || '#0A84FF';
+    return '<button onclick="bpCamTag(\'' + t.replace(/'/g, "\\'") + '\')" style="padding:9px 13px;border-radius:99px;border:1.5px solid ' + (on ? c : 'var(--border,#2a2a2a)')
+      + ';background:' + (on ? c + '26' : 'transparent') + ';color:' + (on ? c : 'var(--muted)') + ';font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">' + (on ? '✓ ' : '') + E(t) + '</button>'; }).join('');
+}
+window.bpCamTag = function(t){ var i = PD.tags.indexOf(t); if (i >= 0) PD.tags.splice(i, 1); else PD.tags.push(t); var w = document.getElementById('bp-cam-tags'); if (w) w.innerHTML = tagChips(); };
+window.bpCamAddTag = function(){ var i = document.getElementById('bp-cam-newtag'); var v = (i && i.value || '').trim().slice(0, 24); if (!v) return; if (PD.tags.indexOf(v) < 0) PD.tags.push(v); i.value = ''; var w = document.getElementById('bp-cam-tags'); if (w) w.innerHTML = tagChips(); };
+window.bpCamSaveDetails = function(){
+  var p = (DB.photos||[]).find(function(x){ return x.id === PD.key; }); if (!p) return;
+  var cap = (document.getElementById('bp-cam-cap') || {}).value || '';
+  p.caption = cap.trim(); p.tags = PD.tags.slice(); p.updatedAt = ts();
+  if (!p.caption) delete p.caption; if (!p.tags.length) delete p.tags;
+  persist();
+  var s = document.getElementById('bp-cam-photo'); if (s) s.remove();
+  if (document.getElementById('bp-cam')) window.bpOpenCam();
+  toast('Photo saved');
+};
+window.bpCamViewer = function(){
+  var s = document.getElementById('bp-cam-photo'); if (s) s.remove();
+  var c = document.getElementById('bp-cam'); if (c) c.remove();
+  if (IS_DESK) viewPhoto(PD.key); else viewPhoto(PD.key, PD.roomId ? 'room:' + PD.roomId : (PD.jobId ? 'job:' + PD.jobId : 'gallery'));
+};
+
+/* ── 3. Before / After ── */
+function loadImg(src){ return new Promise(function(res, rej){ var i = new Image(); i.onload = function(){ res(i); }; i.onerror = rej; i.src = src; }); }
+window.bpCamMakeCompare = async function(){
+  if (TL.picked.length !== 2) return;
+  var all = window.bpCamEntries();
+  var a = all.find(function(x){ return x.key === TL.picked[0]; }), b = all.find(function(x){ return x.key === TL.picked[1]; });
+  if (!a || !b || /^bpb:/.test(a.src) || /^bpb:/.test(b.src)) { toast('One of those photos is missing on this device'); return; }
+  try {
+    var ia = await loadImg(a.src), ib = await loadImg(b.src);
+    var H = Math.min(1200, Math.max(ia.naturalHeight, ib.naturalHeight));
+    var wa = Math.round(ia.naturalWidth * H / ia.naturalHeight), wb = Math.round(ib.naturalWidth * H / ib.naturalHeight);
+    var gap = 12, bar = Math.round(H * 0.12), foot = Math.round(H * 0.08);
+    var c = document.createElement('canvas'); c.width = wa + wb + gap; c.height = H + foot;
+    var x = c.getContext('2d');
+    x.fillStyle = '#111'; x.fillRect(0, 0, c.width, c.height);
+    x.drawImage(ia, 0, 0, wa, H); x.drawImage(ib, wa + gap, 0, wb, H);
+    var label = function(txt, color, left, w, date){
+      x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(left, 0, w, bar);
+      x.fillStyle = color; x.font = '900 ' + Math.round(bar * 0.55) + 'px -apple-system,Helvetica,Arial,sans-serif'; x.textBaseline = 'middle';
+      x.fillText(txt, left + bar * 0.4, bar / 2);
+      if (date) { x.fillStyle = '#fff'; x.font = '700 ' + Math.round(bar * 0.36) + 'px -apple-system,Helvetica,Arial,sans-serif'; x.textAlign = 'right'; x.fillText(date, left + w - bar * 0.4, bar / 2); x.textAlign = 'left'; }
+    };
+    var fd = function(s){ var d = new Date(s); return isNaN(d) ? '' : d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); };
+    label('BEFORE', '#FF9F0A', 0, wa, fd(a.date)); label('AFTER', '#30D158', wa + gap, wb, fd(b.date));
+    x.fillStyle = '#fff'; x.font = '700 ' + Math.round(foot * 0.45) + 'px -apple-system,Helvetica,Arial,sans-serif'; x.textBaseline = 'middle';
+    x.fillText([jobName(b.jobId || a.jobId), roomName(b.roomId || a.roomId)].filter(Boolean).join(' · ') || 'BuildersPro', foot * 0.4, H + foot / 2);
+    var url = c.toDataURL('image/jpeg', 0.86);
+    var photo = { id: uid(), src: url, jobId: b.jobId || a.jobId || '', roomId: b.roomId || a.roomId || '', date: ts(), created: ts(), updatedAt: ts(),
+                  size: Math.round(url.length * 0.75 / 1024) + 'KB', annotated: true, caption: 'Before / After' + (a.caption || b.caption ? ' — ' + (b.caption || a.caption) : ''),
+                  tags: ['Before/After'], compareOf: [a.key, b.key], createdBy: (typeof _userName !== 'undefined' && _userName) || '' };
+    DB.photos = DB.photos || []; DB.photos.push(photo);
+    persist();
+    TL.pick = false; TL.picked = [];
+    try { if (typeof renderPhotos === 'function') renderPhotos(); } catch(e){}
+    try { if (IS_DESK && typeof renderDesktopPhotos === 'function') renderDesktopPhotos(); } catch(e){}
+    window.bpOpenCam();
+    window.bpOpenCamShare(photo.id);
+  } catch (err) { console.warn('[BP] compare', err); toast('Could not build the picture — try two other photos'); }
+};
+window.bpOpenCamShare = function(id){
+  var p = (DB.photos||[]).find(function(x){ return x.id === id; }); if (!p) return;
+  var B = 'flex:1;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
+  overlay('bp-cam-photo', 'Before / After saved',
+    '<img src="' + p.src + '" style="width:100%;border-radius:12px;display:block;margin-bottom:10px"/>'
+    + '<div style="font-size:14px;color:var(--muted);line-height:1.5">Saved to ' + E([jobName(p.jobId), roomName(p.roomId)].filter(Boolean).join(' · ') || 'Photos') + '. Send it to the client from here.</div>',
+    '<div style="display:flex;gap:8px"><button onclick="bpCamShare(\'' + id + '\')" style="' + B + ';background:#0A84FF;color:#fff">Share / Text / Email</button>'
+    + '<button onclick="document.getElementById(\'bp-cam-photo\').remove()" style="' + B + ';background:var(--card2,#222);color:var(--text)">Done</button></div>', false);
+};
+window.bpCamShare = async function(id){
+  var p = (DB.photos||[]).find(function(x){ return x.id === id; }); if (!p) return;
+  try {
+    var blob = await (await fetch(p.src)).blob();
+    var file = new File([blob], 'before-after.jpg', { type: 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Before / After' }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  var a = document.createElement('a'); a.href = p.src; a.download = 'before-after.jpg'; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1000);
+};
+
+/* ── Entry points: camera bar on the Photos screen ── */
+function camBar(){
+  var B = 'flex:1;display:flex;align-items:center;justify-content:center;padding:13px 10px;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
+  return '<button onclick="bpOpenCam()" style="' + B + ';background:#0A84FF;color:#fff;border:none">' + ICON.cam + 'BuildersCam Timeline</button>'
+    + '<button onclick="bpOpenCam({pick:true})" style="' + B + ';background:transparent;color:#30D158;border:1.5px solid #30D158">' + ICON.cmp + 'Before / After</button>';
+}
+function mount(){
+  if (IS_DESK) {
+    var acts = document.querySelector('#view-photos .view-actions');
+    if (acts && !acts.querySelector('[data-bp-cam]')) {
+      var b1 = document.createElement('button'); b1.className = 'btn'; b1.setAttribute('data-bp-cam', '1'); b1.style.cssText = 'background:#0A84FF;color:#fff';
+      b1.innerHTML = ICON.cam + 'BuildersCam'; b1.onclick = function(){ window.bpOpenCam(); };
+      var b2 = document.createElement('button'); b2.className = 'btn btn-ghost'; b2.setAttribute('data-bp-cam', '2'); b2.style.color = '#30D158';
+      b2.innerHTML = ICON.cmp + 'Before / After'; b2.onclick = function(){ window.bpOpenCam({ pick: true }); };
+      acts.insertBefore(b2, acts.firstChild); acts.insertBefore(b1, acts.firstChild);
+    }
+  } else {
+    var scr = document.getElementById('s-photos');
+    if (scr && !document.getElementById('bp-cam-bar')) {
+      var bar = document.createElement('div'); bar.id = 'bp-cam-bar';
+      bar.style.cssText = 'display:flex;gap:8px;padding:0 16px 10px';
+      bar.innerHTML = camBar();
+      var tb = scr.querySelector('.topbar');
+      scr.insertBefore(bar, tb ? tb.nextSibling : scr.firstChild);
+    }
+  }
+}
+mount(); setTimeout(mount, 1500);
+console.log('[BP] v2.79 BuildersCam ready');
 })();
 </script>
