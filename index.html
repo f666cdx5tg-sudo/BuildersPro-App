@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.80';
+var APP_VERSION = '2.81';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -3814,7 +3814,7 @@ function bpRecordTs(x) {
    anything tombstoned, then purges. Permanent by design: there's no undelete UI
    anywhere in this app, so a grow-only set is correct here (unlike archiveState,
    which has a Restore button and therefore needs last-write-wins instead). */
-var BP_COLLECTIONS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','reports','contacts','permits','punchlist','walkthroughs','documents','payments','appointments','estimates','timeEntries','changeOrders'];
+var BP_COLLECTIONS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','reports','contacts','permits','punchlist','walkthroughs','documents','payments','appointments','estimates','timeEntries','changeOrders','shopping'];
 /* v2.46: any collection an incoming payload carries that this build has never
    heard of still gets merged and re-pushed, instead of being silently dropped
    on the next push. That is how a device on an older build erases a record
@@ -17408,3 +17408,514 @@ paint(); setTimeout(paint, 1600);
 console.log('[BP] v2.80 photo stamp ready (' + (window.bpStampOn() ? 'on' : 'off') + ')');
 })();
 </script>
+<script>
+/* ══ v2.81 — SHOPPING LIST (with calculator) + DAILY LOG ════════════════════
+   Stan (Sep 28, 2026): "2 things I'd like to test in BuildersPro — a shopping
+   list with a calculator, and a daily log."
+
+   1. SHOPPING LIST — materials to buy, per job (or "No job").
+      • Each line: what, how many, unit, price each, store → line total.
+      • Running totals: still to buy / bought / all, plus sales tax
+        (per device, default NJ 6.625%, can be set to 0).
+      • Tick = bought. Bought lines drop below; the screen never jumps.
+      • Calculator button next to every number, and a big-key calculator
+        on its own. Number boxes also take math: "3*12" → 36.
+      • Share the list (text / email / AirDrop), grouped by store.
+      • "Add bought to Money" turns bought lines into ONE expense per
+        store (category Materials, items listed) so costs land in the
+        Spending Monitor without typing them twice.
+      Stored in DB.shopping, so it syncs like everything else.
+
+   2. DAILY LOG — one log per job per day (Raken-style).
+      • TOP: what the app already knows about that day — weather, photos,
+        checklist items finished / added, hours on the time clock,
+        expenses and deliveries, materials bought, appointments.
+      • BELOW: what only Stan knows — work done, crew, hours, problems /
+        delays, visitors & inspections, safety, tomorrow's plan, note
+        for the client. "Fill from today" writes the finished checklist
+        items into Work done.
+      • ‹ › to step through days; list of past logs to jump back.
+      • Send to client uses the existing Send sheet (Photo Report /
+        Email / Text) — nothing sends by itself.
+      It is the SAME record as the old Daily Report / EOD (DB.reports),
+      so the Mac's EOD Review and the job's "Daily Reports" list show it.
+      The job's "+ New Report" now opens the Daily Log.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function Q(s){ return E(s).replace(/\\/g,'\\\\'); }
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function ts(){ return (typeof now === 'function') ? now() : new Date().toISOString(); }
+function newId(){ return (typeof uid === 'function') ? uid() : 'bp' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function say(m){ try { toast(m); } catch(e){} }
+function pad2(n){ return (n < 10 ? '0' : '') + n; }
+function dk(v){ if (!v) return ''; if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v; var d = new Date(v); if (isNaN(d)) return ''; return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
+function today(){ return dk(new Date()); }
+function shiftDay(k, n){ var p = k.split('-'); var d = new Date(+p[0], +p[1]-1, +p[2]); d.setDate(d.getDate() + n); return dk(d); }
+function prettyDay(k){ var p = k.split('-'); var d = new Date(+p[0], +p[1]-1, +p[2]); var t = today();
+  var lbl = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  return k === t ? 'Today · ' + lbl : k === shiftDay(t, -1) ? 'Yesterday · ' + lbl : lbl; }
+function money(n){ n = +n || 0; return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+function num(n){ n = +n || 0; return (Math.round(n * 1000) / 1000).toLocaleString('en-US', { maximumFractionDigits:3 }); }
+function jobs(){ return (DB.jobs||[]).filter(function(j){ return j && !(DB.archiveState && DB.archiveState[j.id] && DB.archiveState[j.id].archived); }); }
+function jobName(id){ var j = id && (DB.jobs||[]).find(function(x){ return x.id === id; }); return j ? j.name : ''; }
+function roomName(id){ var r = id && (DB.rooms||[]).find(function(x){ return x.id === id; }); return r ? r.name : ''; }
+function activeJob(){ try { return (typeof bpActiveJob === 'function' && bpActiveJob()) || (typeof currentJobId !== 'undefined' && currentJobId) || ''; } catch(e){ return ''; } }
+
+/* math in a number box: digits . + - * / x ÷ ( ) only */
+window.bpCalcEval = function(s){
+  s = String(s == null ? '' : s).replace(/[×x]/g, '*').replace(/÷/g, '/').replace(/[$,\s]/g, '').replace(/−/g, '-');
+  if (!s) return 0;
+  if (!/^[\d.+\-*/()]+$/.test(s)) return NaN;
+  try { var v = Function('"use strict";return (' + s + ')')(); return (typeof v === 'number' && isFinite(v)) ? Math.round(v * 10000) / 10000 : NaN; } catch(e){ return NaN; }
+};
+
+var ICON = {
+  cart: '<svg viewBox="0 0 24 24" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><circle cx="6" cy="19" r="2"/><circle cx="17" cy="19" r="2"/><path d="M17 17H6V3H4"/><path d="M6 5l14 1l-1 7H6"/></svg>',
+  log: '<svg viewBox="0 0 24 24" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 12h6M9 16h4"/></svg>',
+  calc: '<svg viewBox="0 0 24 24" style="width:20px;height:20px;vertical-align:-4px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="4" y="3" width="16" height="18" rx="2"/><rect x="8" y="7" width="8" height="3" rx="1"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01M16 17h.01"/></svg>',
+  share: '<svg viewBox="0 0 24 24" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M10 14L21 3M21 3l-6.5 18a.55 .55 0 0 1-1 0L10 14l-7-3.5a.55 .55 0 0 1 0-1L21 3"/></svg>'
+};
+
+/* ── shared full-height sheet (safe-top + max-height:100%, per house rules) ── */
+function overlay(id, title, body, foot){
+  var old = document.getElementById(id); var st = old ? (old.querySelector('.bp-sheet-body')||{}).scrollTop : 0; if (old) old.remove();
+  var w = document.createElement('div'); w.id = id;
+  w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10001;display:flex;align-items:' + (IS_DESK ? 'center' : 'stretch')
+    + ';justify-content:center;padding-top:var(--safe-top,0px);box-sizing:border-box';
+  w.innerHTML = '<div style="background:var(--bg,#111);color:var(--text,#f0f0f0);width:100%;max-width:' + (IS_DESK ? '860px' : '100%') + ';'
+    + (IS_DESK ? 'height:92%;border-radius:18px' : 'max-height:100%;height:100%;margin-top:auto;border-radius:20px 20px 0 0') + ';display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden">'
+    + '<div data-bp-sheet-head style="display:flex;align-items:center;gap:10px;padding:12px 16px 8px">'
+    + '<div style="font-size:21px;font-weight:900;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center">' + title + '</div>'
+    + '<button onclick="document.getElementById(\'' + id + '\').remove()" aria-label="Close" style="background:var(--card2,#222);border:none;color:var(--text);'
+    + 'width:44px;height:44px;border-radius:50%;font-size:24px;cursor:pointer;flex-shrink:0">×</button></div>'
+    + '<div class="bp-sheet-body" style="overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 16px;flex:1;min-height:0">' + body + '</div>'
+    + (foot ? '<div style="padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border,#2a2a2a)">' + foot + '</div>' : '')
+    + '</div>';
+  document.body.appendChild(w);
+  if (st) w.querySelector('.bp-sheet-body').scrollTop = st;
+  return w;
+}
+var INP = 'width:100%;box-sizing:border-box;padding:13px 14px;border-radius:12px;border:1px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:17px;font-family:inherit';
+var LBL = 'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:12px 0 6px';
+var BTN = 'border:none;border-radius:12px;padding:14px 12px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center';
+function jobSelect(id, cur, onchange, allowNone){
+  var h = '<select id="' + id + '" onchange="' + onchange + '" style="' + INP + ';font-weight:800">';
+  if (allowNone) h += '<option value="">No job (general)</option>';
+  jobs().forEach(function(j){ h += '<option value="' + E(j.id) + '"' + (j.id === cur ? ' selected' : '') + '>' + E(j.name) + '</option>'; });
+  return h + '</select>';
+}
+
+/* ═════════════ CALCULATOR ═════════════ */
+var CALC = { expr:'', target:'', done:null };
+window.bpOpenCalc = function(targetId, done){
+  var t = targetId && document.getElementById(targetId);
+  CALC.target = targetId || ''; CALC.done = done || null;
+  CALC.expr = t && t.value ? String(t.value).replace(/[$,]/g, '') : '';
+  drawCalc();
+};
+function calcShown(){ var v = window.bpCalcEval(CALC.expr); return CALC.expr === '' ? '0' : isNaN(v) ? '…' : num(v); }
+function drawCalc(){
+  var old = document.getElementById('bp-calc'); if (old) old.remove();
+  var w = document.createElement('div'); w.id = 'bp-calc';
+  w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10050;display:flex;align-items:' + (IS_DESK ? 'center' : 'flex-end') + ';justify-content:center;padding-top:var(--safe-top,0px);box-sizing:border-box';
+  w.onclick = function(e){ if (e.target === w) w.remove(); };
+  var keys = [['C','⌫','%','÷'],['7','8','9','×'],['4','5','6','−'],['1','2','3','+'],['(','0','.',')']];
+  var K = 'height:62px;border:none;border-radius:14px;font-size:26px;font-weight:800;cursor:pointer;font-family:inherit;';
+  var grid = keys.map(function(r){ return r.map(function(k){
+    var op = /[÷×−+%]/.test(k), fn = /^(C|⌫)$/.test(k);
+    return '<button data-calc-key="' + E(k) + '" onclick="bpCalcKey(\'' + k + '\')" style="' + K + 'background:' + (op ? '#FF9F0A' : fn ? 'var(--card2,#333)' : 'var(--card,#1c1c1e)') + ';color:' + (op ? '#000' : 'var(--text,#fff)') + '">' + k + '</button>';
+  }).join(''); }).join('');
+  w.innerHTML = '<div style="background:var(--bg,#111);color:var(--text);width:100%;max-width:420px;max-height:100%;overflow:auto;border-radius:' + (IS_DESK ? '20px' : '20px 20px 0 0') + ';padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));box-sizing:border-box">'
+    + '<div style="display:flex;align-items:center;margin-bottom:8px"><div style="font-size:19px;font-weight:900;flex:1;display:flex;align-items:center;gap:8px">' + ICON.calc + 'Calculator</div>'
+    + '<button onclick="document.getElementById(\'bp-calc\').remove()" aria-label="Close" style="background:var(--card2,#222);border:none;color:var(--text);width:44px;height:44px;border-radius:50%;font-size:24px;cursor:pointer">×</button></div>'
+    + '<div id="bp-calc-expr" style="font-size:18px;color:var(--muted);text-align:right;min-height:24px;word-break:break-all">' + E(CALC.expr.replace(/\*/g,'×').replace(/\//g,'÷').replace(/-/g,'−')) + '</div>'
+    + '<div id="bp-calc-out" style="font-size:44px;font-weight:900;text-align:right;margin:2px 0 12px;word-break:break-all">' + calcShown() + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">' + grid + '</div>'
+    + '<div style="display:flex;gap:8px;margin-top:10px">'
+    + (CALC.target ? '<button id="bp-calc-use" onclick="bpCalcUse()" style="' + BTN + ';flex:1;background:#30D158;color:#000;font-size:18px">Use ' + calcShown() + '</button>'
+                   : '<button onclick="bpCalcKey(\'=\')" style="' + BTN + ';flex:1;background:#0A84FF;color:#fff;font-size:22px">=</button>')
+    + '</div></div>';
+  document.body.appendChild(w);
+}
+window.bpCalcKey = function(k){
+  var map = { '÷':'/', '×':'*', '−':'-', '+':'+' };
+  if (k === 'C') CALC.expr = '';
+  else if (k === '⌫') CALC.expr = CALC.expr.slice(0, -1);
+  else if (k === '=') { var v = window.bpCalcEval(CALC.expr); if (!isNaN(v)) CALC.expr = String(v); }
+  else if (k === '%') { var m = /(\d*\.?\d+)$/.exec(CALC.expr); if (m) CALC.expr = CALC.expr.slice(0, m.index) + String(+m[1] / 100); }
+  else CALC.expr += map[k] || k;
+  var e = document.getElementById('bp-calc-expr'), o = document.getElementById('bp-calc-out'), u = document.getElementById('bp-calc-use');
+  if (e) e.textContent = CALC.expr.replace(/\*/g,'×').replace(/\//g,'÷').replace(/-/g,'−');
+  if (o) o.textContent = calcShown();
+  if (u) u.textContent = 'Use ' + calcShown();
+};
+window.bpCalcUse = function(){
+  var v = window.bpCalcEval(CALC.expr); if (isNaN(v)) { say('That math doesn\'t add up — check it'); return; }
+  var t = document.getElementById(CALC.target); if (t) { t.value = String(v); try { t.dispatchEvent(new Event('input', { bubbles:true })); } catch(e){} }
+  var c = document.getElementById('bp-calc'); if (c) c.remove();
+  if (typeof CALC.done === 'function') CALC.done(v);
+};
+function calcBtn(targetId){
+  return '<button type="button" aria-label="Calculator" onclick="bpOpenCalc(\'' + targetId + '\')" style="width:52px;flex-shrink:0;border:1px solid var(--border,#333);border-radius:12px;background:var(--card2,#222);color:#FF9F0A;cursor:pointer;display:flex;align-items:center;justify-content:center">' + ICON.calc + '</button>';
+}
+
+/* ═════════════ 1. SHOPPING LIST ═════════════ */
+var SH = { job: null };
+function taxRate(){ try { var v = localStorage.getItem('bp_shop_tax'); return v === null ? 6.625 : (+v || 0); } catch(e){ return 6.625; } }
+window.bpSetShopTax = function(v){ var n = window.bpCalcEval(v); if (isNaN(n) || n < 0) { say('Tax must be a number'); return; } try { localStorage.setItem('bp_shop_tax', String(n)); } catch(e){} drawShop(); };
+function lineTotal(x){ return (+x.qty || 0) * (+x.price || 0); }
+function shopItems(job){ return (DB.shopping||[]).filter(function(x){ return x && (job === '*' || (x.jobId||'') === job); }); }
+window.bpShopTotals = function(job){
+  var L = shopItems(job == null ? SH.job : job), t = { toBuy:0, bought:0, nOpen:0, nDone:0 };
+  L.forEach(function(x){ if (x.bought) { t.bought += lineTotal(x); t.nDone++; } else { t.toBuy += lineTotal(x); t.nOpen++; } });
+  t.all = t.toBuy + t.bought; t.rate = taxRate(); t.tax = Math.round(t.toBuy * t.rate) / 100; t.toBuyWithTax = t.toBuy + t.tax;
+  return t;
+};
+window.bpOpenShop = function(jobId){
+  if (jobId !== undefined && jobId !== null) SH.job = jobId;
+  else if (SH.job === null) SH.job = activeJob();
+  drawShop();
+};
+function shopRow(x){
+  var lt = lineTotal(x);
+  return '<div data-shop-id="' + E(x.id) + '" style="display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:8px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a);' + (x.bought ? 'opacity:.62' : '') + '">'
+    + '<button aria-label="' + (x.bought ? 'Mark not bought' : 'Mark bought') + '" onclick="bpShopToggle(\'' + Q(x.id) + '\')" style="width:44px;height:44px;flex-shrink:0;border-radius:12px;cursor:pointer;font-size:24px;font-weight:900;'
+    + (x.bought ? 'background:#30D158;border:none;color:#000' : 'background:transparent;border:2.5px solid var(--muted,#8e8e93);color:transparent') + '">✓</button>'
+    + '<div onclick="bpShopEdit(\'' + Q(x.id) + '\')" style="flex:1;min-width:0;cursor:pointer">'
+    + '<div style="font-size:17px;font-weight:800;line-height:1.25;' + (x.bought ? 'text-decoration:line-through' : '') + '">' + E(x.text) + '</div>'
+    + '<div style="font-size:14px;color:var(--muted,#8e8e93);margin-top:3px">' + num(x.qty || 0) + (x.unit ? ' ' + E(x.unit) : '') + (x.price ? ' × ' + money(x.price) : '')
+    + (x.store ? ' · ' + E(x.store) : '') + (x.expenseId ? ' · in Money' : '') + '</div></div>'
+    + '<div style="font-size:18px;font-weight:900;flex-shrink:0;color:' + (x.bought ? 'var(--muted)' : 'var(--text)') + '">' + (lt ? money(lt) : '—') + '</div></div>';
+}
+function drawShop(){
+  var L = shopItems(SH.job), t = window.bpShopTotals(SH.job);
+  var open = L.filter(function(x){ return !x.bought; }), done = L.filter(function(x){ return x.bought; });
+  var byNew = function(a, b){ return (a.created||'') < (b.created||'') ? -1 : 1; };
+  open.sort(byNew); done.sort(function(a, b){ return (a.boughtAt||'') < (b.boughtAt||'') ? 1 : -1; });
+  var body = '<div style="margin-top:4px">' + jobSelect('bp-shop-job', SH.job, 'bpShopJob(this.value)', true) + '</div>'
+    + '<div style="margin:12px 0;padding:14px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)">'
+    + '<input id="bp-shop-text" placeholder="What do you need? (e.g. 1/2&quot; PEX elbow)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpShopAdd();}" style="' + INP + '"/>'
+    + '<div style="display:flex;gap:8px;margin-top:8px">'
+    + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">How many</div><div style="display:flex;gap:6px"><input id="bp-shop-qty" inputmode="decimal" placeholder="1" style="' + INP + '"/>' + calcBtn('bp-shop-qty') + '</div></div>'
+    + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">Price each $</div><div style="display:flex;gap:6px"><input id="bp-shop-price" inputmode="decimal" placeholder="0.00" style="' + INP + '"/>' + calcBtn('bp-shop-price') + '</div></div>'
+    + '</div>'
+    + '<button id="bp-shop-add" onclick="bpShopAdd()" style="' + BTN + ';width:100%;margin-top:10px;background:#0A84FF;color:#fff">+ Add to list</button></div>'
+    + '<div style="' + LBL + '">To buy (' + open.length + ')</div>'
+    + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Add items above.</div>')
+    + (done.length ? '<div style="' + LBL + ';margin-top:18px">Bought (' + done.length + ')</div>' + done.map(shopRow).join('') : '')
+    + '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button onclick="bpShopShare()" style="' + BTN + ';flex:1;min-width:140px;background:var(--card2,#222);color:var(--text)">' + ICON.share + 'Share list</button>'
+    + (done.some(function(x){ return !x.expenseId; }) ? '<button id="bp-shop-to-money" onclick="bpShopToMoney()" style="' + BTN + ';flex:1;min-width:140px;background:rgba(48,209,88,.14);color:#30D158;border:1.5px solid #30D158">Add bought to Money</button>' : '')
+    + (done.length ? '<button onclick="bpShopClearBought()" style="' + BTN + ';flex:1;min-width:140px;background:transparent;color:var(--muted);border:1px solid var(--border,#333)">Clear bought</button>' : '')
+    + '</div>'
+    + '<div style="margin-top:14px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)">Sales tax %'
+    + '<input id="bp-shop-tax" inputmode="decimal" value="' + E(String(t.rate)) + '" onchange="bpSetShopTax(this.value)" style="' + INP + ';width:110px;padding:9px 12px;font-size:16px"/>'
+    + '<span>(this device)</span></div>';
+  var foot = '<div id="bp-shop-totals" style="display:flex;gap:10px;align-items:flex-end">'
+    + '<div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Still to buy</div>'
+    + '<div style="font-size:26px;font-weight:900;color:#FF9F0A">' + money(t.toBuyWithTax) + '</div>'
+    + '<div style="font-size:12.5px;color:var(--muted)">' + money(t.toBuy) + ' + ' + money(t.tax) + ' tax</div></div>'
+    + '<div style="text-align:right"><div style="font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Bought</div>'
+    + '<div style="font-size:20px;font-weight:900;color:#30D158">' + money(t.bought) + '</div></div>'
+    + '<button onclick="bpOpenCalc()" aria-label="Calculator" style="' + BTN + ';background:#FF9F0A;color:#000;padding:12px 14px">' + ICON.calc + '</button></div>';
+  overlay('bp-shop', ICON.cart + 'Shopping List', body, foot);
+}
+window.bpShopJob = function(v){ SH.job = v || ''; drawShop(); };
+window.bpShopAdd = function(){
+  var tx = document.getElementById('bp-shop-text'), q = document.getElementById('bp-shop-qty'), p = document.getElementById('bp-shop-price');
+  var text = (tx && tx.value || '').trim();
+  if (!text) { say('Type what you need first'); if (tx) tx.focus(); return; }
+  var qty = q && q.value.trim() ? window.bpCalcEval(q.value) : 1, price = p && p.value.trim() ? window.bpCalcEval(p.value) : 0;
+  if (isNaN(qty) || isNaN(price)) { say('Check the numbers — only digits and + − × ÷'); return; }
+  DB.shopping = DB.shopping || [];
+  DB.shopping.push({ id:newId(), jobId:SH.job || '', text:text, qty:qty, unit:'', price:price, store:'', bought:false, created:ts(), updatedAt:ts() });
+  persist(); drawShop();
+  var t2 = document.getElementById('bp-shop-text'); if (t2 && !IS_DESK) try { t2.focus(); } catch(e){}
+};
+window.bpShopToggle = function(id){
+  var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
+  x.bought = !x.bought; x.boughtAt = x.bought ? ts() : ''; x.updatedAt = ts();
+  persist(); drawShop();
+};
+window.bpShopEdit = function(id){
+  var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
+  var stores = {}; (DB.shopping||[]).forEach(function(s){ if (s.store) stores[s.store] = 1; });
+  ['Home Depot','Lowe\'s','Supply house'].forEach(function(s){ stores[s] = 1; });
+  var body = '<div style="' + LBL + '">Item</div><input id="bp-se-text" value="' + E(x.text) + '" style="' + INP + '"/>'
+    + '<div style="display:flex;gap:8px"><div style="flex:1;min-width:0"><div style="' + LBL + '">How many</div><div style="display:flex;gap:6px"><input id="bp-se-qty" inputmode="decimal" value="' + E(String(x.qty||0)) + '" style="' + INP + '"/>' + calcBtn('bp-se-qty') + '</div></div>'
+    + '<div style="width:34%"><div style="' + LBL + '">Unit</div><input id="bp-se-unit" list="bp-se-units" placeholder="ea, ft, box" value="' + E(x.unit||'') + '" style="' + INP + '"/>'
+    + '<datalist id="bp-se-units"><option>ea</option><option>ft</option><option>box</option><option>bag</option><option>sheet</option><option>gal</option><option>roll</option><option>pc</option></datalist></div></div>'
+    + '<div style="' + LBL + '">Price each $</div><div style="display:flex;gap:6px"><input id="bp-se-price" inputmode="decimal" value="' + E(String(x.price||0)) + '" style="' + INP + '"/>' + calcBtn('bp-se-price') + '</div>'
+    + '<div style="' + LBL + '">Store</div><input id="bp-se-store" list="bp-se-stores" value="' + E(x.store||'') + '" style="' + INP + '"/>'
+    + '<datalist id="bp-se-stores">' + Object.keys(stores).map(function(s){ return '<option>' + E(s) + '</option>'; }).join('') + '</datalist>'
+    + '<div style="' + LBL + '">Job</div>' + jobSelect('bp-se-job', x.jobId || '', '', true)
+    + '<div style="' + LBL + '">Note</div><input id="bp-se-note" value="' + E(x.note||'') + '" placeholder="Brand, size, color…" style="' + INP + '"/>';
+  var foot = '<div style="display:flex;gap:8px"><button onclick="bpShopDelete(\'' + Q(id) + '\')" style="' + BTN + ';background:transparent;color:#FF453A;border:1.5px solid #FF453A">Delete</button>'
+    + '<button id="bp-se-save" onclick="bpShopSaveEdit(\'' + Q(id) + '\')" style="' + BTN + ';flex:1;background:#0A84FF;color:#fff">Save</button></div>';
+  overlay('bp-shop-edit', 'Edit item', body, foot);
+};
+window.bpShopSaveEdit = function(id){
+  var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
+  var v = function(k){ var el = document.getElementById('bp-se-' + k); return el ? el.value : ''; };
+  var qty = window.bpCalcEval(v('qty')), price = window.bpCalcEval(v('price'));
+  if (isNaN(qty) || isNaN(price)) { say('Check the numbers — only digits and + − × ÷'); return; }
+  if (!v('text').trim()) { say('Item needs a name'); return; }
+  x.text = v('text').trim(); x.qty = qty; x.price = price; x.unit = v('unit').trim(); x.store = v('store').trim(); x.jobId = v('job'); x.note = v('note').trim(); x.updatedAt = ts();
+  persist();
+  var s = document.getElementById('bp-shop-edit'); if (s) s.remove();
+  drawShop();
+};
+window.bpShopDelete = function(id){
+  if (!confirm('Delete this item?')) return;
+  if (typeof bpRemoveFrom === 'function') bpRemoveFrom('shopping', function(s){ return s.id !== id; });
+  else DB.shopping = (DB.shopping||[]).filter(function(s){ return s.id !== id; });
+  persist();
+  var s = document.getElementById('bp-shop-edit'); if (s) s.remove();
+  drawShop();
+};
+window.bpShopClearBought = function(){
+  var n = shopItems(SH.job).filter(function(x){ return x.bought; }).length; if (!n) return;
+  if (!confirm('Remove ' + n + ' bought item' + (n > 1 ? 's' : '') + ' from the list? (They go to Recently Deleted.)')) return;
+  var ids = {}; shopItems(SH.job).forEach(function(x){ if (x.bought) ids[x.id] = 1; });
+  if (typeof bpRemoveFrom === 'function') bpRemoveFrom('shopping', function(s){ return !ids[s.id]; });
+  else DB.shopping = (DB.shopping||[]).filter(function(s){ return !ids[s.id]; });
+  persist(); drawShop();
+};
+window.bpShopText = function(job){
+  var L = shopItems(job == null ? SH.job : job).filter(function(x){ return !x.bought; });
+  var byStore = {};
+  L.forEach(function(x){ var k = x.store || 'Any store'; (byStore[k] = byStore[k] || []).push(x); });
+  var jn = jobName(job == null ? SH.job : job);
+  var out = 'Shopping list' + (jn ? ' — ' + jn : '') + '\n';
+  Object.keys(byStore).forEach(function(k){
+    out += '\n' + k + ':\n';
+    byStore[k].forEach(function(x){ out += '• ' + num(x.qty || 0) + (x.unit ? ' ' + x.unit : '') + '  ' + x.text + (x.note ? ' (' + x.note + ')' : '') + (x.price ? '  @ ' + money(x.price) : '') + '\n'; });
+  });
+  var t = window.bpShopTotals(job == null ? SH.job : job);
+  if (t.toBuy) out += '\nEstimated: ' + money(t.toBuyWithTax) + ' with tax\n';
+  return out;
+};
+window.bpShopShare = async function(){
+  var txt = window.bpShopText();
+  if (!shopItems(SH.job).some(function(x){ return !x.bought; })) { say('Nothing left to buy'); return; }
+  try { if (navigator.share) { await navigator.share({ title:'Shopping list', text:txt }); return; } } catch(e){ if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(txt); say('List copied — paste it in a text or email'); } catch(e){ prompt('Copy the list:', txt); }
+};
+window.bpShopToMoney = function(){
+  var L = shopItems(SH.job).filter(function(x){ return x.bought && !x.expenseId; });
+  if (!L.length) { say('Nothing new to add'); return; }
+  var groups = {};
+  L.forEach(function(x){ var k = (x.jobId||'') + '|' + (x.store||''); (groups[k] = groups[k] || []).push(x); });
+  var rate = taxRate(), made = 0, total = 0;
+  DB.expenses = DB.expenses || [];
+  Object.keys(groups).forEach(function(k){
+    var g = groups[k], sub = g.reduce(function(s, x){ return s + lineTotal(x); }, 0), amt = Math.round(sub * (100 + rate)) / 100;
+    var store = g[0].store || '';
+    var day = dk(g[0].boughtAt) || today();
+    var exp = { id:newId(), desc:'Materials' + (store ? ' — ' + store : '') + ' (' + g.length + ' item' + (g.length > 1 ? 's' : '') + ')', jobId:g[0].jobId || '', amount:amt,
+      date:day, category:'Materials', vendor:store, receiptSrc:null, items:g.map(function(x){ return { name:x.text, qty:+x.qty||0, price:+x.price||0 }; }),
+      fromShopping:true, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:ts(), updatedAt:ts() };
+    DB.expenses.push(exp); made++; total += amt;
+    g.forEach(function(x){ x.expenseId = exp.id; x.updatedAt = ts(); });
+  });
+  persist(); drawShop();
+  try { if (typeof renderAll === 'function' && !IS_DESK) renderAll(); } catch(e){}
+  say(made + ' expense' + (made > 1 ? 's' : '') + ' added to Money — ' + money(total) + ' with tax');
+};
+
+/* ═════════════ 2. DAILY LOG ═════════════ */
+var DL = { job:null, day:'' };
+function logFor(job, day){ return (DB.reports||[]).filter(function(r){ return r && r.jobId === job && dk(r.date) === day; }).sort(function(a, b){ return (a.updatedAt||a.createdAt||'') < (b.updatedAt||b.createdAt||'') ? 1 : -1; })[0] || null; }
+function hoursOf(t){ var a = Date.parse(t.clockIn), b = t.clockOut ? Date.parse(t.clockOut) : Date.now(); return (isNaN(a) || isNaN(b) || b < a) ? 0 : (b - a) / 3600000; }
+window.bpDayFacts = function(job, day){
+  var f = { photos:[], done:[], added:[], hours:0, clockOpen:false, expenses:[], deliveries:[], bought:[], appts:[], changeOrders:[], weather:'' };
+  try { f.photos = (window.bpCamEntries ? window.bpCamEntries() : (DB.photos||[]).map(function(p){ return { key:p.id, src:p.src, date:p.date||p.created, jobId:p.jobId, roomId:p.roomId, weather:p.weather }; }))
+          .filter(function(e){ return e.jobId === job && dk(e.date) === day; }); } catch(e){}
+  (DB.punchlist||[]).forEach(function(it){ if (!it || it.jobId !== job) return;
+    if (it.done && dk(it.completedAt) === day) f.done.push(it);
+    if (dk(it.created) === day) f.added.push(it); });
+  (DB.timeEntries||[]).forEach(function(t){ if (t && t.jobId === job && (dk(t.clockIn) || dk(t.date)) === day) { f.hours += hoursOf(t); if (!t.clockOut) f.clockOpen = true; } });
+  f.hours = Math.round(f.hours * 10) / 10;
+  (DB.expenses||[]).forEach(function(e){ if (!e || e.jobId !== job || dk(e.date) !== day) return; if (e.isDelivery || e.category === 'Delivery') f.deliveries.push(e); else f.expenses.push(e); });
+  (DB.shopping||[]).forEach(function(s){ if (s && s.jobId === job && s.bought && dk(s.boughtAt) === day) f.bought.push(s); });
+  (DB.appointments||[]).forEach(function(a){ if (a && a.jobId === job && dk(a.date) === day) f.appts.push(a); });
+  (DB.changeOrders||[]).forEach(function(c){ if (c && c.jobId === job && dk(c.created || c.date) === day) f.changeOrders.push(c); });
+  var wp = f.photos.find(function(p){ return p.weather; });
+  if (wp) f.weather = wp.weather;
+  else if (day === today()) { var w = document.getElementById('info-weather-text'); var wt = w && w.textContent.trim(); if (wt && !/Loading|unavailable|^N\/A$|Detecting/i.test(wt)) f.weather = wt; }
+  return f;
+};
+function jobPct(job){
+  var L = (DB.punchlist||[]).filter(function(x){ return x && x.jobId === job; });
+  return L.length ? Math.round(100 * L.filter(function(x){ return x.done; }).length / L.length) : 0;
+}
+window.bpOpenDailyLog = function(jobId, day){
+  if (jobId) DL.job = jobId; else if (!DL.job) DL.job = activeJob() || (jobs()[0] || {}).id || '';
+  DL.day = day ? dk(day) : (DL.day || today());
+  if (!DL.job) { say('Add a job first — a daily log belongs to a job'); return; }
+  drawLog();
+};
+function factRow(label, val, color){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border,#2a2a2a);font-size:15px"><span style="color:var(--muted)">' + label + '</span><span style="font-weight:800;text-align:right;' + (color ? 'color:' + color : '') + '">' + val + '</span></div>'; }
+function drawLog(){
+  var r = logFor(DL.job, DL.day), f = window.bpDayFacts(DL.job, DL.day);
+  var v = function(k, d){ return E(r && r[k] != null && r[k] !== '' ? r[k] : (d == null ? '' : d)); };
+  var ta = function(id, key, ph, rows){ return '<textarea id="bp-dl-' + id + '" rows="' + (rows || 3) + '" placeholder="' + E(ph) + '" style="' + INP + ';resize:vertical;line-height:1.4">' + v(key) + '</textarea>'; };
+  var thumbs = f.photos.slice(0, 12).map(function(p){ var s = window.bpImgSrc ? window.bpImgSrc(p.src) : p.src;
+    return '<img src="' + E(s) + '" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:9px;flex-shrink:0;background:#222"/>'; }).join('');
+  var facts = factRow('Weather', f.weather ? E(f.weather) : '<span style="color:var(--faint,#666);font-weight:600">—</span>')
+    + factRow('Photos', f.photos.length, f.photos.length ? '#0A84FF' : '')
+    + factRow('Checklist finished', f.done.length, f.done.length ? '#30D158' : '')
+    + factRow('Checklist added', f.added.length)
+    + factRow('Time clock', f.hours ? f.hours + ' hr' + (f.clockOpen ? ' (still clocked in)' : '') : '0 hr')
+    + (f.expenses.length ? factRow('Expenses', f.expenses.length + ' · ' + money(f.expenses.reduce(function(s, e){ return s + (+e.amount||0); }, 0))) : '')
+    + (f.deliveries.length ? factRow('Deliveries', f.deliveries.length, '#FF9F0A') : '')
+    + (f.bought.length ? factRow('Materials bought', f.bought.length + ' · ' + money(f.bought.reduce(function(s, x){ return s + lineTotal(x); }, 0))) : '')
+    + (f.appts.length ? factRow('Appointments', f.appts.map(function(a){ return E((a.time ? a.time + ' ' : '') + (a.title||a.type||'')); }).join('<br>')) : '')
+    + (f.changeOrders.length ? factRow('Change orders', f.changeOrders.length, '#BF5AF2') : '');
+  var past = (DB.reports||[]).filter(function(x){ return x && x.jobId === DL.job && x.date; }).sort(function(a, b){ return a.date < b.date ? 1 : -1; }).slice(0, 30);
+  var body = '<div style="margin-top:4px">' + jobSelect('bp-dl-job', DL.job, 'bpLogJob(this.value)', false) + '</div>'
+    + '<div style="display:flex;align-items:center;gap:8px;margin:10px 0">'
+    + '<button aria-label="Day before" onclick="bpLogDay(-1)" style="' + BTN + ';width:54px;background:var(--card2,#222);color:var(--text);font-size:24px">‹</button>'
+    + '<div id="bp-dl-day" style="flex:1;text-align:center;font-size:17px;font-weight:900">' + prettyDay(DL.day) + (r ? ' <span style="color:#30D158">✓</span>' : '') + '</div>'
+    + '<button aria-label="Next day" onclick="bpLogDay(1)" style="' + BTN + ';width:54px;background:var(--card2,#222);color:var(--text);font-size:24px' + (DL.day >= today() ? ';opacity:.35;pointer-events:none' : '') + '">›</button></div>'
+    + (DL.day !== today() ? '<button onclick="bpLogGo(\'' + today() + '\')" style="' + BTN + ';width:100%;padding:10px;background:transparent;border:1px solid var(--border,#333);color:#0A84FF;font-size:14px;margin-bottom:6px">Jump to today</button>' : '')
+    + '<div style="padding:4px 14px 6px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)">'
+    + '<div style="' + LBL + ';margin-top:10px">What the app recorded this day</div>' + facts
+    + (thumbs ? '<div style="display:flex;gap:6px;overflow-x:auto;padding:10px 0">' + thumbs + '</div>' : '')
+    + (f.done.length ? '<button id="bp-dl-fill" onclick="bpLogFill()" style="' + BTN + ';width:100%;margin:8px 0;background:rgba(48,209,88,.14);color:#30D158;border:1.5px solid #30D158;font-size:15px">Fill "Work done" from ' + f.done.length + ' finished item' + (f.done.length > 1 ? 's' : '') + '</button>' : '')
+    + '</div>'
+    + '<div style="' + LBL + '">Work done</div>' + ta('completed', 'completed', 'What got done today', 4)
+    + '<div style="display:flex;gap:8px"><div style="flex:1"><div style="' + LBL + '">Crew on site</div><input id="bp-dl-workers" inputmode="numeric" value="' + v('workers', 1) + '" style="' + INP + '"/></div>'
+    + '<div style="flex:1"><div style="' + LBL + '">Hours worked</div><div style="display:flex;gap:6px"><input id="bp-dl-hours" inputmode="decimal" value="' + v('hours', f.hours || '') + '" placeholder="' + (f.hours || '8') + '" style="' + INP + '"/>' + calcBtn('bp-dl-hours') + '</div></div></div>'
+    + '<div style="' + LBL + '">Weather</div><input id="bp-dl-weather" value="' + v('weather', f.weather) + '" placeholder="Sunny 72°" style="' + INP + '"/>'
+    + '<div style="' + LBL + '">Problems / delays</div>' + ta('incomplete', 'incomplete', 'Waiting on parts, rain, access…', 2)
+    + '<div style="' + LBL + '">Visitors &amp; inspections</div>' + ta('visitors', 'visitors', 'Inspector, client walk-through, supplier…', 2)
+    + '<div style="' + LBL + '">Safety</div>' + ta('safety', 'safety', 'Anything to note', 2)
+    + '<div style="' + LBL + '">Tomorrow\'s plan</div>' + ta('tomorrow', 'tomorrow', 'What\'s next', 2)
+    + '<div style="' + LBL + ';color:#FFAA33">Note for the client</div>' + ta('clientNotes', 'clientNotes', 'Goes in what you send the client', 2)
+    + '<div style="font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.5">Hours, visitors and problems stay in your log. The client gets the work done, what\'s still open, tomorrow\'s plan, your note and the day\'s photos.</div>'
+    + (past.length ? '<div style="' + LBL + ';margin-top:20px">Past logs — ' + E(jobName(DL.job)) + '</div>'
+      + past.map(function(p){ return '<button data-dl-past="' + E(p.date) + '" onclick="bpLogGo(\'' + E(dk(p.date)) + '\')" style="display:flex;width:100%;gap:10px;align-items:center;text-align:left;padding:12px 14px;margin-bottom:6px;border-radius:12px;background:var(--card,#1c1c1e);border:1px solid ' + (dk(p.date) === DL.day ? '#0A84FF' : 'var(--border,#2a2a2a)') + ';color:var(--text);cursor:pointer;font-family:inherit">'
+        + '<span style="font-weight:800;font-size:15px;flex-shrink:0">' + E(prettyDay(dk(p.date)).replace(/^(Today|Yesterday) · /, '$1 · ')) + '</span>'
+        + '<span style="flex:1;min-width:0;color:var(--muted);font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E((p.completed||'').split('\n')[0]) + '</span></button>'; }).join('') : '');
+  var foot = '<div style="display:flex;gap:8px">'
+    + (r ? '<button onclick="bpLogSend()" style="' + BTN + ';background:var(--card2,#222);color:var(--text)">' + ICON.share + 'Send</button>' : '')
+    + '<button id="bp-dl-save" onclick="bpLogSave()" style="' + BTN + ';flex:1;background:#0A84FF;color:#fff">' + (r ? 'Save changes' : 'Save log') + '</button></div>';
+  overlay('bp-dlog', ICON.log + 'Daily Log', body, foot);
+}
+function readLog(){
+  var g = function(k){ var el = document.getElementById('bp-dl-' + k); return el ? String(el.value || '').trim() : ''; };
+  var hrs = g('hours') ? window.bpCalcEval(g('hours')) : '';
+  return { completed:g('completed'), workers:+g('workers') || 0, hours:(hrs === '' || isNaN(hrs)) ? '' : hrs, weather:g('weather'), incomplete:g('incomplete'),
+           visitors:g('visitors'), safety:g('safety'), tomorrow:g('tomorrow'), clientNotes:g('clientNotes') };
+}
+function dirty(){
+  var r = logFor(DL.job, DL.day), d = readLog();
+  var TXT = ['completed','incomplete','visitors','safety','tomorrow','clientNotes'];
+  if (!r) return TXT.some(function(k){ return !!d[k]; });
+  return TXT.concat(['weather']).some(function(k){ return d[k] !== String(r[k] || '').trim(); })
+    || String(d.workers) !== String(r.workers || 0) || String(d.hours) !== String(r.hours == null ? '' : r.hours);
+}
+function leave(fn){ if (document.getElementById('bp-dlog') && dirty() && confirm('Save this day\'s log before moving on?')) window.bpLogSave(true); fn(); }
+window.bpLogDay = function(n){ leave(function(){ var d = shiftDay(DL.day, n); if (d > today()) return; DL.day = d; drawLog(); }); };
+window.bpLogGo = function(d){ leave(function(){ DL.day = dk(d) || today(); drawLog(); var b = document.querySelector('#bp-dlog .bp-sheet-body'); if (b) b.scrollTop = 0; }); };
+window.bpLogJob = function(j){ leave(function(){ DL.job = j; drawLog(); }); };
+window.bpLogFill = function(){
+  var f = window.bpDayFacts(DL.job, DL.day), el = document.getElementById('bp-dl-completed'); if (!el || !f.done.length) return;
+  var lines = f.done.map(function(it){ var rn = roomName(it.roomId); return '• ' + (rn ? rn + ': ' : '') + it.text; });
+  var cur = el.value.trim(), add = lines.filter(function(l){ return cur.indexOf(l) < 0; });
+  el.value = (cur ? cur + '\n' : '') + add.join('\n');
+  say(add.length ? 'Added ' + add.length + ' finished item' + (add.length > 1 ? 's' : '') : 'Already in Work done');
+};
+window.bpLogSave = function(quiet){
+  var d = readLog(), r = logFor(DL.job, DL.day);
+  d.progress = jobPct(DL.job); d.updatedAt = ts();
+  DB.reports = DB.reports || [];
+  if (r) Object.assign(r, d);
+  else {
+    var cnt = DB.reports.filter(function(x){ return x.jobId === DL.job; }).length + 1;
+    r = Object.assign({ id:newId(), jobId:DL.job, date:DL.day, log:true, dprNumber:'DPR-' + String(cnt).padStart(3, '0'), createdAt:ts(),
+      createdBy:(typeof _userName !== 'undefined' && _userName) || '' }, d);
+    DB.reports.push(r);
+  }
+  persist();
+  try { if (!IS_DESK && typeof currentJobId !== 'undefined' && currentJobId && typeof renderJobDetail === 'function' && document.querySelector('#s-job-detail.active')) renderJobDetail(currentJobId); } catch(e){}
+  try { if (IS_DESK && typeof renderDesktopEOD === 'function') renderDesktopEOD(); } catch(e){}
+  if (quiet !== true) { say('Daily log saved'); drawLog(); }
+  paintBars();
+  return r;
+};
+window.bpLogSend = function(){
+  var r = window.bpLogSave(true); drawLog();
+  if (typeof window.bpSendEod === 'function') window.bpSendEod(r.id);
+  else if (typeof emailEODReport === 'function') emailEODReport(r.id);
+};
+
+/* the job's old "+ New Report" / edit buttons now open the Daily Log */
+if (!IS_DESK) {
+  if (typeof window.openNewEODField === 'function') window.openNewEODField = function(jobId){ window.bpOpenDailyLog(jobId || activeJob(), today()); };
+  if (typeof window.openEditEODField === 'function') window.openEditEODField = function(id){ var r = (DB.reports||[]).find(function(x){ return x.id === id; }); if (r) window.bpOpenDailyLog(r.jobId, dk(r.date)); };
+}
+
+/* ═════════════ Entry points ═════════════ */
+function barHtml(job){
+  var t = window.bpShopTotals(job === undefined ? activeJob() : job);
+  var logged = !!logFor(job === undefined ? activeJob() : job, today());
+  var B = 'flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:14px 8px;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;line-height:1.15;text-align:center';
+  return '<button data-bp-open="shop" onclick="bpOpenShop(' + (job === undefined ? '' : '\'' + Q(job) + '\'') + ')" style="' + B + ';background:rgba(255,159,10,.13);color:#FF9F0A;border:1.5px solid rgba(255,159,10,.55)">' + ICON.cart
+    + '<span>Shopping List' + (t.nOpen ? '<span style="display:block;font-size:12.5px;font-weight:700;opacity:.85">' + t.nOpen + ' to buy · ' + money(t.toBuyWithTax) + '</span>' : '') + '</span></button>'
+    + '<button data-bp-open="log" onclick="bpOpenDailyLog(' + (job === undefined ? '' : '\'' + Q(job) + '\'') + ',\'' + today() + '\')" style="' + B + ';background:rgba(10,132,255,.13);color:#0A84FF;border:1.5px solid rgba(10,132,255,.55)">' + ICON.log
+    + '<span>Daily Log<span style="display:block;font-size:12.5px;font-weight:700;opacity:.85">' + (logged ? 'Logged today' : 'Today not logged') + '</span></span></button>';
+}
+function paintBars(){
+  try {
+    if (IS_DESK) return;
+    var home = document.getElementById('home-attention');
+    if (home) {
+      var hb = document.getElementById('bp-daily-bar');
+      if (!hb) { hb = document.createElement('div'); hb.id = 'bp-daily-bar'; hb.style.cssText = 'display:flex;gap:8px;margin:10px 16px 0'; home.parentNode.insertBefore(hb, home); }
+      hb.innerHTML = barHtml();
+    }
+    var jd = document.getElementById('s-job-detail');
+    if (jd && typeof currentJobId !== 'undefined' && currentJobId) {
+      var jb = document.getElementById('bp-job-daily-bar');
+      if (!jb) {
+        var grid = [].slice.call(jd.children).find(function(el){ return /grid-template-columns:1fr 1fr 1fr/.test(el.getAttribute('style')||''); });
+        jb = document.createElement('div'); jb.id = 'bp-job-daily-bar'; jb.style.cssText = 'display:flex;gap:8px;padding:0 16px 14px';
+        if (grid) grid.parentNode.insertBefore(jb, grid.nextSibling); else jd.appendChild(jb);
+      }
+      jb.innerHTML = barHtml(currentJobId);
+    }
+  } catch(e){ console.warn('[BP] v2.81 bars', e); }
+}
+window.bpPaintDailyBars = paintBars;
+function wrapAfter(name){
+  var o = window[name]; if (typeof o !== 'function' || o.__v281) return;
+  window[name] = function(){ var r = o.apply(this, arguments); try { paintBars(); } catch(e){} return r; };
+  window[name].__v281 = 1;
+}
+if (!IS_DESK) {
+  ['renderHome','renderJobDetail','renderAll'].forEach(wrapAfter);
+  paintBars(); setTimeout(paintBars, 1600);
+} else {
+  function mountDesk(){
+    var side = document.querySelector('aside.sidebar'); if (!side || side.querySelector('[data-bp-open]')) return;
+    var mk = function(kind, label, svg){ var b = document.createElement('button'); b.className = 'ni ' + (kind === 'shop' ? 'c-gold' : 'c-blue'); b.setAttribute('data-bp-open', kind);
+      b.innerHTML = svg + label; b.onclick = function(){ if (kind === 'shop') window.bpOpenShop(); else window.bpOpenDailyLog(null, today()); }; return b; };
+    var sv = function(p){ return '<svg viewBox="0 0 24 24">' + p + '</svg>'; };
+    var eod = [].slice.call(side.querySelectorAll('button.ni')).find(function(b){ return /showView\('eod'\)/.test(b.getAttribute('onclick')||''); });
+    var docs = [].slice.call(side.querySelectorAll('button.ni')).find(function(b){ return /showView\('documents'\)/.test(b.getAttribute('onclick')||''); });
+    var shop = mk('shop', 'Shopping List', sv('<circle cx="6" cy="19" r="2"/><circle cx="17" cy="19" r="2"/><path d="M17 17H6V3H4"/><path d="M6 5l14 1l-1 7H6"/>'));
+    var log = mk('log', 'Daily Log', sv('<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 12h6M9 16h4"/>'));
+    if (docs) docs.parentNode.insertBefore(shop, docs.nextSibling); else side.appendChild(shop);
+    if (eod) eod.parentNode.insertBefore(log, eod); else side.appendChild(log);
+  }
+  mountDesk(); setTimeout(mountDesk, 1500);
+}
+console.log('[BP] v2.81 Shopping List + Daily Log ready');
+})();
+</script>
+
