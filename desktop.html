@@ -1600,7 +1600,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.84';
+var APP_VERSION = '2.85';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -15929,6 +15929,61 @@ document.head.appendChild(st);
 console.log('[BP] v2.84 Money one-page ready');
 })();
 </script>
+<script>
+/* ══ v2.85 — TIME CLOCK HIDDEN (solo user) ═══════════════════════════════════
+   Stan (Sep 28, 2026): "I really don't need a time clock since it's only me
+   using the app right now."
+   Hidden, not deleted: the Home Time Clock card (phone), the Mac's Time Clock
+   sidebar item and dashboard card, the Hourly Rate setting on both, the
+   Daily Log's "Time clock 0 hr" row, and the $0 "Time Tracked Labor" tile on
+   Spend. Any old time entries stay saved, keep syncing, and still count in
+   Spend if they have hours. Daily Log "Hours worked" is typed by hand.
+   Switch back on per device: localStorage.setItem('bp_timeclock','on').
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+var IS_DESK = !!document.getElementById('modal-new-room');
+window.bpTimeClockOn = function(){ try { return localStorage.getItem('bp_timeclock') === 'on'; } catch(e){ return false; } };
+if (window.bpTimeClockOn()) return;
+var css = IS_DESK
+  ? '#dash-timeclock{display:none!important}'
+  : '#home-timeclock{display:none!important}';
+var st = document.createElement('style'); st.id = 'bp-v285-css'; st.textContent = css; document.head.appendChild(st);
+function hideRate(id){
+  var inp = document.getElementById(id); if (!inp) return;
+  var box = inp.closest('.field') || inp.parentNode; if (!box) return;
+  box.style.display = 'none';
+  var note = box.nextElementSibling;
+  if (note && /Time Clock/.test(note.textContent)) note.style.display = 'none';
+}
+function tidy(){
+  try {
+    if (IS_DESK) {
+      document.querySelectorAll('aside.sidebar button.ni').forEach(function(b){ if (/showView\('time'\)/.test(b.getAttribute('onclick')||'')) b.style.display = 'none'; });
+      hideRate('sync-hourlyrate-desk');
+    } else hideRate('sync-hourlyrate');
+    /* Spend: drop the Time Tracked Labor tile only when it's $0 */
+    var fc = document.getElementById(IS_DESK ? 'view-finance' : 'finance-content');
+    if (fc) [].slice.call(fc.querySelectorAll('div')).forEach(function(d){
+      if (d.children.length && d.children.length <= 3 && /Time Tracked Labor/i.test(d.textContent) && /\$0(?![\d.,])/.test(d.textContent) && d.textContent.length < 60
+          && d.parentNode && d.parentNode.children.length > 2) d.remove();
+    });
+    /* Daily Log: no "Time clock 0 hr" row */
+    var dl = document.getElementById('bp-dlog');
+    if (dl) [].slice.call(dl.querySelectorAll('div')).forEach(function(d){
+      if (d.children.length === 2 && d.children[0].textContent === 'Time clock' && /^0 hr$/.test(d.children[1].textContent.trim())) d.remove();
+    });
+  } catch(e){}
+}
+['renderFinanceContent','renderFinance','setFinanceTab','bpOpenDailyLog','bpLogDay','bpLogGo','bpLogJob','bpLogSave','openSync','showView','renderDesktopFinance'].forEach(function(nm){
+  var o = window[nm]; if (typeof o !== 'function' || o.__v285) return;
+  window[nm] = function(){ var r = o.apply(this, arguments); try { tidy(); } catch(e){} return r; };
+  window[nm].__v285 = 1;
+});
+tidy(); setTimeout(tidy, 1600);
+console.log('[BP] v2.85 time clock hidden');
+})();
+</script>
+
 
 
 
