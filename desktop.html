@@ -1600,7 +1600,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.85';
+var APP_VERSION = '2.86';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -15983,6 +15983,181 @@ tidy(); setTimeout(tidy, 1600);
 console.log('[BP] v2.85 time clock hidden');
 })();
 </script>
+<script>
+/* ══ v2.86 — HOME CLEAN-UP ══════════════════════════════════════════════════
+   Stan (Sep 28, 2026): "clean up the home page. 'On site' should be under the
+   weather line. Why is the 'Synced' notification static — I don't need to see
+   it all the time. If I hit the sync button in the heading it should be under
+   the sync button. Once a job is selected under 'On site', the information
+   about that job should open on my splash page."
+   1. ON SITE picker moves below the weather line.
+   2. The always-on "Synced" bar is gone. Tapping the Sync button in the
+      header now SYNCS (iCloud and/or GitHub, whichever is set up) and shows
+      "Syncing… / Synced ✓ 3:42 PM" right under the button for a few seconds.
+      Tap that line (or hold the Sync button) for Sync settings. Nothing set
+      up yet → the button opens Sync settings like before. A failed automatic
+      sync puts a red dot on the button until the next good sync.
+   3. With an On Site job picked, Home opens with that job's card: name,
+      client, address (tap → Maps), progress, open punch items, photos today,
+      money left, next appointment — each tap goes straight there. The general
+      4 counters show only when no job is picked.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;           /* phone/iPad only */
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function money(n){ n = Math.round(+n || 0); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US'); }
+function today(){ return (typeof todayStr === 'function') ? todayStr() : new Date().toISOString().slice(0,10); }
+
+/* ── CSS ── */
+var st = document.createElement('style'); st.id = 'bp-v286-css';
+st.textContent = '#sync-status-bar{display:none!important}'
+  + '#bp-sync-btn{position:relative}'
+  + '#bp-sync-btn.bp-err::after{content:"";position:absolute;top:5px;right:6px;width:9px;height:9px;border-radius:50%;background:#FF453A}'
+  + '#bp-sync-mini{display:none;justify-content:flex-end;margin:-3px 0 8px}'
+  + '#bp-sync-mini.on{display:flex}'
+  + '#bp-sync-mini span{font-size:12.5px;font-weight:800;padding:5px 10px;border-radius:9px;cursor:pointer;white-space:nowrap}'
+  + 'body.bp-has-onsite #s-home .kpi-row{display:none!important}';
+document.head.appendChild(st);
+
+/* ── 1. On Site under the weather line ── */
+function moveOnSite(){
+  var home = document.getElementById('s-home'); if (!home) return;
+  var wrap = home.querySelector('.bp-activejob-wrap');
+  var wx = document.getElementById('info-weather-icon');
+  var row = wx && wx.parentNode;
+  if (!wrap || !row || row.nextElementSibling === wrap) return;
+  row.parentNode.insertBefore(wrap, row.nextSibling);
+  wrap.style.margin = '10px 0 0';
+}
+
+/* ── 2. Sync button + status under it ── */
+var SY = { hideT:0, pending:false, err:'' };
+function syncBtn(){
+  var b = document.getElementById('bp-sync-btn'); if (b) return b;
+  var home = document.getElementById('s-home'); if (!home) return null;
+  b = home.querySelector('button[title="Sync"]'); if (!b) return null;
+  b.id = 'bp-sync-btn'; b.removeAttribute('onclick');
+  var held = 0, t = 0;
+  b.addEventListener('pointerdown', function(){ held = 0; t = setTimeout(function(){ held = 1; if (typeof openSync === 'function') openSync(); }, 600); });
+  ['pointerup','pointerleave','pointercancel'].forEach(function(ev){ b.addEventListener(ev, function(){ clearTimeout(t); }); });
+  b.addEventListener('click', function(e){ e.preventDefault(); if (held) { held = 0; return; } window.bpSyncNow(); });
+  var row = b.parentNode, mini = document.createElement('div'); mini.id = 'bp-sync-mini';
+  row.parentNode.insertBefore(mini, row.nextSibling);
+  return b;
+}
+function mini(text, kind, keep){
+  var m = document.getElementById('bp-sync-mini'); if (!m) return;
+  var col = kind === 'err' ? '#FF453A' : kind === 'ok' ? '#30D158' : 'var(--muted)';
+  var bg = kind === 'err' ? 'rgba(255,69,58,.12)' : kind === 'ok' ? 'rgba(48,209,88,.12)' : 'var(--card2)';
+  m.innerHTML = '<span onclick="openSync()" style="color:' + col + ';background:' + bg + '">' + E(text) + ' ›</span>';
+  m.classList.add('on');
+  clearTimeout(SY.hideT);
+  if (!keep) SY.hideT = setTimeout(function(){ m.classList.remove('on'); }, kind === 'err' ? 9000 : 5000);
+}
+function errDot(on){ var b = syncBtn(); if (b) b.classList.toggle('bp-err', !!on); }
+function hhmm(){ return new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }); }
+function ghOn(){ try { return !!_syncToken; } catch(e){ return false; } }
+function ckOn(){ try { return localStorage.getItem('bp_ck_on') === '1' && window.bpCk && bpCk.cfg && bpCk.cfg.container && typeof window.bpICloudSync === 'function'; } catch(e){ return false; } }
+window.bpSyncNow = async function(){
+  if (!ckOn() && !ghOn()) { if (typeof openSync === 'function') openSync(); return 'setup'; }
+  if (SY.pending) { mini('Syncing…', '', true); return 'busy'; }
+  SY.pending = true; SY.err = ''; mini('Syncing…', '', true);
+  try {
+    if (ckOn()) { await window.bpICloudSync('both'); var ce = window.bpCk && bpCk.state && bpCk.state.lastErr; if (ce) SY.err = ce; }
+    if (ghOn() && typeof doPush === 'function') { await doPush(); try { if (_lastSyncError) SY.err = SY.err || _lastSyncError; } catch(e){} }
+  } catch (e) { SY.err = (e && e.message) || 'Sync failed'; }
+  SY.pending = false;
+  if (SY.err) { errDot(true); mini('Sync failed — tap for details', 'err'); return 'err'; }
+  errDot(false); mini('Synced ✓ ' + hhmm(), 'ok'); return 'ok';
+};
+/* automatic syncs: stay quiet unless they fail */
+if (typeof window.setSyncStatus === 'function' && !window.setSyncStatus.__v286) {
+  var _ss = window.setSyncStatus;
+  window.setSyncStatus = function(state){ var r = _ss.apply(this, arguments); try { if (state === 'error') errDot(true); else if (/^Synced/.test(arguments[1]||'')) errDot(false); } catch(e){} return r; };
+  window.setSyncStatus.__v286 = 1;
+  try { setSyncStatus = window.setSyncStatus; } catch(e){}
+}
+
+/* ── 3. On Site job card ── */
+function jobMoney(id){
+  var c = (typeof bpRevisedContract === 'function') ? bpRevisedContract(id) : ((DB.jobs||[]).find(function(j){ return j.id === id; })||{}).contract || 0;
+  var ex = (DB.expenses||[]).filter(function(e){ return e.jobId === id; }).reduce(function(s, e){ return s + (+e.amount||0); }, 0);
+  var sub = (DB.contractors||[]).filter(function(x){ return x.jobId === id; }).reduce(function(s, x){ return s + (+x.value||0); }, 0);
+  return { contract:+c||0, left:(+c||0) - ex - sub };
+}
+window.bpOnSiteCardHtml = function(id){
+  var j = (DB.jobs||[]).find(function(x){ return x.id === id; }); if (!j) return '';
+  var pr = (typeof jobProgress === 'function') ? jobProgress(id) : { done:0, total:0, pct:0 };
+  var open = pr.total - pr.done;
+  var t = today();
+  var photosToday = (window.bpCamEntries ? bpCamEntries() : (DB.photos||[])).filter(function(p){ return p.jobId === id && String(p.date||'').slice(0,10) === t; }).length;
+  var m = jobMoney(id);
+  var next = (DB.appointments||[]).filter(function(a){ return a && a.jobId === id && (a.date||'') >= t; })
+    .sort(function(a, b){ return ((a.date||'') + (a.time||'')) < ((b.date||'') + (b.time||'')) ? -1 : 1; })[0];
+  var addr = [j.address, j.city, [j.state, j.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  var nextTxt = next ? (next.date === t ? 'Today' : new Date(next.date + 'T12:00').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' }))
+    + (next.time ? ' ' + E(new Date('2000-01-01T' + next.time).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' })) : '') + ' · ' + E(next.title || next.type || '') : 'Nothing scheduled';
+  var T = 'background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px 10px;cursor:pointer;text-align:center;min-width:0';
+  var V = 'font-size:24px;font-weight:900;line-height:1.1;white-space:nowrap';
+  var L = 'font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:3px';
+  var q = "'" + String(id).replace(/'/g, "\\'") + "'";
+  return '<div id="bp-onsite-card" data-job="' + E(id) + '" style="margin:10px 16px 0;padding:14px;border-radius:18px;background:var(--card);border:1.5px solid rgba(10,132,255,.45)">'
+    + '<div onclick="openJobDetail(' + q + ')" style="cursor:pointer">'
+    + '<div style="display:flex;align-items:center;gap:8px"><div style="font-size:12px;font-weight:900;color:#0A84FF;text-transform:uppercase;letter-spacing:.06em">On site now</div>'
+    + '<div style="margin-left:auto;font-size:14px;font-weight:800;color:#0A84FF">Open job ›</div></div>'
+    + '<div style="font-size:24px;font-weight:900;line-height:1.15;margin-top:4px">' + E(j.name) + '</div>'
+    + (j.client ? '<div style="font-size:15px;color:var(--muted);margin-top:2px">' + E(j.client) + '</div>' : '')
+    + '</div>'
+    + (addr ? '<a href="https://maps.apple.com/?q=' + encodeURIComponent(addr) + '" target="_blank" rel="noopener" style="display:block;font-size:15px;font-weight:700;color:var(--text);margin-top:6px;text-decoration:none">'
+      + '<svg viewBox="0 0 24 24" style="width:15px;height:15px;vertical-align:-2px;margin-right:4px;fill:none;stroke:#0A84FF;stroke-width:2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>' + E(addr) + '</a>' : '')
+    + '<div onclick="openJobDetail(' + q + ')" style="margin-top:10px;cursor:pointer"><div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:var(--muted);margin-bottom:5px"><span>Progress</span><span style="color:#0A84FF">' + pr.pct + '%</span></div>'
+    + '<div style="height:8px;background:var(--border);border-radius:99px;overflow:hidden"><div style="height:8px;width:' + pr.pct + '%;background:#0A84FF;border-radius:99px"></div></div></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px">'
+    + '<div data-onsite="punch" onclick="window._bpPunchJob=' + q + ';showScreen(\'s-punch\')" style="' + T + '"><div style="' + V + ';color:' + (open ? '#FF9F0A' : '#30D158') + '">' + open + '</div><div style="' + L + '">Open punch</div></div>'
+    + '<div data-onsite="photos" onclick="openJobDetail(' + q + ')" style="' + T + '"><div style="' + V + ';color:#0A84FF">' + photosToday + '</div><div style="' + L + '">Photos today</div></div>'
+    + '<div data-onsite="money" onclick="bpOnSiteMoney(' + q + ')" style="' + T + '"><div class="bp-kpi-num" style="' + V + ';color:' + (m.left < 0 ? 'var(--red,#FF453A)' : '#30D158') + '">' + (m.contract ? money(m.left) : '—') + '</div><div style="' + L + '">Money left</div></div>'
+    + '</div>'
+    + '<div data-onsite="next" onclick="showScreen(\'s-calendar\')" style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:14.5px;cursor:pointer">'
+    + '<span style="font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;flex-shrink:0">Next</span>'
+    + '<span style="font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' + (next ? '' : ';color:var(--muted)') + '">' + nextTxt + '</span></div>'
+    + '</div>';
+};
+window.bpOnSiteMoney = function(id){
+  showScreen('s-finance');
+  var f = document.getElementById('finance-job-filter');
+  if (f) { if (![].some.call(f.options, function(o){ return o.value === id; })) try { populateJobSelects(); } catch(e){} f.value = id; }
+  try { renderFinance(); setFinanceTab('overview'); } catch(e){}
+};
+function paintCard(){
+  var home = document.getElementById('s-home'); if (!home) return;
+  var id = (typeof bpActiveJob === 'function') ? bpActiveJob() : '';
+  var has = !!(id && (DB.jobs||[]).some(function(j){ return j.id === id; }));
+  document.body.classList.toggle('bp-has-onsite', has);
+  var old = document.getElementById('bp-onsite-card');
+  if (!has) { if (old) old.remove(); return; }
+  var html = window.bpOnSiteCardHtml(id);
+  var tmp = document.createElement('div'); tmp.innerHTML = html; var card = tmp.firstChild;
+  if (old) old.replaceWith(card);
+  else {
+    var anchor = document.getElementById('bp-daily-bar') || document.getElementById('home-attention');
+    if (anchor) anchor.parentNode.insertBefore(card, anchor); else home.appendChild(card);
+  }
+  try { if (window.bpFitNums) window.bpFitNums(); } catch(e){}
+}
+function paint(){ try { moveOnSite(); syncBtn(); paintCard(); } catch(e){ console.warn('[BP] v2.86', e); } }
+window.bpPaintHome286 = paint;
+['renderHome','renderAll','bpRenderActiveJobBar','bpSetActiveJob'].forEach(function(nm){
+  var o = window[nm]; if (typeof o !== 'function' || o.__v286) return;
+  window[nm] = function(){ var r = o.apply(this, arguments); try { paint(); } catch(e){} return r; };
+  window[nm].__v286 = 1;
+});
+try { bpRenderActiveJobBar = window.bpRenderActiveJobBar; bpSetActiveJob = window.bpSetActiveJob; } catch(e){}
+paint(); setTimeout(paint, 1600);
+console.log('[BP] v2.86 Home clean-up ready');
+})();
+</script>
+
 
 
 
