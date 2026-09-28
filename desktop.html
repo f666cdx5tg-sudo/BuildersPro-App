@@ -1600,7 +1600,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.81';
+var APP_VERSION = '2.82';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -15656,4 +15656,196 @@ if (!IS_DESK) {
 console.log('[BP] v2.81 Shopping List + Daily Log ready');
 })();
 </script>
+<script>
+/* ══ v2.82 — MARKUP REPLACES THE PHOTO (original kept hidden) ═══════════════
+   Stan (Sep 28, 2026): "when I take a photo I add a markup to it, why do you
+   keep the original" → chose "hide the original".
+   Before: saving a markup made a SECOND photo (v2.77), so every marked-up
+   shot showed up twice — in the gallery, the location, reports, BuildersCam.
+   Now: the marked-up picture REPLACES the photo in place (same id, caption,
+   tags, job, location). The clean original is kept on the record, hidden:
+       photo.originalSrc  (checklist before/after photos the same)
+       item.completionPhotoOriginal · expense.receiptSrcOriginal
+   Marking up again keeps the FIRST clean original. In the viewer:
+       "Show original" / "Show markup"  — flip between them
+       "Remove markup"                  — put the clean photo back
+   Old doubles (made before v2.82) can be combined with one button on the
+   Photos screen: the marked-up copy keeps the original hidden inside it and
+   the separate original goes to Recently Deleted (restorable).
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function ts(){ return (typeof now === 'function') ? now() : new Date().toISOString(); }
+function say(m){ try { toast(m); } catch(e){} }
+function img(s){ return window.bpImgSrc ? window.bpImgSrc(s) : s; }
+function target(){ return IS_DESK ? window._deskPhotoTarget : window._photoViewerTarget; }
+
+/* Where a viewer target's picture lives: { obj, key, okey } */
+window.bpMarkupSlot = function(t){
+  if (!t) return null;
+  if (t.type === 'photo') { var p = (DB.photos||[]).find(function(x){ return x.id === t.id; }); return p ? { obj:p, key:'src', okey:'originalSrc', rec:p } : null; }
+  var it = (t.itemId && (DB.punchlist||[]).find(function(n){ return n.id === t.itemId; })) || null;
+  if (t.type === 'checklist' && it) {
+    var arr = t.phase === 'before' ? it.photosBefore : it.photosAfter;
+    var ph = Array.isArray(arr) ? arr[t.idx] : null;
+    return ph ? { obj:ph, key:'src', okey:'originalSrc', rec:it } : null;
+  }
+  if (t.type === 'completion' && it && it.completionPhoto) return { obj:it, key:'completionPhoto', okey:'completionPhotoOriginal', rec:it };
+  if (t.type === 'receipt') { var e = (DB.expenses||[]).find(function(x){ return x.id === t.expId; }); return e && e.receiptSrc ? { obj:e, key:'receiptSrc', okey:'receiptSrcOriginal', rec:e } : null; }
+  return null;
+};
+
+function flatten(){
+  var c = document.getElementById(IS_DESK ? 'desk-markup-canvas' : 'markup-canvas');
+  if (!c || !c.width) return null;
+  try {
+    if (IS_DESK) renderShapeCanvas(c, _deskMarkupCtx, _deskMarkupBaseRaster, _deskMarkupShapes, null);
+    else renderShapeCanvas(c, _markupCtx, _markupBaseRaster, _markupShapes, null);
+  } catch(e){}
+  return c.toDataURL('image/jpeg', IS_DESK ? 0.9 : 0.88);
+}
+function refresh(){
+  try { if (IS_DESK) { if (typeof renderDesktopPhotos === 'function') renderDesktopPhotos(); if (typeof renderDesktopPunchlist === 'function') renderDesktopPunchlist(); if (typeof renderDashboard === 'function') renderDashboard(); } } catch(e){}
+  try { if (!IS_DESK) { if (typeof renderAll === 'function') renderAll(); if (typeof currentJobId !== 'undefined' && currentJobId && typeof renderJobDetail === 'function') renderJobDetail(currentJobId);
+                        if (typeof currentRoomId !== 'undefined' && currentRoomId && document.querySelector('#s-room-detail.active') && typeof openRoomDetail === 'function') openRoomDetail(currentRoomId);
+                        if (typeof refreshChecklistViews === 'function') refreshChecklistViews(); } } catch(e){}
+  try { if (document.getElementById('bp-cam') && window.bpOpenCam) window.bpOpenCam(); } catch(e){}
+}
+function closeAll(){
+  if (IS_DESK) { try { closeDesktopMarkup(); } catch(e){} try { closeModal('modal-photo-viewer'); } catch(e){} }
+  else { try { closeMarkup(); } catch(e){} try { closePhotoViewer(); } catch(e){} }
+}
+
+/* ── save: replace in place, keep the first clean original ── */
+function saveInPlace(orig){
+  return function(){
+    var slot = window.bpMarkupSlot(target());
+    if (!slot) return orig.apply(this, arguments);
+    var url = flatten();
+    if (!url) { closeAll(); return; }
+    var o = slot.obj;
+    if (!o[slot.okey]) o[slot.okey] = o[slot.key];
+    o[slot.key] = url;
+    o.annotated = true; o.markedUpAt = ts();
+    if (slot.key === 'src' && o.size) o.size = Math.round(url.length * 0.75 / 1024) + 'KB';
+    slot.rec.updatedAt = ts();
+    persist();
+    say('Markup saved — original kept (tap "Show original" to see it)');
+    closeAll(); refresh();
+  };
+}
+if (IS_DESK) { if (typeof window.saveDesktopMarkup === 'function' && !window.saveDesktopMarkup.__v282) { window.saveDesktopMarkup = saveInPlace(window.saveDesktopMarkup); window.saveDesktopMarkup.__v282 = 1; } }
+else if (typeof window.saveMarkup === 'function' && !window.saveMarkup.__v282) { window.saveMarkup = saveInPlace(window.saveMarkup); window.saveMarkup.__v282 = 1; }
+
+/* ── viewer: Show original / Remove markup ── */
+var VIEW = { showing:'markup', key:'' };
+function viewerImg(){ return document.getElementById(IS_DESK ? 'dphoto-viewer-img' : 'photo-viewer-img'); }
+function viewerOpen(){
+  if (IS_DESK) { var m = document.getElementById('modal-photo-viewer'); return !!m && (m.classList.contains('open') || getComputedStyle(m).display !== 'none'); }
+  var v = document.getElementById('photo-viewer'); return !!v && v.classList.contains('open');
+}
+function tkey(t){ return t ? [t.type, t.id || t.itemId || t.expId || '', t.phase || '', t.idx == null ? '' : t.idx].join('|') : ''; }
+function paintViewer(){
+  var bar = document.getElementById('bp-orig-bar');
+  var slot = viewerOpen() ? window.bpMarkupSlot(target()) : null;
+  var has = !!(slot && slot.obj[slot.okey]);
+  var k = tkey(target()) + (slot ? String(slot.obj[slot.key]).length : '');
+  if (k !== VIEW.key) { VIEW.key = k; VIEW.showing = 'markup'; }
+  if (!has) { if (bar) bar.remove(); return; }
+  var host = document.getElementById(IS_DESK ? 'dphoto-viewer-cap' : 'photo-viewer-cap');
+  if (!host) return;
+  if (!bar) {
+    bar = document.createElement('div'); bar.id = 'bp-orig-bar';
+    bar.style.cssText = 'display:flex;gap:8px;justify-content:center;padding:' + (IS_DESK ? '10px 0 0' : '0 16px 10px');
+    host.parentNode.insertBefore(bar, host);
+  }
+  var B = 'border-radius:12px;padding:12px 16px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;';
+  var html = '<button data-bp-orig="toggle" onclick="bpToggleOriginal()" style="' + B + 'background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff">'
+    + (VIEW.showing === 'original' ? 'Show markup' : 'Show original') + '</button>'
+    + '<button data-bp-orig="remove" onclick="bpRemoveMarkup()" style="' + B + 'background:transparent;border:1.5px solid #FF9F0A;color:#FF9F0A">Remove markup</button>';
+  if (bar.getAttribute('data-h') !== html) { bar.innerHTML = html; bar.setAttribute('data-h', html); }
+  var el = viewerImg();
+  var want = img(VIEW.showing === 'original' ? slot.obj[slot.okey] : slot.obj[slot.key]);
+  if (el && el.getAttribute('src') !== want) el.setAttribute('src', want);
+  var lab = document.getElementById('bp-orig-label');
+  if (VIEW.showing === 'original') {
+    if (!lab && el && el.parentNode) { lab = document.createElement('div'); lab.id = 'bp-orig-label'; lab.textContent = 'ORIGINAL — no markup';
+      lab.style.cssText = 'position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(255,159,10,.92);color:#000;font-weight:900;font-size:13px;padding:5px 12px;border-radius:20px;z-index:2;white-space:nowrap';
+      if (getComputedStyle(el.parentNode).position === 'static') el.parentNode.style.position = 'relative';
+      el.parentNode.appendChild(lab); }
+  } else if (lab) lab.remove();
+}
+window.bpToggleOriginal = function(){ VIEW.showing = VIEW.showing === 'original' ? 'markup' : 'original'; paintViewer(); };
+window.bpRemoveMarkup = function(){
+  var slot = window.bpMarkupSlot(target()); if (!slot || !slot.obj[slot.okey]) return;
+  if (!confirm('Remove the markup and put the original photo back?')) return;
+  slot.obj[slot.key] = slot.obj[slot.okey];
+  delete slot.obj[slot.okey]; delete slot.obj.annotated; delete slot.obj.markedUpAt; delete slot.obj.annotatedFrom;
+  slot.rec.updatedAt = ts();
+  persist(); VIEW.showing = 'markup'; VIEW.key = '';
+  var el = viewerImg(); if (el) el.setAttribute('src', img(slot.obj[slot.key]));
+  var dl = document.getElementById(IS_DESK ? 'dphoto-dl' : 'photo-dl'); if (dl) dl.href = slot.obj[slot.key];
+  paintViewer(); refresh();
+  say('Markup removed — original is back');
+};
+window.bpPaintOriginalBar = paintViewer;
+setInterval(function(){ try { if (viewerOpen() || document.getElementById('bp-orig-bar')) paintViewer(); } catch(e){} }, 350);
+
+/* ── old doubles: combine marked-up copies with their originals ── */
+window.bpMarkupPairs = function(){
+  var byId = {}; (DB.photos||[]).forEach(function(p){ if (p && p.id) byId[p.id] = p; });
+  return (DB.photos||[]).filter(function(p){ return p && p.annotatedFrom && byId[p.annotatedFrom] && p.annotatedFrom !== p.id; })
+    .map(function(p){ return { copy:p, orig:byId[p.annotatedFrom] }; });
+};
+window.bpCombineMarkupCopies = function(skipConfirm){
+  var pairs = window.bpMarkupPairs(); if (!pairs.length) { say('No doubles to combine'); return 0; }
+  var origIds = {}; pairs.forEach(function(x){ origIds[x.orig.id] = 1; });
+  var n = Object.keys(origIds).length;
+  if (skipConfirm !== true && !confirm('Combine ' + pairs.length + ' marked-up photo' + (pairs.length > 1 ? 's' : '') + ' with ' + (n > 1 ? 'their originals' : 'its original') + '?\n\nEach marked-up photo keeps its original hidden inside it (tap "Show original"). The ' + n + ' separate original' + (n > 1 ? 's go' : ' goes') + ' to Recently Deleted.')) return 0;
+  pairs.forEach(function(x){
+    var c = x.copy, o = x.orig;
+    if (!c.originalSrc) c.originalSrc = o.originalSrc || o.src;
+    ['roomId','caption','notes','geo','weather'].forEach(function(k){ if (!c[k] && o[k]) c[k] = o[k]; });
+    if (o.tags && o.tags.length) c.tags = (c.tags || []).concat(o.tags.filter(function(t){ return (c.tags||[]).indexOf(t) < 0; }));
+    c.annotated = true; c.updatedAt = ts();
+  });
+  if (typeof bpRemoveFrom === 'function') bpRemoveFrom('photos', function(p){ return !origIds[p.id]; });
+  else DB.photos = DB.photos.filter(function(p){ return !origIds[p.id]; });
+  DB.deletedPhotoIds = DB.deletedPhotoIds || {};
+  Object.keys(origIds).forEach(function(id){ DB.deletedPhotoIds[id] = ts(); });
+  persist(); refresh(); paintCombine();
+  say('Combined — ' + n + ' extra photo' + (n > 1 ? 's' : '') + ' removed from view');
+  return n;
+};
+function paintCombine(){
+  var pairs = window.bpMarkupPairs(), el = document.getElementById('bp-combine-btn');
+  if (!pairs.length) { if (el) el.remove(); return; }
+  var n = {}; pairs.forEach(function(x){ n[x.orig.id] = 1; }); n = Object.keys(n).length;
+  var label = 'Combine ' + pairs.length + ' marked-up photo' + (pairs.length > 1 ? 's' : '') + ' with the original' + (n > 1 ? 's' : '') + ' (' + n + ' extra)';
+  if (!el) {
+    el = document.createElement('button'); el.id = 'bp-combine-btn'; el.onclick = function(){ window.bpCombineMarkupCopies(); };
+    if (IS_DESK) {
+      var acts = document.querySelector('#view-photos .view-actions'); if (!acts) return;
+      el.className = 'btn btn-ghost'; el.style.cssText = 'color:#FF9F0A;border-color:#FF9F0A'; acts.appendChild(el);
+    } else {
+      var anchor = document.getElementById('bp-stamp-sw') || document.getElementById('bp-cam-bar'); if (!anchor) return;
+      el.style.cssText = 'display:block;width:calc(100% - 32px);margin:0 16px 10px;padding:13px 12px;border-radius:12px;background:rgba(255,159,10,.12);border:1.5px solid #FF9F0A;color:#FF9F0A;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;text-align:center';
+      anchor.parentNode.insertBefore(el, anchor.nextSibling);
+    }
+  }
+  el.textContent = label;
+}
+window.bpPaintCombine = paintCombine;
+['renderPhotos','renderDesktopPhotos','renderAll'].forEach(function(nm){
+  var o = window[nm]; if (typeof o !== 'function' || o.__v282) return;
+  window[nm] = function(){ var r = o.apply(this, arguments); try { paintCombine(); } catch(e){} return r; };
+  window[nm].__v282 = 1;
+});
+paintCombine(); setTimeout(paintCombine, 1700);
+console.log('[BP] v2.82 markup-in-place ready');
+})();
+</script>
+
 
