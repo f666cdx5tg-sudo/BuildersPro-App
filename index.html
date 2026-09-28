@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.83';
+var APP_VERSION = '2.84';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -18172,6 +18172,26 @@ try { if (document.querySelector('#s-finance.active')) window.setFinanceTab('ove
 console.log('[BP] v2.83 Money overview tab ready');
 })();
 </script>
+<script>
+/* ══ v2.84 — MONEY IS ONE PAGE AGAIN ════════════════════════════════════════
+   Stan (Sep 28, 2026, iPhone screenshot): "I can not see the header, I have
+   to scroll two sections — it should be one page with one section."
+   Cause: since v2.43 the top band (title, job filter, tab buttons) was a
+   pinned box with its OWN scroll (max-height 38% of the screen), and it had
+   no room for the iPhone status bar / Dynamic Island. So the title sat under
+   the clock, and the band scrolled separately from the list below it.
+   Fix: the band is no longer pinned or separately scrollable. Title clears
+   the island with --safe-top, and the whole Money page scrolls as one.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+if (document.getElementById('modal-new-room')) return;
+var st = document.createElement('style'); st.id = 'bp-v284-css';
+st.textContent = '#finance-sticky{position:static!important;max-height:none!important;overflow:visible!important;padding-top:var(--safe-top)!important}';
+document.head.appendChild(st);
+console.log('[BP] v2.84 Money one-page ready');
+})();
+</script>
+
 
 
 
