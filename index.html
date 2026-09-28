@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.82';
+var APP_VERSION = '2.83';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -18109,5 +18109,69 @@ paintCombine(); setTimeout(paintCombine, 1700);
 console.log('[BP] v2.82 markup-in-place ready');
 })();
 </script>
+<script>
+/* ══ v2.83 — MONEY: TOTALS ON THEIR OWN "OVERVIEW" TAB ══════════════════════
+   Stan (Sep 28, 2026): "the first page should have all of this information
+   but all of the other tabs should not show this. It takes up too much space.
+   I want to go right to expenses or changes or delivery."
+   • New first tab OVERVIEW (fills the empty 8th spot in the 4×2 tab grid):
+     the 6 totals tiles + profit margin, always open. No Add / Scan buttons.
+   • Every other tab: no totals strip, no tiles — the list starts right
+     under the Add button.
+   • Scan Receipt only shows on Expenses (it makes an expense).
+   • Money opens on Overview; the tab you pick stays picked while you work.
+   Field app only — the Mac's Finance page has room to spare.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;           /* Mac: no change */
+var grid = document.getElementById('ftab-invoices') && document.getElementById('ftab-invoices').parentNode;
+if (!grid || typeof window.setFinanceTab !== 'function' || document.getElementById('ftab-overview')) return;
+
+var ICO = '<svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M3 3v18h18"/><path d="M7 15l4-4l3 3l6-6"/></svg>';
+var inv = document.getElementById('ftab-invoices');
+var b = document.createElement('button');
+b.id = 'ftab-overview'; b.className = 'ftab';
+b.setAttribute('onclick', "setFinanceTab('overview')");
+b.style.cssText = inv.style.cssText;
+b.innerHTML = '<span class="ftab-icon" style="font-size:19px;color:#0A84FF;display:flex">' + ICO + '</span>'
+  + '<span style="font-size:10px;font-weight:800;color:var(--muted)">Overview</span>'
+  + '<span class="ftab-count" style="font-size:9px;font-weight:700;color:var(--muted)" id="ftab-overview-count">Totals</span>';
+grid.insertBefore(b, inv);
+
+function show(id, on){ var el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; }
+var _set = window.setFinanceTab;
+window.setFinanceTab = function(tab){
+  var r = _set.apply(this, arguments);
+  var ov = tab === 'overview';
+  try { _financeTab = tab; } catch(e){}
+  var ob = document.getElementById('ftab-overview');
+  if (ob) {
+    ob.style.border = '2px solid ' + (ov ? 'rgba(10,132,255,.55)' : 'var(--border)');
+    ob.style.background = ov ? 'rgba(10,132,255,.14)' : 'var(--card2)';
+    var nm = ob.querySelector('span:nth-child(2)'); if (nm) nm.style.color = ov ? '#0A84FF' : 'var(--muted)';
+  }
+  show('finance-summary-strip', false);
+  var sum = document.getElementById('finance-summary'); if (sum) sum.style.display = ov ? 'block' : 'none';
+  show('finance-add-btn-wrap', !ov && tab !== 'spending');
+  show('finance-scan-wrap', tab === 'expenses');
+  var acts = document.getElementById('finance-actions');
+  if (acts) acts.style.display = (ov || tab === 'spending') ? 'none' : '';
+  if (ov) {
+    try { if (typeof renderFinanceSummary === 'function') renderFinanceSummary(); } catch(e){}
+    var c = document.getElementById('finance-content');
+    if (c) c.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:14px 8px 0">Tap a tile to see what\'s behind the number — or pick a tab above.</div>';
+    try { if (window.bpFitNums) setTimeout(window.bpFitNums, 30); } catch(e){}
+  }
+  return r;
+};
+/* summary tiles stay open on Overview no matter what the old toggle says */
+if (typeof window.bpToggleFinanceSummary === 'function') window.bpToggleFinanceSummary = function(){};
+try { _financeTab = 'overview'; } catch(e){}
+try { if (document.querySelector('#s-finance.active')) window.setFinanceTab('overview'); } catch(e){}
+console.log('[BP] v2.83 Money overview tab ready');
+})();
+</script>
+
 
 
