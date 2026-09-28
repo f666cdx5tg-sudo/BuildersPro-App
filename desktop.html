@@ -1600,7 +1600,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.86';
+var APP_VERSION = '2.87';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -16157,6 +16157,177 @@ paint(); setTimeout(paint, 1600);
 console.log('[BP] v2.86 Home clean-up ready');
 })();
 </script>
+<script>
+/* ══ v2.87 — HOME: WHAT MATTERS, NOT TRIVIA ═════════════════════════════════
+   Stan (Sep 28, 2026): the "Needs your attention" icons look bad; he doesn't
+   need Photos Today or Locations counts — asked for suggestions, kept all 5
+   proposed attention items.
+   TILES (replace Active jobs · Open punch · Photos today · Locations):
+     • Owed to you  — Sent/Overdue invoices; when there are none, this tile
+                      becomes "Money left" on active jobs (contract − spent)
+     • Today        — calendar items today (inspections, deliveries, appts)
+     • Open punch   — open items across active jobs
+     • Change orders waiting on the client (Draft/Submitted) + their $
+   NEEDS YOUR ATTENTION (line icons, one line each, tap goes straight there):
+     1. Job over budget            2. Invoice unpaid 30+ days
+     3. Permit expired / expiring  4. Last workday's daily log not done (On Site job)
+     5. Items still to buy (On Site job)
+   The old "open punchlist items" row is gone (it's a tile now).
+   Field app only.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function money(n){ n = Math.round(+n || 0); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US'); }
+function today(){ return (typeof todayStr === 'function') ? todayStr() : new Date().toISOString().slice(0,10); }
+function dk(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function onSite(){ try { var id = bpActiveJob(); return (DB.jobs||[]).find(function(j){ return j.id === id; }) || null; } catch(e){ return null; } }
+function active(){ return (DB.jobs||[]).filter(function(j){ return j && j.status !== 'Complete' && j.status !== 'Completed' && !(DB.archiveState && DB.archiveState[j.id] && DB.archiveState[j.id].archived); }); }
+var SVG = function(p){ return '<svg viewBox="0 0 24 24" style="width:20px;height:20px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">' + p + '</svg>'; };
+var IC = {
+  over:   SVG('<path d="M12 9v4"/><path d="M10.36 3.6L2.3 17.5A1.9 1.9 0 0 0 3.9 20.3h16.2a1.9 1.9 0 0 0 1.6-2.8L13.64 3.6a1.9 1.9 0 0 0-3.28 0z"/><path d="M12 16h.01"/>'),
+  late:   SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'),
+  permit: SVG('<path d="M15 21H6a3 3 0 0 1-3-3v-1h10v2a2 2 0 0 0 4 0V5a2 2 0 1 1 2 2h-2m2-4H8a3 3 0 0 0-3 3v11"/><path d="M9 7h4M9 11h4"/>'),
+  log:    SVG('<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 12h6M9 16h4"/>'),
+  cart:   SVG('<circle cx="6" cy="19" r="2"/><circle cx="17" cy="19" r="2"/><path d="M17 17H6V3H4"/><path d="M6 5l14 1l-1 7H6"/>'),
+  cash:   SVG('<rect x="7" y="9" width="14" height="10" rx="2"/><circle cx="14" cy="14" r="2"/><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>'),
+  cal:    SVG('<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M16 3v4M8 3v4M4 11h16"/><rect x="8" y="15" width="2" height="2"/>'),
+  punch:  SVG('<path d="M9 11l3 3l8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>'),
+  co:     SVG('<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M10 18l5-5a1.4 1.4 0 0 0-2-2l-5 5v2h2z"/>')
+};
+
+/* ── numbers ── */
+function owed(){
+  var L = (DB.invoices||[]).filter(function(i){ return i && (i.status === 'Sent' || i.status === 'Overdue'); });
+  return { n:L.length, total:L.reduce(function(s, i){ return s + (+i.amount||0); }, 0), list:L };
+}
+function moneyLeft(){
+  return active().filter(function(j){ return j.contract || (typeof bpCOApproved === 'function' && bpCOApproved(j.id)); }).reduce(function(s, j){
+    var c = (typeof bpRevisedContract === 'function') ? bpRevisedContract(j.id) : +j.contract || 0;
+    var sp = (typeof jobActualSpend === 'function') ? jobActualSpend(j.id).total : 0;
+    return s + c - sp;
+  }, 0);
+}
+function todays(){
+  var d = new Date(), t = today(), ev = [];
+  try { ev = getCalendarEvents(d.getFullYear(), d.getMonth()).filter(function(e){ return e.date === t; }); }
+  catch(e){ ev = (DB.appointments||[]).filter(function(a){ return a.date === t; }); }
+  ev.sort(function(a, b){ return (a.time||'99') < (b.time||'99') ? -1 : 1; });
+  return ev;
+}
+function openPunch(){
+  var ids = {}; active().forEach(function(j){ ids[j.id] = 1; });
+  var L = (DB.punchlist||[]).filter(function(p){ return p && !p.done && ids[p.jobId]; });
+  var jobs = {}; L.forEach(function(p){ jobs[p.jobId] = 1; });
+  return { n:L.length, jobs:Object.keys(jobs).length };
+}
+function pendingCOs(){
+  var L = (DB.changeOrders||[]).filter(function(c){ return c && (c.status === 'Draft' || c.status === 'Submitted' || !c.status); });
+  return { n:L.length, total:L.reduce(function(s, c){ return s + (+c.amount||0); }, 0) };
+}
+function lastWorkday(){ var d = new Date(); do { d.setDate(d.getDate() - 1); } while (d.getDay() === 0 || d.getDay() === 6); return dk(d); }
+
+/* ── attention list ── */
+window.bpAttentionItems = function(){
+  var items = [], RED = 'red', AMB = 'amber', BLUE = 'blue';
+  active().forEach(function(j){
+    if (!j.contract || typeof jobActualSpend !== 'function') return;
+    var over = jobActualSpend(j.id).total - (typeof bpRevisedContract === 'function' ? bpRevisedContract(j.id) : +j.contract);
+    if (over > 0) items.push({ k:'over', tone:RED, icon:IC.over, text:E(j.name) + ' is ' + money(over) + ' over budget', action:"openJobDetail('" + j.id + "')" });
+  });
+  var cut = new Date(); cut.setDate(cut.getDate() - 30); cut = dk(cut);
+  var late = owed().list.filter(function(i){ return i.status === 'Overdue' || (i.date && i.date <= cut); });
+  if (late.length) {
+    var tot = late.reduce(function(s, i){ return s + (+i.amount||0); }, 0);
+    var oldest = late.slice().sort(function(a, b){ return (a.date||'') < (b.date||'') ? -1 : 1; })[0];
+    var days = oldest.date ? Math.floor((Date.now() - new Date(oldest.date + 'T12:00')) / 864e5) : 0;
+    items.push({ k:'late', tone:RED, icon:IC.late, text: late.length === 1 ? 'Invoice unpaid ' + days + ' days — ' + money(tot) + (oldest.desc ? ' (' + E(oldest.desc) + ')' : '')
+      : late.length + ' invoices unpaid 30+ days — ' + money(tot), action:"_financeTab='invoices';showScreen('s-finance')" });
+  }
+  try {
+    var pc = permitAlertCounts();
+    if (pc.expired) items.push({ k:'permit', tone:RED, icon:IC.permit, text:pc.expired + ' permit' + (pc.expired > 1 ? 's' : '') + ' expired', action:"_financeTab='permits';showScreen('s-finance')" });
+    if (pc.soon) items.push({ k:'permit', tone:AMB, icon:IC.permit, text:pc.soon + ' permit' + (pc.soon > 1 ? 's' : '') + ' expire within 30 days', action:"_financeTab='permits';showScreen('s-finance')" });
+  } catch(e){}
+  var j = onSite();
+  if (j) {
+    var lw = lastWorkday();
+    var created = String(j.created || j.createdAt || '').slice(0, 10);
+    var logged = (DB.reports||[]).some(function(r){ return r && r.jobId === j.id && String(r.date||'').slice(0,10) === lw; });
+    if (!logged && (!created || created <= lw)) {
+      var lbl = new Date(lw + 'T12:00').toLocaleDateString('en-US', { weekday:'long' });
+      items.push({ k:'log', tone:BLUE, icon:IC.log, text:lbl + '’s daily log not done — ' + E(j.name), action:"bpOpenDailyLog('" + j.id + "','" + lw + "')" });
+    }
+    var toBuy = (DB.shopping||[]).filter(function(s){ return s && s.jobId === j.id && !s.bought; }).length;
+    if (toBuy) items.push({ k:'buy', tone:BLUE, icon:IC.cart, text:toBuy + ' item' + (toBuy > 1 ? 's' : '') + ' still to buy — ' + E(j.name), action:"bpOpenShop('" + j.id + "')" });
+  }
+  return items;
+};
+var TONE = { red:['rgba(255,69,58,.12)','rgba(255,69,58,.4)','#FF6961'], amber:['rgba(255,159,10,.12)','rgba(255,159,10,.4)','#FF9F0A'], blue:['rgba(10,132,255,.12)','rgba(10,132,255,.4)','#409CFF'] };
+window.bpRenderAttention = function(){
+  var el = document.getElementById('home-attention'); if (!el) return;
+  var items = window.bpAttentionItems();
+  if (!items.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Needs your attention</div>'
+    + '<div style="display:flex;flex-direction:column;gap:6px">' + items.map(function(it){
+      var t = TONE[it.tone] || TONE.blue;
+      return '<div data-attn="' + it.k + '" onclick="' + it.action + '" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:' + t[0] + ';border:1px solid ' + t[1] + ';color:' + t[2] + '">'
+        + it.icon + '<span style="font-size:15px;font-weight:700;line-height:1.3;min-width:0">' + it.text + '</span>'
+        + '<span style="margin-left:auto;font-size:18px;opacity:.7;flex-shrink:0">›</span></div>';
+    }).join('') + '</div>';
+};
+try { bpAttentionItems = window.bpAttentionItems; bpRenderAttention = window.bpRenderAttention; } catch(e){}
+
+/* ── tiles ── */
+window.bpHomeTilesHtml = function(){
+  var o = owed(), ev = todays(), p = openPunch(), co = pendingCOs();
+  var T = 'background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;cursor:pointer;min-width:0';
+  var H = 'display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)';
+  var V = 'font-size:26px;font-weight:900;line-height:1.15;margin-top:4px;white-space:nowrap';
+  var S = 'font-size:12.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  var first;
+  if (o.n) first = '<div data-tile="owed" onclick="_financeTab=\'invoices\';showScreen(\'s-finance\')" style="' + T + '"><div style="' + H + '">' + IC.cash + 'Owed to you</div>'
+      + '<div class="bp-kpi-num" style="' + V + ';color:#30D158">' + money(o.total) + '</div><div style="' + S + '">' + o.n + ' unpaid invoice' + (o.n > 1 ? 's' : '') + '</div></div>';
+  else { var ml = moneyLeft();
+    first = '<div data-tile="left" onclick="var f=document.getElementById(\'finance-job-filter\');if(f)f.value=\'\';_financeTab=\'overview\';showScreen(\'s-finance\')" style="' + T + '"><div style="' + H + '">' + IC.cash + 'Money left</div>'
+      + '<div class="bp-kpi-num" style="' + V + ';color:' + (ml < 0 ? '#FF6961' : '#30D158') + '">' + money(ml) + '</div><div style="' + S + '">on active jobs</div></div>'; }
+  var evTxt = ev.length ? ev.slice(0, 2).map(function(e){ return (e.time ? new Date('2000-01-01T' + e.time).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) + ' ' : '') + (e.title || e.type || ''); }).join(', ') : 'Nothing scheduled';
+  return '<div id="bp-home-tiles" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 16px 0">'
+    + first
+    + '<div data-tile="today" onclick="showScreen(\'s-calendar\')" style="' + T + '"><div style="' + H + '">' + IC.cal + 'Today</div>'
+    + '<div style="' + V + ';color:#409CFF">' + ev.length + '</div><div style="' + S + '">' + E(evTxt) + '</div></div>'
+    + '<div data-tile="punch" onclick="showScreen(\'s-punch\')" style="' + T + '"><div style="' + H + '">' + IC.punch + 'Open punch</div>'
+    + '<div style="' + V + ';color:' + (p.n ? '#FF9F0A' : '#30D158') + '">' + p.n + '</div><div style="' + S + '">' + (p.n ? 'across ' + p.jobs + ' job' + (p.jobs > 1 ? 's' : '') : 'All caught up') + '</div></div>'
+    + '<div data-tile="co" onclick="_financeTab=\'changeorders\';showScreen(\'s-finance\')" style="' + T + '"><div style="' + H + '">' + IC.co + 'Change orders</div>'
+    + '<div style="' + V + ';color:' + (co.n ? '#BF5AF2' : 'var(--text)') + '">' + co.n + '</div><div style="' + S + '">' + (co.n ? 'waiting on client · ' + money(co.total) : 'None waiting') + '</div></div>'
+    + '</div>';
+};
+function paintTiles(){
+  var home = document.getElementById('s-home'); if (!home) return;
+  var tmp = document.createElement('div'); tmp.innerHTML = window.bpHomeTilesHtml(); var g = tmp.firstChild;
+  var old = document.getElementById('bp-home-tiles');
+  if (old) old.replaceWith(g);
+  else { var a = document.getElementById('home-attention'); if (a) a.parentNode.insertBefore(g, a.nextSibling); else home.appendChild(g); }
+  try { if (window.bpFitNums) window.bpFitNums(); } catch(e){}
+}
+var st = document.createElement('style'); st.id = 'bp-v287-css';
+st.textContent = '#s-home .kpi-row{display:none!important}';
+document.head.appendChild(st);
+function paint(){ try { window.bpRenderAttention(); paintTiles(); } catch(e){ console.warn('[BP] v2.87', e); } }
+window.bpPaintHome287 = paint;
+['renderHome','renderAll','bpSetActiveJob'].forEach(function(nm){
+  var o = window[nm]; if (typeof o !== 'function' || o.__v287) return;
+  window[nm] = function(){ var r = o.apply(this, arguments); try { paint(); } catch(e){} return r; };
+  window[nm].__v287 = 1;
+});
+try { bpSetActiveJob = window.bpSetActiveJob; } catch(e){}
+paint(); setTimeout(paint, 1700);
+console.log('[BP] v2.87 Home tiles + attention ready');
+})();
+</script>
+
 
 
 
