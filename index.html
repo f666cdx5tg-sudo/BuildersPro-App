@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.87';
+var APP_VERSION = '2.88';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -9234,9 +9234,9 @@ window.renderFieldCalendar = function() {
   var daysInMonth  = new Date(_calYear,_calMonth+1,0).getDate();
   var todayStr_    = todayStr();
 
-  var html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">';
+  var html = '<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-bottom:4px">';
   ['S','M','T','W','T','F','S'].forEach(function(d){ html += '<div style="font-size:10px;font-weight:800;color:var(--faint);text-align:center">'+d+'</div>'; });
-  html += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+  html += '</div><div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px">';
   for (var i=0;i<firstWeekday;i++) html += '<div></div>';
   for (var day=1;day<=daysInMonth;day++) {
     var ds = ymd(_calYear,_calMonth,day);
@@ -18353,7 +18353,7 @@ window.bpOnSiteCardHtml = function(id){
   var pr = (typeof jobProgress === 'function') ? jobProgress(id) : { done:0, total:0, pct:0 };
   var open = pr.total - pr.done;
   var t = today();
-  var photosToday = (window.bpCamEntries ? bpCamEntries() : (DB.photos||[])).filter(function(p){ return p.jobId === id && String(p.date||'').slice(0,10) === t; }).length;
+  var photosToday = (window.bpCamEntries ? bpCamEntries() : (DB.photos||[])).filter(function(p){ var dd = new Date(p.date || ''); return p.jobId === id && !isNaN(dd) && (dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0')) === t; }).length;
   var m = jobMoney(id);
   var next = (DB.appointments||[]).filter(function(a){ return a && a.jobId === id && (a.date||'') >= t; })
     .sort(function(a, b){ return ((a.date||'') + (a.time||'')) < ((b.date||'') + (b.time||'')) ? -1 : 1; })[0];
