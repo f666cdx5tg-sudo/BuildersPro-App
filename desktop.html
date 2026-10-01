@@ -1600,7 +1600,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '2.92';
+var APP_VERSION = '2.93';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -16789,6 +16789,21 @@ console.log('[BP] v2.91 Vendor list + receipt scan to Shopping ready');
 </script>
 
 <script>
+/* ══ v2.93 — VOICE WORKS FROM THE HOME-SCREEN ICON TOO ══════════════════════
+   Stan (Oct 1, 2026): "Microphone is not working."
+   Apple blocks the web speech engine in home-screen web apps (it works in
+   the Safari browser only), and v2.92 then showed a wrong "mic blocked"
+   message. Now:
+     • When live voice can't run here (home-screen app on iPhone/iPad, or it
+       errors / never starts within 4 s), the Speak sheet switches to
+       KEYBOARD VOICE: a big box opens with the keyboard — tap the 🎙 on the
+       keyboard and talk. Apple allows that everywhere. Each line or "next"
+       = an item, the list fills in as you talk, saying "save" at the end
+       saves. Same parsing as live voice (qty, sizes, prices, areas).
+     • The 🎤 Speak chip on text boxes only shows when live voice works —
+       otherwise the keyboard's own 🎙 already does that job.
+     • Errors now say what actually happened.
+   ══════════════════════════════════════════════════════════════════════════ */
 /* ══ v2.92 — TALK INSTEAD OF TYPE, EVERYWHERE ═══════════════════════════════
    Stan (Oct 1, 2026): "Add the ability to speak and create shopping list,
    punchlist and create notes without texting" … "Add it for the entire app."
@@ -16840,6 +16855,17 @@ var BTN = 'border:none;border-radius:12px;padding:14px 12px;font-size:16px;font-
 /* ═════════════ SPEECH ENGINE (works in both apps) ═════════════ */
 function srOK(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
 window.bpVoiceSupported = srOK;
+var IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function standalone(){ try { return navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); } catch(e){ return false; } }
+var BROKEN = '';   // why live voice can't run on this device right now ('' = fine)
+function liveOK(){ return srOK() && !(IOS && standalone()) && !BROKEN; }
+window.bpVoiceLiveOK = liveOK;
+window.bpVoiceForceKeyboard = function(why){ BROKEN = why || 'test'; };
+function goKeyboard(why){
+  BROKEN = why; stopAll();
+  var c = document.getElementById('bp-dict'); if (c) c.style.display = 'none';
+  if (document.getElementById('bp-voice')) { draw(); focusKb(); }
+}
 var LIVE = null;   // one mic at a time, app-wide
 function stopAll(){ if (LIVE) { var l = LIVE; LIVE = null; l.on = false; try { l.r.stop(); } catch(e){} if (l.onStop) try { l.onStop(); } catch(e){} } }
 window.bpVoiceStop = stopAll;
@@ -16860,14 +16886,20 @@ function listen(o){
       }
       if (o.onInterim) o.onInterim(interim);
     };
+    r.onstart = r.onaudiostart = function(){ l.ok = true; };
     r.onerror = function(e){
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { say('🎤 Microphone is blocked — allow it in Settings › Safari › Microphone'); stopAll(); }
-      else if (e.error === 'network') { say('🎤 Voice needs a signal — try again when you have one'); stopAll(); }
+      var c = e && e.error;
+      if (c === 'not-allowed') { say('🎤 Microphone permission was denied — Settings › Safari › Microphone › Allow. Using the keyboard mic for now.'); goKeyboard('not-allowed'); }
+      else if (c === 'service-not-allowed' || c === 'audio-capture' || c === 'language-not-supported') { goKeyboard(c); }
+      else if (c === 'network') { say('🎤 Live voice needs a signal — using the keyboard mic instead'); goKeyboard('network'); }
     };
     r.onend = function(){ if (l.on && LIVE === l) { try { boot(); } catch(e2){ stopAll(); } } };   // Safari ends on every pause
     try { r.start(); } catch(e){ say('🎤 Could not start the mic'); stopAll(); }
   }
   LIVE = l; boot();
+  // Safari sometimes accepts start() and then never hears anything. If the
+  // engine hasn't started within 4 s, stop waiting and use the keyboard mic.
+  setTimeout(function(){ if (LIVE === l && l.on && !l.ok) goKeyboard('no-start'); }, 4000);
   return l;
 }
 
@@ -16942,9 +16974,9 @@ function guessMode(){
 window.bpVoiceCapture = function(mode){
   V.mode = MODES[mode] ? mode : guessMode();
   V.job = (V.mode === 'shop' && typeof window.bpShopJobNow === 'function' && document.getElementById('bp-shop')) ? window.bpShopJobNow() : activeJob();
-  V.room = ''; V.items = []; V.interim = '';
+  V.room = ''; V.items = []; V.interim = ''; V.kb = '';
   draw();
-  if (srOK()) window.bpVoiceMic(true);
+  if (liveOK()) window.bpVoiceMic(true); else focusKb();
 };
 function itemLine(it, i){
   var desc = V.mode === 'shop'
@@ -16979,14 +17011,14 @@ function body(){
   var R = roomsOf(V.job);
   var roomSel = (V.mode !== 'shop' && R.length) ? '<div style="' + LBL + '">Area</div><select id="bp-vc-room" onchange="bpVoiceRoom(this.value)" style="' + INP + '"><option value="">Auto — from what I say</option>'
     + R.map(function(r){ return '<option value="' + E(r.id) + '"' + (r.id === V.room ? ' selected' : '') + '>' + E(r.name) + '</option>'; }).join('') + '</select>' : '';
-  var mic = srOK()
+  var mic = liveOK()
     ? '<div style="display:flex;flex-direction:column;align-items:center;margin:18px 0 8px">'
       + '<button id="bp-vc-mic" aria-label="' + (V.on ? 'Stop listening' : 'Start listening') + '" onclick="bpVoiceMic()" style="width:124px;height:124px;border-radius:50%;border:none;cursor:pointer;font-size:52px;'
       + (V.on ? 'background:#FF453A;color:#fff;box-shadow:0 0 0 10px rgba(255,69,58,.22)' : 'background:' + M.color + ';color:#000') + '">' + (V.on ? '⏹' : '🎤') + '</button>'
       + '<div id="bp-vc-status" style="margin-top:12px;font-size:16px;font-weight:800;color:' + (V.on ? '#FF453A' : 'var(--muted)') + '">' + (V.on ? 'Listening… talk naturally' : 'Tap the mic and talk') + '</div>'
       + '<div id="bp-vc-interim" style="margin-top:6px;min-height:22px;font-size:16px;color:var(--text);text-align:center;font-style:italic;opacity:.8">' + E(V.interim) + '</div></div>'
-    : '<div style="margin:16px 0;padding:14px;border-radius:14px;background:rgba(255,159,10,.12);color:#FF9F0A;font-weight:700">Voice isn\'t available in this browser. Open BuildersPro in Safari (iPhone/Mac) or Chrome.</div>';
-  var tips = '<div style="font-size:13.5px;color:var(--muted);line-height:1.5;padding:10px 12px;border-radius:12px;background:var(--card,#1c1c1e)">'
+    : kbBox();
+  var tips = !liveOK() ? '' : '<div style="font-size:13.5px;color:var(--muted);line-height:1.5;padding:10px 12px;border-radius:12px;background:var(--card,#1c1c1e)">'
     + (V.mode === 'note' ? 'Talk as long as you like — it becomes one note. Say <b>"save"</b> when done.'
       : 'Pause (or say <b>"next"</b>) between items · <b>"scratch that"</b> drops the last one · <b>"save"</b> saves them all.'
         + (V.mode === 'shop' ? '<br>Try: <i>"ten half inch pex elbows at two dollars"</i>' : '<br>Try: <i>"basement bath — caulk the tub"</i>'))
@@ -17000,6 +17032,32 @@ function body(){
     + '<div id="bp-vc-list">' + list + '</div>' + tips
     + (V.mode === 'note' ? '<div id="bp-vc-notes">' + notesList() + '</div>' : '');
 }
+var WHY = { 'not-allowed':'Microphone permission is off for this app.', 'service-not-allowed':'Live voice isn\'t allowed here.', 'audio-capture':'The mic is busy (a call or another app?).',
+  'network':'Live voice needs a signal.', 'no-start':'Live voice didn\'t start.', 'language-not-supported':'Live voice isn\'t available.' };
+function kbBox(){
+  var why = BROKEN ? (WHY[BROKEN] || '') : (IOS && standalone()) ? 'Apple doesn\'t allow live voice in home-screen apps.' : !srOK() ? 'This browser has no live voice.' : '';
+  return '<div style="margin:14px 0 6px;padding:12px 14px;border-radius:14px;background:rgba(10,132,255,.12);color:var(--text);font-size:15px;line-height:1.45">'
+    + (why ? '<div style="color:var(--muted);font-size:13.5px;margin-bottom:4px">' + why + '</div>' : '')
+    + '<b>Tap the 🎙 on your keyboard and talk.</b> '
+    + (V.mode === 'note' ? 'It becomes one note.' : 'Say <b>"next"</b> or <b>"new line"</b> between items.')
+    + ' Say <b>"save"</b> at the end — or tap Save.</div>'
+    + '<textarea id="bp-vc-text" rows="5" autocapitalize="sentences" placeholder="' + (V.mode === 'shop' ? 'ten half inch pex elbows next teflon tape' : V.mode === 'punch' ? 'basement bath caulk the tub next kitchen replace shutoff' : 'Your note…') + '" '
+    + 'oninput="bpVoiceKb(this.value)" style="' + INP + ';font-size:18px;min-height:130px;resize:vertical;border:2px solid ' + MODES[V.mode].color + '">' + E(V.kb || '') + '</textarea>';
+}
+function focusKb(){ var t = document.getElementById('bp-vc-text'); if (t) try { t.focus(); var n = t.value.length; t.setSelectionRange(n, n); } catch(e){} }
+/* Keyboard voice: the box is the source of truth — rebuild the list from it on every change. */
+window.bpVoiceKb = function(val){
+  V.kb = String(val || '');
+  var txt = V.kb, saveNow = false;
+  var m = txt.match(/^([\s\S]*?)[\s,.]*\b(?:and\s+)?save(?:\s+(?:it|that|them|all))?[.!]?\s*$/i);
+  if (m) { txt = m[1]; saveNow = true; }
+  V.items = [];
+  var room = V.room;
+  txt.split(/\n+/).forEach(function(line){ line = line.trim(); if (!line) return; addText(line); });
+  V.room = room;
+  paintList();
+  if (saveNow && V.items.length) window.bpVoiceSave();
+};
 function foot(){
   var n = V.items.length, M = MODES[V.mode];
   var lbl = V.mode === 'note' ? 'Save note' : 'Save ' + (n || '') + ' to ' + M.label;
@@ -17048,6 +17106,11 @@ function handlePhrase(raw){
   // a trailing "… save" saves after adding what came before it
   var tail = t.match(/^(.*?)[\s,.]+(?:and\s+)?(?:save it|save that|save)\.?$/i), saveAfter = false;
   if (tail && tail[1].trim()) { t = tail[1]; saveAfter = true; }
+  addText(t);
+  paintList();
+  if (saveAfter) window.bpVoiceSave();
+}
+function addText(t){
   if (V.mode === 'note') {
     var s = t.trim(); s = cap(s); if (!/[.!?]$/.test(s)) s += '.';
     V.items.push({ text:s });
@@ -17066,8 +17129,6 @@ function handlePhrase(raw){
       }
     });
   }
-  paintList();
-  if (saveAfter) window.bpVoiceSave();
 }
 window.bpVoiceHandle = handlePhrase;   /* also used by the tests */
 
@@ -17087,12 +17148,21 @@ window.bpVoiceMic = function(force){
   if (V.on && s) { s.textContent = 'Listening… talk naturally'; s.style.color = '#FF453A'; }
 };
 window.bpVoiceMode = function(m){ if (!MODES[m] || m === V.mode) return; if (V.items.length && !confirm('Switch and drop the ' + V.items.length + ' unsaved item' + (V.items.length > 1 ? 's' : '') + '?')) return;
-  V.mode = m; V.items = []; try { localStorage.setItem('bp_voice_mode', m); } catch(e){} draw(); };
+  V.mode = m; V.items = []; V.kb = ''; try { localStorage.setItem('bp_voice_mode', m); } catch(e){} draw(); if (!liveOK()) focusKb(); };
 window.bpVoiceJob = function(j){ V.job = j || ''; V.room = '';
   if (V.mode === 'punch') V.items.forEach(function(it){ it.roomId = findRoom(it.text, V.job); });
   draw(); };
-window.bpVoiceRoom = function(r){ V.room = r || ''; paintList(); };
-window.bpVoiceDrop = function(i){ V.items.splice(i, 1); paintList(); };
+window.bpVoiceRoom = function(r){ V.room = r || ''; if (!liveOK() && V.kb) window.bpVoiceKb(V.kb); else paintList(); };
+window.bpVoiceDrop = function(i){
+  V.items.splice(i, 1);
+  if (!liveOK() && document.getElementById('bp-vc-text')) {   // keyboard voice: rewrite the box from what's left
+    var t = document.getElementById('bp-vc-text');
+    V.kb = V.mode === 'note' ? V.items.map(function(x){ return x.text; }).join(' ')
+      : V.items.map(function(x){ return V.mode === 'shop' ? ((+x.qty || 1) > 1 ? (+x.qty) + ' ' : '') + (x.unit ? x.unit + ' ' : '') + x.text + (x.price ? ' at ' + x.price : '') : (x.roomId && !V.room ? roomName(x.roomId) + ' ' : '') + x.text; }).join('\n');
+    t.value = V.kb;
+  }
+  paintList();
+};
 window.bpVoiceClose = function(){
   if (V.items.length && !confirm('Close without saving ' + V.items.length + ' item' + (V.items.length > 1 ? 's' : '') + '?')) return;
   stopAll(); V.items = []; var w = document.getElementById('bp-voice'); if (w) w.remove(); rerender();
@@ -17119,7 +17189,8 @@ window.bpVoiceSave = function(quiet){
     if (text) { DB.jobNotes.push({ id:newId(), jobId:V.job || '', roomId:V.room || '', text:text, isVoice:true, createdBy:who, created:ts(), updatedAt:ts() }); n = 1; }
   }
   var what = MODES[V.mode].label;
-  V.items = [];
+  V.items = []; V.kb = '';
+  var kbt = document.getElementById('bp-vc-text'); if (kbt) kbt.value = '';
   persist();
   if (document.getElementById('bp-voice')) { paintList(); var nl = document.getElementById('bp-vc-notes'); if (nl) nl.innerHTML = notesList(); }
   rerender();
@@ -17183,7 +17254,7 @@ function placeChip(){
   var vv = window.visualViewport, bottom = vv ? (window.innerHeight - (vv.offsetTop + vv.height)) : 0;
   c.style.bottom = Math.max(12, bottom + 12) + 'px';
 }
-function showChip(el){ if (!srOK()) return; DICT.el = el; var c = chip(); paintChip(); c.style.display = 'flex'; placeChip(); }
+function showChip(el){ if (!liveOK()) return; DICT.el = el; var c = chip(); paintChip(); c.style.display = 'flex'; placeChip(); }
 function hideChip(){ var c = document.getElementById('bp-dict'); if (c && !DICT.on) c.style.display = 'none'; }
 function setVal(el, v){
   el.value = v;
@@ -17228,6 +17299,6 @@ function addSpeak(){
 new MutationObserver(function(){ try { addSpeak(); } catch(e){} }).observe(document.body, { childList:true });
 
 fab(); setTimeout(fab, 1200);
-console.log('[BP] v2.92 Voice everywhere ready');
+console.log('[BP] v2.92/2.93 Voice everywhere ready (live voice ' + (liveOK() ? 'on' : 'off — keyboard voice') + ')');
 })();
 </script>
