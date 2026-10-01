@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.90';
+var APP_VERSION = '2.91';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -3814,7 +3814,7 @@ function bpRecordTs(x) {
    anything tombstoned, then purges. Permanent by design: there's no undelete UI
    anywhere in this app, so a grow-only set is correct here (unlike archiveState,
    which has a Restore button and therefore needs last-write-wins instead). */
-var BP_COLLECTIONS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','reports','contacts','permits','punchlist','walkthroughs','documents','payments','appointments','estimates','timeEntries','changeOrders','shopping'];
+var BP_COLLECTIONS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','reports','contacts','permits','punchlist','walkthroughs','documents','payments','appointments','estimates','timeEntries','changeOrders','shopping','vendors'];
 /* v2.46: any collection an incoming payload carries that this build has never
    heard of still gets merged and re-pushed, instead of being silently dropped
    on the next push. That is how a device on an older build erases a record
@@ -17676,12 +17676,14 @@ function drawShop(){
   var byNew = function(a, b){ return (a.created||'') < (b.created||'') ? -1 : 1; };
   open.sort(byNew); done.sort(function(a, b){ return (a.boughtAt||'') < (b.boughtAt||'') ? 1 : -1; });
   var body = '<div style="margin-top:4px">' + jobSelect('bp-shop-job', SH.job, 'bpShopJob(this.value)', true) + '</div>'
+    + '<button id="bp-shop-scan" onclick="bpShopScan()" style="' + BTN + ';width:100%;margin-top:10px;background:rgba(10,132,255,.14);color:#0A84FF;border:1.5px solid #0A84FF">📷 Scan a receipt</button>'
     + '<div style="margin:12px 0;padding:14px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)">'
     + '<input id="bp-shop-text" placeholder="What do you need? (e.g. 1/2&quot; PEX elbow)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpShopAdd();}" style="' + INP + '"/>'
     + '<div style="display:flex;gap:8px;margin-top:8px">'
     + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">How many</div><div style="display:flex;gap:6px"><input id="bp-shop-qty" inputmode="decimal" placeholder="1" style="' + INP + '"/>' + calcBtn('bp-shop-qty') + '</div></div>'
     + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">Price each $</div><div style="display:flex;gap:6px"><input id="bp-shop-price" inputmode="decimal" placeholder="0.00" style="' + INP + '"/>' + calcBtn('bp-shop-price') + '</div></div>'
     + '</div>'
+    + '<div style="' + LBL + '">Store / vendor</div>' + (window.bpVendorField ? window.bpVendorField('bp-shop-store', SH.lastStore || '') : '<input id="bp-shop-store" style="' + INP + '"/>')
     + '<button id="bp-shop-add" onclick="bpShopAdd()" style="' + BTN + ';width:100%;margin-top:10px;background:#0A84FF;color:#fff">+ Add to list</button></div>'
     + '<div style="' + LBL + '">To buy (' + open.length + ')</div>'
     + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Add items above.</div>')
@@ -17704,14 +17706,16 @@ function drawShop(){
   overlay('bp-shop', ICON.cart + 'Shopping List', body, foot);
 }
 window.bpShopJob = function(v){ SH.job = v || ''; drawShop(); };
+window.bpShopJobNow = function(){ return SH.job || ''; };  /* v2.91: receipt scan files to the list you're looking at */
 window.bpShopAdd = function(){
   var tx = document.getElementById('bp-shop-text'), q = document.getElementById('bp-shop-qty'), p = document.getElementById('bp-shop-price');
   var text = (tx && tx.value || '').trim();
+  var stEl = document.getElementById('bp-shop-store'), store = (stEl && stEl.value || '').replace(/\s+/g, ' ').trim(); SH.lastStore = store;
   if (!text) { say('Type what you need first'); if (tx) tx.focus(); return; }
   var qty = q && q.value.trim() ? window.bpCalcEval(q.value) : 1, price = p && p.value.trim() ? window.bpCalcEval(p.value) : 0;
   if (isNaN(qty) || isNaN(price)) { say('Check the numbers — only digits and + − × ÷'); return; }
   DB.shopping = DB.shopping || [];
-  DB.shopping.push({ id:newId(), jobId:SH.job || '', text:text, qty:qty, unit:'', price:price, store:'', bought:false, created:ts(), updatedAt:ts() });
+  DB.shopping.push({ id:newId(), jobId:SH.job || '', text:text, qty:qty, unit:'', price:price, store:store, bought:false, created:ts(), updatedAt:ts() });
   persist(); drawShop();
   var t2 = document.getElementById('bp-shop-text'); if (t2 && !IS_DESK) try { t2.focus(); } catch(e){}
 };
@@ -17729,7 +17733,7 @@ window.bpShopEdit = function(id){
     + '<div style="width:34%"><div style="' + LBL + '">Unit</div><input id="bp-se-unit" list="bp-se-units" placeholder="ea, ft, box" value="' + E(x.unit||'') + '" style="' + INP + '"/>'
     + '<datalist id="bp-se-units"><option>ea</option><option>ft</option><option>box</option><option>bag</option><option>sheet</option><option>gal</option><option>roll</option><option>pc</option></datalist></div></div>'
     + '<div style="' + LBL + '">Price each $</div><div style="display:flex;gap:6px"><input id="bp-se-price" inputmode="decimal" value="' + E(String(x.price||0)) + '" style="' + INP + '"/>' + calcBtn('bp-se-price') + '</div>'
-    + '<div style="' + LBL + '">Store</div><input id="bp-se-store" list="bp-se-stores" value="' + E(x.store||'') + '" style="' + INP + '"/>'
+    + '<div style="' + LBL + '">Store</div>' + (window.bpVendorField ? window.bpVendorField('bp-se-store', x.store||'') : '<input id="bp-se-store" list="bp-se-stores" value="' + E(x.store||'') + '" style="' + INP + '"/>')
     + '<datalist id="bp-se-stores">' + Object.keys(stores).map(function(s){ return '<option>' + E(s) + '</option>'; }).join('') + '</datalist>'
     + '<div style="' + LBL + '">Job</div>' + jobSelect('bp-se-job', x.jobId || '', '', true)
     + '<div style="' + LBL + '">Note</div><input id="bp-se-note" value="' + E(x.note||'') + '" placeholder="Brand, size, color…" style="' + INP + '"/>';
@@ -18671,9 +18675,434 @@ console.log('[BP] v2.87 Home tiles + attention ready');
 })();
 </script>
 
+<script>
+/* ══ v2.91 — SAVED VENDOR LIST + SCAN A RECEIPT INTO THE SHOPPING LIST ══════
+   Stan (Oct 1, 2026): "Add and save the name of vendors to drop list
+   automatically. Add the ability to scan receipts to shopping to be saved."
 
+   1. VENDOR LIST — one list, everywhere a vendor/store is typed.
+      • DB.vendors (syncs like every other collection). Every save() sweeps
+        expense vendors, delivery suppliers and shopping stores into it, so a
+        name typed once is in the drop list from then on — no "save vendor"
+        step. It stays even if the expense it came from is deleted.
+      • ▾ button next to each vendor box opens the full list: search it,
+        tap to fill, ✕ to drop a typo/junk name (hidden, not deleted, so the
+        sweep won't put it straight back; typing it again brings it back).
+      • Same list feeds the type-ahead suggestions (dl-vendors).
 
+   2. SCAN A RECEIPT INTO SHOPPING — "📷 Scan a receipt" on the list.
+      • Take/choose a photo (on-device OCR), OR paste iPhone Live Text
+        (far more accurate on faded receipts).
+      • Review screen: store (picked from / saved to the vendor list),
+        date, job, every item with qty + price, and the receipt total.
+        Items that match something already on the list tick it off
+        instead of adding a duplicate.
+      • Save: items land in "Bought", and ONE expense (with the receipt
+        photo) goes to Money, linked so "Add bought to Money" can never
+        count it twice.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function Q(s){ return E(s).replace(/\\/g,'\\\\'); }
+function ts(){ return (typeof now === 'function') ? now() : new Date().toISOString(); }
+function newId(){ return (typeof uid === 'function') ? uid() : 'bp' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function say(m){ try { toast(m); } catch(e){} }
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function pad2(n){ return (n < 10 ? '0' : '') + n; }
+function dk(v){ if (!v) return ''; if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v; var d = new Date(v); if (isNaN(d)) return ''; return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
+function today(){ return dk(new Date()); }
+function money(n){ n = +n || 0; return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+function calc(v){ if (typeof window.bpCalcEval === 'function') return window.bpCalcEval(v); var n = parseFloat(String(v).replace(/[$,\s]/g,'')); return isNaN(n) ? 0 : n; }
+function jobs(){ return (DB.jobs||[]).filter(function(j){ return j && !(DB.archiveState && DB.archiveState[j.id] && DB.archiveState[j.id].archived); }); }
+var INP = 'width:100%;box-sizing:border-box;padding:13px 14px;border-radius:12px;border:1px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:17px;font-family:inherit';
+var LBL = 'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:12px 0 6px';
+var BTN = 'border:none;border-radius:12px;padding:14px 12px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center';
 
+function sheet(id, title, body, foot, z){
+  var old = document.getElementById(id); if (old) old.remove();
+  var w = document.createElement('div'); w.id = id;
+  w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:' + (z||10020) + ';display:flex;align-items:' + (IS_DESK ? 'center' : 'stretch')
+    + ';justify-content:center;padding-top:var(--safe-top,0px);box-sizing:border-box';
+  w.innerHTML = '<div style="background:var(--bg,#111);color:var(--text,#f0f0f0);width:100%;max-width:' + (IS_DESK ? '760px' : '100%') + ';'
+    + (IS_DESK ? 'height:90%;border-radius:18px' : 'max-height:100%;height:100%;margin-top:auto;border-radius:20px 20px 0 0') + ';display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden">'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px 8px">'
+    + '<div style="font-size:21px;font-weight:900;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + '</div>'
+    + '<button onclick="document.getElementById(\'' + id + '\').remove()" aria-label="Close" style="background:var(--card2,#222);border:none;color:var(--text);width:44px;height:44px;border-radius:50%;font-size:24px;cursor:pointer;flex-shrink:0">×</button></div>'
+    + '<div class="bp-sheet-body" style="overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 16px;flex:1;min-height:0">' + body + '</div>'
+    + (foot ? '<div style="padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border,#2a2a2a)">' + foot + '</div>' : '')
+    + '</div>';
+  document.body.appendChild(w);
+  return w;
+}
 
+/* ═════════════ 1. VENDOR LIST ═════════════ */
+var DEFAULT_VENDORS = ['Home Depot', "Lowe's"];
+function norm(s){ return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+function vkey(s){ return norm(s).toLowerCase(); }
+function okName(n){ return n.length >= 2 && n.length <= 60 && /[a-z]/i.test(n); }
+function vrecs(){ if (!window.DB) return []; if (!Array.isArray(DB.vendors)) DB.vendors = []; return DB.vendors; }
+function hiddenKeys(){ var h = {}; vrecs().forEach(function(v){ if (v && v.hidden && v.name) h[vkey(v.name)] = 1; }); return h; }
 
+/* Pull every vendor/store name already typed anywhere into DB.vendors. Runs
+   inside every save, so it lands in the same write as the record it came from. */
+window.bpVendorSweep = function(){
+  if (!window.DB) return 0;
+  var L = vrecs(), have = {}, added = 0;
+  L.forEach(function(v){ if (v && v.name) have[vkey(v.name)] = 1; });
+  function add(n){
+    n = norm(n); if (!okName(n)) return;
+    var k = vkey(n); if (have[k]) return; have[k] = 1;
+    L.push({ id:newId(), name:n, created:ts(), updatedAt:ts() }); added++;
+  }
+  (DB.expenses||[]).forEach(function(e){ if (e) add(e.vendor); });
+  (DB.shopping||[]).forEach(function(s){ if (s) add(s.store); });
+  return added;
+};
+window.bpVendorNames = function(){
+  var hid = hiddenKeys(), seen = {}, out = [];
+  function take(n){ n = norm(n); if (!okName(n)) return; var k = vkey(n); if (hid[k] || seen[k]) return; seen[k] = 1; out.push(n); }
+  vrecs().forEach(function(v){ if (v && !v.hidden) take(v.name); });
+  (DB.expenses||[]).forEach(function(e){ if (e) take(e.vendor); });
+  (DB.shopping||[]).forEach(function(s){ if (s) take(s.store); });
+  DEFAULT_VENDORS.forEach(take);
+  out.sort(function(a, b){ return a.localeCompare(b); });
+  return out;
+};
+/* Add (or un-hide) a name. Does not save by itself — callers save. */
+window.bpRememberVendor = function(name){
+  var n = norm(name); if (!okName(n)) return;
+  var k = vkey(n), L = vrecs(), hit = false;
+  L.forEach(function(v){ if (v && vkey(v.name) === k) { hit = true; if (v.hidden) { v.hidden = false; v.updatedAt = ts(); } } });
+  if (!hit) L.push({ id:newId(), name:n, created:ts(), updatedAt:ts() });
+};
+window.bpForgetVendor = function(name){
+  var k = vkey(name), L = vrecs(), hit = false;
+  L.forEach(function(v){ if (v && vkey(v.name) === k) { hit = true; v.hidden = true; v.updatedAt = ts(); } });
+  if (!hit) L.push({ id:newId(), name:norm(name), hidden:true, created:ts(), updatedAt:ts() });
+  persist(); fillVendorDL();
+};
+function fillVendorDL(){
+  var el = document.getElementById('dl-vendors'); if (!el) return;
+  try { el.innerHTML = window.bpVendorNames().map(function(v){ return '<option value="' + E(v) + '"></option>'; }).join(''); } catch(e){}
+}
+window.bpFillVendorList = fillVendorDL;
 
+/* A vendor box with a ▾ that opens the whole list. Used by Shopping + receipt review. */
+window.bpVendorField = function(id, val){
+  fillVendorDL();
+  return '<div style="display:flex;gap:6px"><input id="' + E(id) + '" list="dl-vendors" autocomplete="off" autocapitalize="words" value="' + E(val||'') + '" placeholder="Home Depot, Ferguson, Blackman…" style="' + INP + '"/>'
+    + '<button type="button" data-vp-btn="' + E(id) + '" aria-label="Pick a saved vendor" onclick="bpVendorPick(\'' + Q(id) + '\')" style="width:52px;flex-shrink:0;border:1px solid var(--border,#333);border-radius:12px;background:var(--card2,#222);color:#0A84FF;font-size:20px;font-weight:900;cursor:pointer">▾</button></div>';
+};
+
+var VP = { target:'', q:'' };
+window.bpVendorPick = function(targetId){
+  VP.target = targetId; var t = document.getElementById(targetId); VP.q = '';
+  drawPick();
+  var s = document.getElementById('bp-vp-q'); if (s && IS_DESK) try { s.focus(); } catch(e){}
+  void t;
+};
+function pickRows(){
+  var q = vkey(VP.q), names = window.bpVendorNames().filter(function(n){ return !q || vkey(n).indexOf(q) > -1; });
+  var exact = q && window.bpVendorNames().some(function(n){ return vkey(n) === q; });
+  var h = '';
+  if (q && !exact) h += '<button onclick="bpVendorChoose(document.getElementById(\'bp-vp-q\').value, true)" style="' + BTN + ';width:100%;margin-bottom:8px;background:#0A84FF;color:#fff">+ Add “' + E(norm(VP.q)) + '”</button>';
+  h += names.length ? names.map(function(n){
+    return '<div data-vp-name="' + E(n) + '" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+      + '<button onclick="bpVendorChoose(this.parentNode.getAttribute(\'data-vp-name\'))" style="' + BTN + ';flex:1;min-width:0;justify-content:flex-start;background:var(--card,#1c1c1e);color:var(--text);border:1px solid var(--border,#2a2a2a);font-size:17px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(n) + '</button>'
+      + '<button aria-label="Remove from list" onclick="bpVendorDrop(this.parentNode.getAttribute(\'data-vp-name\'))" style="width:48px;height:48px;flex-shrink:0;border-radius:12px;border:1px solid var(--border,#333);background:transparent;color:#FF453A;font-size:20px;cursor:pointer">✕</button></div>';
+  }).join('') : '<div style="padding:18px;text-align:center;color:var(--muted)">' + (q ? 'No saved vendor matches.' : 'No vendors yet — they\'re saved automatically the first time you type one.') + '</div>';
+  return h;
+}
+function drawPick(){
+  var body = '<input id="bp-vp-q" placeholder="Search or type a new vendor" autocomplete="off" autocapitalize="words" value="' + E(VP.q) + '" oninput="bpVendorQ(this.value)" '
+    + 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpVendorChoose(this.value,true);}" style="' + INP + ';margin:4px 0 12px"/>'
+    + '<div id="bp-vp-list">' + pickRows() + '</div>'
+    + '<div style="font-size:13px;color:var(--muted);margin-top:6px">Names are saved automatically whenever you type a vendor on an expense, delivery or shopping item. ✕ removes one from this list.</div>';
+  sheet('bp-vendor-pick', 'Vendors', body, '', 10060);
+}
+window.bpVendorQ = function(v){ VP.q = v; var l = document.getElementById('bp-vp-list'); if (l) l.innerHTML = pickRows(); };
+window.bpVendorChoose = function(name, isNew){
+  var n = norm(name); if (!n) return;
+  if (isNew) { window.bpRememberVendor(n); persist(); fillVendorDL(); }
+  var t = document.getElementById(VP.target);
+  if (t) { t.value = n; try { t.dispatchEvent(new Event('input', { bubbles:true })); t.dispatchEvent(new Event('change', { bubbles:true })); } catch(e){} }
+  var s = document.getElementById('bp-vendor-pick'); if (s) s.remove();
+};
+window.bpVendorDrop = function(name){
+  if (!confirm('Remove “' + name + '” from the vendor list?\n(Your expenses keep it — it just stops being suggested.)')) return;
+  window.bpForgetVendor(name);
+  var l = document.getElementById('bp-vp-list'); if (l) l.innerHTML = pickRows();
+};
+
+/* ▾ next to the existing vendor boxes on the Money / Delivery forms (both apps). */
+function decorate(){
+  ['exp-vendor','del-vendor','ne-vendor','nd-vendor'].forEach(function(id){
+    var inp = document.getElementById(id);
+    if (!inp || inp.getAttribute('data-vp')) return;
+    inp.setAttribute('data-vp', '1');
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;align-items:stretch';
+    inp.parentNode.insertBefore(row, inp);
+    row.appendChild(inp);
+    inp.style.flex = '1'; inp.style.minWidth = '0';
+    var b = document.createElement('button');
+    b.type = 'button'; b.textContent = '▾'; b.setAttribute('aria-label', 'Pick a saved vendor'); b.setAttribute('data-vp-btn', id);
+    b.style.cssText = 'width:48px;flex-shrink:0;border:1px solid var(--border,#333);border-radius:10px;background:var(--card2,#222);color:#0A84FF;font-size:18px;font-weight:900;cursor:pointer;font-family:inherit';
+    b.onclick = function(e){ e.preventDefault(); e.stopPropagation(); window.bpVendorPick(id); };
+    row.appendChild(b);
+  });
+}
+
+/* Every save sweeps vendor names in first, so they are written in the same save. */
+['save','saveDB'].forEach(function(nm){
+  var o = window[nm]; if (typeof o !== 'function' || o.__vend) return;
+  var w = function(){ try { window.bpVendorSweep(); } catch(e){} return o.apply(this, arguments); };
+  w.__vend = 1; window[nm] = w;
+});
+/* The type-ahead list now reads the saved vendor list, not just expenses. */
+(function(){
+  var o = window.bpRefreshSuggestLists; if (typeof o !== 'function' || o.__vend) return;
+  var w = function(){ var r; try { r = o.apply(this, arguments); } catch(e){} fillVendorDL(); try { decorate(); } catch(e){} return r; };
+  w.__vend = 1; window.bpRefreshSuggestLists = w;
+})();
+
+/* ═════════════ 2. SCAN A RECEIPT INTO SHOPPING ═════════════ */
+var SC = null;
+function taxRate(){ try { var v = localStorage.getItem('bp_shop_tax'); return v === null ? 6.625 : (+v || 0); } catch(e){ return 6.625; } }
+function jobOpts(cur){
+  var h = '<option value="">No job (general)</option>';
+  jobs().forEach(function(j){ h += '<option value="' + E(j.id) + '"' + (j.id === cur ? ' selected' : '') + '>' + E(j.name) + '</option>'; });
+  return h;
+}
+function curJob(){
+  try { if (typeof window.bpShopJobNow === 'function') return window.bpShopJobNow() || ''; } catch(e){}
+  try { return (typeof bpActiveJob === 'function' && bpActiveJob()) || ''; } catch(e){ return ''; }
+}
+
+window.bpShopScan = function(){
+  SC = { src:'', text:'', items:[], vendor:'', date:'', total:'', job:curJob(), note:'' };
+  drawScan();
+};
+function drawScan(){
+  var body = '<div style="font-size:15px;color:var(--muted);margin:2px 0 12px">Scan what you bought. Items go to <b style="color:var(--text)">Bought</b> on your list and the receipt is saved to <b style="color:var(--text)">Money</b>.</div>'
+    + '<input type="file" id="bp-scan-cam" accept="image/*" capture="environment" style="display:none" onchange="bpScanFile(this)"/>'
+    + '<input type="file" id="bp-scan-lib" accept="image/*" style="display:none" onchange="bpScanFile(this)"/>'
+    + (IS_DESK ? '' : '<button id="bp-scan-take" onclick="document.getElementById(\'bp-scan-cam\').click()" style="' + BTN + ';width:100%;background:#0A84FF;color:#fff;font-size:18px;padding:18px">📷 Take photo of receipt</button>')
+    + '<button id="bp-scan-pick" onclick="document.getElementById(\'bp-scan-lib\').click()" style="' + BTN + ';width:100%;margin-top:8px;background:' + (IS_DESK ? '#0A84FF;color:#fff' : 'var(--card2,#222);color:var(--text)') + '">🖼 Choose a receipt photo</button>'
+    + '<div id="bp-scan-status" style="margin-top:10px;font-size:15px;font-weight:700;color:#0A84FF;min-height:20px"></div>'
+    + '<div style="' + LBL + ';margin-top:18px">Or paste iPhone Live Text (most accurate)</div>'
+    + '<div style="font-size:14px;color:var(--muted);line-height:1.45;margin-bottom:8px">Camera or Photos → tap the Live Text icon <b>▤</b> → Select All → Copy → paste below.</div>'
+    + '<textarea id="bp-scan-text" rows="6" placeholder="Paste the receipt text here" style="' + INP + ';font-size:15px;resize:vertical"></textarea>'
+    + '<div style="display:flex;gap:8px;margin-top:8px">'
+    + '<button onclick="bpScanPaste()" style="' + BTN + ';flex:1;background:var(--card2,#222);color:var(--text)">📋 Paste</button>'
+    + '<button id="bp-scan-readtext" onclick="bpScanUseText()" style="' + BTN + ';flex:1;background:#30D158;color:#000">Read this text</button></div>'
+    + '<button onclick="bpScanManual()" style="' + BTN + ';width:100%;margin-top:14px;background:transparent;color:var(--muted);border:1px solid var(--border,#333)">Type it in myself</button>';
+  sheet('bp-shop-scan', '🧾 Scan a receipt', body, '', 10020);
+}
+function setStatus(m, bad){ var s = document.getElementById('bp-scan-status'); if (s) { s.textContent = m; s.style.color = bad ? '#FF453A' : '#0A84FF'; } }
+
+function loadOCR(){
+  if (window.Tesseract) return Promise.resolve();
+  var srcs = ['https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js', 'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js'];
+  return srcs.reduce(function(p, src){
+    return p.catch(function(){
+      return new Promise(function(res, rej){
+        if (window.Tesseract) return res();
+        var s = document.createElement('script'); s.src = src;
+        var to = setTimeout(function(){ rej(new Error('timeout')); }, 30000);
+        s.onload = function(){ clearTimeout(to); window.Tesseract ? res() : rej(new Error('no engine')); };
+        s.onerror = function(){ clearTimeout(to); rej(new Error('load failed')); };
+        document.head.appendChild(s);
+      });
+    });
+  }, Promise.reject(new Error('start')));
+}
+function runOCR(src){
+  return loadOCR().then(function(){
+    var job = window.Tesseract.recognize(src, 'eng', { logger:function(m){
+      if (m && m.status === 'recognizing text' && typeof m.progress === 'number') setStatus('Reading receipt… ' + Math.round(m.progress * 100) + '%');
+    } });
+    var to = new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 120000); });
+    return Promise.race([job, to]);
+  }).then(function(r){ return (r && r.data && r.data.text) || ''; });
+}
+window.bpScanFile = function(inp){
+  var f = inp && inp.files && inp.files[0]; if (!f) return;
+  setStatus('Loading photo…');
+  var rd = new FileReader();
+  rd.onload = function(){
+    var raw = rd.result;
+    var go = function(src){
+      SC.src = src || raw;
+      setStatus('Reading receipt…');
+      runOCR(SC.src).then(function(text){
+        SC.text = text; parseInto(text);
+        SC.note = SC.items.length ? 'Read on this device — check each line.' : 'Couldn\'t pick out the items — type them below, or try Live Text.';
+        drawReview();
+      }, function(){
+        parseInto('');
+        SC.note = 'Couldn\'t read the photo here (no signal?). The receipt is kept — type the items and total below.';
+        drawReview();
+      });
+    };
+    try { if (typeof bpCompressFor === 'function') return bpCompressFor('doc', raw, go); } catch(e){}
+    go(raw);
+  };
+  rd.onerror = function(){ setStatus('Couldn\'t open that photo', true); };
+  rd.readAsDataURL(f);
+  try { inp.value = ''; } catch(e){}
+};
+window.bpScanPaste = async function(){
+  try { var t = await navigator.clipboard.readText(); var el = document.getElementById('bp-scan-text'); if (el && t) el.value = t; if (!t) say('Clipboard is empty — copy the Live Text first'); }
+  catch(e){ say('Tap in the box and choose Paste'); var el2 = document.getElementById('bp-scan-text'); if (el2) try { el2.focus(); } catch(e2){} }
+};
+window.bpScanUseText = function(){
+  var el = document.getElementById('bp-scan-text'), t = el ? el.value : '';
+  if (!t.trim()) { say('Paste the receipt text first'); return; }
+  SC.text = t; parseInto(t);
+  SC.note = SC.items.length ? 'From Live Text — check each line.' : 'Couldn\'t pick out the items — type them below.';
+  drawReview();
+};
+window.bpScanManual = function(){ parseInto(''); SC.note = ''; if (!SC.items.length) SC.items.push({ name:'', qty:1, price:0 }); drawReview(); };
+
+/* ── reading the text ── */
+function nk(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function knownVendorIn(text){
+  var low = ' ' + nk(text) + ' ', best = '';
+  window.bpVendorNames().forEach(function(n){ var k = nk(n); if (k.length >= 3 && low.indexOf(' ' + k + ' ') > -1 && k.length > nk(best).length) best = n; });
+  if (!best && /home\s*depot/i.test(text)) best = 'Home Depot';
+  if (!best && /lowe'?s/i.test(text)) best = "Lowe's";
+  return best;
+}
+function simpleItems(text){
+  var out = [];
+  String(text||'').split(/\r?\n/).forEach(function(line){
+    line = line.trim(); var m = line.match(/\$?\s*([0-9]{1,4}[.,][0-9]{2})\s*[A-Z]?$/); if (!m) return;
+    if (/total|tax|change|cash|visa|master|debit|credit|balance|amount|due|saving|discount/i.test(line)) return;
+    var name = line.slice(0, m.index).replace(/^[-*#]+\s*/, '').trim(); if (!/[a-z]/i.test(name) || name.length < 2) return;
+    out.push({ name:name.slice(0,60), cost:parseFloat(m[1].replace(',', '.')) });
+  });
+  return out.slice(0, 60);
+}
+function parseInto(text){
+  var p = { vendor:'', date:'', total:null };
+  try { if (text && typeof parseReceiptText === 'function') p = parseReceiptText(text) || p; } catch(e){}
+  var items = [];
+  try { items = text ? (typeof parseReceiptItems === 'function' ? parseReceiptItems(text) : simpleItems(text)) : []; } catch(e){ items = simpleItems(text); }
+  var known = text ? knownVendorIn(text) : '';
+  var raw = norm(String(p.vendor||'').replace(/[^A-Za-z0-9&'.\- ]+/g, ' '));
+  SC.vendor = known || (okName(raw) ? raw : '');
+  SC.date = /^\d{4}-\d{2}-\d{2}$/.test(p.date||'') && !isNaN(new Date(p.date)) ? p.date : today();
+  SC.total = (p.total && p.total > 0) ? String(p.total.toFixed(2)) : '';
+  var used = {};
+  SC.items = items.map(function(it){
+    var row = { name:it.name, qty:1, price:+it.cost || 0, match:'' };
+    var m = findMatch(it.name, used, SC.job); if (m) { row.match = m.id; used[m.id] = 1; }
+    return row;
+  });
+}
+function words(s){ return nk(s).split(' ').filter(function(w){ return w.length >= 3; }); }
+function findMatch(name, used, job){
+  var n = nk(name); if (n.length < 3) return null;
+  var nw = words(name);
+  return (DB.shopping||[]).filter(function(x){ return x && !x.bought && !used[x.id] && (x.jobId||'') === (job||''); }).find(function(x){
+    var t = nk(x.text); if (t.length < 3) return false;
+    if (n.indexOf(t) > -1 || t.indexOf(n) > -1) return true;
+    var tw = words(x.text), shared = tw.filter(function(w){ return nw.indexOf(w) > -1; }).length;
+    return shared >= 2 || (shared === 1 && Math.min(tw.length, nw.length) === 1 && tw.concat(nw).some(function(w){ return w.length >= 4 && tw.indexOf(w) > -1 && nw.indexOf(w) > -1; }));
+  }) || null;
+}
+
+/* ── review + save ── */
+function subtotal(){ return (SC.items||[]).reduce(function(s, it){ return s + (+it.qty || 0) * (+it.price || 0); }, 0); }
+function itemRow(it, i){
+  var m = it.match && (DB.shopping||[]).find(function(x){ return x.id === it.match; });
+  return '<div data-rv-row="' + i + '" style="padding:10px;margin-bottom:8px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)">'
+    + '<div style="display:flex;gap:6px;align-items:center"><input data-rv="name" value="' + E(it.name) + '" placeholder="Item" oninput="bpRvSet(' + i + ',\'name\',this.value)" style="' + INP + ';font-size:16px;padding:11px 12px"/>'
+    + '<button aria-label="Remove line" onclick="bpRvDel(' + i + ')" style="width:44px;height:44px;flex-shrink:0;border:none;background:transparent;color:#FF453A;font-size:24px;cursor:pointer">×</button></div>'
+    + '<div style="display:flex;gap:6px;margin-top:6px;align-items:center"><span style="font-size:13px;color:var(--muted)">Qty</span>'
+    + '<input data-rv="qty" inputmode="decimal" value="' + E(String(it.qty)) + '" oninput="bpRvSet(' + i + ',\'qty\',this.value)" style="' + INP + ';width:74px;font-size:16px;padding:10px"/>'
+    + '<span style="font-size:13px;color:var(--muted)">× $</span><input data-rv="price" inputmode="decimal" value="' + E(String(it.price || '')) + '" placeholder="0.00" oninput="bpRvSet(' + i + ',\'price\',this.value)" style="' + INP + ';flex:1;min-width:0;font-size:16px;padding:10px"/></div>'
+    + (m ? '<div style="margin-top:6px;font-size:13.5px;color:#30D158;display:flex;align-items:center;gap:8px">✓ Ticks off “' + E(m.text) + '” on your list'
+        + '<button onclick="bpRvUnmatch(' + i + ')" style="margin-left:auto;background:none;border:1px solid var(--border,#333);color:var(--muted);border-radius:8px;padding:4px 8px;font-size:12.5px;cursor:pointer;font-family:inherit">Not this</button></div>' : '')
+    + '</div>';
+}
+function drawReview(){
+  var sc = document.getElementById('bp-shop-scan'); if (sc) sc.remove();
+  var sub = subtotal();
+  var body = (SC.note ? '<div style="font-size:14px;color:' + (SC.items.length ? 'var(--muted)' : '#FF9F0A') + ';margin:2px 0 8px">' + E(SC.note) + '</div>' : '')
+    + (SC.src ? '<img src="' + SC.src + '" alt="Receipt" style="width:76px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--border,#333);float:right;margin:0 0 6px 10px"/>' : '')
+    + '<div style="' + LBL + '">Store / vendor</div>' + window.bpVendorField('bp-rv-store', SC.vendor)
+    + '<div style="display:flex;gap:8px;clear:both"><div style="flex:1;min-width:0"><div style="' + LBL + '">Date</div><input id="bp-rv-date" type="date" value="' + E(SC.date || today()) + '" style="' + INP + '"/></div></div>'
+    + '<div style="' + LBL + '">Job</div><select id="bp-rv-job" onchange="bpRvJob(this.value)" style="' + INP + ';font-weight:800">' + jobOpts(SC.job) + '</select>'
+    + '<div style="' + LBL + ';margin-top:16px">Items (' + SC.items.length + ')</div>'
+    + '<div id="bp-rv-items">' + SC.items.map(itemRow).join('') + '</div>'
+    + '<button onclick="bpRvAdd()" style="' + BTN + ';width:100%;background:transparent;color:var(--muted);border:1px dashed var(--border,#333)">+ Add a line</button>'
+    + '<div style="margin-top:14px;font-size:14px;color:var(--muted)">Items add up to <b id="bp-rv-sub" style="color:var(--text)">' + money(sub) + '</b></div>'
+    + '<div style="' + LBL + '">Receipt total (what you paid, with tax)</div>'
+    + '<input id="bp-rv-total" inputmode="decimal" value="' + E(SC.total) + '" placeholder="' + E((Math.round(sub * (100 + taxRate())) / 100).toFixed(2)) + '" style="' + INP + ';font-size:20px;font-weight:900"/>'
+    + '<div style="font-size:13px;color:var(--muted);margin-top:6px">Left blank, it uses the items plus ' + taxRate() + '% tax.</div>';
+  var foot = '<button id="bp-rv-save" onclick="bpRvSave()" style="' + BTN + ';width:100%;background:#30D158;color:#000;font-size:18px">Save to Shopping + Money</button>';
+  sheet('bp-shop-review', '🧾 Check the receipt', body, foot, 10020);
+}
+function grab(){
+  var g = function(id){ var el = document.getElementById(id); return el ? el.value : ''; };
+  SC.vendor = g('bp-rv-store'); SC.date = g('bp-rv-date'); SC.total = g('bp-rv-total');
+}
+window.bpRvSet = function(i, k, v){
+  var it = SC.items[i]; if (!it) return;
+  it[k] = k === 'name' ? v : calc(v);
+  var s = document.getElementById('bp-rv-sub'); if (s) s.textContent = money(subtotal());
+};
+window.bpRvDel = function(i){ grab(); SC.items.splice(i, 1); drawReview(); };
+window.bpRvAdd = function(){ grab(); SC.items.push({ name:'', qty:1, price:0, match:'' }); drawReview();
+  var rows = document.querySelectorAll('#bp-rv-items [data-rv="name"]'); var last = rows[rows.length - 1]; if (last) try { last.focus(); } catch(e){} };
+window.bpRvUnmatch = function(i){ grab(); if (SC.items[i]) SC.items[i].match = ''; drawReview(); };
+window.bpRvJob = function(v){
+  grab(); SC.job = v || '';
+  var used = {}; SC.items.forEach(function(it){ var m = findMatch(it.name, used, SC.job); it.match = m ? m.id : ''; if (m) used[m.id] = 1; });
+  drawReview();
+};
+window.bpRvSave = function(){
+  grab();
+  var store = norm(SC.vendor), day = dk(SC.date) || today();
+  var lines = SC.items.filter(function(it){ return norm(it.name); });
+  var sub = lines.reduce(function(s, it){ return s + (+it.qty || 0) * (+it.price || 0); }, 0);
+  var total = String(SC.total||'').trim() ? calc(SC.total) : Math.round(sub * (100 + taxRate())) / 100;
+  if (isNaN(total)) { say('Check the total — only numbers'); return; }
+  if (!lines.length && !(total > 0)) { say('Add at least one item or the total'); return; }
+  var p = day.split('-'), boughtAt = new Date(+p[0], +p[1]-1, +p[2], 12, 0, 0).toISOString();
+  DB.shopping = DB.shopping || []; DB.expenses = DB.expenses || [];
+  var exp = { id:newId(), desc:'Materials' + (store ? ' — ' + store : '') + ' (receipt, ' + lines.length + ' item' + (lines.length === 1 ? '' : 's') + ')',
+    jobId:SC.job || '', amount:Math.round(total * 100) / 100, date:day, category:'Materials', vendor:store, receiptSrc:SC.src || null,
+    items:lines.map(function(it){ var q = +it.qty || 0, pr = +it.price || 0; return { name:norm(it.name), qty:q, price:pr, cost:Math.round(q * pr * 100) / 100 }; }),
+    fromShopping:true, fromReceiptScan:true, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:ts(), updatedAt:ts() };
+  DB.expenses.push(exp);
+  var ticked = 0, added = 0;
+  lines.forEach(function(it){
+    var x = it.match && DB.shopping.find(function(s){ return s.id === it.match && !s.bought; });
+    if (x) {
+      x.bought = true; x.boughtAt = boughtAt; x.price = +it.price || 0; if (+it.qty) x.qty = +it.qty; if (store) x.store = store;
+      x.expenseId = exp.id; x.updatedAt = ts(); ticked++;
+    } else {
+      DB.shopping.push({ id:newId(), jobId:SC.job || '', text:norm(it.name), qty:+it.qty || 1, unit:'', price:+it.price || 0, store:store, bought:true, boughtAt:boughtAt,
+        expenseId:exp.id, fromReceipt:true, created:ts(), updatedAt:ts() });
+      added++;
+    }
+  });
+  if (store) window.bpRememberVendor(store);
+  persist();
+  var r = document.getElementById('bp-shop-review'); if (r) r.remove();
+  try { if (typeof window.bpOpenShop === 'function') window.bpOpenShop(SC.job || ''); } catch(e){}
+  try { if (typeof renderAll === 'function' && !IS_DESK) renderAll(); } catch(e){}
+  say('Receipt saved — ' + (ticked ? ticked + ' ticked off, ' : '') + added + ' added · ' + money(exp.amount) + ' in Money');
+  return exp.id;
+};
+
+decorate(); setTimeout(decorate, 1500);
+setTimeout(fillVendorDL, 1600);
+console.log('[BP] v2.91 Vendor list + receipt scan to Shopping ready');
+})();
+</script>
