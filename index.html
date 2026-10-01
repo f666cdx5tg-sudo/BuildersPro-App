@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.88';
+var APP_VERSION = '2.89';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -15150,7 +15150,9 @@ var BP_CK_CFG = {
       NETWORK_ERROR:           'Couldn\'t reach iCloud (no connection or it dropped). It will try again by itself.',
       LIMIT_EXCEEDED:          'iCloud said one piece was too big. Please tell Claude — this needs a fix.',
       ACCESS_DENIED:           'iCloud refused access. The app\'s iCloud setup may need fixing.',
-      BAD_REQUEST:             'iCloud rejected the request. The app\'s iCloud setup may need fixing.'
+      BAD_REQUEST:             'iCloud rejected the request. The app\'s iCloud setup may need fixing.',
+      CONFLICT:                'Another device saved at the same moment. Tap Sync now to try again.',
+      EXISTS:                  'Another device saved at the same moment. Tap Sync now to try again.'
     };
     return m[code] || fallback || ('iCloud error' + (code ? ' (' + code + ')' : ''));
   }
@@ -15215,7 +15217,27 @@ var BP_CK_CFG = {
       for (var j = i; j < Math.min(i + per, pieces.length); j++)
         batch.push({ recordType: 'BPChunk', recordName: pieceName(key, j), fields: { data: { value: pieces[j] }, n: { value: pieces.length } } });
       var sr = await db.saveRecords(batch);
-      throwIfErrors(sr);
+      /* v2.89: a photo whose upload was cut off (app closed, signal lost)
+         leaves some of its pieces already in iCloud. Saving them again as
+         NEW records made iCloud answer CONFLICT ("already exists") on every
+         sync from then on — sync froze for good. Now: look up the pieces
+         that already exist and overwrite them with their current tag. */
+      if (sr && sr.hasErrors) {
+        var clash = (sr.errors || []).filter(function(e){ return /CONFLICT|EXISTS|OPLOCK/.test(e.ckErrorCode || ''); });
+        var other = (sr.errors || []).filter(function(e){ return !/CONFLICT|EXISTS|OPLOCK/.test(e.ckErrorCode || ''); });
+        if (other.length || !clash.length) throwIfErrors(sr);
+        var names = clash.map(function(e){ return e.recordName || (e.record && e.record.recordName); }).filter(Boolean);
+        if (!names.length) throwIfErrors(sr);
+        var fr = await db.fetchRecords(names, { desiredKeys: ['n'] });
+        throwIfErrors(fr, true);
+        var tags = {}; (fr.records || []).forEach(function(x){ tags[x.recordName] = x.recordChangeTag; });
+        var again = batch.filter(function(x){ return names.indexOf(x.recordName) !== -1; }).map(function(x){
+          var y = { recordType: x.recordType, recordName: x.recordName, fields: x.fields };
+          if (tags[x.recordName]) y.recordChangeTag = tags[x.recordName];
+          return y;
+        });
+        throwIfErrors(await db.saveRecords(again));
+      }
       if (progress) progress();
     }
   }
@@ -15295,6 +15317,7 @@ var BP_CK_CFG = {
 
   /* mode: 'pull' | 'both'. Returns a short result for the card. */
   window.bpICloudSync = async function(mode, _retry){
+    _retry = +_retry || 0;
     if (!cfgReady() || !isOn()) return null;
     if (S.busy) return null;
     S.busy = true; S.lastErr = ''; paint('Syncing with iCloud…');
@@ -15321,9 +15344,10 @@ var BP_CK_CFG = {
           fields: { pushId: { value: pushId }, pieces: { value: mp.length }, pushedAt: { value: nowIso() } } };
         if (r.tag) rec.recordChangeTag = r.tag;
         var sr = await db.saveRecords([rec]);
-        if (sr && sr.hasErrors && sr.errors[0] && /CONFLICT|OPLOCK/.test(sr.errors[0].ckErrorCode || '') && !_retry) {
-          S.busy = false;               /* another device saved first — pull its work in and try again */
-          return await window.bpICloudSync(mode, true);
+        if (sr && sr.hasErrors && sr.errors[0] && /CONFLICT|OPLOCK|EXISTS/.test(sr.errors[0].ckErrorCode || '') && _retry < 3) {
+          await nap(1500 * (_retry + 1)); /* another device saved first — pull its work in and try again (v2.89: up to 3 times) */
+          S.busy = false;
+          return await window.bpICloudSync(mode, _retry + 1);
         }
         throwIfErrors(sr);
         /* tidy: the previous save's database pieces are no longer pointed at */
