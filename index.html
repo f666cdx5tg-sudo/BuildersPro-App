@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.93';
+var APP_VERSION = '2.94';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -19108,6 +19108,17 @@ console.log('[BP] v2.91 Vendor list + receipt scan to Shopping ready');
 </script>
 
 <script>
+/* ══ v2.94 — ONE MIC ICON: THE SAME ONE AS THE iPHONE KEYBOARD ════════════
+   Stan (Oct 1, 2026): "Mirror keyboard mic icon in app."
+   Every mic in the app now uses one drawn icon matching the iPhone
+   keyboard's dictation mic (capsule, cradle, stand) instead of the 🎤 / 🎙
+   emoji, which iPhone draws as a silver karaoke mic. Covers the Speak
+   button, the Speak sheet, the text-box chip, Speak items, the note
+   marker, and the older dictation buttons from v2.45. Keyboard-voice
+   instructions show a keyboard-style key with that icon, so it's obvious
+   which key to tap. Older mic buttons hide themselves where live voice
+   can't run (home-screen app) instead of failing silently.
+   ══════════════════════════════════════════════════════════════════════════ */
 /* ══ v2.93 — VOICE WORKS FROM THE HOME-SCREEN ICON TOO ══════════════════════
    Stan (Oct 1, 2026): "Microphone is not working."
    Apple blocks the web speech engine in home-screen web apps (it works in
@@ -19170,6 +19181,13 @@ if (typeof BP_COLL_NAMES !== 'undefined') { BP_COLL_NAMES.jobNotes = 'Note'; BP_
 var INP = 'width:100%;box-sizing:border-box;padding:13px 14px;border-radius:12px;border:1px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:17px;font-family:inherit';
 var LBL = 'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:12px 0 6px';
 var BTN = 'border:none;border-radius:12px;padding:14px 12px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center';
+/* v2.94: the iPhone keyboard's dictation mic, drawn once and used everywhere. */
+function MIC(px, sw){ px = px || 20; return '<svg data-bp-mic viewBox="0 0 24 24" aria-hidden="true" style="width:' + px + 'px;height:' + px + 'px;flex-shrink:0;display:inline-block;vertical-align:middle" fill="none" stroke="currentColor" stroke-width="' + (sw || 2) + '" stroke-linecap="round" stroke-linejoin="round">'
+  + '<rect x="8.6" y="2.2" width="6.8" height="12.6" rx="3.4"/><path d="M5.2 10.6v.6a6.8 6.8 0 0 0 13.6 0v-.6"/><path d="M12 18v3.2"/><path d="M9.2 21.2h5.6"/></svg>'; }
+function STOP(px){ px = px || 20; return '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:' + px + 'px;height:' + px + 'px;flex-shrink:0;display:inline-block;vertical-align:middle"><rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/></svg>'; }
+/* a key that looks like the one on the iPhone keyboard */
+function KEY(){ return '<span data-bp-key style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:32px;border-radius:7px;background:#6b6b70;color:#fff;box-shadow:0 1.5px 0 rgba(0,0,0,.55);vertical-align:middle;margin:0 4px">' + MIC(19, 1.9) + '</span>'; }
+window.bpMicIcon = MIC; window.bpMicKey = KEY;
 
 /* ═════════════ SPEECH ENGINE (works in both apps) ═════════════ */
 function srOK(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
@@ -19190,7 +19208,7 @@ function stopAll(){ if (LIVE) { var l = LIVE; LIVE = null; l.on = false; try { l
 window.bpVoiceStop = stopAll;
 function listen(o){
   stopAll();
-  if (!srOK()) { say('🎤 Voice needs Safari or Chrome'); return null; }
+  if (!srOK()) { say('Voice needs Safari or Chrome'); return null; }
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var l = { on:true, onStop:o.onStop };
   function boot(){
@@ -19208,12 +19226,12 @@ function listen(o){
     r.onstart = r.onaudiostart = function(){ l.ok = true; };
     r.onerror = function(e){
       var c = e && e.error;
-      if (c === 'not-allowed') { say('🎤 Microphone permission was denied — Settings › Safari › Microphone › Allow. Using the keyboard mic for now.'); goKeyboard('not-allowed'); }
+      if (c === 'not-allowed') { say('Microphone permission was denied — Settings › Safari › Microphone › Allow. Using the keyboard mic for now.'); goKeyboard('not-allowed'); }
       else if (c === 'service-not-allowed' || c === 'audio-capture' || c === 'language-not-supported') { goKeyboard(c); }
-      else if (c === 'network') { say('🎤 Live voice needs a signal — using the keyboard mic instead'); goKeyboard('network'); }
+      else if (c === 'network') { say('Live voice needs a signal — using the keyboard mic instead'); goKeyboard('network'); }
     };
     r.onend = function(){ if (l.on && LIVE === l) { try { boot(); } catch(e2){ stopAll(); } } };   // Safari ends on every pause
-    try { r.start(); } catch(e){ say('🎤 Could not start the mic'); stopAll(); }
+    try { r.start(); } catch(e){ say('Could not start the mic'); stopAll(); }
   }
   LIVE = l; boot();
   // Safari sometimes accepts start() and then never hears anything. If the
@@ -19313,7 +19331,7 @@ function notesList(){
       var d = new Date(n.created);
       return '<div data-vc-note="' + E(n.id) + '" style="padding:12px;margin-bottom:8px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)">'
         + '<div style="font-size:12.5px;color:var(--muted);display:flex;align-items:center">' + (isNaN(d) ? '' : d.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }))
-        + (n.roomId ? ' · ' + E(roomName(n.roomId)) : '') + (n.isVoice ? ' · 🎤' : '')
+        + (n.roomId ? ' · ' + E(roomName(n.roomId)) : '') + (n.isVoice ? ' · ' + MIC(13, 2.2) : '')
         + '<button aria-label="Delete note" onclick="bpVoiceNoteDel(this.closest(\'[data-vc-note]\').getAttribute(\'data-vc-note\'))" style="margin-left:auto;background:none;border:none;color:#FF453A;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Delete</button></div>'
         + '<div style="font-size:16px;margin-top:4px;white-space:pre-wrap;line-height:1.35">' + E(n.text) + '</div></div>';
     }).join('');
@@ -19333,7 +19351,7 @@ function body(){
   var mic = liveOK()
     ? '<div style="display:flex;flex-direction:column;align-items:center;margin:18px 0 8px">'
       + '<button id="bp-vc-mic" aria-label="' + (V.on ? 'Stop listening' : 'Start listening') + '" onclick="bpVoiceMic()" style="width:124px;height:124px;border-radius:50%;border:none;cursor:pointer;font-size:52px;'
-      + (V.on ? 'background:#FF453A;color:#fff;box-shadow:0 0 0 10px rgba(255,69,58,.22)' : 'background:' + M.color + ';color:#000') + '">' + (V.on ? '⏹' : '🎤') + '</button>'
+      + (V.on ? 'background:#FF453A;color:#fff;box-shadow:0 0 0 10px rgba(255,69,58,.22)' : 'background:' + M.color + ';color:#000') + '">' + (V.on ? STOP(46) : MIC(58, 1.8)) + '</button>'
       + '<div id="bp-vc-status" style="margin-top:12px;font-size:16px;font-weight:800;color:' + (V.on ? '#FF453A' : 'var(--muted)') + '">' + (V.on ? 'Listening… talk naturally' : 'Tap the mic and talk') + '</div>'
       + '<div id="bp-vc-interim" style="margin-top:6px;min-height:22px;font-size:16px;color:var(--text);text-align:center;font-style:italic;opacity:.8">' + E(V.interim) + '</div></div>'
     : kbBox();
@@ -19357,7 +19375,7 @@ function kbBox(){
   var why = BROKEN ? (WHY[BROKEN] || '') : (IOS && standalone()) ? 'Apple doesn\'t allow live voice in home-screen apps.' : !srOK() ? 'This browser has no live voice.' : '';
   return '<div style="margin:14px 0 6px;padding:12px 14px;border-radius:14px;background:rgba(10,132,255,.12);color:var(--text);font-size:15px;line-height:1.45">'
     + (why ? '<div style="color:var(--muted);font-size:13.5px;margin-bottom:4px">' + why + '</div>' : '')
-    + '<b>Tap the 🎙 on your keyboard and talk.</b> '
+    + '<b>Tap the box, then tap' + KEY() + 'on your keyboard and talk.</b> '
     + (V.mode === 'note' ? 'It becomes one note.' : 'Say <b>"next"</b> or <b>"new line"</b> between items.')
     + ' Say <b>"save"</b> at the end — or tap Save.</div>'
     + '<textarea id="bp-vc-text" rows="5" autocapitalize="sentences" placeholder="' + (V.mode === 'shop' ? 'ten half inch pex elbows next teflon tape' : V.mode === 'punch' ? 'basement bath caulk the tub next kitchen replace shutoff' : 'Your note…') + '" '
@@ -19389,7 +19407,7 @@ function draw(){
   w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10030;display:flex;align-items:' + (IS_DESK ? 'center' : 'stretch') + ';justify-content:center;padding-top:var(--safe-top,0px);box-sizing:border-box';
   w.innerHTML = '<div style="background:var(--bg,#111);color:var(--text,#f0f0f0);width:100%;max-width:' + (IS_DESK ? '640px' : '100%') + ';'
     + (IS_DESK ? 'height:90%;border-radius:18px' : 'max-height:100%;height:100%;margin-top:auto;border-radius:20px 20px 0 0') + ';display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden">'
-    + '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px 8px"><div style="font-size:21px;font-weight:900;flex:1">🎤 Speak to add</div>'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px 8px"><div style="font-size:21px;font-weight:900;flex:1;display:flex;align-items:center;gap:8px">' + MIC(24, 2.2) + 'Speak to add</div>'
     + '<button onclick="bpVoiceClose()" aria-label="Close" style="background:var(--card2,#222);border:none;color:var(--text);width:44px;height:44px;border-radius:50%;font-size:24px;cursor:pointer">×</button></div>'
     + '<div class="bp-sheet-body" style="overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 16px;flex:1;min-height:0">' + body() + '</div>'
     + '<div id="bp-vc-foot" style="padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border,#2a2a2a)">' + foot() + '</div></div>';
@@ -19458,12 +19476,12 @@ window.bpVoiceMic = function(force){
     onPhrase: handlePhrase,
     onInterim: function(t){ V.interim = t; paintInterim(); },
     onStop: function(){ V.on = false; V.interim = ''; if (document.getElementById('bp-voice')) { var b = document.getElementById('bp-vc-mic'), s = document.getElementById('bp-vc-status');
-      if (b) { b.textContent = '🎤'; b.style.background = MODES[V.mode].color; b.style.color = '#000'; b.style.boxShadow = 'none'; b.setAttribute('aria-label', 'Start listening'); }
+      if (b) { b.innerHTML = MIC(58, 1.8); b.style.background = MODES[V.mode].color; b.style.color = '#000'; b.style.boxShadow = 'none'; b.setAttribute('aria-label', 'Start listening'); }
       if (s) { s.textContent = 'Tap the mic and talk'; s.style.color = 'var(--muted)'; } paintInterim(); } }
   });
   if (!LIVE) { V.on = false; }
   var b = document.getElementById('bp-vc-mic'), s = document.getElementById('bp-vc-status');
-  if (V.on && b) { b.textContent = '⏹'; b.style.background = '#FF453A'; b.style.color = '#fff'; b.style.boxShadow = '0 0 0 10px rgba(255,69,58,.22)'; b.setAttribute('aria-label', 'Stop listening'); }
+  if (V.on && b) { b.innerHTML = STOP(46); b.style.background = '#FF453A'; b.style.color = '#fff'; b.style.boxShadow = '0 0 0 10px rgba(255,69,58,.22)'; b.setAttribute('aria-label', 'Stop listening'); }
   if (V.on && s) { s.textContent = 'Listening… talk naturally'; s.style.color = '#FF453A'; }
 };
 window.bpVoiceMode = function(m){ if (!MODES[m] || m === V.mode) return; if (V.items.length && !confirm('Switch and drop the ' + V.items.length + ' unsaved item' + (V.items.length > 1 ? 's' : '') + '?')) return;
@@ -19527,7 +19545,7 @@ function fab(){
     st2.textContent = '.view{padding-bottom:96px !important}'; document.head.appendChild(st2); }
   var b = document.createElement('button');
   b.id = 'bp-voice-fab'; b.type = 'button'; b.setAttribute('aria-label', 'Speak to add a shopping item, punch item or note');
-  b.innerHTML = '<span style="font-size:27px;line-height:1">🎤</span>';
+  b.innerHTML = MIC(30, 2.1);
   b.style.cssText = 'position:fixed;z-index:95;width:62px;height:62px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;'
     + 'background:linear-gradient(135deg,#FF453A,#D70015);color:#fff;box-shadow:0 6px 20px rgba(255,69,58,.45);'
     + (IS_DESK ? 'right:24px;bottom:24px' : 'right:16px;bottom:calc(var(--nav-h,80px) + 14px)');
@@ -19564,7 +19582,7 @@ function chip(){
 }
 function paintChip(){
   var c = chip();
-  c.textContent = DICT.on ? '⏹ Stop' : '🎤 Speak';
+  c.innerHTML = DICT.on ? STOP(16) + '<span>Stop</span>' : MIC(19, 2.2) + '<span>Speak</span>';
   c.style.background = DICT.on ? '#FF453A' : '#0A84FF'; c.style.color = '#fff';
   c.setAttribute('aria-label', DICT.on ? 'Stop dictating' : 'Dictate into this field');
 }
@@ -19610,14 +19628,56 @@ function addSpeak(){
   var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;margin-top:10px';
   scan.parentNode.insertBefore(row, scan); row.appendChild(scan);
   scan.style.marginTop = '0'; scan.style.flex = '1'; scan.style.width = 'auto';
-  var sp = document.createElement('button'); sp.id = 'bp-shop-speak'; sp.type = 'button'; sp.textContent = '🎤 Speak items';
+  var sp = document.createElement('button'); sp.id = 'bp-shop-speak'; sp.type = 'button'; sp.innerHTML = MIC(19, 2.2) + '<span style="margin-left:6px">Speak items</span>';
   sp.style.cssText = BTN + ';flex:1;background:rgba(255,159,10,.14);color:#FF9F0A;border:1.5px solid #FF9F0A';
   sp.onclick = function(){ window.bpVoiceCapture('shop'); };
   row.insertBefore(sp, scan);
 }
 new MutationObserver(function(){ try { addSpeak(); } catch(e){} }).observe(document.body, { childList:true });
 
+/* v2.94: the older dictation buttons (v2.45 field mics, the note sheet's
+   Dictate button) get the same icon, and hide where live voice can't run. */
+(function(){
+  if (typeof window.bpMicBtn === 'function' && !window.bpMicBtn.__v294) {
+    var w = function(targetId, label){
+      if (!liveOK()) return '';
+      return '<button type="button" id="mic-btn-' + targetId + '" onclick="bpMic(\'' + targetId + '\')" aria-label="Dictate ' + (label || '') + '" '
+        + 'style="flex-shrink:0;width:46px;height:46px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:#0A84FF;cursor:pointer;display:flex;align-items:center;justify-content:center">' + MIC(22, 2) + '</button>';
+    };
+    w.__v294 = 1; window.bpMicBtn = w;
+  }
+  function repaintLegacy(){
+    document.querySelectorAll('[id^="mic-btn-"]').forEach(function(b){
+      var on = (typeof _bpMicTarget !== 'undefined') && _bpMicTarget && b.id === 'mic-btn-' + _bpMicTarget;
+      var want = on ? 'stop' : 'mic';
+      if (b.getAttribute('data-ic') === want && b.querySelector('svg')) return;
+      b.setAttribute('data-ic', want); b.innerHTML = on ? STOP(18) : MIC(22, 2);
+      b.style.display = liveOK() ? 'flex' : 'none'; b.style.alignItems = 'center'; b.style.justifyContent = 'center';
+    });
+    var vb = document.getElementById('voice-note-btn');
+    if (vb) {
+      if (!liveOK()) { vb.style.display = 'none'; var lv = document.getElementById('voice-note-live'); if (lv) lv.style.display = 'none'; }
+      else {
+        var rec = vb.classList.contains('recording'), want2 = rec ? 'stop' : 'mic';
+        if (vb.getAttribute('data-ic') !== want2 || !vb.querySelector('svg')) {
+          vb.setAttribute('data-ic', want2);
+          vb.innerHTML = (rec ? STOP(16) : MIC(20, 2.1)) + '<span style="margin-left:8px">' + (rec ? 'Tap to Stop' : 'Tap to Dictate') + '</span>';
+          vb.style.display = 'inline-flex'; vb.style.alignItems = 'center'; vb.style.justifyContent = 'center';
+        }
+      }
+    }
+  }
+  ['bpMic','bpMicStop','toggleVoiceNote','bpPrepSheet','openSheet'].forEach(function(nm){
+    var o = window[nm]; if (typeof o !== 'function' || o.__v294) return;
+    var w = function(){ var r = o.apply(this, arguments); try { repaintLegacy(); } catch(e){} return r; };
+    w.__v294 = 1; window[nm] = w;
+  });
+  window.bpRepaintMics = repaintLegacy;
+  try { repaintLegacy(); } catch(e){}
+  setTimeout(function(){ try { repaintLegacy(); } catch(e){} }, 1300);
+})();
+
 fab(); setTimeout(fab, 1200);
-console.log('[BP] v2.92/2.93 Voice everywhere ready (live voice ' + (liveOK() ? 'on' : 'off — keyboard voice') + ')');
+console.log('[BP] v2.92–2.94 Voice everywhere ready (live voice ' + (liveOK() ? 'on' : 'off — keyboard voice') + ')');
 })();
 </script>
