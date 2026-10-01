@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.89';
+var APP_VERSION = '2.90';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -6447,6 +6447,7 @@ function buildChecklistLineItem(item) {
   html += '</div>';
   /* ✂️ Cut — one tap, no dialog. Given a padded 34px box and 8px of separation
      from the × so a gloved thumb can't delete an item it meant to cut. */
+  html += bpClPhotoBtn(item, 'margin-right:6px');   /* v2.90 */
   html += '<button onclick="bpClipToggle(\''+item.id+'\',\'cut\')" title="Cut item" style="background:'+(clipped?'rgba(255,159,10,.18)':'none')+';border:none;border-radius:8px;color:'+(clipped?'#FF9F0A':'var(--faint)')+';font-size:15px;cursor:pointer;flex-shrink:0;width:34px;height:34px;display:flex;align-items:center;justify-content:center;margin-right:8px">✂️</button>';
   html += '<button onclick="deleteChecklistItem(\''+item.id+'\')" style="background:none;border:none;color:var(--faint);font-size:18px;cursor:pointer;flex-shrink:0;padding:0 0 0 4px">×</button>';
   html += '</div>';
@@ -10388,10 +10389,65 @@ renderJobDetail = function(jobId) {
   jdAnchor.parentElement.insertBefore(wSection, jdAnchor);
 };
 
+/* ══ v2.90 — UPLOAD PHOTOS TO A CHECKLIST ITEM ════════════════════════
+   Before: the 📷 on a checklist row opened the CAMERA ONLY (capture=
+   "environment") and took ONE photo, and the Room checklist rows had no
+   photo button at all. Now every checklist row has a 📷 button that opens
+   a sheet: "Before" or "After". Each opens iPhone's normal picker — Take
+   Photo, Photo Library, or Files — and takes as many photos as you pick.
+   They go into the item's Before / After photos (same place the expanded
+   card shows them), so they sync, show in Photos, and in client reports.
+   An After photo counts as the completion photo for the ⚠️ warning. */
+function bpClHasDonePhoto(it){ return !!(it.completionPhoto || (it.photosAfter && it.photosAfter.length)); }
+function bpClPhotoBtn(it, extra){
+  var all = [].concat(it.photosBefore || [], it.photosAfter || []);
+  var thumb = it.completionPhoto || (it.photosAfter && it.photosAfter.length ? it.photosAfter[it.photosAfter.length-1].src : '') || (it.photosBefore && it.photosBefore.length ? it.photosBefore[it.photosBefore.length-1].src : '');
+  var n = all.length + (it.completionPhoto ? 1 : 0);
+  var base = 'position:relative;flex-shrink:0;width:40px;height:40px;border-radius:9px;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;' + (extra || '');
+  var inner = thumb
+    ? '<img src="' + thumb + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;border:1px solid var(--border)"/>'
+      + (n > 1 ? '<span style="position:absolute;bottom:-5px;right:-5px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#0A84FF;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center">' + n + '</span>' : '')
+    : '<span style="font-size:18px">📷</span>';
+  return '<button class="bp-clphoto-btn" onclick="event.stopPropagation();bpClPhotoSheet(\'' + it.id + '\')" title="Add photos" style="' + base + (thumb ? 'background:none;border:none;' : 'background:none;border:1.5px dashed var(--faint);') + '">' + inner + '</button>';
+}
+window.bpClPhotoSheet = function(itemId){
+  var it = (DB.punchlist || []).find(function(x){ return x.id === itemId; });
+  if (!it) return;
+  var old = document.getElementById('bp-clphoto-sheet'); if (old) old.remove();
+  var nb = (it.photosBefore || []).length, na = (it.photosAfter || []).length;
+  var mo = document.createElement('div');
+  mo.id = 'bp-clphoto-sheet';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;font-family:inherit';
+  mo.onclick = function(e){ if (e.target === mo) mo.remove(); };
+  var B = 'display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;padding:18px;border-radius:14px;font-size:17px;font-weight:800;cursor:pointer;margin-bottom:10px;';
+  function pick(phase, label, sub, color, bg){
+    return '<label style="' + B + 'background:' + bg + ';color:' + color + ';border:1.5px solid ' + color + '55">'
+      + '<span style="font-size:24px">' + (phase === 'before' ? '📷' : '✅') + '</span>'
+      + '<span style="flex:1"><div>' + label + '</div><div style="font-size:12px;font-weight:600;opacity:.8;margin-top:2px">' + sub + '</div></span>'
+      + '<input id="bp-clphoto-' + phase + '" type="file" accept="image/*" multiple style="display:none" onchange="bpClPhotoPicked(this,\'' + itemId + '\',\'' + phase + '\')">'
+      + '</label>';
+  }
+  mo.innerHTML = '<div style="background:var(--card,#1a1a1a);color:var(--text,#f0f0f0);border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:10px 16px calc(16px + env(safe-area-inset-bottom))">'
+    + '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:4px auto 12px"></div>'
+    + '<div style="font-size:17px;font-weight:800;margin-bottom:2px">Add photos</div>'
+    + '<div style="font-size:13px;color:var(--muted);margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(it.text || '') + '</div>'
+    + pick('before', 'Before photos', 'Take or upload · ' + nb + ' so far', '#0A84FF', 'rgba(10,132,255,.12)')
+    + pick('after', 'After photos', 'Take or upload · ' + na + ' so far · counts as completion photo', '#FFAA33', 'rgba(255,170,51,.12)')
+    + '<button onclick="document.getElementById(\'bp-clphoto-sheet\').remove()" style="' + B + 'justify-content:center;background:var(--card2,#222);color:var(--muted);border:none;margin-bottom:0">Cancel</button>'
+    + '</div>';
+  document.body.appendChild(mo);
+};
+window.bpClPhotoPicked = function(input, itemId, phase){
+  var n = input.files ? input.files.length : 0;
+  if (!n) return;
+  if (n > 1 && typeof toast === 'function') toast('Saving ' + n + ' photos…');
+  addChecklistPhoto(input, itemId, phase);
+  var s = document.getElementById('bp-clphoto-sheet'); if (s) s.style.display = 'none';
+  setTimeout(function(){ var s2 = document.getElementById('bp-clphoto-sheet'); if (s2) s2.remove(); }, 60000);
+};
+
 function buildPunchItemRow(it) {
-  var photoBit = it.completionPhoto
-    ? '<img src="'+it.completionPhoto+'" style="width:32px;height:32px;object-fit:cover;border-radius:7px;border:1px solid var(--border)"/>'
-    : '<label style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:7px;border:1.5px dashed var(--faint);cursor:pointer;font-size:14px">📷<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addPunchCompletionPhoto(this,\''+it.id+'\')"></label>';
+  var photoBit = bpClPhotoBtn(it);   /* v2.90: upload many photos (camera or library), Before or After */
   // Open items get a red left-edge/tint so a room's outstanding work is visually
   // loud at a glance — stays that way until togglePunchItem() marks it done.
   var openStyle = it.done ? '' : 'border-left:3px solid var(--red);background:rgba(239,83,80,.06);';
@@ -10404,7 +10460,7 @@ function buildPunchItemRow(it) {
     // green fill/done) and the row's red accent communicate status, per Stan's call.
     + '<div style="font-size:14px;font-weight:600;color:var(--text)">'+esc(it.text)+'</div>'
     + bpClDatesLine(it)
-    + '<div style="font-size:11px;color:var(--muted);margin-top:1px">'+(TRADE_CATEGORY_ICON[it.trade]?TRADE_CATEGORY_ICON[it.trade]+' ':'')+esc(it.trade||'')+(it.done && !it.completionPhoto?' · <span style="color:#FF9500;font-weight:700">⚠️ no completion photo</span>':(!it.done?' · <span style="color:var(--red);font-weight:700">open</span>':''))+'</div>'
+    + '<div style="font-size:11px;color:var(--muted);margin-top:1px">'+(TRADE_CATEGORY_ICON[it.trade]?TRADE_CATEGORY_ICON[it.trade]+' ':'')+esc(it.trade||'')+(it.done && !bpClHasDonePhoto(it)?' · <span style="color:#FF9500;font-weight:700">⚠️ no completion photo</span>':(!it.done?' · <span style="color:var(--red);font-weight:700">open</span>':''))+'</div>'
     + '</div>'
     + photoBit
     + '<button onclick="deletePunchItem(\''+it.id+'\')" style="background:none;border:none;color:var(--faint);font-size:18px;cursor:pointer;flex-shrink:0;padding:0 0 0 4px">×</button>'
