@@ -813,10 +813,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     <div id="jd-info" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
     <div id="jd-progress-toggles" style="display:flex;gap:16px;margin-top:8px"></div>
     <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-      <button onclick="openEditJob(currentJobId)" style="background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:9px;color:#0A84FF;font-size:13px;font-weight:700;padding:6px 14px;cursor:pointer;font-family:inherit">✏️ Edit Job</button>
-      <button onclick="duplicateJob(currentJobId)" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:9px;color:var(--text);font-size:13px;font-weight:700;padding:6px 14px;cursor:pointer;font-family:inherit">📋 Duplicate as Template</button>
-      <button onclick="exportClientUpdate(currentJobId)" style="background:rgba(66,165,245,.1);border:1px solid rgba(66,165,245,.3);border-radius:9px;color:#42A5F5;font-size:13px;font-weight:700;padding:6px 14px;cursor:pointer;font-family:inherit">📤 Client Update</button>
-      <button onclick="emailClientUpdate(currentJobId)" style="background:rgba(255,170,51,.1);border:1px solid rgba(255,170,51,.3);border-radius:9px;color:var(--accent);font-size:13px;font-weight:700;padding:6px 14px;cursor:pointer;font-family:inherit">📧 Email Update</button>
+      <button onclick="openEditJob(currentJobId)" style="background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:9px;color:#0A84FF;font-size:13px;font-weight:700;padding:6px 16px;cursor:pointer;font-family:inherit;font-size:17px" title="Edit job" aria-label="Edit job">✏️</button>
+      <button onclick="bpClientUpdateMenu(currentJobId)" style="background:rgba(66,165,245,.1);border:1px solid rgba(66,165,245,.3);border-radius:9px;color:#42A5F5;font-size:13px;font-weight:700;padding:6px 16px;cursor:pointer;font-family:inherit;font-size:17px" title="Send update to client" aria-label="Send update to client">📤</button>
     </div>
   </div>
   <!-- Progress bar -->
@@ -848,6 +846,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <!-- Photos in this job -->
   <div class="section-header">Photos</div>
   <div id="jd-photos" class="card photo-grid" style="margin:0 16px 10px"></div>
+  <!-- v2.95: Notes for this job -->
+  <div id="jd-notes"></div>
 </div>
 
 <!-- ─── BOTTOM NAV ──────────────────────────── -->
@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.94';
+var APP_VERSION = '2.95';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -2427,7 +2427,7 @@ function openJobDetail(jobId) {
   var meta = [job.client&&('👤 '+job.client), fmtJobAddress(job)&&('📍 '+fmtJobAddress(job)), job.status].filter(Boolean).join(' · ');
   document.getElementById('jd-meta').textContent = meta;
   var contractor = job.contractorId ? (DB.contractors||[]).find(function(c){return c.id===job.contractorId;}) : null;
-  var infoParts = [contractor&&('👷 '+contractor.name), (job.startDate||job.completionDate)&&('📅 '+(job.startDate||'—')+' → '+(job.completionDate||'—'))].filter(Boolean);
+  var infoParts = [contractor&&('👷 '+contractor.name), (job.startDate||job.completionDate)&&('📅 '+(job.startDate?fmtDatePlain(job.startDate):'—')+' → '+(job.completionDate?fmtDatePlain(job.completionDate):'—'))].filter(Boolean);
   var jdInfo = document.getElementById('jd-info');
   if (jdInfo) jdInfo.textContent = infoParts.join('  ·  ');
   var jdToggles = document.getElementById('jd-progress-toggles');
@@ -5646,6 +5646,7 @@ function openRoomDetail(roomId) {
        tooltip and on the Rooms cards instead. */
     + '<div style="margin-left:auto;display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px;flex-shrink:0">'
     + '<button onclick="openDuplicateRoom(\'' + roomId + '\')" title="Duplicate this location and its checklist" aria-label="Duplicate location" style="background:rgba(10,132,255,.14);border:1px solid rgba(10,132,255,.35);border-radius:9px;color:#0A84FF;font-size:16px;font-weight:800;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;padding:0">⧉</button>'
+    + '<button onclick="bpRoomCopy(\'' + roomId + '\')" title="Copy this location (then paste it into any job)" aria-label="Copy location" style="background:rgba(255,159,10,.14);border:1px solid rgba(255,159,10,.4);border-radius:9px;color:#FF9F0A;font-size:16px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;padding:0">📋</button>'
     + '<button onclick="deleteRoom(\'' + roomId + '\')" title="Delete location" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;width:30px;height:34px;padding:0">🗑</button>'
     + '</div>'
     + '</div>'
@@ -5675,7 +5676,7 @@ function openRoomDetail(roomId) {
         var itemsTotal = checklistItems.reduce(function(s,n){ return s+(+n.value||0); }, 0);
         var remaining = contractVal - itemsTotal;
         if (!contractVal && !room.startDate && !room.completionDate) return '';
-        var dateChip = (room.startDate || room.completionDate) ? '<div style="font-size:12px;color:var(--muted)">📅 ' + (room.startDate||'—') + ' → ' + (room.completionDate||'—') + '</div>' : '';
+        var dateChip = (room.startDate || room.completionDate) ? '<div style="font-size:12px;color:var(--muted)">📅 ' + (room.startDate?fmtDatePlain(room.startDate):'—') + ' → ' + (room.completionDate?fmtDatePlain(room.completionDate):'—') + '</div>' : '';
         /* auto-fit, not repeat(3,1fr): at Large/XL text three fixed columns are
            narrower than the dollar figures in them, so the numbers spilled past
            the right edge of the screen. This wraps to two columns instead. */
@@ -5937,7 +5938,7 @@ populateJobSelects = function() {
     arj.innerHTML = '<option value="">No job</option>' + opts2;
   }
   // Populate contractor selects (rooms + jobs)
-  var conOpts = (DB.contractors||[]).map(function(c){ return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('');
+  var conOpts = (DB.contractors||[]).slice().sort(function(a,b){return String(a.name||'').toLowerCase().localeCompare(String(b.name||'').toLowerCase());}).map(function(c){ return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('');
   ['ar-contractor','aj-contractor'].forEach(function(id){
     var el = document.getElementById(id);
     if (el) el.innerHTML = '<option value="">Unassigned</option>' + conOpts;
@@ -6034,7 +6035,7 @@ window.openEditRoom = function(roomId) {
   // Always keep an already-assigned contractor in the list even if their job
   // doesn't match the room's current job — otherwise they silently vanish
   // from the picker (and then from the room) the next time it's saved.
-  var jobCons = (DB.contractors||[]).filter(function(c){ return !room.jobId || c.jobId===room.jobId || assignedConIds.indexOf(c.id)>-1; });
+  var jobCons = (DB.contractors||[]).filter(function(c){ return !room.jobId || c.jobId===room.jobId || assignedConIds.indexOf(c.id)>-1; }).sort(function(a,b){return String(a.name||'').toLowerCase().localeCompare(String(b.name||'').toLowerCase());});
   var conCheckboxes = jobCons.length
     ? jobCons.map(function(c){
         return '<label style="display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--border,#2a2a2a);border-radius:9px;margin-bottom:6px;cursor:pointer">'
@@ -7495,7 +7496,7 @@ function renderFinanceContent() {
         +'<div style="font-size:15px;font-weight:700;line-height:1.3">'+esc(inv.desc)+'</div>'
         +(inv.created?'<div style="font-size:11px;color:var(--faint);margin-top:1px">Added '+fmtDate(inv.created)+' · '+fmtTime(inv.created)+'</div>':'')
         +(job?'<div style="font-size:12px;color:var(--muted);margin-top:3px">📋 '+esc(job.name)+'</div>':'')
-        +(inv.date?'<div style="font-size:12px;color:var(--faint);margin-top:2px">📅 '+inv.date+'</div>':'')
+        +(inv.date?'<div style="font-size:12px;color:var(--faint);margin-top:2px">📅 '+fmtDatePlain(inv.date)+'</div>':'')
         +(inv.notes?'<div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5">'+esc(inv.notes)+'</div>':'')
         +'</div>'
         +'<div style="text-align:right;flex:0 1 auto;min-width:0">'
@@ -7531,7 +7532,7 @@ function renderFinanceContent() {
           +'<div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">'
           +'<span class="chip"'+((exp.isDelivery||exp.category==='Delivery')?' style="color:#FF9F0A;font-weight:800"':'')+'>'+((exp.isDelivery||exp.category==='Delivery')?'\ud83d\ude9a ':'')+exp.category+'</span>'
           +((exp.isDelivery||exp.category==='Delivery')&&exp.deliveryStatus?'<span class="chip" style="color:'+(exp.deliveryStatus==='Delivered'?'#30D158':'#FF9F0A')+';font-weight:800">'+esc(exp.deliveryStatus)+'</span>':'')
-          +(exp.date?'<span class="chip">'+exp.date+'</span>':'')
+          +(exp.date?'<span class="chip">'+fmtDatePlain(exp.date)+'</span>':'')
           +'</div>'
           +(exp.receiptSrc?'<img src="'+exp.receiptSrc+'" onclick="viewReceiptPhoto(\''+exp.id+'\')" style="width:60px;height:60px;object-fit:cover;border-radius:8px;margin-top:8px;cursor:pointer;border:1px solid var(--border)"/>':'')
           +(its.length?'<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">'
@@ -7553,7 +7554,7 @@ function renderFinanceContent() {
   else if (_financeTab === 'changeorders') { renderChangeOrdersTab(el, jf); }
 
   else if (_financeTab === 'contractors') {
-    var items = jf ? (DB.contractors||[]).filter(function(c){return c.jobId===jf;}) : (DB.contractors||[]);
+    var items = (jf ? (DB.contractors||[]).filter(function(c){return c.jobId===jf;}) : (DB.contractors||[])).slice().sort(function(a,b){return String(a.name||'').toLowerCase().localeCompare(String(b.name||'').toLowerCase());});
     if (!items.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">No contractors</div><div class="empty-sub">Tap + to add a sub or contractor</div></div>'; return; }
     var total = items.reduce(function(s,c){return s+(+c.value||0);},0);
     var statusColor = {Active:'#0A84FF',Pending:'var(--accent)',Completed:'var(--muted)','On Hold':'var(--red)'};
@@ -8621,7 +8622,7 @@ window.printChangeOrder = function(id) {
 
   h += '<h1>Change Order ' + esc(c.number||'') + '</h1>';
   h += '<div class="sub">' + esc((job&&job.name)||'') + (job&&job.address?' &middot; '+esc(job.address):'')
-     + (c.date?' &middot; '+esc(c.date):'') + '</div>';
+     + (c.date?' &middot; '+fmtDatePlain(c.date):'') + '</div>';
   h += '<span class="badge">' + esc(c.status||'Draft') + '</span>';
 
   h += '<div class="sec">Scope of Change</div>';
@@ -8975,7 +8976,7 @@ function renderChangeOrdersTab(el, jf) {
       +     '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
       +       '<span class="chip" style="color:'+col+';font-weight:800">'+esc(c.status||'Draft')+'</span>'
       +       (c.reason?'<span class="chip">'+esc(c.reason)+'</span>':'')
-      +       (c.date?'<span class="chip">'+esc(c.date)+'</span>':'')
+      +       (c.date?'<span class="chip">'+fmtDatePlain(c.date)+'</span>':'')
       +       (+c.daysAdded?'<span class="chip">+'+(+c.daysAdded)+'d</span>':'')
       +       (c.signature?'<span class="chip" style="color:#30D158;font-weight:800">✍️ Signed</span>':'')
       +     '</div>'
@@ -9187,7 +9188,7 @@ function ymd(y,m,d) { return y+'-'+pad2(m+1)+'-'+pad2(d); }
 // Formats a plain "YYYY-MM-DD" date string without going through Date/timezone
 // parsing (new Date('YYYY-MM-DD') parses as UTC midnight, which can display as
 // the previous day in US timezones) — used everywhere a calendar date is shown.
-function fmtDatePlain(ds) { if (!ds) return ''; var p = ds.split('-'); var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return MON[(+p[1])-1]+' '+(+p[2])+', '+p[0]; }
+function fmtDatePlain(ds) { if (!ds) return ''; var p = String(ds).slice(0,10).split('-'); if (p.length < 3) return ds; return p[1]+'-'+p[2]+'-'+String(p[0]).slice(-2); }   /* v2.95: mm-dd-yy */
 
 // Gathers every date-bearing record in the app (manual appointments/due-dates
 // plus permit expirations, job start/due dates, contractor start/end, unpaid
@@ -9318,12 +9319,14 @@ function buildAppointmentModal(appt, prefillDate, presetType) {
   html += '</div><div style="padding:16px 18px">';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Title *</div><input id="ap-title" type="text" value="'+esc(appt?appt.title||'':'')+'" placeholder="Site visit, inspection, permit renewal..." style="'+s+'"/></div>';
   html += '<div style="display:flex;gap:10px;margin-bottom:14px">';
-  html += '<div style="flex:1"><div style="'+lbl+'">Type</div><select id="ap-type" style="'+s+'">'+typeOpts+'</select></div>';
-  html += '<div style="flex:1"><div style="'+lbl+'">Date *</div><input id="ap-date" type="date" value="'+(appt?appt.date||'':(prefillDate||todayStr()))+'" style="'+s+'"/></div>';
+  html += '<div style="flex:1;min-width:0"><div style="'+lbl+'">Type</div><select id="ap-type" style="'+s+'">'+typeOpts+'</select></div>';
+  html += '<div style="flex:1;min-width:0"><div style="'+lbl+'">Date *</div><input id="ap-date" type="date" value="'+(appt?appt.date||'':(prefillDate||todayStr()))+'" style="'+s+';min-width:0;-webkit-appearance:none;appearance:none;min-height:46px"/></div>';
   html += '</div>';
-  html += '<div style="display:flex;gap:10px;margin-bottom:14px">';
-  html += '<div style="flex:1"><div style="'+lbl+'">Time (optional)</div><input id="ap-time" type="time" value="'+(appt?appt.time||'':'')+'" style="'+s+'"/></div>';
-  html += '<div style="flex:1"><div style="'+lbl+'">Job (optional)</div><select id="ap-job" style="'+s+'">'+jobOpts+'</select></div>';
+  /* v2.95: Time and Job each get their own full-width row. Side by side, the iPhone's time box is wider than its half
+     of the row and slid over the Job box. */
+  html += '<div style="display:flex;flex-direction:column;gap:14px;margin-bottom:14px">';
+  html += '<div style="min-width:0"><div style="'+lbl+'">Time (optional)</div><input id="ap-time" type="time" value="'+(appt?appt.time||'':'')+'" style="'+s+';min-width:0;-webkit-appearance:none;appearance:none;min-height:46px"/></div>';
+  html += '<div style="min-width:0"><div style="'+lbl+'">Job (optional)</div><select id="ap-job" style="'+s+'">'+jobOpts+'</select></div>';
   html += '</div>';
   html += '<div style="margin-bottom:18px"><div style="'+lbl+'">Notes</div><textarea id="ap-notes" rows="3" style="'+s+'">'+esc(appt?appt.notes||'':'')+'</textarea></div>';
   html += '<div style="display:flex;gap:8px">';
@@ -9436,7 +9439,7 @@ window.emailInvoice = function(id) {
   var body = 'Hi' + (job&&job.client?' '+job.client:'') + ',\n\n'
     + 'Here is the invoice for ' + (inv.desc||'services rendered') + ':\n\n'
     + 'Amount: $' + (+inv.amount||0).toLocaleString() + '\n'
-    + (inv.date?'Date: '+inv.date+'\n':'')
+    + (inv.date?'Date: '+fmtDatePlain(inv.date)+'\n':'')
     + (inv.notes?'\n'+inv.notes+'\n':'')
     + '\nThanks,\n';
   sendEmail(job && job.clientEmail, subject, body);
@@ -9849,7 +9852,7 @@ renderJobDetail = function(jobId) {
               + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">'
               + '<div style="flex:1;min-width:0">'
               + '<div style="font-size:14px;font-weight:700">'+esc(inv.desc)+'</div>'
-              + (inv.date?'<div style="font-size:12px;color:var(--faint);margin-top:2px">📅 '+inv.date+'</div>':'')
+              + (inv.date?'<div style="font-size:12px;color:var(--faint);margin-top:2px">📅 '+fmtDatePlain(inv.date)+'</div>':'')
               + '</div>'
               + '<div style="text-align:right;flex-shrink:0">'
               + '<div style="font-size:17px;font-weight:900;color:var(--accent)">$'+(+inv.amount||0).toLocaleString()+'</div>'
@@ -9882,7 +9885,7 @@ renderJobDetail = function(jobId) {
               + '<div style="flex:1;min-width:0">'
               + '<div style="font-size:14px;font-weight:700">'+esc(exp.desc)+'</div>'
               + (exp.vendor?'<div style="font-size:12px;color:var(--muted);margin-top:2px">🏪 '+esc(exp.vendor)+'</div>':'')
-              + (exp.date?'<div style="font-size:12px;color:var(--faint);margin-top:2px">📅 '+exp.date+'</div>':'')
+              + (exp.date?'<div style="font-size:12px;color:var(--faint);margin-top:2px">📅 '+fmtDatePlain(exp.date)+'</div>':'')
               + '</div>'
               + '<div style="text-align:right;flex-shrink:0">'
               + '<div style="font-size:17px;font-weight:900;color:var(--red)">$'+(+exp.amount||0).toLocaleString()+'</div>'
@@ -10455,7 +10458,7 @@ function buildPunchItemRow(it) {
     + '<div onclick="togglePunchItem(\''+it.id+'\')" style="width:22px;height:22px;border-radius:7px;border:2px solid '+(it.done?'var(--green)':'var(--red)')+';background:'+(it.done?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
       + (it.done?'<svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:#fff;fill:none;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>':'')
       + '</div>'
-    + '<div style="flex:1;min-width:0">'
+    + '<div style="flex:1;min-width:0" onclick="bpClRowTap(\''+it.id+'\')">'
     // Task name always stays plain/normal text — only the checkbox (red outline/open,
     // green fill/done) and the row's red accent communicate status, per Stan's call.
     + '<div style="font-size:14px;font-weight:600;color:var(--text)">'+esc(it.text)+'</div>'
@@ -10790,7 +10793,7 @@ window.openEditJob = function(jobId) {
   var s = 'width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit';
   var lbl = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px';
   var statusOpts = ['Active','Pending','Complete','On Hold'].map(function(t){ return '<option'+(t===job.status?' selected':'')+'>'+t+'</option>'; }).join('');
-  var conOpts = '<option value="">Unassigned</option>'+(DB.contractors||[]).map(function(c){ return '<option value="'+c.id+'"'+(c.id===job.contractorId?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('');
+  var conOpts = '<option value="">Unassigned</option>'+(DB.contractors||[]).slice().sort(function(a,b){return String(a.name||'').toLowerCase().localeCompare(String(b.name||'').toLowerCase());}).map(function(c){ return '<option value="'+c.id+'"'+(c.id===job.contractorId?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'edit-job-modal';
   mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
@@ -11367,7 +11370,7 @@ function bpRenderTimeLog() {
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
       + '<div style="flex:1;min-width:0">'
       + '<div style="font-size:14px;font-weight:700">'+esc(job?job.name:'Unknown job')+'</div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-top:2px">'+e.date+' · '+new Date(e.clockIn).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+' → '+(e.clockOut?new Date(e.clockOut).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'in progress')+'</div>'
+      + '<div style="font-size:12px;color:var(--muted);margin-top:2px">'+fmtDatePlain(e.date)+' · '+new Date(e.clockIn).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+' → '+(e.clockOut?new Date(e.clockOut).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'in progress')+'</div>'
       + (e.userName?'<div style="font-size:11px;color:var(--faint);margin-top:1px">👤 '+esc(e.userName)+'</div>':'')
       + '</div>'
       + '<div style="text-align:right;flex-shrink:0">'
@@ -11967,11 +11970,11 @@ function buildAreaBox(room){
     + esc(room.name)+'</div>'
     // counts
     + '<div style="margin-top:auto">'
-    + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px">'
-    + '<span style="font-size:19px;font-weight:900;color:'+(c.open?'#FF453A':'var(--faint)')+';line-height:1">'+c.open+'</span>'
-    + '<span style="font-size:10px;font-weight:700;color:var(--muted)">OPEN</span>'
-    + '<span style="font-size:19px;font-weight:900;color:'+(c.done?'#30D158':'var(--faint)')+';line-height:1;margin-left:auto">'+c.done+'</span>'
-    + '<span style="font-size:10px;font-weight:700;color:var(--muted)">DONE</span>'
+    + '<div style="display:flex;align-items:baseline;gap:4px;flex-wrap:nowrap;white-space:nowrap;margin-bottom:5px">'
+    + '<span style="font-size:'+bpCntSz(c.open,c.done)+'px;font-weight:900;color:'+(c.open?'#FF453A':'var(--faint)')+';line-height:1">'+c.open+'</span>'
+    + '<span style="font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0">OPEN</span>'
+    + '<span style="font-size:'+bpCntSz(c.open,c.done)+'px;font-weight:900;color:'+(c.done?'#30D158':'var(--faint)')+';line-height:1;margin-left:auto">'+c.done+'</span>'
+    + '<span style="font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0">DONE</span>'
     + '</div>'
     + '<div style="height:3px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:5px">'
     + '<div style="height:3px;width:'+pct+'%;background:'+(allDone?'#30D158':'#0A84FF')+';border-radius:99px"></div></div>'
@@ -11981,6 +11984,8 @@ function buildAreaBox(room){
     + '</div>';
 }
 
+/* v2.95: number size steps down as the digits grow, so "OPEN" / "DONE" are never squeezed or clipped */
+function bpCntSz(a, b){ var d = Math.max(String(a).length, String(b).length); return d >= 4 ? 11 : d === 3 ? 13 : 19; }
 /* ── By-trade view (the sub call sheet) ────────────────────────────── */
 function buildTradeBox(trade, items){
   var done = items.filter(function(n){ return n.done; }).length;
@@ -11993,11 +11998,11 @@ function buildTradeBox(trade, items){
     + '<div style="font-size:24px;line-height:1;margin-bottom:6px">'+(window.BP_TRADE_ICON[trade]||'📦')+'</div>'
     + '<div style="font-size:14px;font-weight:800;line-height:1.2;margin-bottom:8px;color:'+col+'">'+esc(trade)+'</div>'
     + '<div style="margin-top:auto">'
-    + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px">'
-    + '<span style="font-size:19px;font-weight:900;color:'+(open?'#FF453A':'var(--faint)')+';line-height:1">'+open+'</span>'
-    + '<span style="font-size:10px;font-weight:700;color:var(--muted)">OPEN</span>'
-    + '<span style="font-size:19px;font-weight:900;color:'+(done?'#30D158':'var(--faint)')+';line-height:1;margin-left:auto">'+done+'</span>'
-    + '<span style="font-size:10px;font-weight:700;color:var(--muted)">DONE</span>'
+    + '<div style="display:flex;align-items:baseline;gap:4px;flex-wrap:nowrap;white-space:nowrap;margin-bottom:5px">'
+    + '<span style="font-size:'+bpCntSz(open,done)+'px;font-weight:900;color:'+(open?'#FF453A':'var(--faint)')+';line-height:1">'+open+'</span>'
+    + '<span style="font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0">OPEN</span>'
+    + '<span style="font-size:'+bpCntSz(open,done)+'px;font-weight:900;color:'+(done?'#30D158':'var(--faint)')+';line-height:1;margin-left:auto">'+done+'</span>'
+    + '<span style="font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0">DONE</span>'
     + '</div>'
     + '<div style="height:3px;background:var(--border);border-radius:99px;overflow:hidden">'
     + '<div style="height:3px;width:'+pct+'%;background:'+col+';border-radius:99px"></div></div>'
@@ -12623,10 +12628,13 @@ BPX.areas = function(jobId, space, weightFn){
 
 /* One box. Every screen's tile is this — only the numbers differ. */
 BPX.box = function(o){
+  /* v2.95: numbers step down as the digits grow so OPEN / DONE are never clipped */
+  var dg = Math.max(o.a ? String(o.a.n).length : 0, o.b ? String(o.b.n).length : 0);
+  var numPx = dg >= 4 ? 11 : dg === 3 ? 13 : (o.big ? 21 : 19);
   var stat = function(s){
     if (!s) return '';
-    return '<span style="font-size:'+(o.big?'21px':'19px')+';font-weight:900;line-height:1;color:'+s.color+'">'
-      + s.n + '</span><span style="font-size:10px;font-weight:700;color:var(--muted)">' + s.label + '</span>';
+    return '<span style="font-size:'+numPx+'px;font-weight:900;line-height:1;color:'+s.color+'">'
+      + s.n + '</span><span style="font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0;white-space:nowrap">' + s.label + '</span>';
   };
   return '<div class="bp-area-box" data-bp-name="'+String(o.rawName||o.name).replace(/"/g,'')+'" onclick="'+o.onclick+'" '
     + 'style="background:var(--card);border:1px solid '+(o.border||'var(--border)')+';border-radius:14px;'
@@ -12639,8 +12647,8 @@ BPX.box = function(o){
     + '<div style="font-size:14px;font-weight:800;line-height:1.2;margin-bottom:8px;'
     + 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+o.name+'</div>'
     + '<div style="margin-top:auto">'
-    + '<div style="display:flex;align-items:baseline;gap:7px;margin-bottom:5px">'
-    + stat(o.a) + (o.b ? '<span style="margin-left:auto;display:flex;align-items:baseline;gap:7px">'+stat(o.b)+'</span>' : '')
+    + '<div style="display:flex;align-items:baseline;gap:'+(dg>=3?'4':'7')+'px;flex-wrap:nowrap;white-space:nowrap;margin-bottom:5px">'
+    + stat(o.a) + (o.b ? '<span style="margin-left:auto;display:flex;align-items:baseline;gap:'+(dg>=3?'4':'7')+'px">'+stat(o.b)+'</span>' : '')
     + '</div>'
     + (o.bar ? '<div style="height:3px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:5px">'
         + '<div style="height:3px;width:'+o.bar.pct+'%;background:'+o.bar.color+';border-radius:99px"></div></div>' : '')
@@ -13343,9 +13351,7 @@ function prettyDate(ds){
   if (!ds) return '';
   var p = String(ds).split('-');
   if (p.length !== 3) return String(ds);
-  var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var m = MON[(+p[1]) - 1] || '';
-  return m + ' ' + (+p[2]) + ', ' + p[0];
+  return p[1] + '-' + p[2] + '-' + String(p[0]).slice(-2);   /* v2.95: mm-dd-yy */
 }
 
 /* ── who the report goes to ─────────────────────────────────────────── */
@@ -15744,7 +15750,7 @@ window.bpOpenSetLevels = function(){
     .map(function(r,i){ return {r:r,i:i}; })
     .sort(function(a,b){ return window.bpRoomCmp(a.r, b.r) || String(a.r.name).localeCompare(String(b.r.name)); })
     .map(function(o){ return o.r; });
-  var ab = 'width:46px;height:46px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);'
+  var ab = 'width:40px;height:40px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);'
     + 'display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex-shrink:0';
   var last = null, body = '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">Use the arrows to put the rooms in your order. '
     + 'Change a room\'s level on the right. It saves as you go.</div>';
@@ -15760,8 +15766,8 @@ window.bpOpenSetLevels = function(){
     body += '<div data-arr-room="' + r.id + '" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border,#2a2a2a)">'
       + '<button onclick="bpMoveRoom(\'' + r.id + '\',-1)" aria-label="Move up" style="' + ab + (first ? ';opacity:.25' : '') + '"' + (first ? ' disabled' : '') + '><svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><path d="M6 15l6-6l6 6"/></svg></button>'
       + '<button onclick="bpMoveRoom(\'' + r.id + '\',1)" aria-label="Move down" style="' + ab + (lastIn ? ';opacity:.25' : '') + '"' + (lastIn ? ' disabled' : '') + '><svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><path d="M6 9l6 6l6-6"/></svg></button>'
-      + '<div style="flex:1;min-width:0;font-size:15px;font-weight:700;line-height:1.25;overflow-wrap:anywhere">' + E(r.name) + '</div>'
-      + levelSelect('', window.bpJobLevels(r.jobId), l, 'onchange="bpSetRoomLevel(\'' + r.id + '\',this.value)"').replace('min-width:130px', 'width:112px;flex-shrink:0;padding-left:8px;padding-right:4px')
+      + '<div title="' + E(r.name) + '" style="flex:1;min-width:0;font-size:13.5px;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + E(r.name) + '</div>'
+      + levelSelect('', window.bpJobLevels(r.jobId), l, 'onchange="bpSetRoomLevel(\'' + r.id + '\',this.value)"').replace('min-width:130px', 'width:96px;flex-shrink:0;padding-left:6px;padding-right:2px')
       + '</div>';
   });
   body += '<button onclick="document.getElementById(\'bp-set-levels\').remove()" style="width:100%;margin-top:16px;background:#0A84FF;'
@@ -16147,6 +16153,9 @@ function bpSelPaint(){
     + 'background:var(--card2,#222);color:var(--text);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">' + lbl + '</button>'; };
   var top = '<div style="display:flex;gap:8px;margin-bottom:4px">' + quick('All','all') + quick('Open only','open') + quick('None','none') + '</div>';
   var foot = '<div id="bp-sel-count" style="font-size:14px;font-weight:800;margin-bottom:8px;color:#0A84FF"></div>'
+    + '<div style="display:flex;gap:8px;margin-bottom:8px">'
+    + '<button id="bp-sel-clipcopy" onclick="bpSelClip(\'copy\')" style="flex:1;background:var(--card2,#222);color:#0A84FF;border:1.5px solid #0A84FF;' + BTN.replace('border:none;','') + '">📋 Copy</button>'
+    + '<button id="bp-sel-clipcut" onclick="bpSelClip(\'cut\')" style="flex:1;background:var(--card2,#222);color:#FF9F0A;border:1.5px solid #FF9F0A;' + BTN.replace('border:none;','') + '">✂️ Cut</button></div>'
     + '<div style="display:flex;gap:8px">'
     + '<button id="bp-sel-copy" onclick="bpSelDest(\'copy\')" style="flex:1;background:#0A84FF;color:#fff;' + BTN + '"><svg viewBox="0 0 24 24" style="width:18px;height:18px;vertical-align:-3px;margin-right:5px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy to…</button>'
     + '<button id="bp-sel-move" onclick="bpSelDest(\'move\')" style="flex:1;background:#FF9F0A;color:#000;' + BTN + '"><svg viewBox="0 0 24 24" style="width:18px;height:18px;vertical-align:-3px;margin-right:5px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M5 12h14M13 18l6-6M13 6l6 6"/></svg>Move to…</button>'
@@ -16160,7 +16169,7 @@ function bpSelCount(){
   var n = selIds().length;
   var c = document.getElementById('bp-sel-count');
   if (c) c.textContent = n ? n + ' item' + (n !== 1 ? 's' : '') + ' selected' : 'Tick the items you want';
-  ['bp-sel-copy','bp-sel-move'].forEach(function(id){ var b = document.getElementById(id); if (b) { b.disabled = !n; b.style.opacity = n ? '1' : '.4'; } });
+  ['bp-sel-copy','bp-sel-move','bp-sel-clipcopy','bp-sel-clipcut'].forEach(function(id){ var b = document.getElementById(id); if (b) { b.disabled = !n; b.style.opacity = n ? '1' : '.4'; } });
 }
 window.bpSelTick = function(cb){ SEL.ids[cb.value] = cb.checked; bpSelCount(); };
 window.bpSelQuick = function(k){
@@ -17678,13 +17687,22 @@ function drawShop(){
   var body = '<div style="margin-top:4px">' + jobSelect('bp-shop-job', SH.job, 'bpShopJob(this.value)', true) + '</div>'
     + '<button id="bp-shop-scan" onclick="bpShopScan()" style="' + BTN + ';width:100%;margin-top:10px;background:rgba(10,132,255,.14);color:#0A84FF;border:1.5px solid #0A84FF">📷 Scan a receipt</button>'
     + '<div style="margin:12px 0;padding:14px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)">'
-    + '<input id="bp-shop-text" placeholder="What do you need? (e.g. 1/2&quot; PEX elbow)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpShopAdd();}" style="' + INP + '"/>'
+    + '<div style="display:flex;gap:8px;align-items:flex-start">'
+    + '<textarea id="bp-shop-text" rows="1" placeholder="Add an item — e.g. 10 PEX elbows @2" '
+    + 'onkeydown="if(event.key===\'Enter\'&amp;&amp;!event.shiftKey){event.preventDefault();bpShopAdd();}" '
+    + 'oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,140)+\'px\'" '
+    + 'style="' + INP + ';resize:none;line-height:1.35;min-height:50px"></textarea>'
+    + '<button id="bp-shop-add" onclick="bpShopAdd()" aria-label="Add to list" style="' + BTN + ';width:54px;height:50px;padding:0;font-size:28px;background:#0A84FF;color:#fff;flex-shrink:0">+</button></div>'
+    + '<div style="font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.4">Quantity and price are picked out of what you type ("10 elbows @2"). Paste a list — one item per line — and each line becomes an item.</div>'
+    + '<button type="button" onclick="var m=document.getElementById(\'bp-shop-more\');var o=m.style.display===\'none\';m.style.display=o?\'block\':\'none\';this.textContent=o?\'− Hide details\':\'+ Quantity · price · store\'" '
+    + 'style="background:none;border:none;color:#0A84FF;font-size:14px;font-weight:800;padding:10px 0 0;cursor:pointer;font-family:inherit">+ Quantity · price · store</button>'
+    + '<div id="bp-shop-more" style="display:none">'
     + '<div style="display:flex;gap:8px;margin-top:8px">'
     + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">How many</div><div style="display:flex;gap:6px"><input id="bp-shop-qty" inputmode="decimal" placeholder="1" style="' + INP + '"/>' + calcBtn('bp-shop-qty') + '</div></div>'
     + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">Price each $</div><div style="display:flex;gap:6px"><input id="bp-shop-price" inputmode="decimal" placeholder="0.00" style="' + INP + '"/>' + calcBtn('bp-shop-price') + '</div></div>'
     + '</div>'
     + '<div style="' + LBL + '">Store / vendor</div>' + (window.bpVendorField ? window.bpVendorField('bp-shop-store', SH.lastStore || '') : '<input id="bp-shop-store" style="' + INP + '"/>')
-    + '<button id="bp-shop-add" onclick="bpShopAdd()" style="' + BTN + ';width:100%;margin-top:10px;background:#0A84FF;color:#fff">+ Add to list</button></div>'
+    + '</div></div>'
     + '<div style="' + LBL + '">To buy (' + open.length + ')</div>'
     + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Add items above.</div>')
     + (done.length ? '<div style="' + LBL + ';margin-top:18px">Bought (' + done.length + ')</div>' + done.map(shopRow).join('') : '')
@@ -17709,14 +17727,27 @@ window.bpShopJob = function(v){ SH.job = v || ''; drawShop(); };
 window.bpShopJobNow = function(){ return SH.job || ''; };  /* v2.91: receipt scan files to the list you're looking at */
 window.bpShopAdd = function(){
   var tx = document.getElementById('bp-shop-text'), q = document.getElementById('bp-shop-qty'), p = document.getElementById('bp-shop-price');
-  var text = (tx && tx.value || '').trim();
-  var stEl = document.getElementById('bp-shop-store'), store = (stEl && stEl.value || '').replace(/\s+/g, ' ').trim(); SH.lastStore = store;
-  if (!text) { say('Type what you need first'); if (tx) tx.focus(); return; }
-  var qty = q && q.value.trim() ? window.bpCalcEval(q.value) : 1, price = p && p.value.trim() ? window.bpCalcEval(p.value) : 0;
-  if (isNaN(qty) || isNaN(price)) { say('Check the numbers — only digits and + − × ÷'); return; }
+  var raw = (tx && tx.value || '').trim();
+  var stEl = document.getElementById('bp-shop-store'), store = (stEl && stEl.value || '').replace(/\s+/g, ' ').trim(); if (stEl) SH.lastStore = store; else store = SH.lastStore || '';
+  if (!raw) { say('Type what you need first'); if (tx) tx.focus(); return; }
+  /* v2.95: one box, many lines. Each line is parsed ("10 1/2\" PEX elbows @2" -> qty 10, price $2); the optional
+     Quantity / Price fields only apply when a single item is being added. */
+  var lines = raw.split(/\n+/).map(function(l){ return l.replace(/^\s*(?:[•\-\*☐□✓✔]|\[\s?\])\s+/, '').trim(); }).filter(Boolean);
+  var hasQ = !!(q && q.value.trim()), hasP = !!(p && p.value.trim());
+  var qv = hasQ ? window.bpCalcEval(q.value) : null, pv = hasP ? window.bpCalcEval(p.value) : null;
+  if ((hasQ && isNaN(qv)) || (hasP && isNaN(pv))) { say('Check the numbers — only digits and + − × ÷'); return; }
   DB.shopping = DB.shopping || [];
-  DB.shopping.push({ id:newId(), jobId:SH.job || '', text:text, qty:qty, unit:'', price:price, store:store, bought:false, created:ts(), updatedAt:ts() });
+  var n = 0;
+  lines.forEach(function(line){
+    var it = (typeof window.bpParseShopSpeech === 'function') ? window.bpParseShopSpeech(line) : { qty:1, unit:'', price:0, text:line };
+    if (!it || !it.text) it = { qty:1, unit:'', price:0, text:line };
+    var one = lines.length === 1;
+    DB.shopping.push({ id:newId(), jobId:SH.job || '', text:it.text, qty:(one && hasQ) ? qv : (it.qty || 1), unit:it.unit || '', price:(one && hasP) ? pv : (it.price || 0), store:store,
+      bought:false, created:ts(), updatedAt:ts() });
+    n++;
+  });
   persist(); drawShop();
+  say(n > 1 ? n + ' items added' : 'Added');
   var t2 = document.getElementById('bp-shop-text'); if (t2 && !IS_DESK) try { t2.focus(); } catch(e){}
 };
 window.bpShopToggle = function(id){
@@ -19195,7 +19226,7 @@ window.bpVoiceSupported = srOK;
 var IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 function standalone(){ try { return navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); } catch(e){ return false; } }
 var BROKEN = '';   // why live voice can't run on this device right now ('' = fine)
-function liveOK(){ return srOK() && !(IOS && standalone()) && !BROKEN; }
+function liveOK(){ return srOK() && !IOS && !BROKEN; }   /* v2.95: on iPhone/iPad always use Apple's keyboard dictation — Safari's built-in Web Speech engine is the inaccurate one */
 window.bpVoiceLiveOK = liveOK;
 window.bpVoiceForceKeyboard = function(why){ BROKEN = why || 'test'; };
 function goKeyboard(why){
@@ -19218,7 +19249,7 @@ function listen(o){
       var interim = '';
       for (var i = e.resultIndex; i < e.results.length; i++) {
         var t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) { if (o.onPhrase) o.onPhrase(t); }
+        if (e.results[i].isFinal) { if (o.onPhrase) o.onPhrase(window.bpFixSpeech ? window.bpFixSpeech(t) : t); }
         else interim += t;
       }
       if (o.onInterim) o.onInterim(interim);
@@ -19540,15 +19571,15 @@ function fab(){
   if (document.getElementById('bp-voice-fab') || !document.body) return;
   // room under the last row so the 🎤 never has to sit on a row's buttons
   if (!IS_DESK && !document.getElementById('bp-voice-pad')) { var st = document.createElement('style'); st.id = 'bp-voice-pad';
-    st.textContent = '.screen{padding-bottom:96px !important}'; document.head.appendChild(st); }
+    st.textContent = '.screen{padding-bottom:80px !important}'; document.head.appendChild(st); }
   if (IS_DESK && !document.getElementById('bp-voice-pad')) { var st2 = document.createElement('style'); st2.id = 'bp-voice-pad';
     st2.textContent = '.view{padding-bottom:96px !important}'; document.head.appendChild(st2); }
   var b = document.createElement('button');
   b.id = 'bp-voice-fab'; b.type = 'button'; b.setAttribute('aria-label', 'Speak to add a shopping item, punch item or note');
-  b.innerHTML = MIC(30, 2.1);
-  b.style.cssText = 'position:fixed;z-index:95;width:62px;height:62px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;'
-    + 'background:linear-gradient(135deg,#FF453A,#D70015);color:#fff;box-shadow:0 6px 20px rgba(255,69,58,.45);'
-    + (IS_DESK ? 'right:24px;bottom:24px' : 'right:16px;bottom:calc(var(--nav-h,80px) + 14px)');
+  b.innerHTML = MIC(20, 2.1);
+  b.style.cssText = 'position:fixed;z-index:95;width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.92;'
+    + 'background:linear-gradient(135deg,#FF453A,#D70015);color:#fff;box-shadow:0 3px 10px rgba(255,69,58,.35);'
+    + (IS_DESK ? 'right:24px;bottom:24px' : 'right:12px;bottom:calc(var(--nav-h,80px) + 10px)');
   b.onclick = function(){ window.bpVoiceCapture(); };
   document.body.appendChild(b);
 }
@@ -19588,9 +19619,23 @@ function paintChip(){
 }
 function placeChip(){
   var c = document.getElementById('bp-dict'); if (!c || c.style.display === 'none') return;
-  var vv = window.visualViewport, bottom = vv ? (window.innerHeight - (vv.offsetTop + vv.height)) : 0;
-  c.style.bottom = Math.max(12, bottom + 12) + 'px';
+  /* v2.95: the chip used to sit bottom-right above the keyboard — exactly where every sheet's Save button is, so on
+     the Daily Log it covered Save and tapping there started dictation instead. It now rides the top-right corner of
+     the field being typed into (above it, or just below when the field is at the top of the screen). */
+  var vv = window.visualViewport, vTop = vv ? vv.offsetTop : 0, vH = vv ? vv.height : window.innerHeight;
+  var el = DICT.el, r = el && el.isConnected ? el.getBoundingClientRect() : null;
+  if (r && r.height) {
+    var h = c.offsetHeight || 44, top = r.top - h - 4;
+    if (top < vTop + 6) top = r.bottom + 4;
+    top = Math.max(vTop + 6, Math.min(top, vTop + vH - h - 6));
+    c.style.top = top + 'px'; c.style.bottom = 'auto';
+  } else {
+    var bottom = vv ? (window.innerHeight - (vv.offsetTop + vv.height)) : 0;
+    c.style.top = 'auto'; c.style.bottom = Math.max(12, bottom + 12) + 'px';
+  }
 }
+['scroll','resize'].forEach(function(ev){ window.addEventListener(ev, function(){ try { placeChip(); } catch(e){} }, true); });
+if (window.visualViewport) { window.visualViewport.addEventListener('resize', function(){ try { placeChip(); } catch(e){} }); window.visualViewport.addEventListener('scroll', function(){ try { placeChip(); } catch(e){} }); }
 function showChip(el){ if (!liveOK()) return; DICT.el = el; var c = chip(); paintChip(); c.style.display = 'flex'; placeChip(); }
 function hideChip(){ var c = document.getElementById('bp-dict'); if (c && !DICT.on) c.style.display = 'none'; }
 function setVal(el, v){
@@ -19679,5 +19724,397 @@ new MutationObserver(function(){ try { addSpeak(); } catch(e){} }).observe(docum
 
 fab(); setTimeout(fab, 1200);
 console.log('[BP] v2.92–2.94 Voice everywhere ready (live voice ' + (liveOK() ? 'on' : 'off — keyboard voice') + ')');
+})();
+</script>
+<script>
+/* ══ v2.95 — STAN'S FIELD-TEST LIST (Oct 2, 2026) ═══════════════════════════
+   1. Dates are mm-dd-yy everywhere the app writes a date.
+   2. Job screen: Edit + Send Update are icon-only. Client Update and Email Update
+      are ONE button (📤) that offers Email / Text / Full report.
+      Duplicate-as-Template is gone from the screen.
+   3. Marking a job Completed with checklist items still open asks first.
+   4. Punch list: tap an item (or its thumbnail) and its photos open full screen
+      (swipe / arrows between them), with "+ Add photos" inside.
+   5. Notes are back on the job screen (add / edit / delete, optional location).
+   6. Copy & paste: Select → Copy / Cut puts items on the clipboard, then Paste
+      in any location. 📋 on a location copies the whole location (checklist
+      included) and "Paste location" lives in Add Locations, so it can go into
+      another job.
+   7. Photos that go blank (iOS drops big images under memory pressure) are
+      reloaded automatically; the data is also flushed to disk when the app is
+      sent to the background.
+   8. Spoken text: spoken punctuation + plumbing words are cleaned up.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function Q(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function say(m){ try { toast(m); } catch(e){} }
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function nid(){ return (typeof uid === 'function') ? uid() : 'bp' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function nowIso(){ return (typeof now === 'function') ? now() : new Date().toISOString(); }
+function jobById(id){ return (DB.jobs||[]).find(function(j){ return j.id === id; }); }
+function roomById(id){ return (DB.rooms||[]).find(function(r){ return r.id === id; }); }
+
+/* generic bottom sheet */
+function sheet(id, title, body){
+  var old = document.getElementById(id); if (old) old.remove();
+  var w = document.createElement('div'); w.id = id;
+  w.style.cssText = 'position:fixed;inset:0;z-index:10020;background:rgba(0,0,0,.7);display:flex;align-items:flex-end;justify-content:center;padding-top:var(--safe-top,0px);box-sizing:border-box;font-family:inherit';
+  w.onclick = function(e){ if (e.target === w) w.remove(); };
+  w.innerHTML = '<div style="background:var(--bg,#111);color:var(--text,#f0f0f0);width:100%;max-width:480px;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:20px 20px 0 0;padding:6px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box">'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:10px 0 8px"><div style="font-size:19px;font-weight:900;flex:1;min-width:0">' + title + '</div>'
+    + '<button onclick="document.getElementById(\'' + id + '\').remove()" aria-label="Close" style="background:var(--card2,#222);border:none;color:var(--text);width:40px;height:40px;border-radius:50%;font-size:22px;cursor:pointer">×</button></div>'
+    + body + '</div>';
+  document.body.appendChild(w);
+  return w;
+}
+var BIG = 'display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;padding:15px 16px;margin-bottom:10px;border-radius:14px;font-family:inherit;cursor:pointer;color:var(--text,#f0f0f0);background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)';
+
+/* ═════════ 1. DATES: mm-dd-yy ═════════ */
+(function(){
+  var tld = Date.prototype.toLocaleDateString, tls = Date.prototype.toLocaleString;
+  function p2(n){ return (n < 10 ? '0' : '') + n; }
+  function mdy(d){ return p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + '-' + p2(d.getFullYear() % 100); }
+  function wants(o){
+    if (!o || typeof o !== 'object') return true;
+    var k = Object.keys(o).filter(function(x){ return /^(month|day|weekday|year)$/.test(x); });
+    return !k.length || o.day != null;
+  }
+  Date.prototype.toLocaleDateString = function(loc, o){
+    try {
+      if (isNaN(this.getTime()) || (o && o.timeZone) || !wants(o)) return tld.apply(this, arguments);
+      var wd = o && o.weekday ? tld.call(this, 'en-US', { weekday:o.weekday }) + ' ' : '';
+      return wd + mdy(this);
+    } catch(e){ return tld.apply(this, arguments); }
+  };
+  Date.prototype.toLocaleString = function(loc, o){
+    try {
+      if (isNaN(this.getTime()) || !o || o.timeZone || o.day == null || o.month == null) return tls.apply(this, arguments);
+      var wd = o.weekday ? tld.call(this, 'en-US', { weekday:o.weekday }) + ' ' : '';
+      var t = (o.hour != null) ? tls.call(this, 'en-US', { hour:o.hour, minute:o.minute, hour12:o.hour12 }) : '';
+      return wd + mdy(this) + (t ? ' · ' + t : '');
+    } catch(e){ return tls.apply(this, arguments); }
+  };
+  window.bpMDY = function(v){ var d = (v instanceof Date) ? v : new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? v + 'T12:00:00' : v); return isNaN(d.getTime()) ? '' : mdy(d); };
+})();
+
+/* ═════════ 2. ONE "SEND UPDATE" BUTTON ═════════ */
+function updateText(job){
+  var items = (DB.punchlist||[]).filter(function(n){ return n && n.jobId === job.id; });
+  var done = items.filter(function(n){ return n.done; });
+  var open = items.length - done.length;
+  var pct = items.length ? Math.round(done.length / items.length * 100) : 0;
+  var recent = done.slice().sort(function(a, b){ return String(b.completedAt||'') < String(a.completedAt||'') ? -1 : 1; }).slice(0, 6);
+  var t = 'Hi' + (job.client ? ' ' + job.client : '') + ',\n\nUpdate on ' + job.name + ' (' + window.bpMDY(new Date()) + '): ' + pct + '% complete'
+    + (items.length ? ' — ' + done.length + ' of ' + items.length + ' checklist items done' : '') + '.\n';
+  if (recent.length) t += '\nRecently finished:\n' + recent.map(function(n){ var r = roomById(n.roomId); return '• ' + (r ? r.name + ': ' : '') + n.text; }).join('\n') + '\n';
+  if (open) t += '\nStill open: ' + open + ' item' + (open !== 1 ? 's' : '') + '.\n';
+  return t + '\nThanks,\n' + ((typeof _userName !== 'undefined' && _userName) || '');
+}
+window.bpClientUpdateMenu = function(jobId){
+  jobId = jobId || window.currentJobId; var job = jobById(jobId); if (!job) return;
+  var email = (typeof clientEmailFor === 'function') ? clientEmailFor(job) : (job.clientEmail || '');
+  var phone = (typeof clientPhoneFor === 'function') ? clientPhoneFor(job) : (job.clientPhone || '');
+  var opt = function(icon, name, sub, fn){ return '<button onclick="document.getElementById(\'bp-upd\').remove();' + fn + '" style="' + BIG + '"><span style="font-size:26px">' + icon + '</span>'
+    + '<span style="flex:1;min-width:0"><div style="font-size:17px;font-weight:800">' + name + '</div><div style="font-size:13px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + sub + '</div></span></button>'; };
+  sheet('bp-upd', 'Send update — ' + E(job.name),
+    opt('📧', 'Email', email ? E(email) : 'No email on file — add one in Edit Job', "bpUpdateEmail('" + Q(jobId) + "')")
+    + opt('💬', 'Text message', phone ? E(phone) : 'Pick the contact in Messages', "bpUpdateText('" + Q(jobId) + "')")
+    + opt('📄', 'Full report', 'Checklist + photos as a file to attach or share', "exportClientUpdate('" + Q(jobId) + "')"));
+};
+window.bpUpdateEmail = function(jobId){
+  var job = jobById(jobId); if (!job) return;
+  var email = (typeof clientEmailFor === 'function') ? clientEmailFor(job) : (job.clientEmail || '');
+  var items = (DB.punchlist||[]).filter(function(n){ return n.jobId === jobId; });
+  var pct = items.length ? Math.round(items.filter(function(n){ return n.done; }).length / items.length * 100) : 0;
+  sendEmail(email, 'Progress Update: ' + job.name + ' (' + pct + '%)', updateText(job));
+};
+window.bpUpdateText = function(jobId){
+  var job = jobById(jobId); if (!job) return;
+  var phone = (typeof clientPhoneFor === 'function') ? clientPhoneFor(job) : (job.clientPhone || '');
+  var sep = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent || '') ? '&' : '?';
+  window.location.href = 'sms:' + String(phone || '').replace(/[^\d+]/g, '') + sep + 'body=' + encodeURIComponent(updateText(job));
+};
+
+/* ═════════ 3. "COMPLETED" ONLY WHEN IT IS ═════════ */
+(function(){
+  var o = window.toggleJobCompleted; if (typeof o !== 'function' || o.__v295) return;
+  window.toggleJobCompleted = function(id){
+    var j = jobById(id);
+    if (j && !j.completionDate) {
+      var open = (DB.punchlist||[]).filter(function(n){ return n && n.jobId === id && !n.done; }).length;
+      if (open && !confirm('"' + j.name + '" still has ' + open + ' open checklist item' + (open !== 1 ? 's' : '') + '.\n\nOK = mark it Completed anyway\nCancel = leave it unchecked')) {
+        try { renderAll(); if (window.currentJobId === id) openJobDetail(id); } catch(e){}
+        return;
+      }
+    }
+    return o.apply(this, arguments);
+  };
+  window.toggleJobCompleted.__v295 = 1;
+})();
+
+/* ═════════ 4. PUNCH LIST: PHOTO ENLARGE ═════════ */
+function srcOf(p){ var s = (p && typeof p === 'object') ? p.src : p; return s ? (window.bpImgSrc ? window.bpImgSrc(s) : s) : ''; }
+function itemPhotos(it){
+  var out = [], seen = {};
+  function add(p, label){ var s = srcOf(p); if (!s || seen[s]) return; seen[s] = 1; out.push({ src:s, label:label }); }
+  (it.photosBefore || []).forEach(function(p){ add(p, 'Before'); });
+  (it.photosAfter || []).forEach(function(p){ add(p, 'After'); });
+  if (it.completionPhoto) add(it.completionPhoto, 'Completed');
+  return out;
+}
+var PV = { list:[], i:0, id:'' };
+function drawViewer(){
+  var it = (DB.punchlist||[]).find(function(x){ return x.id === PV.id; });
+  var ph = PV.list[PV.i]; if (!ph) return;
+  var w = document.getElementById('bp-clview');
+  if (!w) {
+    w = document.createElement('div'); w.id = 'bp-clview';
+    w.style.cssText = 'position:fixed;inset:0;z-index:10060;background:#000;display:flex;flex-direction:column;color:#fff;font-family:inherit;touch-action:pan-y';
+    var x0 = 0;
+    w.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; }, { passive:true });
+    w.addEventListener('touchend', function(e){ var dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 55) window.bpClViewNav(dx < 0 ? 1 : -1); }, { passive:true });
+    document.body.appendChild(w);
+  }
+  var n = PV.list.length;
+  var nav = function(d, g){ return '<button onclick="bpClViewNav(' + d + ')" aria-label="' + (d < 0 ? 'Previous' : 'Next') + ' photo" style="width:56px;height:56px;border-radius:50%;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:28px;cursor:pointer;' + (g ? 'opacity:.3' : '') + '">' + (d < 0 ? '‹' : '›') + '</button>'; };
+  w.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:calc(var(--safe-top,0px) + 10px) 14px 10px;background:rgba(0,0,0,.85)">'
+    + '<button onclick="bpClViewClose()" aria-label="Close" style="width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:24px;cursor:pointer;flex-shrink:0">×</button>'
+    + '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(it ? it.text : '') + '</div>'
+    + '<div style="font-size:13px;opacity:.75">' + E(ph.label) + (n > 1 ? ' · ' + (PV.i + 1) + ' of ' + n : '') + '</div></div></div>'
+    + '<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:4px"><img src="' + E(ph.src) + '" style="max-width:100%;max-height:100%;object-fit:contain" alt=""/></div>'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px calc(14px + env(safe-area-inset-bottom,0px));background:rgba(0,0,0,.85)">'
+    + (n > 1 ? nav(-1, PV.i === 0) : '<span style="width:56px"></span>')
+    + '<button onclick="bpClViewAdd()" style="flex:1;height:52px;border-radius:14px;border:1.5px solid #0A84FF;background:rgba(10,132,255,.18);color:#4DA3FF;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit">+ Add photos</button>'
+    + (n > 1 ? nav(1, PV.i === n - 1) : '<span style="width:56px"></span>') + '</div>';
+}
+window.bpClViewPhotos = function(itemId, idx){
+  var it = (DB.punchlist||[]).find(function(x){ return x.id === itemId; }); if (!it) return false;
+  var list = itemPhotos(it); if (!list.length) return false;
+  PV = { list:list, i:Math.max(0, Math.min(idx || 0, list.length - 1)), id:itemId };
+  drawViewer(); return true;
+};
+window.bpClViewNav = function(d){ var j = PV.i + d; if (j < 0 || j >= PV.list.length) return; PV.i = j; drawViewer(); };
+window.bpClViewClose = function(){ var w = document.getElementById('bp-clview'); if (w) w.remove(); };
+var origPhotoSheet = window.bpClPhotoSheet;
+window.bpClViewAdd = function(){ var id = PV.id; window.bpClViewClose(); if (typeof origPhotoSheet === 'function') origPhotoSheet(id); };
+if (typeof origPhotoSheet === 'function') {
+  window.bpClPhotoSheet = function(id){ if (window.bpClViewPhotos(id, 0)) return; return origPhotoSheet.apply(this, arguments); };
+}
+window.bpClRowTap = function(id){ window.bpClViewPhotos(id, 0); };
+
+/* ═════════ 5. NOTES ON THE JOB ═════════ */
+function jobNotes(jobId){ return (DB.jobNotes||[]).filter(function(n){ return n && n.jobId === jobId; }).sort(function(a, b){ return String(a.created||'') < String(b.created||'') ? 1 : -1; }); }
+window.bpRenderJobNotes = function(){
+  var el = document.getElementById('jd-notes'); if (!el) return;
+  var jobId = window.currentJobId; if (!jobId) { el.innerHTML = ''; return; }
+  var L = jobNotes(jobId);
+  el.innerHTML = '<div class="section-header" style="display:flex;align-items:center">Notes (' + L.length + ')'
+    + '<button onclick="bpNoteEdit(\'\')" style="margin-left:auto;background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.4);border-radius:9px;color:#0A84FF;font-size:13px;font-weight:800;padding:6px 14px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add Note</button></div>'
+    + '<div style="margin:0 16px 14px">' + (L.length ? L.map(function(n){
+      var r = roomById(n.roomId);
+      return '<div onclick="bpNoteEdit(\'' + Q(n.id) + '\')" style="padding:12px 14px;margin-bottom:8px;border-radius:12px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a);cursor:pointer">'
+        + '<div style="font-size:15px;line-height:1.4;white-space:pre-wrap;word-break:break-word">' + E(n.text) + '</div>'
+        + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + E(window.bpMDY(n.created)) + (r ? ' · ' + E(r.name) : '') + (n.createdBy ? ' · ' + E(n.createdBy) : '') + '</div></div>';
+    }).join('') : '<div style="padding:16px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:12px;font-size:14px">No notes yet — tap + Add Note</div>') + '</div>';
+};
+window.bpNoteEdit = function(id){
+  var jobId = window.currentJobId; if (!jobId) return;
+  var n = id ? (DB.jobNotes||[]).find(function(x){ return x.id === id; }) : null;
+  var INPS = 'width:100%;box-sizing:border-box;padding:13px 14px;border-radius:12px;border:1px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:17px;font-family:inherit';
+  var rooms = (DB.rooms||[]).filter(function(r){ return r.jobId === jobId; });
+  sheet('bp-note', n ? 'Edit note' : 'New note',
+    '<textarea id="bp-note-text" rows="6" placeholder="Write the note…" style="' + INPS + ';resize:vertical;line-height:1.4">' + E(n ? n.text : '') + '</textarea>'
+    + '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 0 6px">Location (optional)</div>'
+    + '<select id="bp-note-room" style="' + INPS + '"><option value="">Whole job</option>' + rooms.map(function(r){ return '<option value="' + E(r.id) + '"' + (n && n.roomId === r.id ? ' selected' : '') + '>' + E(r.name) + '</option>'; }).join('') + '</select>'
+    + '<div style="display:flex;gap:8px;margin-top:14px">' + (n ? '<button onclick="bpNoteDelete(\'' + Q(n.id) + '\')" style="padding:14px 16px;border-radius:12px;border:1.5px solid #FF453A;background:transparent;color:#FF453A;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit">Delete</button>' : '')
+    + '<button onclick="bpNoteSave(\'' + Q(id || '') + '\')" style="flex:1;padding:14px;border-radius:12px;border:none;background:#0A84FF;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit">Save note</button></div>');
+  var t = document.getElementById('bp-note-text'); if (t && !n) setTimeout(function(){ try { t.focus(); } catch(e){} }, 80);
+};
+window.bpNoteSave = function(id){
+  var text = (document.getElementById('bp-note-text').value || '').trim();
+  if (!text) { say('Write something first'); return; }
+  var roomId = document.getElementById('bp-note-room').value || '';
+  DB.jobNotes = DB.jobNotes || [];
+  var n = id ? DB.jobNotes.find(function(x){ return x.id === id; }) : null;
+  if (n) { n.text = text; n.roomId = roomId; n.updatedAt = nowIso(); }
+  else DB.jobNotes.push({ id:nid(), jobId:window.currentJobId, roomId:roomId, text:text, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:nowIso(), updatedAt:nowIso() });
+  persist(); var s = document.getElementById('bp-note'); if (s) s.remove();
+  window.bpRenderJobNotes(); say('Note saved');
+};
+window.bpNoteDelete = function(id){
+  if (!confirm('Delete this note?')) return;
+  if (typeof bpRemoveFrom === 'function') bpRemoveFrom('jobNotes', function(x){ return x.id !== id; });
+  else DB.jobNotes = (DB.jobNotes||[]).filter(function(x){ return x.id !== id; });
+  persist(); var s = document.getElementById('bp-note'); if (s) s.remove();
+  window.bpRenderJobNotes();
+};
+['renderJobDetail','openJobDetail'].forEach(function(nm){
+  var o = window[nm]; if (typeof o !== 'function' || o.__v295n) return;
+  window[nm] = function(){ var r = o.apply(this, arguments); try { window.bpRenderJobNotes(); } catch(e){} return r; };
+  window[nm].__v295n = 1;
+});
+
+/* ═════════ 6. COPY & PASTE ═════════ */
+window.bpSelClip = function(mode){
+  var S = window._bpSel || {}, ids = Object.keys(S.ids || {}).filter(function(k){ return S.ids[k]; });
+  if (!ids.length) { say('Tick at least one item'); return; }
+  mode = mode === 'cut' ? 'cut' : 'copy';
+  try { bpClipSet({ mode:mode, ids:ids }); } catch(e){}
+  var sh = document.getElementById('bp-select'); if (sh) sh.remove();
+  say((mode === 'cut' ? '✂️ Cut ' : '📋 Copied ') + ids.length + ' item' + (ids.length !== 1 ? 's' : '') + ' — open a location and tap Paste');
+  try { refreshChecklistViews(); } catch(e){}
+};
+var RC_KEY = 'bp_roomclip';
+function rcGet(){ try { var r = JSON.parse(localStorage.getItem(RC_KEY) || 'null'); return r && roomById(r.id) ? r : null; } catch(e){ return null; } }
+window.bpRoomCopy = function(roomId){
+  var r = roomById(roomId); if (!r) return;
+  try { localStorage.setItem(RC_KEY, JSON.stringify({ id:roomId })); } catch(e){}
+  say('📋 "' + r.name + '" copied — open any job → Add Locations → Paste');
+};
+window.bpRoomPaste = function(jobId){
+  var c = rcGet(); if (!c) { say('Nothing copied'); return; }
+  var src = roomById(c.id); if (!src) return;
+  var withItems = !(document.getElementById('bp-rp-items') && !document.getElementById('bp-rp-items').checked);
+  var same = src.jobId === jobId;
+  var names = {}; (DB.rooms||[]).forEach(function(r){ if (r.jobId === jobId) names[String(r.name).toLowerCase()] = 1; });
+  var name = src.name, k = 2;
+  if (names[name.toLowerCase()]) { name = src.name + ' (copy)'; while (names[name.toLowerCase()]) name = src.name + ' (copy ' + (k++) + ')'; }
+  var order = (DB.rooms||[]).filter(function(r){ return r.jobId === jobId; }).length;
+  var copy = { id:nid(), name:name, type:src.type, jobId:jobId, notes:src.notes || '', level:src.level, space:src.space, order:order,
+    contractValue:+(src.contractValue || 0), contractorId:same ? (src.contractorId || '') : '', contractorIds:same && Array.isArray(src.contractorIds) ? src.contractorIds.slice() : undefined,
+    startDate:'', completionDate:'', width:src.width || null, length:src.length || null, created:nowIso(), updatedAt:nowIso() };
+  DB.rooms.push(copy);
+  var n = 0;
+  if (withItems) (DB.punchlist||[]).filter(function(x){ return x.roomId === src.id; }).forEach(function(it){
+    DB.punchlist.push({ id:nid(), text:it.text, jobId:jobId, roomId:copy.id, trade:it.trade || '', value:it.value || 0, priority:it.priority || 'Normal', extraNotes:it.extraNotes || '',
+      isVoice:false, done:false, completionPhoto:null, completionPhotoDate:null, photosBefore:[], photosAfter:[],
+      tasks:(it.tasks||[]).map(function(t){ return { id:nid(), text:t.text, done:false }; }), created:nowIso(), updatedAt:nowIso() });
+    n++;
+  });
+  persist();
+  var w = document.getElementById('bp-space-picker'); if (w) w.remove();
+  try { renderAll(); } catch(e){}
+  try { if (typeof bpRefreshCurrentScreen === 'function') bpRefreshCurrentScreen(); } catch(e){}
+  say('📥 Pasted "' + name + '"' + (n ? ' with ' + n + ' checklist item' + (n !== 1 ? 's' : '') : ''));
+};
+window.bpRoomClipClear = function(){ try { localStorage.removeItem(RC_KEY); } catch(e){} var w = document.getElementById('bp-space-picker'); if (w) w.remove(); say('Clipboard cleared'); };
+(function(){
+  var o = window.bpOpenSpacePicker; if (typeof o !== 'function' || o.__v295) return;
+  window.bpOpenSpacePicker = function(preJobId){
+    var r = o.apply(this, arguments);
+    try {
+      var c = rcGet(), w = document.getElementById('bp-space-picker');
+      if (c && w) {
+        var jid = preJobId || window._bpAreaJob || window.currentJobId || ((DB.jobs||[]).length === 1 ? DB.jobs[0].id : '');
+        if (!jid) return r;
+        var src = roomById(c.id), jb = jobById(jid);
+        var box = '<div style="margin:12px 0;padding:14px;border-radius:14px;border:1.5px dashed #FF9F0A;background:rgba(255,159,10,.1)">'
+          + '<div style="font-size:15px;font-weight:800;color:#FF9F0A">📋 Copied: ' + E(src.name) + '</div>'
+          + '<label style="display:flex;align-items:center;gap:10px;margin:10px 0;font-size:14px"><input type="checkbox" id="bp-rp-items" checked style="width:20px;height:20px;accent-color:#FF9F0A"/>Include its checklist</label>'
+          + '<div style="display:flex;gap:8px"><button onclick="bpRoomPaste(\'' + Q(jid) + '\')" style="flex:2;padding:13px;border-radius:12px;border:none;background:#FF9F0A;color:#000;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">📥 Paste into ' + E(jb ? jb.name : 'this job') + '</button>'
+          + '<button onclick="bpRoomClipClear()" style="flex:1;padding:13px;border-radius:12px;border:1px solid var(--border,#333);background:transparent;color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Clear</button></div></div>';
+        var first = w.querySelector('div[style*="pick the level"]') || null;
+        var holder = null;
+        [].some.call(w.querySelectorAll('div'), function(d){ if (/pick the level/i.test(d.textContent) && d.children.length === 0) { holder = d; return true; } return false; });
+        if (holder) holder.insertAdjacentHTML('afterend', box);
+      }
+    } catch(e){}
+    return r;
+  };
+  window.bpOpenSpacePicker.__v295 = 1;
+})();
+
+/* ═════════ 7. PHOTOS THAT GO BLANK ═════════ */
+(function(){
+  function heal(){
+    try {
+      [].forEach.call(document.images || [], function(im){
+        var s = im.getAttribute('src');
+        if (!s || s.slice(0, 5) !== 'data:') return;
+        if (!(im.complete && im.naturalWidth === 0)) return;
+        var tries = +im.getAttribute('data-bp-heal') || 0; if (tries >= 3) return;
+        im.setAttribute('data-bp-heal', String(tries + 1));
+        im.removeAttribute('src'); setTimeout(function(){ im.setAttribute('src', s); }, 40 + tries * 200);
+      });
+    } catch(e){}
+  }
+  document.addEventListener('error', function(e){ if (e.target && e.target.tagName === 'IMG') setTimeout(heal, 120); }, true);
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') { setTimeout(heal, 150); setTimeout(heal, 1200); }
+    else { try { if (typeof window.bpPersist === 'function') window.bpPersist(function(){}); } catch(e){} }   /* flush to disk as the app is backgrounded */
+  });
+  window.addEventListener('pageshow', function(){ setTimeout(heal, 150); });
+  var t = 0; window.addEventListener('scroll', function(){ clearTimeout(t); t = setTimeout(heal, 350); }, true);
+  setInterval(heal, 6000);
+})();
+
+/* ═════════ 8. SPOKEN TEXT CLEAN-UP ═════════ */
+window.bpFixSpeech = function(t){
+  t = String(t || '').trim(); if (!t) return t;
+  t = t.replace(/\s*\bnew paragraph\b\s*/gi, '\n\n').replace(/\s*\bnew line\b\s*/gi, '\n')
+       .replace(/\s+(?:period|full stop)\s*$/i, '.').replace(/\s+comma\b/gi, ',').replace(/\s+question mark\s*$/i, '?').replace(/\s+exclamation (?:point|mark)\s*$/i, '!')
+       .replace(/\b(?:pecks|pecs|p e x)\b/gi, 'PEX').replace(/\bpex\b/gi, 'PEX').replace(/\bc\s?p\s?v\s?c\b/gi, 'CPVC').replace(/\bp\s?v\s?c\b/gi, 'PVC')
+       .replace(/\bp[\s-]?trap\b/gi, 'P-trap').replace(/\bshark\s?bite\b/gi, 'SharkBite').replace(/\bsheet\s?rock\b/gi, 'Sheetrock');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
+
+/* v2.95: Arrange Locations — a long location name shrinks to fit on ONE line instead of wrapping (or being cut) */
+(function(){
+  var o = window.bpOpenSetLevels; if (typeof o !== 'function' || o.__fit) return;
+  window.bpOpenSetLevels = function(){
+    var r = o.apply(this, arguments);
+    try {
+      [].forEach.call(document.querySelectorAll('#bp-set-levels [data-arr-room] > div[title]'), function(d){
+        var fs = 13.5; d.style.fontSize = fs + 'px';
+        while (d.scrollWidth > d.clientWidth + 1 && fs > 10.5) { fs -= 0.5; d.style.fontSize = fs + 'px'; }
+      });
+    } catch(e){}
+    return r;
+  };
+  window.bpOpenSetLevels.__fit = 1;
+})();
+
+/* ═════════ 9. KEYBOARD NEVER HIDES SAVE ═════════
+   On the iPhone the keyboard slides over the bottom of the screen but full-screen sheets keep their old height, so
+   the Save button of the Daily Log (and every other sheet) sat BEHIND the keyboard — and a multi-line box has no
+   "Done" key to put the keyboard away. Result: "it won't let me save". Now every full-screen sheet shrinks to the
+   space above the keyboard (Save stays in view) and a Done button appears while a field is focused. */
+(function(){
+  var vv = window.visualViewport; if (!vv) return;
+  function sheets(){
+    return [].filter.call(document.body.children, function(w){
+      if (w.tagName !== 'DIV' || !w.id || /^(bp-dict|bp-lock|bp-kbdone|bp-clview)$/.test(w.id)) return false;
+      var st = w.getAttribute('style') || ''; if (!/inset:\s*0/.test(st)) return false;
+      var z = +getComputedStyle(w).zIndex || 0; return z >= 9000 && z < 100000;
+    });
+  }
+  function inField(){ var a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.closest && sheets().some(function(w){ return w.contains(a); })); }
+  function doneBtn(){
+    var b = document.getElementById('bp-kbdone'); if (b) return b;
+    b = document.createElement('button'); b.id = 'bp-kbdone'; b.type = 'button'; b.textContent = 'Done ⌄';
+    b.style.cssText = 'position:fixed;z-index:10095;right:70px;display:none;padding:10px 16px;border-radius:20px;border:none;background:#0A84FF;color:#fff;font-size:15px;font-weight:800;font-family:inherit;box-shadow:0 3px 12px rgba(0,0,0,.5)';
+    b.addEventListener('pointerdown', function(e){ e.preventDefault(); });
+    b.addEventListener('click', function(e){ e.preventDefault(); try { document.activeElement.blur(); } catch(x){} setTimeout(function(){ window.scrollTo(0, 0); fit(); }, 60); });
+    document.body.appendChild(b); return b;
+  }
+  function fit(){
+    var kb = Math.max(0, window.innerHeight - vv.offsetTop - vv.height); if (kb < 100) kb = 0;
+    sheets().forEach(function(w){
+      if (kb) { w.style.top = vv.offsetTop + 'px'; w.style.bottom = kb + 'px'; }
+      else { w.style.top = '0px'; w.style.bottom = '0px'; }
+    });
+    var b = doneBtn(), show = kb > 0 && inField();
+    b.style.display = show ? 'block' : 'none';
+    if (show) b.style.top = (vv.offsetTop + 8) + 'px';
+  }
+  vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit);
+  document.addEventListener('focusin', function(){ setTimeout(fit, 60); setTimeout(fit, 350); });
+  document.addEventListener('focusout', function(){ setTimeout(fit, 120); });
+})();
+console.log('[BP] v2.95 field-test fixes ready');
 })();
 </script>
