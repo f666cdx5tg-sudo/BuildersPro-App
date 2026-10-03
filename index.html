@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.95';
+var APP_VERSION = '2.97';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -18670,25 +18670,26 @@ try { bpAttentionItems = window.bpAttentionItems; bpRenderAttention = window.bpR
 function fitSz(t){ var n = String(t).length; return n <= 8 ? '' : n <= 10 ? ';font-size:22px' : ';font-size:19px'; }
 window.bpHomeTilesHtml = function(){
   var o = owed(), ev = todays(), p = openPunch(), co = pendingCOs();
-  var T = 'background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;cursor:pointer;min-width:0';
+  var T = 'background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;cursor:pointer;min-width:0;overflow:hidden';
+  var R = ';padding-right:46px'; /* right column: keep text clear of the floating mic */
   var H = 'display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)';
   var V = 'font-size:26px;font-weight:900;line-height:1.15;margin-top:4px;white-space:nowrap';
   var S = 'font-size:12.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
   var first;
   if (o.n) first = '<div data-tile="owed" onclick="_financeTab=\'invoices\';showScreen(\'s-finance\')" style="' + T + '"><div style="' + H + '">' + IC.cash + 'Owed to you</div>'
-      + '<div style="' + V + ';color:#30D158' + fitSz(money(o.total)) + '">' + money(o.total) + '</div><div style="' + S + '">' + o.n + ' unpaid invoice' + (o.n > 1 ? 's' : '') + '</div></div>';
+      + '<div class="bp-kpi-num" style="' + V + ';color:#30D158' + fitSz(money(o.total)) + '">' + money(o.total) + '</div><div style="' + S + '">' + o.n + ' unpaid invoice' + (o.n > 1 ? 's' : '') + '</div></div>';
   else { var ml = moneyLeft();
     first = '<div data-tile="left" onclick="var f=document.getElementById(\'finance-job-filter\');if(f)f.value=\'\';_financeTab=\'overview\';showScreen(\'s-finance\')" style="' + T + '"><div style="' + H + '">' + IC.cash + 'Money left</div>'
-      + '<div style="' + V + ';color:' + (ml < 0 ? '#FF6961' : '#30D158') + fitSz(money(ml)) + '">' + money(ml) + '</div><div style="' + S + '">on active jobs</div></div>'; }
+      + '<div class="bp-kpi-num" style="' + V + ';color:' + (ml < 0 ? '#FF6961' : '#30D158') + fitSz(money(ml)) + '">' + money(ml) + '</div><div style="' + S + '">on active jobs</div></div>'; }
   var evTxt = ev.length ? ev.slice(0, 2).map(function(e){ return (e.time ? new Date('2000-01-01T' + e.time).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) + ' ' : '') + (e.title || e.type || ''); }).join(', ') : 'Nothing scheduled';
   return '<div id="bp-home-tiles" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 16px 0">'
     + first
     + '<div data-tile="today" onclick="showScreen(\'s-calendar\')" style="' + T + '"><div style="' + H + '">' + IC.cal + 'Today</div>'
-    + '<div style="' + V + ';color:#409CFF">' + ev.length + '</div><div style="' + S + '">' + E(evTxt) + '</div></div>'
+    + '<div style="' + V + ';color:#409CFF">' + ev.length + '</div><div style="' + S + R + '">' + E(evTxt) + '</div></div>'
     + '<div data-tile="punch" onclick="showScreen(\'s-punch\')" style="' + T + '"><div style="' + H + '">' + IC.punch + 'Open punch</div>'
     + '<div style="' + V + ';color:' + (p.n ? '#FF9F0A' : '#30D158') + '">' + p.n + '</div><div style="' + S + '">' + (p.n ? 'across ' + p.jobs + ' job' + (p.jobs > 1 ? 's' : '') : 'All caught up') + '</div></div>'
     + '<div data-tile="co" onclick="_financeTab=\'changeorders\';showScreen(\'s-finance\')" style="' + T + '"><div style="' + H + '">' + IC.co + 'Change orders</div>'
-    + '<div style="' + V + ';color:' + (co.n ? '#BF5AF2' : 'var(--text)') + '">' + co.n + '</div><div style="' + S + '">' + (co.n ? money(co.total) + ' waiting on client' : 'None waiting') + '</div></div>'
+    + '<div style="' + V + ';color:' + (co.n ? '#BF5AF2' : 'var(--text)') + '">' + co.n + '</div><div style="' + S + R + '">' + (co.n ? money(co.total) + ' waiting on client' : 'None waiting') + '</div></div>'
     + '</div>';
 };
 function paintTiles(){
@@ -20287,7 +20288,6 @@ console.log('[BP] v2.95 field-test fixes ready');
       }
       var cands = [], maxUp = Math.round((H * 0.62) / step), i;
       for (i = 0; i <= maxUp; i++) cands.push([W - home.right - S, home.bottom + i * step]);
-      for (i = 0; i <= maxUp; i++) cands.push([home.right, home.bottom + i * step]);
       var best = null, bestN = 1e9;
       for (i = 0; i < cands.length; i++) { var n = hits(cands[i][0], cands[i][1]); if (n < bestN) { bestN = n; best = cands[i]; } if (n === 0) break; }
       f.style.transition = 'left .18s ease, bottom .18s ease';
