@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.99';
+var APP_VERSION = '3.00';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -7615,9 +7615,9 @@ function renderFinanceContent() {
       + items.map(function(con) {
         var job = con.jobId ? DB.jobs.find(function(j){return j.id===con.jobId;}) : null;
         var pays = contractorPayments(con.id), paid = pays.reduce(function(s,p){return s+(+p.amount||0);},0), bal = (+con.value||0)-paid;
-        return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:8px">'
+        return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:8px;overflow:hidden;min-width:0">'
           +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">'
-          +'<div style="flex:1">'
+          +'<div style="flex:1;min-width:0;overflow-wrap:anywhere">'
           +'<div style="font-size:16px;font-weight:800">'+esc(con.name)+'</div>'
           +(con.created?'<div style="font-size:11px;color:var(--faint);margin-top:1px">Added '+fmtDate(con.created)+' · '+fmtTime(con.created)+'</div>':'')
           +'<div style="font-size:12px;color:var(--muted);margin-top:2px">🔧 '+esc(con.trade)+(job?' · 📋 '+esc(job.name):'')+'</div>'
@@ -7631,18 +7631,18 @@ function renderFinanceContent() {
           +'<button onclick="deleteFinItem(\'contractors\',\''+con.id+'\')" style="background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer">×</button>'
           +'</div>'
           +'</div></div>'
-          +(con.scope?'<div style="background:var(--card2);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--muted);line-height:1.6;white-space:pre-wrap;border:1px solid var(--border)">'+esc(con.scope)+'</div>':'')
+          +(con.scope?'<div style="background:var(--card2);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--muted);line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid var(--border)">'+esc(con.scope)+'</div>':'')
           +(con.start||con.end?'<div style="font-size:11px;color:var(--faint);margin-top:6px">'+(con.start?'Start: '+con.start:'')+(con.end?' · End: '+con.end:'')+'</div>':'')
-          +'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">'
-          +'<div style="display:flex;gap:16px">'
+          +'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">'
+          +'<div style="display:flex;flex-wrap:wrap;gap:6px 16px;min-width:0">'
           +'<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px">Paid</div><div style="font-size:15px;font-weight:800;color:#0A84FF">$'+paid.toLocaleString()+'</div></div>'
           +'<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px">Balance</div><div style="font-size:15px;font-weight:800;color:'+(bal>0?'#FF9500':'var(--muted)')+'">$'+bal.toLocaleString()+'</div></div>'
           +'</div>'
           +'<button onclick="openLogPayment(\''+con.id+'\')" style="background:rgba(10,132,255,.14);border:1px solid rgba(10,132,255,.4);border-radius:8px;color:#0A84FF;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer">+ Log Payment</button>'
           +'</div>'
           +(pays.length?'<div style="margin-top:4px">'+pays.map(function(p){
-            return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:6px 0;border-top:1px solid var(--border)">'
-              +'<div style="color:var(--muted)">'+esc(p.date||'')+' · '+esc(p.method||'')+(p.notes?' · '+esc(p.notes):'')+'</div>'
+            return '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 10px;font-size:12px;padding:6px 0;border-top:1px solid var(--border)">'
+              +'<div style="color:var(--muted);min-width:0;flex:1 1 140px;overflow-wrap:anywhere">'+esc(p.date||'')+' · '+esc(p.method||'')+(p.notes?' · '+esc(p.notes):'')+'</div>'
               +'<div style="display:flex;align-items:center;gap:10px"><span style="font-weight:700">$'+(+p.amount||0).toLocaleString()+'</span>'
               +'<button onclick="openEditPayment(\''+p.id+'\')" style="background:none;border:none;color:var(--faint);font-size:13px;cursor:pointer">✏️</button>'
               +'<button onclick="deletePayment(\''+p.id+'\')" style="background:none;border:none;color:var(--faint);font-size:15px;cursor:pointer">×</button></div>'
@@ -9872,7 +9872,7 @@ renderJobDetail = function(jobId) {
             var pays = contractorPayments(con.id), paid = pays.reduce(function(s,p){return s+(+p.amount||0);},0), bal = (+con.value||0)-paid;
             return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px">'
               + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">'
-              + '<div style="flex:1;min-width:0">'
+              + '<div style="flex:1;min-width:0;overflow-wrap:anywhere">'
               + '<div style="font-size:15px;font-weight:800">'+esc(con.name)+'</div>'
               + '<div style="font-size:12px;color:var(--muted);margin-top:2px">🔧 '+esc(con.trade)+(con.phone?' · 📞 '+esc(con.phone):'')+'</div>'
               + '<div style="font-size:11px;font-weight:700;margin-top:3px;color:'+(statusColor[con.status]||'var(--muted)')+'">'+con.status+' · $'+paid.toLocaleString()+' paid / $'+Math.max(0,bal).toLocaleString()+' remaining</div>'
