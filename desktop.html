@@ -17033,7 +17033,7 @@ function body(){
     ? '<div style="display:flex;flex-direction:column;align-items:center;margin:18px 0 8px">'
       + '<button id="bp-vc-mic" aria-label="' + (V.on ? 'Stop listening' : 'Start listening') + '" onclick="bpVoiceMic()" style="width:124px;height:124px;border-radius:50%;border:none;cursor:pointer;font-size:52px;'
       + (V.on ? 'background:#FF453A;color:#fff;box-shadow:0 0 0 10px rgba(255,69,58,.22)' : 'background:' + M.color + ';color:#000') + '">' + (V.on ? STOP(46) : MIC(58, 1.8)) + '</button>'
-      + '<div id="bp-vc-status" style="margin-top:12px;font-size:16px;font-weight:800;color:' + (V.on ? '#FF453A' : 'var(--muted)') + '">' + (V.on ? 'Listening… talk naturally' : 'Tap the mic and talk') + '</div>'
+      + '<div id="bp-vc-status" style="margin-top:12px;font-size:16px;font-weight:800;color:' + (V.on ? '#FF453A' : 'var(--muted)') + '">' + (V.on ? 'Listening… say “save” when done' : 'Tap the mic to talk') + '</div>'
       + '<div id="bp-vc-interim" style="margin-top:6px;min-height:22px;font-size:16px;color:var(--text);text-align:center;font-style:italic;opacity:.8">' + E(V.interim) + '</div></div>'
     : kbBox();
   var tips = !liveOK() ? '' : '<div style="font-size:13.5px;color:var(--muted);line-height:1.5;padding:10px 12px;border-radius:12px;background:var(--card,#1c1c1e)">'
@@ -17045,9 +17045,19 @@ function body(){
     ? (V.items.length ? '<div style="' + LBL + '">New note</div><div style="padding:12px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid ' + M.color + ';font-size:17px;line-height:1.4;white-space:pre-wrap">' + E(V.items.map(function(x){ return x.text; }).join(' ')) + '</div>'
         + '<button onclick="bpVoiceDrop(' + (V.items.length - 1) + ')" style="' + BTN + ';margin-top:8px;background:transparent;color:var(--muted);border:1px solid var(--border,#333);padding:10px 12px;font-size:14px">Undo last sentence</button>' : '')
     : (V.items.length ? '<div style="' + LBL + '">Ready to save (' + V.items.length + ')</div>' + V.items.map(itemLine).join('') : '');
+  /* v2.96 redesign: 1) what am I adding  2) where is it going (one line, tap Change)  3) one big mic  4) what I caught
+     — and the how-to lives behind a small "How it works" instead of a wall of text above the mic. */
+  var where = '<b>' + E(V.job ? jobName(V.job) : 'No job (general)') + '</b>' + (V.mode !== 'shop' && V.room ? ' › <b>' + E(roomName(V.room)) + '</b>' : '');
+  var ctx = '<details id="bp-vc-ctx"' + (V.job ? '' : ' open') + ' style="margin-top:12px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a);overflow:hidden">'
+    + '<summary style="list-style:none;display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;font-size:16px">'
+    + '<span style="flex:1;min-width:0"><span style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:2px">Saving to</span>'
+    + '<span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + where + '</span></span>'
+    + '<span style="color:' + M.color + ';font-weight:800;font-size:15px;flex-shrink:0">Change</span></summary>'
+    + '<div style="padding:0 14px 14px"><div style="' + LBL + '">Job</div>' + jobSel + roomSel + '</div></details>';
+  var how = !liveOK() ? '' : '<details style="margin-top:14px"><summary style="list-style:none;cursor:pointer;color:var(--muted);font-size:14px;font-weight:700;padding:6px 0">ⓘ How it works</summary>' + tips + '</details>';
   return '<div style="display:flex;gap:6px;margin-top:2px">' + tabs + '</div>'
-    + '<div style="' + LBL + '">Job</div>' + jobSel + roomSel + mic
-    + '<div id="bp-vc-list">' + list + '</div>' + tips
+    + ctx + mic
+    + '<div id="bp-vc-list">' + list + '</div>' + how
     + (V.mode === 'note' ? '<div id="bp-vc-notes">' + notesList() + '</div>' : '');
 }
 var WHY = { 'not-allowed':'Microphone permission is off for this app.', 'service-not-allowed':'Live voice isn\'t allowed here.', 'audio-capture':'The mic is busy (a call or another app?).',
@@ -17158,12 +17168,12 @@ window.bpVoiceMic = function(force){
     onInterim: function(t){ V.interim = t; paintInterim(); },
     onStop: function(){ V.on = false; V.interim = ''; if (document.getElementById('bp-voice')) { var b = document.getElementById('bp-vc-mic'), s = document.getElementById('bp-vc-status');
       if (b) { b.innerHTML = MIC(58, 1.8); b.style.background = MODES[V.mode].color; b.style.color = '#000'; b.style.boxShadow = 'none'; b.setAttribute('aria-label', 'Start listening'); }
-      if (s) { s.textContent = 'Tap the mic and talk'; s.style.color = 'var(--muted)'; } paintInterim(); } }
+      if (s) { s.textContent = 'Tap the mic to talk'; s.style.color = 'var(--muted)'; } paintInterim(); } }
   });
   if (!LIVE) { V.on = false; }
   var b = document.getElementById('bp-vc-mic'), s = document.getElementById('bp-vc-status');
   if (V.on && b) { b.innerHTML = STOP(46); b.style.background = '#FF453A'; b.style.color = '#fff'; b.style.boxShadow = '0 0 0 10px rgba(255,69,58,.22)'; b.setAttribute('aria-label', 'Stop listening'); }
-  if (V.on && s) { s.textContent = 'Listening… talk naturally'; s.style.color = '#FF453A'; }
+  if (V.on && s) { s.textContent = 'Listening… say “save” when done'; s.style.color = '#FF453A'; }
 };
 window.bpVoiceMode = function(m){ if (!MODES[m] || m === V.mode) return; if (V.items.length && !confirm('Switch and drop the ' + V.items.length + ' unsaved item' + (V.items.length > 1 ? 's' : '') + '?')) return;
   V.mode = m; V.items = []; V.kb = ''; try { localStorage.setItem('bp_voice_mode', m); } catch(e){} draw(); if (!liveOK()) focusKb(); };
@@ -17507,4 +17517,6 @@ console.log('[BP] v2.92–2.94 Voice everywhere ready (live voice ' + (liveOK() 
   window.bpMicPlace = place;
   start();
 })();
+
+(function(){ var st = document.createElement('style'); st.textContent = '#bp-voice summary::-webkit-details-marker{display:none}#bp-voice summary{outline:none}'; document.head.appendChild(st); })();
 </script>
