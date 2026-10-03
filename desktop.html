@@ -17361,4 +17361,86 @@ new MutationObserver(function(){ try { addSpeak(); } catch(e){} }).observe(docum
 fab(); setTimeout(fab, 1200);
 console.log('[BP] v2.92–2.94 Voice everywhere ready (live voice ' + (liveOK() ? 'on' : 'off — keyboard voice') + ')');
 })();
+
+/* ═════════ v2.96 — NAMES NEVER WRAP, ON ANY PAGE ═════════
+   Stan: a job / location / client / contractor name must stay on ONE line everywhere. Rather than patch every
+   screen one at a time (there are 60+ places that print a name), this watches the page: any short line of text
+   containing a job, location, client, contractor, estimate or appointment name is forced onto one line, the
+   font steps down (to 10px) until it fits, and only then does it end in "…". New screens are covered automatically. */
+(function(){
+  if (window.__bpOneLine) return; window.__bpOneLine = 1;
+  var SKIP = /^(SCRIPT|STYLE|TEXTAREA|INPUT|SELECT|OPTION|TITLE|NOSCRIPT)$/;
+  var re = null, reKey = '';
+  function names(){
+    var out = [];
+    function add(v){ v = String(v||'').trim(); if (v.length >= 4) out.push(v); }
+    try {
+      (DB.jobs||[]).forEach(function(j){ add(j.name); add(j.client); });
+      (DB.rooms||[]).forEach(function(r){ add(r.name); });
+      (DB.contractors||[]).forEach(function(c){ add(c.name); });
+      (DB.estimates||[]).forEach(function(e){ add(e.title); add(e.client); });
+      (DB.appointments||[]).forEach(function(a){ add(a.title); });
+      (DB.expenses||[]).forEach(function(x){ add(x.vendor); });
+    } catch(e){}
+    return out;
+  }
+  function esc(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function build(){
+    var n = names().sort(function(a,b){ return b.length - a.length; });
+    var key = n.length + '|' + n.join('\u0001');
+    if (key === reKey) return;
+    reKey = key;
+    re = n.length ? new RegExp(n.map(esc).join('|')) : null;
+  }
+  function ok(el){
+    if (!el || el.nodeType !== 1 || SKIP.test(el.tagName)) return false;
+    if (el.isContentEditable || el.closest('[contenteditable="true"],textarea,select,#toast,.toast,[id^="bp-toast"]')) return false;
+    if (el.querySelector('div,p,ul,ol,table,button,label,textarea,input,select,img')) return false;   // only leaf-ish lines
+    var t = el.textContent || '';
+    return t.length <= 80;
+  }
+  function fit(el){
+    var cs = getComputedStyle(el);
+    if (cs.display === 'inline') { el.style.display = 'inline-block'; el.style.verticalAlign = 'bottom'; }   // a name inside a <span> gets a width to fit
+    if (!el.dataset.bpFs0) el.dataset.bpFs0 = parseFloat(cs.fontSize) || 14;
+    el.style.whiteSpace = 'nowrap'; el.style.overflow = 'hidden'; el.style.textOverflow = 'ellipsis';
+    el.style.webkitLineClamp = 'unset'; el.style.minWidth = '0'; el.style.maxWidth = '100%';
+    if (cs.display === '-webkit-box') el.style.display = 'block';
+    var q = el.parentElement, i = 0;                                         // let flex parents shrink past their content
+    while (q && i++ < 3 && q !== document.body) { if (getComputedStyle(q).display.indexOf('flex') >= 0) q.style.minWidth = '0'; q = q.parentElement; }
+    var fs = +el.dataset.bpFs0; el.style.fontSize = fs + 'px';
+    while (el.scrollWidth > el.clientWidth + 1 && fs > 10) { fs -= 0.5; el.style.fontSize = fs + 'px'; }
+  }
+  var seen = [];
+  function sweep(root){
+    if (!re || !root) return;
+    var base = root.nodeType === 1 ? root : root.parentNode; if (!base || base.nodeType !== 1) return;
+    var w = document.createTreeWalker(base, NodeFilter.SHOW_TEXT, null), n, els = [];
+    while ((n = w.nextNode())) {
+      var v = n.nodeValue; if (!v || v.length < 4 || !re.test(v)) continue;
+      var el = n.parentElement; if (el && els.indexOf(el) < 0 && ok(el)) els.push(el);
+    }
+    els.forEach(function(el){ try { fit(el); if (seen.indexOf(el) < 0) seen.push(el); } catch(e){} });
+    if (seen.length > 400) seen = seen.slice(-200);
+  }
+  var pending = [], timer = 0;
+  function flush(){
+    timer = 0; build(); var list = pending; pending = [];
+    list.forEach(function(r){ if (r.isConnected !== false) sweep(r); });
+  }
+  function queue(r){ if (pending.indexOf(r) < 0) pending.push(r); if (!timer) timer = setTimeout(flush, 80); }
+  function start(){
+    if (!document.body) return setTimeout(start, 100);
+    new MutationObserver(function(ms){
+      ms.forEach(function(m){
+        if (m.type === 'characterData') queue(m.target.parentNode);
+        else m.addedNodes.forEach(function(a){ if (a.nodeType === 1 || a.nodeType === 3) queue(a); });
+      });
+    }).observe(document.body, { childList:true, subtree:true, characterData:true });
+    queue(document.body);
+  }
+  window.addEventListener('resize', function(){ seen.forEach(function(el){ try { if (el.isConnected) fit(el); } catch(e){} }); });
+  window.bpOneLineNow = function(){ build(); sweep(document.body); };
+  start();
+})();
 </script>
