@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.02';
+var APP_VERSION = '3.03';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -20404,7 +20404,9 @@ css.textContent = [
   '.bp-ic svg{display:block;width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}',
   '.bp-ic svg .f{fill:currentColor;stroke:none}',
   '.bp-ic-t{position:absolute;left:0;top:0;width:0;height:0;overflow:hidden;font-size:0;opacity:0;pointer-events:none}',
-  '.bp-kindbar{display:inline-flex;gap:6px;align-items:center;margin-left:8px;padding-left:10px;border-left:1px solid var(--border,#2a2a2a)}'
+  /* v3.03: the kind filter is its OWN full-width row under Inside/Outside (it used to share the row and crush all four filters) */
+  '.bp-kindbar{display:flex;gap:6px;align-items:stretch;width:100%;margin:6px 0 0;padding:0;border:0;box-sizing:border-box}',
+  '.bp-kindbar button{flex:1 1 0;min-width:0;white-space:nowrap}'
 ].join('\n');
 document.head.appendChild(css);
 
@@ -20789,9 +20791,9 @@ function rerenderLocViews(){
 function kindBarHtml(){
   function b(label, val){
     var on = window._bpKind === val;
-    return '<button onclick="bpSetKind(\'' + val + '\')" style="padding:8px 14px;border-radius:9px;border:1.5px solid '
+    return '<button onclick="bpSetKind(\'' + val + '\')" style="padding:7px 4px;border-radius:8px;border:1.5px solid '
       + (on ? '#BF5AF2' : 'var(--border)') + ';background:' + (on ? 'rgba(191,90,242,.13)' : 'var(--card2)')
-      + ';color:' + (on ? '#BF5AF2' : 'var(--muted)') + ';font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + label + '</button>';
+      + ';color:' + (on ? '#BF5AF2' : 'var(--muted)') + ';font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit">' + label + '</button>';
   }
   return '<span class="bp-kindbar">' + b('All kinds','All') + b('Rooms','room') + b('Locations','location') + '</span>';
 }
@@ -20799,8 +20801,9 @@ function injectKind(){
   var btns = document.querySelectorAll('[onclick^="bpSetAreaSpace("]');
   if (!btns.length) return;
   var last = btns[btns.length - 1];
-  if (last.parentNode.querySelector('.bp-kindbar')) return;
-  last.insertAdjacentHTML('afterend', kindBarHtml());
+  var row = last.parentNode;
+  if (row.parentNode && row.parentNode.querySelector('.bp-kindbar')) return;
+  row.insertAdjacentHTML('afterend', kindBarHtml());
 }
 window.bpSetKind = function(k){ window._bpKind = k; rerenderLocViews(); };
 safe(function(){
