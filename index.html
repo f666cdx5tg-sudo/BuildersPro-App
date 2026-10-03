@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '2.97';
+var APP_VERSION = '2.98';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -20251,7 +20251,7 @@ console.log('[BP] v2.95 field-test fixes ready');
 /* ═════════ v2.96 — THE 🎤 NEVER SITS ON TOP OF ANOTHER BUTTON ═════════
    The floating mic was pinned bottom-right, so on many screens it landed on a row's buttons (Add List, Add
    Photo, Save…). Whatever it covered stopped working and the mic itself was unreliable there. Now it looks at
-   what's on screen and parks itself in the nearest free spot (right edge going up, then the left edge), re-checks
+   what's on screen and parks itself in its fixed corner (v2.98: no longer moves), re-checks
    on scroll / screen change, and tucks away while a sheet or the Speak panel is open. */
 (function(){
   if (window.__bpMicAvoid) return; window.__bpMicAvoid = 1;
@@ -20278,20 +20278,9 @@ console.log('[BP] v2.95 field-test fixes ready');
       var z = parseFloat(getComputedStyle(document.body).zoom) || 1;       /* Large/XL text zooms the page: work in on-screen pixels */
       if (!base) base = { right: parseFloat(cs.right) || 12, bottom: parseFloat(cs.bottom) || 90 };   /* the original corner, in CSS px */
       var home = { right: base.right * z, bottom: base.bottom * z };
-      var S = f.getBoundingClientRect().width || 42, gap = 10, step = S + gap, W = innerWidth, H = innerHeight;
-      var els = [].slice.call(document.querySelectorAll(SEL)), rects = [];
-      els.forEach(function(el){ var r = vis(el, f); if (r) rects.push(r); });
-      function hits(x, y){          // x = distance from left edge, y = distance from bottom
-        var L = x - 4, T = H - y - S - 4, R = x + S + 4, B = H - y + 4, n = 0;
-        for (var i = 0; i < rects.length; i++) { var r = rects[i]; if (r.left < R && r.right > L && r.top < B && r.bottom > T) n++; }
-        return n;
-      }
-      var cands = [], maxUp = Math.round((H * 0.62) / step), i;
-      for (i = 0; i <= maxUp; i++) cands.push([W - home.right - S, home.bottom + i * step]);
-      var best = null, bestN = 1e9;
-      for (i = 0; i < cands.length; i++) { var n = hits(cands[i][0], cands[i][1]); if (n < bestN) { bestN = n; best = cands[i]; } if (n === 0) break; }
-      f.style.transition = 'left .18s ease, bottom .18s ease';
-      f.style.right = 'auto'; f.style.left = (best[0] / z) + 'px'; f.style.bottom = (best[1] / z) + 'px';
+      /* v2.98: LOCKED. The mic stays in its home corner and never moves; it only tucks away while a sheet is open. */
+      f.style.transition = 'none';
+      f.style.left = 'auto'; f.style.right = home.right / z + 'px'; f.style.bottom = home.bottom / z + 'px';
     } catch(e){} finally { busy = false; }
   }
   function soon(){ if (timer) return; timer = setTimeout(function(){ timer = 0; place(); }, 120); }
