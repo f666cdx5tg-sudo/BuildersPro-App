@@ -785,7 +785,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       Home
     </button>
     <div class="detail-title">Search</div>
-    <input id="bp-search-input" type="text" placeholder="Search jobs, contractors, expenses, notes..." oninput="bpRunSearch(this.value)" style="width:100%;box-sizing:border-box;margin-top:10px;padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:16px;font-family:inherit"/>
+    <input id="bp-search-input" type="text" placeholder="SEARCH" aria-label="Search" oninput="bpRunSearch(this.value)" style="width:100%;box-sizing:border-box;margin-top:10px;padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:16px;font-family:inherit"/>
   </div>
   <div id="bp-search-results" style="padding:0 16px 24px"></div>
 </div>
@@ -1414,7 +1414,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.00';
+var APP_VERSION = '3.02';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1662,11 +1662,18 @@ function todayStr() {
   var d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
-function fmtDate(iso) {
-  if (!iso) return '';
-  var d = new Date(iso);
-  return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+/* v3.02: every date shown in the app is MM/DD/YYYY. Date-only strings (YYYY-MM-DD) are read
+   as plain calendar dates so they never slip a day across time zones. */
+function bpMDY(v) {
+  if (!v) return '';
+  var m = /^(\d{4})-(\d{2})-(\d{2})(?![\d])/.exec(String(v));
+  if (m && String(v).length === 10) return m[2] + '/' + m[3] + '/' + m[1];
+  var dt = (v instanceof Date) ? v : new Date(v);
+  if (isNaN(dt.getTime())) return String(v);
+  var mm = dt.getMonth() + 1, dd = dt.getDate();
+  return (mm < 10 ? '0' : '') + mm + '/' + (dd < 10 ? '0' : '') + dd + '/' + dt.getFullYear();
 }
+function fmtDate(iso) { return bpMDY(iso); }
 function fmtTime(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -2424,29 +2431,34 @@ function buildJobCard(job, mini) {
   var jobExpenses = (DB.expenses||[]).filter(function(e){return e.jobId===job.id;}).reduce(function(s,e){return s+(+e.amount||0);},0);
   var jobSubCosts = (DB.contractors||[]).filter(function(c){return c.jobId===job.id;}).reduce(function(s,c){return s+(+c.value||0);},0);
   var jobBalance  = bpRevisedContract(job.id) - jobExpenses - jobSubCosts;
+  /* v3.02: compact card — Job/Client/Contract on one block, Status+% together, "added" stamp
+     removed and Start date shown instead, Started/Completed ticks folded into the chip row. */
+  var contractNow = (job.contract || bpCOApproved(job.id)) ? bpRevisedContract(job.id) : 0;
+  var cline = [];
+  if (job.client) cline.push('👤 ' + esc(job.client));
+  if (contractNow) cline.push('<b style="color:var(--text)">$' + contractNow.toLocaleString() + (bpCOApproved(job.id) ? ' \u21b3CO' : '') + '</b>');
+  var tick = function(on, fn, label){
+    return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer" onclick="event.stopPropagation()">'
+      + '<input type="checkbox" ' + (on?'checked':'') + ' onchange="' + fn + '(\'' + job.id + '\')" style="width:16px;height:16px;accent-color:#0A84FF;cursor:pointer"/>' + label + '</label>';
+  };
   return '<div class="card card-tap" onclick="openJobDetail(\'' + job.id + '\')">'
     + '<div class="card-body">'
     + '<div class="card-row">'
     + '<div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:' + ({Active:'var(--accent)',Complete:'var(--green)','On Hold':'var(--red)',Pending:'var(--muted)'}[job.status]||'var(--faint)') + '"></div>'
     + '<div style="flex:1;min-width:0"><div class="job-name">' + esc(job.name) + '</div>'
-    + (job.created ? '<div style="font-size:11px;color:var(--faint);margin-top:1px">' + fmtDate(job.created) + ' · ' + fmtTime(job.created) + '</div>' : '')
-    + (job.client ? '<div style="font-size:13px;color:var(--muted);margin-top:2px">👤 ' + esc(job.client) + '</div>' : '')
+    + (cline.length ? '<div style="font-size:13px;color:var(--muted);margin-top:2px">' + cline.join(' · ') + '</div>' : '')
     + (fmtJobAddress(job) ? '<div style="font-size:12px;color:var(--faint);margin-top:1px">📍 ' + esc(fmtJobAddress(job)) + '</div>' : '')
     + '</div>'
-    + '<span class="chip ' + statusColor + '">' + job.status + '</span>'
+    + '<span class="chip ' + statusColor + '">' + job.status + (prog.total ? ' · ' + pct + '%' : '') + '</span>'
     + '</div>'
     + (prog.total ? '<div class="job-progress"><div class="job-progress-fill" style="width:' + pct + '%"></div></div>' : '')
     + '<div class="job-chips">'
-    + (prog.total ? '<span class="chip">' + prog.done + '/' + prog.total + ' checklist</span>' : '')
+    + '<span class="chip">📅 Start ' + (job.startDate ? fmtDatePlain(job.startDate) : '—') + '</span>'
     + (photos ? '<span class="chip blue">' + photos + ' photos</span>' : '')
-    + (job.contract || bpCOApproved(job.id) ? '<span class="chip amber">Contract $' + bpRevisedContract(job.id).toLocaleString() + (bpCOApproved(job.id) ? ' \u21b3CO' : '') + '</span>' : '')
     + (job.contract ? '<span class="chip" style="color:'+(jobBalance>=0?'#0A84FF':'var(--red)')+';border-color:'+(jobBalance>=0?'#0A84FF':'var(--red)')+'44">Balance ' + (jobBalance<0?'-':'') + '$' + Math.abs(jobBalance).toLocaleString() + '</span>' : '')
     + (roomPunch ? '<span class="chip" style="color:'+(roomPunch.complete===roomPunch.total?'var(--green)':'var(--red)')+';border-color:'+(roomPunch.complete===roomPunch.total?'var(--green)':'var(--red)')+'44">🚪 ' + roomPunch.complete + '/' + roomPunch.total + ' locations done</span>' : '')
+    + (mini ? '' : tick(!!job.startDate, 'toggleJobStarted', 'Started') + tick(!!job.completionDate, 'toggleJobCompleted', 'Completed'))
     + '</div>'
-    + (mini ? '' : '<div style="display:flex;gap:16px;margin-top:8px" onclick="event.stopPropagation()">'
-      + '<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer"><input type="checkbox" ' + (job.startDate?'checked':'') + ' onchange="toggleJobStarted(\'' + job.id + '\')" style="width:16px;height:16px;accent-color:#0A84FF;cursor:pointer"/>Started</label>'
-      + '<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer"><input type="checkbox" ' + (job.completionDate?'checked':'') + ' onchange="toggleJobCompleted(\'' + job.id + '\')" style="width:16px;height:16px;accent-color:#0A84FF;cursor:pointer"/>Completed</label>'
-      + '</div>')
     + '</div></div>';
 }
 
@@ -9241,7 +9253,7 @@ function ymd(y,m,d) { return y+'-'+pad2(m+1)+'-'+pad2(d); }
 // Formats a plain "YYYY-MM-DD" date string without going through Date/timezone
 // parsing (new Date('YYYY-MM-DD') parses as UTC midnight, which can display as
 // the previous day in US timezones) — used everywhere a calendar date is shown.
-function fmtDatePlain(ds) { if (!ds) return ''; var p = String(ds).slice(0,10).split('-'); if (p.length < 3) return ds; return p[1]+'-'+p[2]+'-'+String(p[0]).slice(-2); }   /* v2.95: mm-dd-yy */
+function fmtDatePlain(ds) { return bpMDY(ds); }   /* v3.02: MM/DD/YYYY (was mm-dd-yy) */
 
 // Gathers every date-bearing record in the app (manual appointments/due-dates
 // plus permit expirations, job start/due dates, contractor start/end, unpaid
@@ -13404,7 +13416,7 @@ function prettyDate(ds){
   if (!ds) return '';
   var p = String(ds).split('-');
   if (p.length !== 3) return String(ds);
-  return p[1] + '-' + p[2] + '-' + String(p[0]).slice(-2);   /* v2.95: mm-dd-yy */
+  return p[1] + '/' + p[2] + '/' + p[0];   /* v3.02: MM/DD/YYYY */
 }
 
 /* ── who the report goes to ─────────────────────────────────────────── */
@@ -19852,11 +19864,11 @@ function sheet(id, title, body){
 }
 var BIG = 'display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;padding:15px 16px;margin-bottom:10px;border-radius:14px;font-family:inherit;cursor:pointer;color:var(--text,#f0f0f0);background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)';
 
-/* ═════════ 1. DATES: mm-dd-yy ═════════ */
+/* ═════════ 1. DATES: MM/DD/YYYY (v3.02) ═════════ */
 (function(){
   var tld = Date.prototype.toLocaleDateString, tls = Date.prototype.toLocaleString;
   function p2(n){ return (n < 10 ? '0' : '') + n; }
-  function mdy(d){ return p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + '-' + p2(d.getFullYear() % 100); }
+  function mdy(d){ return p2(d.getMonth() + 1) + '/' + p2(d.getDate()) + '/' + d.getFullYear(); }
   function wants(o){
     if (!o || typeof o !== 'object') return true;
     var k = Object.keys(o).filter(function(x){ return /^(month|day|weekday|year)$/.test(x); });
@@ -19877,7 +19889,6 @@ var BIG = 'display:flex;align-items:center;gap:12px;width:100%;box-sizing:border
       return wd + mdy(this) + (t ? ' · ' + t : '');
     } catch(e){ return tls.apply(this, arguments); }
   };
-  window.bpMDY = function(v){ var d = (v instanceof Date) ? v : new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? v + 'T12:00:00' : v); return isNaN(d.getTime()) ? '' : mdy(d); };
 })();
 
 /* ═════════ 2. ONE "SEND UPDATE" BUTTON ═════════ */
@@ -20356,4 +20367,583 @@ console.log('[BP] v2.95 field-test fixes ready');
 
 /* v2.96: Speak panel — hide the default disclosure triangle */
 (function(){ var st = document.createElement('style'); st.textContent = '#bp-voice summary::-webkit-details-marker{display:none}#bp-voice summary{outline:none}'; document.head.appendChild(st); })();
+</script>
+<script>
+/* ══ v3.02 — Stan's Oct 3 punch list (identical block in both apps) ═══════════
+   1  Start / Completion date inputs no longer overlap in the Edit Location card
+   2  Selecting a job (Active Job) selects that job on every tab
+   3  Search box just says SEARCH                       (markup)
+   4  Shopping-list TAX RATE comes from the geo tag (job zip/state, else device place)
+   5  Every date is MM/DD/YYYY
+   6  Compact job card                                  (markup)
+   7  Archive explained in the Archive page subtitle
+   8  Photos grouped Basement → Level 1… → Roof → Outside, like Locations
+   9  Locations / Photos / Punch can be filtered: All · Rooms · Locations
+  10  "Add Locations" picker: Rooms or Locations option
+  +  One icon style everywhere: black monoline pictograms instead of emoji
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var IS_DESK = !!document.getElementById('modal-new-room');
+function $(id){ return document.getElementById(id); }
+function E(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function safe(fn){ try { return fn(); } catch(e){ console.warn('[BP v3.02]', e); } }
+function persist(){ safe(function(){ if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); }); }
+
+/* ── 1. CSS ─────────────────────────────────────────────────────────────── */
+var css = document.createElement('style');
+css.id = 'bp-v302-css';
+css.textContent = [
+  /* date pairs: let both boxes shrink instead of spilling over each other */
+  'input[type="date"]{min-width:0;max-width:100%;box-sizing:border-box}',
+  '.field-row,.field-row-3{grid-template-columns:repeat(auto-fit,minmax(0,1fr))!important}',
+  '.field-row>*,.field-row-3>*{min-width:0}',
+  '[style*="flex:1"]{min-width:0}',
+  /* icons */
+  '.bp-ic{display:inline-block;position:relative;width:1.18em;height:1.18em;vertical-align:-.24em;line-height:1;color:inherit}',
+  '.bp-ic svg{display:block;width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}',
+  '.bp-ic svg .f{fill:currentColor;stroke:none}',
+  '.bp-ic-t{position:absolute;left:0;top:0;width:0;height:0;overflow:hidden;font-size:0;opacity:0;pointer-events:none}',
+  '.bp-kindbar{display:inline-flex;gap:6px;align-items:center;margin-left:8px;padding-left:10px;border-left:1px solid var(--border,#2a2a2a)}'
+].join('\n');
+document.head.appendChild(css);
+
+/* ── 5. Dates: MM/DD/YYYY everywhere ────────────────────────────────────── */
+safe(function(){
+  var DP = Date.prototype, oD = DP.toLocaleDateString, oS = DP.toLocaleString;
+  function p2(n){ return (n < 10 ? '0' : '') + n; }
+  function en(l){ return l === undefined || l === 'en-US' || (Array.isArray(l) && (!l.length || l[0] === 'en-US')); }
+  var WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], WDL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function datePart(d, o){
+    var s = p2(d.getMonth()+1) + '/' + p2(d.getDate());
+    if (o.year !== undefined || !Object.keys(o).length) s += '/' + d.getFullYear();
+    if (o.weekday) s = (o.weekday === 'long' ? WDL : WD)[d.getDay()] + ', ' + s;
+    return s;
+  }
+  DP.toLocaleDateString = function(loc, o){
+    if (isNaN(this.getTime()) || !en(loc)) return oD.apply(this, arguments);
+    o = o || {};
+    var keys = Object.keys(o);
+    if (keys.length && o.day === undefined) return oD.apply(this, arguments);   /* month-year, weekday-only … untouched */
+    if (o.timeZone) return oD.apply(this, arguments);
+    return datePart(this, o);
+  };
+  DP.toLocaleString = function(loc, o){
+    if (isNaN(this.getTime()) || !en(loc)) return oS.apply(this, arguments);
+    o = o || {};
+    var hasDate = !Object.keys(o).length || o.day !== undefined || o.month !== undefined;
+    if (!hasDate || o.timeZone) return oS.apply(this, arguments);
+    var t = {};
+    ['hour','minute','second','hour12'].forEach(function(k){ if (o[k] !== undefined) t[k] = o[k]; });
+    if (!Object.keys(o).length) t = { hour:'numeric', minute:'2-digit' };
+    var tp = Object.keys(t).length ? ', ' + oS.call(this, 'en-US', t) : '';
+    return datePart(this, o.day !== undefined ? o : {}) + tp;
+  };
+  /* ISO strings that reach the screen as text (2026-10-03) → 10/03/2026 */
+  var ISO = /(^|[^\d-])(\d{4})-(\d{2})-(\d{2})(?!\d|T\d)/g;
+  window.bpIsoToMDY = function(v){
+    return String(v).replace(ISO, function(m, pre, y, mo, d){
+      return (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) ? m : pre + mo + '/' + d + '/' + y;
+    });
+  };
+});
+
+/* ── Icon set: black monoline pictograms (same look as the ramp / steps / driveway icons) ── */
+var ICONS = {
+  check:'<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/>',
+  xcircle:'<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+  alert:'<path d="M12 3.5L2.5 20h19z"/><path d="M12 10v5M12 17.6v.4"/>',
+  pencil:'<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19z"/><path d="M14.5 6.5l3 3"/>',
+  pencilline:'<path d="M5 17l.8-3L15.5 4.3a2 2 0 013 3L8.8 17z"/><path d="M13.5 6.3l3 3M4 21h16"/>',
+  clipboard:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9z"/><path d="M8.5 12h7M8.5 16h5"/>',
+  trash:'<path d="M4 7h16M10 3.5h4M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
+  camera:'<path d="M3 8.5a2 2 0 012-2h2.5l1.5-2h6l1.5 2H19a2 2 0 012 2V18a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><circle cx="12" cy="13" r="3.8"/>',
+  home:'<path d="M3 11l9-7.5L21 11M5.5 9.5V20h13V9.5M10 20v-6h4v6"/>',
+  basement:'<path d="M3 9l9-6 9 6"/><path d="M5.5 8v13h13V8M5.5 15h13M10 15v6M14 15v6"/>',
+  box:'<path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5L12 12l8.5-4.5M12 12v9"/>',
+  calendar:'<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  file:'<path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5M9 13h6M9 17h4"/>',
+  door:'<path d="M6 21V4.5A1.5 1.5 0 017.5 3h9A1.5 1.5 0 0118 4.5V21M4 21h16"/><circle class="f" cx="14.6" cy="12.5" r=".9"/>',
+  mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v3M9 21h6"/>',
+  bricks:'<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M9 14.3V19"/>',
+  upload:'<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M4 14v5a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 19v-5"/>',
+  download:'<path d="M12 4v11M7.5 11L12 15.5 16.5 11M4 14v5a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 19v-5"/>',
+  mail:'<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3.5 7l8.5 6.5L20.5 7"/>',
+  clip:'<path d="M20 11.5l-8.2 8.2a5 5 0 01-7-7l8.6-8.6a3.4 3.4 0 014.8 4.8l-8.6 8.6a1.7 1.7 0 01-2.4-2.4l8-8"/>',
+  cloud:'<path d="M7 18.5a4.5 4.5 0 01-.6-8.96A6 6 0 0118 10.5a4 4 0 010 8z"/>',
+  hardhat:'<path d="M10 10V5a1 1 0 011-1h2a1 1 0 011 1v5M14 6a6 6 0 016 6v3M4 15v-3a6 6 0 016-6M2 18a1 1 0 011-1h18a1 1 0 011 1v2a1 1 0 01-1 1H3a1 1 0 01-1-1z"/>',
+  arrowdown:'<path d="M12 4v16M6 14l6 6 6-6"/>',
+  arrowup:'<path d="M12 20V4M6 10l6-6 6 6"/>',
+  ext:'<path d="M7 17L17 7M8 7h9v9"/>',
+  wrench:'<path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>',
+  scissors:'<circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8 7.6L20 18M8 16.4L20 6"/>',
+  flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  bolt:'<path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/>',
+  receipt:'<path d="M6 3.5h12V21l-2.2-1.5L14 21l-2-1.5L10 21l-1.8-1.5L6 21z"/><path d="M9 8.5h6M9 12h6M9 15.5h3"/>',
+  folder:'<path d="M3 6.5A1.5 1.5 0 014.5 5h4l2 2.5h9A1.5 1.5 0 0121 9v9.5a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18.5z"/>',
+  crane:'<path d="M3 21h18M6 21V9h5v12M11 9l8-4.5M19 4.5V9M19 11v3"/><circle cx="19" cy="15.2" r="1.2"/>',
+  help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.6a2.6 2.6 0 114.2 2c-.9.7-1.7 1.2-1.7 2.4M12 17.2v.3"/>',
+  link:'<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>',
+  briefcase:'<rect x="3" y="7.5" width="18" height="12" rx="2"/><path d="M9 7.5V6a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0115 6v1.5M3 13h18"/>',
+  ruler:'<path d="M4 20V4l16 16z"/><path d="M4 12h3M4 16h2M8 20v-3M12 20v-2"/>',
+  truck:'<path d="M2.5 6.5h11V17h-11zM13.5 10h4l3 3v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+  hammer:'<path d="M15 12l-8.4 8.4a1.4 1.4 0 01-3-3L12 9"/><path d="M18 15l4-4M21.5 11.5l-1.9-1.9a2 2 0 01-.6-1.4V7l-2.3-2.3a6 6 0 00-4.2-1.8L9 3l.9.8A6.2 6.2 0 0112 8.4V10l2 2h1.2a2 2 0 011.4.6l1.9 1.9"/>',
+  dollar:'<circle cx="12" cy="12" r="9"/><path d="M14.6 9.3c-.4-.9-1.4-1.5-2.6-1.5-1.5 0-2.6.8-2.6 2 0 2.8 5.3 1.4 5.3 4.2 0 1.1-1.2 2-2.7 2-1.3 0-2.4-.6-2.8-1.6M12 6.2v1.6M12 16.2v1.6"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff:'<path d="M3 3l18 18M10.6 5.2A9.5 9.5 0 0112 5c6.4 0 10 7 10 7a17 17 0 01-3.2 4M6.5 6.7C3.9 8.5 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.2"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
+  pan:'<circle cx="9" cy="13" r="6.5"/><circle cx="9" cy="13" r="2.6"/><path d="M15.5 13H22"/>',
+  shower:'<path d="M4 21V7a3.5 3.5 0 013.5-3.5H12"/><path d="M12 6.5a6 6 0 016 6H12z"/><path d="M10.5 16v2.5M14 16v3.5M17.5 16v2.5"/>',
+  bed:'<path d="M3 19V6M3 15h18v4M21 15v-3a3 3 0 00-3-3h-8v6"/><circle cx="6.5" cy="11.5" r="1.8"/>',
+  sofa:'<path d="M5 11V8a2 2 0 012-2h10a2 2 0 012 2v3"/><path d="M3 12.5a2 2 0 014 0V15h10v-2.5a2 2 0 014 0V18H3zM5 18v2M19 18v2"/>',
+  thermo:'<path d="M10 14.5V5a2 2 0 014 0v9.5a4 4 0 11-4 0zM12 9v7"/>',
+  plug:'<path d="M9 3v5M15 3v5M6.5 8h11v3a5.5 5.5 0 01-11 0zM12 16.5V21"/>',
+  search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/>',
+  rain:'<path d="M7 15a4.5 4.5 0 01-.6-8.96A6 6 0 0118 7.5a4 4 0 010 7.5"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/>',
+  pin:'<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/>',
+  printer:'<path d="M7 9V3.5h10V9M7 17H5a1.5 1.5 0 01-1.5-1.5v-5A1.5 1.5 0 015 9h14a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 0119 17h-2"/><rect x="7" y="14" width="10" height="6.5"/>',
+  palette:'<path d="M12 3a9 9 0 100 18c1.2 0 1.8-.9 1.8-1.7 0-1.3-1-1.5-1-2.8 0-1 .8-1.6 1.8-1.6H17a4 4 0 004-4C21 6.7 17 3 12 3z"/><circle class="f" cx="7.5" cy="11" r="1"/><circle class="f" cx="10.5" cy="7.3" r="1"/><circle class="f" cx="15.3" cy="7.6" r="1"/>',
+  car:'<path d="M5 16v-4l2-5h10l2 5v4M3.5 16h17M3.5 12H20.5"/><circle cx="7.5" cy="17.6" r="1.8"/><circle cx="16.5" cy="17.6" r="1.8"/>',
+  basket:'<path d="M3.5 10h17l-2 10h-13zM8 10l3-6M16 10l-3-6M9 14v3M12 14v3M15 14v3"/>',
+  snow:'<path d="M12 2.5v19M4.2 7.2l15.6 9.6M4.2 16.8l15.6-9.6M9.5 4.5L12 7l2.5-2.5M9.5 19.5L12 17l2.5 2.5"/>',
+  bandage:'<rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-35 12 12)"/><path d="M10.4 10.6l3.2 2.8"/>',
+  heart:'<path d="M12 20s-8.5-5-8.5-11A4.5 4.5 0 0112 6.5 4.5 4.5 0 0120.5 9c0 6-8.5 11-8.5 11z"/>',
+  rocket:'<path d="M14.5 4c3 0 5.5 2.5 5.5 5.5-1.5 5-5 8-8.5 9l-6-6c1-3.5 4-7 9-8.5z"/><circle cx="14.5" cy="9.5" r="1.7"/><path d="M5.5 14.5L3 20l5.5-2.5"/>',
+  phone:'<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+  flame:'<path d="M12 21c-4 0-6.5-2.8-6.5-6.2C5.5 11 8.5 9 9 5c2.5 1.5 3.5 3.5 3.5 5.5 1.2-.7 1.8-2 2-3.5 2.3 2 3.5 4.7 3.5 7.8C18 18.2 16 21 12 21z"/>',
+  vest:'<path d="M8 3.5l4 3 4-3 3.5 3V21h-15V6.5z"/><path d="M12 6.5V21M7.5 12h9"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.6-3.8 3.6-6 7.5-6s6.9 2.2 7.5 6"/>',
+  users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.5-3.4 3.2-5.3 6.5-5.3s6 1.9 6.5 5.3M16 4.8a3.4 3.4 0 010 6.4M18 14.9c1.9.6 3.2 2.3 3.5 5.1"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle class="f" cx="12" cy="12" r="1.4"/>',
+  broom:'<path d="M20 3l-8 8"/><path d="M8.5 10.5l5 5c-.5 2.5-2 4.5-4.5 5.5H3.5c.5-3 2.5-8 5-10.5z"/>',
+  road:'<path d="M8 3L4 21M16 3l4 18M12 4v3M12 10.5v3M12 17v3"/>',
+  ladder:'<path d="M7 3l-1.5 18M17 3l1.5 18M6.5 8h11M6 13h12M5.7 18h12.6"/>',
+  log:'<ellipse cx="6" cy="12" rx="3" ry="6"/><path d="M6 6h12a3 6 0 010 12H6"/><path d="M6 10a1 2 0 000 4"/>',
+  barrier:'<path d="M3 8h18v5H3zM6 13v7M18 13v7M7 8l-3 5M13 8l-3 5M19 8l-3 5"/>',
+  leaf:'<path d="M5 19c-1-8 3-14 15-15-.5 11-6 15-13 14.5M5 19l9-9"/>',
+  window:'<rect x="4" y="3.5" width="16" height="17" rx="1.5"/><path d="M12 3.5v17M4 12h16"/>',
+  faucet:'<path d="M4 8h10a4 4 0 014 4v2.5M11 3.5V8M18 14.5v2M18 19.5v.3"/>',
+  hole:'<ellipse cx="12" cy="12" rx="8" ry="4"/><path d="M4 12v4c0 2.2 3.6 4 8 4s8-1.8 8-4v-4"/>',
+  triangle:'<path d="M12 4l9 16H3z"/>',
+  chart:'<path d="M4 20h16M7 20v-7M12 20V6M17 20v-10"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+  disk:'<path d="M4 4h13l3 3v13H4z"/><path d="M8 4v5h8V4M8 20v-6h8v6"/>',
+  suncloud:'<circle cx="8.5" cy="8.5" r="3"/><path d="M8.5 2.5V4M2.5 8.5H4M4.3 4.3l1 1M12.7 4.3l-1 1"/><path d="M8 19a3.8 3.8 0 01-.3-7.6A5 5 0 0117 13a3 3 0 010 6z"/>',
+  fog:'<path d="M7 13a4.5 4.5 0 01-.6-8.96A6 6 0 0118 5.5a4 4 0 010 7.5"/><path d="M4 17h16M7 21h10"/>',
+  snowcloud:'<path d="M7 15a4.5 4.5 0 01-.6-8.96A6 6 0 0118 7.5a4 4 0 010 7.5"/><path d="M8 18.5v.1M12 19.5v.1M16 18.5v.1M10 21v.1M14 21.5v.1" stroke-width="2.6"/>',
+  storm:'<path d="M7 14a4.5 4.5 0 01-.6-8.96A6 6 0 0118 6.5a4 4 0 01-1 7.9"/><path d="M12.5 11l-3 5h4l-2 4.5"/>',
+  suncloudrain:'<circle cx="8.5" cy="8" r="3"/><path d="M8.5 2.5V4M2.5 8H4M4.3 3.8l1 1M12.7 3.8l-1 1"/><path d="M8 17a3.8 3.8 0 01-.3-7.6A5 5 0 0117 11a3 3 0 010 6"/><path d="M9 19l-1 2.5M13 19l-1 2.5"/>',
+  ban:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+  checksq:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>',
+  saw:'<path d="M3 12h14l4-3v8H3zM6 17v2M9 17v2M12 17v2M15 17v2"/>',
+  lock:'<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 018 0v2.5"/>',
+  tel:'<path d="M5 3.5h4l2 5-2.5 1.5a11 11 0 005 5l1.5-2.5 5 2v4a2 2 0 01-2 2A16 16 0 013 5.5a2 2 0 012-2z"/>',
+  chat:'<path d="M4 5h16v11H10l-4.5 4v-4H4z"/>',
+  refresh:'<path d="M20 12a8 8 0 01-14 5.3M4 12a8 8 0 0114-5.3M18 3v4h-4M6 21v-4h4"/>',
+  glove:'<path d="M8 21v-5l-3-4V8a1.5 1.5 0 013 0v2M8 10V5a1.5 1.5 0 013 0v5M11 10V4a1.5 1.5 0 013 0v6M14 10V5.5a1.5 1.5 0 013 0V15c0 3.5-2 6-5 6z"/>',
+  image:'<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 18l5-5 4 4 3-3 4.5 4.5"/>',
+  cart:'<path d="M3 4h2.5l2 11h10.5l2-8H6.5"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>',
+  store:'<path d="M4 9l1.5-5h13L20 9M4 9h16v1.5a2.7 2.7 0 01-5.3 0 2.7 2.7 0 01-5.4 0A2.7 2.7 0 014 10.5zM5.5 13v7.5h13V13M10 20.5V16h4v4.5"/>',
+  sparkle:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>'
+};
+/* emoji → icon name */
+var MAP = {
+ '✅':'check','❌':'xcircle','⚠':'alert','✏':'pencil','✍':'pencilline','📝':'pencilline','📋':'clipboard','🗑':'trash','📷':'camera','🏠':'home',
+ '🏚':'basement','📦':'box','📅':'calendar','📄':'file','🚪':'door','🎤':'mic','🎙':'mic','🧱':'bricks','📤':'upload','📥':'download','📧':'mail',
+ '📎':'clip','☁':'cloud','👷':'hardhat','⬇':'arrowdown','⬆':'arrowup','↗':'ext','🔧':'wrench','✂':'scissors','🏁':'flag','⚡':'bolt',
+ '🧾':'receipt','📁':'folder','🏗':'crane','❓':'help','🔗':'link','💼':'briefcase','📐':'ruler','🚚':'truck','🔨':'hammer','💰':'dollar',
+ '💸':'dollar','🔑':'key','👁':'eye','🙈':'eyeoff','☀':'sun','🍳':'pan','🚿':'shower','🛏':'bed','🛋':'sofa','🌡':'thermo','🔌':'plug',
+ '🔍':'search','🔎':'search','🌧':'rain','📍':'pin','🖨':'printer','🎨':'palette','🚗':'car','🧺':'basket','❄':'snow','🩹':'bandage',
+ '🖤':'heart','🚀':'rocket','📲':'phone','🧨':'flame','🔥':'flame','🦺':'vest','👤':'user','👥':'users','🎯':'target','🧹':'broom',
+ '🛣':'road','🪜':'ladder','🪵':'log','🚧':'barrier','🌿':'leaf','🪟':'window','🚰':'faucet','🕳':'hole','🔺':'triangle','📊':'chart',
+ '🕰':'clock','🕒':'clock','💾':'disk','🌤':'suncloud','⛅':'suncloud','🌫':'fog','🌨':'snowcloud','⛈':'storm','🌦':'suncloudrain',
+ '🚫':'ban','☑':'checksq','🪚':'saw','🔒':'lock','📞':'tel','💬':'chat','🔄':'refresh','🧤':'glove','🖼':'image','🛒':'cart','🏪':'store','✨':'sparkle'
+};
+var keys = Object.keys(MAP).sort(function(a,b){ return b.length - a.length; });
+var EMO = new RegExp('(?:' + keys.join('|') + ')\\uFE0F?', 'gu');
+function iconHtml(name, ch){
+  return '<span class="bp-ic" role="img" aria-label="' + name + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + ICONS[name] + '</svg><i class="bp-ic-t">' + ch + '</i></span>';
+}
+window.bpIcon = function(name){ return ICONS[name] ? iconHtml(name, '') : ''; };
+window.BP_ICONS = ICONS;
+var SKIP = { SCRIPT:1, STYLE:1, TEXTAREA:1, INPUT:1, TITLE:1, NOSCRIPT:1, SVG:1, svg:1, CANVAS:1 };
+function inSkip(n){
+  for (var p = n.parentNode; p && p.nodeType === 1; p = p.parentNode) {
+    if (SKIP[p.tagName] || (p.classList && (p.classList.contains('bp-ic-t') || p.classList.contains('bp-noicon'))) || p.isContentEditable) return true;
+  }
+  return false;
+}
+var ISOQ = /\d{4}-\d{2}-\d{2}/;
+function fixText(n){
+  var v = n.nodeValue;
+  if (!v) return;
+  if (ISOQ.test(v) && v.length < 600 && !inSkip(n)) {
+    var w = window.bpIsoToMDY ? window.bpIsoToMDY(v) : v;
+    if (w !== v) { n.nodeValue = w; v = w; }
+  }
+  EMO.lastIndex = 0;
+  if (!EMO.test(v)) return;
+  EMO.lastIndex = 0;
+  if (inSkip(n)) return;
+  var par = n.parentNode;
+  if (par && par.tagName === 'OPTION') {                 /* <option> cannot hold an icon: drop the emoji */
+    n.nodeValue = v.replace(EMO, '').replace(/^\s+/, ''); return;
+  }
+  var frag = document.createDocumentFragment(), last = 0, m;
+  while ((m = EMO.exec(v))) {
+    if (m.index > last) frag.appendChild(document.createTextNode(v.slice(last, m.index)));
+    var base = m[0].replace(/️/g, '');
+    var h = document.createElement('span');
+    h.innerHTML = iconHtml(MAP[base] || MAP[m[0]] || 'sparkle', m[0]);
+    frag.appendChild(h.firstChild);
+    last = m.index + m[0].length;
+  }
+  if (last < v.length) frag.appendChild(document.createTextNode(v.slice(last)));
+  par.replaceChild(frag, n);
+}
+function walk(root){
+  if (!root) return;
+  if (root.nodeType === 3) { fixText(root); return; }
+  if (root.nodeType !== 1) return;
+  if (SKIP[root.tagName] || (root.classList && (root.classList.contains('bp-ic') || root.classList.contains('bp-noicon')))) return;
+  var tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), list = [], t;
+  while ((t = tw.nextNode())) list.push(t);
+  for (var i = 0; i < list.length; i++) fixText(list[i]);
+}
+var busy = false;
+var mo = new MutationObserver(function(ms){
+  if (busy) return;
+  busy = true;
+  try {
+    for (var i = 0; i < ms.length; i++) {
+      var m = ms[i];
+      if (m.type === 'characterData') { fixText(m.target); continue; }
+      for (var j = 0; j < m.addedNodes.length; j++) walk(m.addedNodes[j]);
+    }
+  } catch(e){ console.warn('[BP v3.02 icons]', e); }
+  busy = false;
+});
+function startIcons(){
+  walk(document.body);
+  mo.observe(document.body, { childList:true, subtree:true, characterData:true });
+}
+if (document.body) startIcons(); else document.addEventListener('DOMContentLoaded', startIcons);
+window.bpIconsRefresh = function(){ walk(document.body); };
+
+/* ── 2. Active job → every tab ──────────────────────────────────────────── */
+var manual = {};
+function activeId(){ return safe(function(){ return (typeof bpActiveJob === 'function' && bpActiveJob()) || ''; }) || ''; }
+function reRoomViews(){
+  safe(function(){ if (IS_DESK) { if (typeof renderDesktopRooms === 'function') renderDesktopRooms(); } else if (typeof renderRooms === 'function') renderRooms(); });
+}
+function applyActive(force){
+  var id = activeId();
+  if (!id) return;
+  var sels = document.querySelectorAll('select[id$="job-filter"], select#photo-filter, select#photo-job-filter');
+  [].forEach.call(sels, function(sel){
+    if (!force && manual[sel.id]) return;
+    if (![].some.call(sel.options, function(o){ return o.value === id; })) return;
+    if (sel.value !== id) {
+      sel.value = id;
+      safe(function(){ sel.dispatchEvent(new Event('change', { bubbles:true })); });
+    }
+  });
+  ['tc-job-select-desk','tc-job-select'].forEach(function(sid){
+    var s = $(sid);
+    if (s && !s.value && [].some.call(s.options, function(o){ return o.value === id; })) s.value = id;
+  });
+  if (force || !manual.area) {
+    if (window._bpAreaJob !== id) { window._bpAreaJob = id; reRoomViews(); }
+  }
+}
+document.addEventListener('change', function(e){
+  var t = e.target;
+  if (e.isTrusted && t && t.tagName === 'SELECT' && /job-filter$|^photo-filter$/.test(t.id || '')) manual[t.id] = true;
+}, true);
+safe(function(){
+  var prev = window.bpSetActiveJob;
+  if (typeof prev === 'function' && !prev.__v302) {
+    window.bpSetActiveJob = function(id){
+      var r = prev.apply(this, arguments);
+      manual = {};
+      setTimeout(function(){ applyActive(true); }, 0);
+      return r;
+    };
+    window.bpSetActiveJob.__v302 = 1;
+    try { bpSetActiveJob = window.bpSetActiveJob; } catch(e){}
+  }
+  var pa = window.bpSetAreaJob;
+  if (typeof pa === 'function' && !pa.__v302) {
+    window.bpSetAreaJob = function(v){ manual.area = true; return pa.apply(this, arguments); };
+    window.bpSetAreaJob.__v302 = 1;
+  }
+  ['showView','showScreen','populateJobSelects','fillJobSelects'].forEach(function(nm){
+    var f = window[nm];
+    if (typeof f !== 'function' || f.__v302) return;
+    var g = function(){ var r = f.apply(this, arguments); setTimeout(function(){ applyActive(false); }, 0); return r; };
+    g.__v302 = 1;
+    window[nm] = g;
+    try { (0, eval)(nm + ' = window.' + nm); } catch(e){}
+  });
+});
+setTimeout(function(){ applyActive(false); }, 1500);
+setTimeout(function(){ applyActive(false); }, 4000);
+
+/* ── 4. Tax rate from the geo tag ───────────────────────────────────────── */
+var STATE_RATE = { AL:4, AK:0, AZ:5.6, AR:6.5, CA:7.25, CO:2.9, CT:6.35, DE:0, DC:6, FL:6, GA:4, HI:4, ID:6, IL:6.25, IN:7, IA:6, KS:6.5, KY:6,
+  LA:5, ME:5.5, MD:6, MA:6.25, MI:6, MN:6.875, MS:7, MO:4.225, MT:0, NE:5.5, NV:6.85, NH:0, NJ:6.625, NM:4.875, NY:4, NC:4.75, ND:5, OH:5.75,
+  OK:4.5, OR:0, PA:6, RI:7, SC:6, SD:4.2, TN:7, TX:6.25, UT:6.1, VT:6, VA:5.3, WA:6.5, WV:6, WI:5, WY:4 };
+function taxFor(st, zip){
+  st = String(st || '').toUpperCase();
+  if (!(st in STATE_RATE)) return null;
+  var z3 = String(zip || '').slice(0, 3), z = +z3;
+  if (st === 'NY' && z3) {
+    if ((z >= 100 && z <= 104) || (z >= 111 && z <= 114) || z === 116) return { rate:8.875, label:'NY · New York City' };
+    if (z >= 105 && z <= 108) return { rate:8.375, label:'NY · Westchester' };
+    if (z === 115 || (z >= 117 && z <= 119)) return { rate:8.625, label:'NY · Long Island' };
+    return { rate:8, label:'NY (typical)' };
+  }
+  if (st === 'PA' && z >= 190 && z <= 191) return { rate:8, label:'PA · Philadelphia' };
+  return { rate:STATE_RATE[st], label: st + (st === 'NJ' ? '' : ' state rate') };
+}
+function parsePlace(txt){
+  txt = String(txt || '');
+  var m = /\b([A-Z]{2})\b\s*(\d{5})?(?:-\d{4})?\s*$/.exec(txt.trim()) || /\b([A-Z]{2})\b\s*(\d{5})/.exec(txt);
+  return m ? { state:m[1], zip:m[2] || '' } : null;
+}
+function placeFor(jobId){
+  var j = (DB.jobs || []).find(function(x){ return x.id === jobId; });
+  if (j) {
+    var st = String(j.state || '').trim();
+    if (/^[A-Za-z]{2}$/.test(st) && (j.zip || STATE_RATE[st.toUpperCase()] !== undefined)) return { state:st.toUpperCase(), zip:String(j.zip || '').slice(0,5), src:'job' };
+    var fromAddr = parsePlace([j.address, j.city, j.state, j.zip].filter(Boolean).join(' '));
+    if (fromAddr) { fromAddr.src = 'job'; return fromAddr; }
+  }
+  var g = parsePlace(window._currentGeo || ($('info-loc-text') || {}).textContent || ($('tb-loc') || {}).textContent || '');
+  if (g) { g.src = 'geo'; return g; }
+  return null;
+}
+window.bpTaxMode = function(){ try { return localStorage.getItem('bp_shop_tax_mode') === 'manual' ? 'manual' : 'auto'; } catch(e){ return 'auto'; } };
+window.bpAutoTaxApply = function(jobId){
+  if (window.bpTaxMode() === 'manual') return null;
+  var pl = placeFor(jobId === undefined || jobId === null || jobId === '*' ? activeId() : jobId);
+  var t = pl && taxFor(pl.state, pl.zip);
+  if (!t) return null;
+  try { localStorage.setItem('bp_shop_tax', String(t.rate)); } catch(e){}
+  window._bpTaxInfo = { rate:t.rate, label:t.label, src:pl.src };
+  return t;
+};
+safe(function(){
+  var st = window.bpShopTotals;
+  if (typeof st === 'function' && !st.__v302) {
+    window.bpShopTotals = function(job){ safe(function(){ window.bpAutoTaxApply(job); }); return st.apply(this, arguments); };
+    window.bpShopTotals.__v302 = 1;
+  }
+  var so = window.bpOpenShop;
+  if (typeof so === 'function' && !so.__v302) {
+    window.bpOpenShop = function(){ safe(function(){ window.bpAutoTaxApply(arguments.length ? arguments[0] : undefined); }); return so.apply(this, arguments); };
+    window.bpOpenShop.__v302 = 1;
+  }
+  var ss = window.bpSetShopTax;
+  if (typeof ss === 'function' && !ss.__v302) {
+    window.bpSetShopTax = function(){ try { localStorage.setItem('bp_shop_tax_mode', 'manual'); } catch(e){} return ss.apply(this, arguments); };
+    window.bpSetShopTax.__v302 = 1;
+  }
+});
+window.bpTaxBackToAuto = function(){
+  try { localStorage.removeItem('bp_shop_tax_mode'); } catch(e){}
+  window.bpAutoTaxApply();
+  safe(function(){ if (typeof window.bpOpenShop === 'function') window.bpOpenShop(); });
+};
+/* little caption under the tax box: "📍 Auto · NJ" or "Manual — use auto" */
+function tagTaxBox(){
+  var box = $('bp-shop-tax');
+  if (!box || box.getAttribute('data-bp-taxcap') === window.bpTaxMode() + (window._bpTaxInfo ? window._bpTaxInfo.label : '')) return;
+  var old = box.parentNode.querySelector('.bp-taxcap'); if (old) old.remove();
+  var cap = document.createElement('div');
+  cap.className = 'bp-taxcap';
+  cap.style.cssText = 'font-size:11px;font-weight:700;color:var(--muted);margin-top:4px';
+  if (window.bpTaxMode() === 'manual') cap.innerHTML = 'Manual rate · <a href="#" onclick="bpTaxBackToAuto();return false" style="color:#0A84FF">use auto from location</a>';
+  else if (window._bpTaxInfo) cap.textContent = '📍 Auto · ' + window._bpTaxInfo.label + (window._bpTaxInfo.src === 'job' ? ' (job address)' : ' (geo tag)');
+  else cap.textContent = '📍 Auto — waiting for a location';
+  box.parentNode.appendChild(cap);
+  box.setAttribute('data-bp-taxcap', window.bpTaxMode() + (window._bpTaxInfo ? window._bpTaxInfo.label : ''));
+}
+setInterval(function(){ safe(tagTaxBox); }, 700);
+
+/* ── 9 + 10. Rooms vs Locations ─────────────────────────────────────────── */
+window._bpKind = window._bpKind || 'All';
+window.bpKindOf = function(r){
+  if (!r) return 'room';
+  if (r.kind === 'room' || r.kind === 'location') return r.kind;
+  return (window.bpSpaceOf && window.bpSpaceOf(r) === 'Exterior') ? 'location' : 'room';
+};
+function rerenderLocViews(){
+  safe(function(){
+    ['renderDesktopRooms','renderDesktopPhotos','renderDesktopPunchlist','renderRooms','renderPhotos','renderPunchlist'].forEach(function(n){
+      if (typeof window[n] === 'function') window[n]();
+    });
+  });
+}
+function kindBarHtml(){
+  function b(label, val){
+    var on = window._bpKind === val;
+    return '<button onclick="bpSetKind(\'' + val + '\')" style="padding:8px 14px;border-radius:9px;border:1.5px solid '
+      + (on ? '#BF5AF2' : 'var(--border)') + ';background:' + (on ? 'rgba(191,90,242,.13)' : 'var(--card2)')
+      + ';color:' + (on ? '#BF5AF2' : 'var(--muted)') + ';font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + label + '</button>';
+  }
+  return '<span class="bp-kindbar">' + b('All kinds','All') + b('Rooms','room') + b('Locations','location') + '</span>';
+}
+function injectKind(){
+  var btns = document.querySelectorAll('[onclick^="bpSetAreaSpace("]');
+  if (!btns.length) return;
+  var last = btns[btns.length - 1];
+  if (last.parentNode.querySelector('.bp-kindbar')) return;
+  last.insertAdjacentHTML('afterend', kindBarHtml());
+}
+window.bpSetKind = function(k){ window._bpKind = k; rerenderLocViews(); };
+safe(function(){
+  if (!window.BPX) return;
+  if (BPX.tabs && !BPX.tabs.__v302) {
+    var t0 = BPX.tabs;
+    BPX.tabs = function(){
+      return t0.apply(this, arguments) + kindBarHtml();
+    };
+    BPX.tabs.__v302 = 1;
+  }
+  if (BPX.areas && !BPX.areas.__v302) {
+    var a0 = BPX.areas;
+    BPX.areas = function(){
+      var list = a0.apply(this, arguments);
+      if (!window._bpKind || window._bpKind === 'All') return list;
+      return list.filter(function(r){ return window.bpKindOf(r) === window._bpKind; });
+    };
+    BPX.areas.__v302 = 1;
+  }
+});
+/* Add Locations picker: a Rooms | Locations switch */
+window._bpPickKind = window._bpPickKind || 'room';
+safe(function(){
+  var sp = window.bpOpenSpacePicker;
+  if (typeof sp !== 'function' || sp.__v302) return;
+  window.bpOpenSpacePicker = function(preJobId){
+    var r = sp.apply(this, arguments);
+    safe(function(){ decoratePicker(preJobId); });
+    return r;
+  };
+  window.bpOpenSpacePicker.__v302 = 1;
+  window.bpPickKind = function(k, jobId){ window._bpPickKind = k; window.bpOpenSpacePicker(jobId); };
+  function decoratePicker(preJobId){
+    var host = $('bp-space-picker');
+    if (!host) return;
+    var first = host.querySelector('[onclick^="bpTogglePreset("]') || host.querySelector('[onclick^="bpPickLevel("]');
+    var m = first && /\('([^']+)'/.exec(first.getAttribute('onclick') || '');
+    var jobId = preJobId || (m && m[1]) || window._bpAreaJob || '';
+    var kind = window._bpPickKind;
+    var lvlBtn = host.querySelector('[onclick^="bpPickLevel("]');
+    var anchor = lvlBtn ? lvlBtn.parentNode.previousElementSibling : null;   /* the "Level" label */
+    var bar = document.createElement('div');
+    bar.id = 'bp-kind-pick';
+    bar.style.cssText = 'display:flex;gap:8px;margin:14px 0 2px';
+    function kb(label, val, ic){
+      var on = kind === val, c = '#BF5AF2';
+      return '<button onclick="bpPickKind(\'' + val + '\',\'' + jobId + '\')" style="flex:1;padding:12px;border-radius:12px;border:2px solid '
+        + (on ? c : 'var(--border,#2a2a2a)') + ';background:' + (on ? 'rgba(191,90,242,.14)' : 'transparent') + ';color:' + (on ? c : 'var(--muted)')
+        + ';font-size:15px;font-weight:800;cursor:pointer;font-family:inherit"><span class="bp-ic"><svg viewBox="0 0 24 24">' + ICONS[ic] + '</svg></span> ' + label + '</button>';
+    }
+    bar.innerHTML = kb('Rooms','room','door') + kb('Locations','location','pin');
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(bar, anchor); else host.firstChild && host.firstChild.appendChild(bar);
+    if (kind === 'location' && first && first.getAttribute('onclick').indexOf('bpTogglePreset(') === 0) {
+      var chipBox = first.parentNode, lvl = window._bpPickLevel || 'Level 1';
+      var list = (window.BP_SPACE_PRESETS && window.BP_SPACE_PRESETS.Exterior) || [];
+      chipBox.innerHTML = list.map(function(p){
+        var base = p.n.toLowerCase();
+        var on = (DB.rooms || []).some(function(r){
+          if (r.jobId !== jobId || window.bpLevelOf(r) !== lvl) return false;
+          var n = String(r.name).toLowerCase();
+          return String(r.baseName || '').toLowerCase() === base || n === base || n === base + ' – ' + lvl.toLowerCase();
+        });
+        return '<button onclick="bpTogglePreset(\'' + jobId + '\',\'' + p.n.replace(/'/g, "\\'") + '\')" style="padding:10px 14px;border-radius:99px;border:1.5px solid '
+          + (on ? '#FF9F0A' : 'var(--border,#2a2a2a)') + ';background:' + (on ? 'rgba(255,159,10,.15)' : 'transparent') + ';color:' + (on ? '#FF9F0A' : 'var(--muted)')
+          + ';font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">' + (on ? '✓ ' : '+ ') + E(p.n) + '</button>';
+      }).join('');
+    }
+    var labs = host.querySelectorAll('div');
+    [].forEach.call(labs, function(d){
+      if (d.children.length === 0 && /^Add to /.test(d.textContent)) d.textContent = (kind === 'location' ? 'Locations on ' : 'Rooms on ') + (window._bpPickLevel || 'Level 1');
+      if (d.children.length === 0 && /^✏️ Custom on|^Custom on/.test(d.textContent)) d.textContent = 'Custom ' + (kind === 'location' ? 'location' : 'room') + ' on ' + (window._bpPickLevel || 'Level 1');
+    });
+  }
+  ['bpTogglePreset','bpAddCustomArea'].forEach(function(nm){
+    var f = window[nm];
+    if (typeof f !== 'function' || f.__v302) return;
+    window[nm] = function(){
+      var before = {}; (DB.rooms || []).forEach(function(r){ before[r.id] = 1; });
+      var res = f.apply(this, arguments);
+      (DB.rooms || []).forEach(function(r){ if (!before[r.id] && !r.kind) { r.kind = window._bpPickKind; r.updatedAt = (typeof now === 'function') ? now() : r.updatedAt; } });
+      persist();
+      return res;
+    };
+    window[nm].__v302 = 1;
+  });
+});
+
+/* ── 8. Photos / Punch: level headers (Basement → Level 1… → Roof → Outside) ── */
+var LC = function(l){ return l === 'Basement' ? '#A2845E' : l === 'Roof' ? '#FF453A' : l === 'Outside' ? '#FF9F0A' : /^Level/.test(l || '') ? '#0A84FF' : '#8E8E93'; };
+function levelize(){
+  safe(injectKind);
+  if (!window.bpLevelOf || !window.bpRoomCmp) return;
+  var cards = [].slice.call(document.querySelectorAll('[onclick^="bpOpenPhotoArea("],[onclick^="bpOpenPunchArea("]'));
+  var grids = [];
+  cards.forEach(function(c){ if (c.parentNode && grids.indexOf(c.parentNode) < 0) grids.push(c.parentNode); });
+  var byId = {}; (DB.rooms || []).forEach(function(r){ byId[r.id] = r; });
+  grids.forEach(function(grid){
+    if (!grid.offsetParent || getComputedStyle(grid).display !== 'grid') return;
+    [].forEach.call(grid.querySelectorAll(':scope > [data-bp-lvl3]'), function(h){ h.remove(); });
+    var rows = [], i = 0;
+    [].forEach.call(grid.children, function(c){
+      var m = /bpOpen(?:Photo|Punch)Area\('([^']+)'\)/.exec(c.getAttribute('onclick') || '');
+      if (!m || m[1] === 'UNFILED') return;
+      var r = byId[m[1]]; if (!r) return;
+      rows.push({ c:c, i:i++, r:r, l:window.bpLevelOf(r) });
+    });
+    if (!rows.length) return;
+    rows.sort(function(a, b){ return window.bpRoomCmp(a.r, b.r) || a.i - b.i; });
+    var firstRow = rows[0].c, last = null;
+    rows.forEach(function(o){
+      if (o.l !== last) {
+        var n = rows.filter(function(x){ return x.l === o.l; }).length;
+        var h = document.createElement('div');
+        h.setAttribute('data-bp-lvl3', '1');
+        h.style.cssText = 'grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:' + (last === null ? '0' : '8px') + ' 0 -2px;padding-bottom:5px;border-bottom:2px solid ' + LC(o.l) + '55';
+        h.innerHTML = '<span style="font-size:13px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:' + LC(o.l) + '">' + E(o.l || 'Level not set')
+          + '</span><span style="font-size:12px;font-weight:700;color:var(--muted)">' + n + ' location' + (n !== 1 ? 's' : '') + '</span>';
+        grid.appendChild(h);
+        last = o.l;
+      }
+      grid.appendChild(o.c);
+    });
+  });
+}
+var lvTimer = null;
+function lvSoon(){ clearTimeout(lvTimer); lvTimer = setTimeout(function(){ safe(levelize); }, 60); }
+['renderDesktopRooms','renderRooms','renderDesktopPhotos','renderDesktopPunchlist','renderPhotos','renderPunchlist','showView','showScreen'].forEach(function(nm){
+  var f = window[nm];
+  if (typeof f !== 'function' || f.__v302lv) return;
+  var g = function(){ var r = f.apply(this, arguments); lvSoon(); return r; };
+  g.__v302lv = 1; g.__v302 = f.__v302;
+  window[nm] = g;
+  try { (0, eval)(nm + ' = window.' + nm); } catch(e){}
+});
+setInterval(function(){ if ((document.querySelector('[onclick^="bpOpenPhotoArea("],[onclick^="bpOpenPunchArea("]') && !document.querySelector('[data-bp-lvl3]')) || (document.querySelector('[onclick^="bpSetAreaSpace("]') && !document.querySelector('.bp-kindbar'))) lvSoon(); }, 1200);
+
+/* ── 7. Archive: say what it is ─────────────────────────────────────────── */
+safe(function(){
+  var sub = document.querySelector('#view-archive .view-sub');
+  if (sub) sub.textContent = 'Finished jobs, stored safely in your private cloud and removed from daily sync so the app stays fast. Restore any job here.';
+});
+
+console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job on every tab · auto tax · rooms/locations');
+})();
 </script>
