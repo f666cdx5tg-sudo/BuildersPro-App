@@ -19352,6 +19352,12 @@ window.bpVoiceCapture = function(mode){
   V.mode = MODES[mode] ? mode : guessMode();
   V.job = (V.mode === 'shop' && typeof window.bpShopJobNow === 'function' && document.getElementById('bp-shop')) ? window.bpShopJobNow() : activeJob();
   V.room = ''; V.items = []; V.interim = ''; V.kb = '';
+  /* v2.96: opened from inside a location → it already knows the job and the location, and defaults to the Punch list */
+  try {
+    var rd = !IS_DESK && document.querySelector('#s-room-detail.active'), rid = rd && rd.getAttribute('data-room-id');
+    var rm = rid && (DB.rooms||[]).find(function(r){ return r.id === rid; });
+    if (rm) { V.room = rm.id; if (rm.jobId) V.job = rm.jobId; if (!MODES[mode]) V.mode = 'punch'; }
+  } catch(e){}
   draw();
   if (liveOK()) window.bpVoiceMic(true); else focusKb();
 };
@@ -20228,6 +20234,70 @@ console.log('[BP] v2.95 field-test fixes ready');
   }
   window.addEventListener('resize', function(){ seen.forEach(function(el){ try { if (el.isConnected) fit(el); } catch(e){} }); });
   window.bpOneLineNow = function(){ build(); sweep(document.body); };
+  start();
+})();
+
+/* ═════════ v2.96 — THE 🎤 NEVER SITS ON TOP OF ANOTHER BUTTON ═════════
+   The floating mic was pinned bottom-right, so on many screens it landed on a row's buttons (Add List, Add
+   Photo, Save…). Whatever it covered stopped working and the mic itself was unreliable there. Now it looks at
+   what's on screen and parks itself in the nearest free spot (right edge going up, then the left edge), re-checks
+   on scroll / screen change, and tucks away while a sheet or the Speak panel is open. */
+(function(){
+  if (window.__bpMicAvoid) return; window.__bpMicAvoid = 1;
+  var SEL = 'button,a[href],input,select,textarea,[onclick],label,summary,[role="button"]';
+  var base = null, busy = false, timer = 0;
+  function fab(){ return document.getElementById('bp-voice-fab'); }
+  function vis(el, f){
+    if (el === f || f.contains(el) || el.contains(f) || el.id === 'bp-dict') return null;
+    var r = el.getBoundingClientRect(); if (r.width < 10 || r.height < 10) return null;
+    if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) return null;
+    var cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || cs.pointerEvents === 'none') return null;
+    if (el.type === 'hidden' || (el.tagName === 'INPUT' && el.type === 'file') || cs.opacity === '0') return null;
+    return r;
+  }
+  function sheetOpen(){
+    return !!document.querySelector('.sheet-overlay.open,#bp-voice,#bp-lock,[id^="bp-lock"],#bp-clview,[id^="modal-"].open,.modal-overlay.open,.modal.open,.modal.show');
+  }
+  function place(){
+    var f = fab(); if (!f || busy) return; busy = true;
+    try {
+      if (sheetOpen()) { f.style.display = 'none'; return; }
+      f.style.display = 'flex';
+      var cs = getComputedStyle(f);
+      var z = parseFloat(getComputedStyle(document.body).zoom) || 1;       /* Large/XL text zooms the page: work in on-screen pixels */
+      if (!base) base = { right: parseFloat(cs.right) || 12, bottom: parseFloat(cs.bottom) || 90 };   /* the original corner, in CSS px */
+      var home = { right: base.right * z, bottom: base.bottom * z };
+      var S = f.getBoundingClientRect().width || 42, gap = 10, step = S + gap, W = innerWidth, H = innerHeight;
+      var els = [].slice.call(document.querySelectorAll(SEL)), rects = [];
+      els.forEach(function(el){ var r = vis(el, f); if (r) rects.push(r); });
+      function hits(x, y){          // x = distance from left edge, y = distance from bottom
+        var L = x - 4, T = H - y - S - 4, R = x + S + 4, B = H - y + 4, n = 0;
+        for (var i = 0; i < rects.length; i++) { var r = rects[i]; if (r.left < R && r.right > L && r.top < B && r.bottom > T) n++; }
+        return n;
+      }
+      var cands = [], maxUp = Math.round((H * 0.62) / step), i;
+      for (i = 0; i <= maxUp; i++) cands.push([W - home.right - S, home.bottom + i * step]);
+      for (i = 0; i <= maxUp; i++) cands.push([home.right, home.bottom + i * step]);
+      var best = null, bestN = 1e9;
+      for (i = 0; i < cands.length; i++) { var n = hits(cands[i][0], cands[i][1]); if (n < bestN) { bestN = n; best = cands[i]; } if (n === 0) break; }
+      f.style.transition = 'left .18s ease, bottom .18s ease';
+      f.style.right = 'auto'; f.style.left = (best[0] / z) + 'px'; f.style.bottom = (best[1] / z) + 'px';
+    } catch(e){} finally { busy = false; }
+  }
+  function soon(){ if (timer) return; timer = setTimeout(function(){ timer = 0; place(); }, 120); }
+  window.addEventListener('scroll', soon, true);
+  window.addEventListener('resize', soon);
+  window.addEventListener('orientationchange', soon);
+  document.addEventListener('click', function(){ setTimeout(soon, 200); setTimeout(soon, 700); }, true);
+  document.addEventListener('touchend', function(){ setTimeout(soon, 250); }, true);
+  function start(){
+    if (!document.body) return setTimeout(start, 150);
+    new MutationObserver(function(ms){
+      for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.id === 'bp-voice-fab') continue; soon(); return; }
+    }).observe(document.body, { childList:true, subtree:true, attributes:true, attributeFilter:['class','style','hidden'] });
+    setTimeout(place, 600); setTimeout(place, 1800);
+  }
+  window.bpMicPlace = place;
   start();
 })();
 </script>
