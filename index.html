@@ -5636,9 +5636,13 @@ function openRoomDetail(roomId) {
     /* flex:1 + min-width:0 so the name gives way to the buttons instead of
        shoving them off the right edge of the phone at Large/XL text. */
     + '<div style="flex:1;min-width:0">'
-    + '<div class="detail-title" style="overflow:hidden;text-overflow:ellipsis">' + esc(room.name) + '</div>'
-    + '<div class="detail-meta" style="overflow:hidden;text-overflow:ellipsis">' + room.type + (job?' · '+esc(job.name):'') + '</div>'
+    + '<div class="detail-title bp-fit1" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(room.name) + '</div>'
+    + '<div class="detail-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + room.type + (job?' · '+esc(job.name):'') + '</div>'
     + '</div>'
+    + '</div>'
+    /* v2.96: the action buttons now sit on their own row UNDER the name, so the name always has the full
+       width and never wraps into "M.. / E..." beside them. */
+    + '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px">'
     /* Icon-only, and the same 34px box as the bin beside it. A "⧉ Duplicate"
        text button was tried here first and overflowed the header at XL/XXL,
        shoving the bin off the right edge — the header is a single flex row and
@@ -20115,6 +20119,28 @@ window.bpFixSpeech = function(t){
   document.addEventListener('focusin', function(){ setTimeout(fit, 60); setTimeout(fit, 350); });
   document.addEventListener('focusout', function(){ setTimeout(fit, 120); });
 })();
+/* v2.96: a location's name is never wrapped — it keeps ONE line and steps its font down until it fits */
+(function(){
+  function fit(){
+    try {
+      [].forEach.call(document.querySelectorAll('.bp-fit1'), function(d){
+        var fs = 22; d.style.fontSize = fs + 'px';
+        while (d.scrollWidth > d.clientWidth + 1 && fs > 12) { fs -= 0.5; d.style.fontSize = fs + 'px'; }
+      });
+    } catch(e){}
+  }
+  var o = window.openRoomDetail;
+  if (typeof o === 'function' && !o.__fit1) {
+    window.openRoomDetail = function(){
+      var r = o.apply(this, arguments);
+      fit(); setTimeout(fit, 60); setTimeout(fit, 400);
+      return r;
+    };
+    window.openRoomDetail.__fit1 = 1;
+  }
+  window.addEventListener('resize', fit);
+})();
+console.log('[BP] v2.96 location-name fit ready');
 console.log('[BP] v2.95 field-test fixes ready');
 })();
 </script>
