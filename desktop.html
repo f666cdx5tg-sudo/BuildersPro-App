@@ -892,7 +892,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   </div>
   <div id="fin-deliveries" style="margin-bottom:20px"></div>
 
-  <div class="grid grid-4">
+  <div class="grid grid-4 grid-fin">
     <div><div class="sec-hdr">Invoices</div><div id="fin-invoices"></div></div>
     <div><div class="sec-hdr">Expenses</div><div id="fin-expenses-list"></div></div>
     <div><div class="sec-hdr">Contractors</div><div id="fin-contractors"></div></div>
@@ -11402,6 +11402,35 @@ console.log('[BP] v2.42 Send to Client ready');
 .grid-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 
+/* Finance lists (Invoices / Expenses / Contractors / Permits). The 4-up grid let each
+   column shrink to ~220px on an iPad, narrower than the amount + status badge + Edit
+   buttons need, so they spilled out of the card and overlapped the next column.
+   Columns now keep a usable minimum (2 across on iPad, 4 on a big monitor), and every
+   row inside a card is allowed to wrap instead of overflowing. */
+.grid-fin { grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); align-items: start; }
+.grid-fin > div { min-width: 0; }
+#fin-invoices .card, #fin-expenses-list .card, #fin-contractors .card, #fin-permits .card {
+  min-width: 0; overflow-wrap: anywhere;
+}
+#fin-invoices .card div[style*="justify-content:space-between"],
+#fin-expenses-list .card div[style*="justify-content:space-between"],
+#fin-contractors .card div[style*="justify-content:space-between"],
+#fin-permits .card div[style*="justify-content:space-between"] {
+  flex-wrap: wrap; gap: 6px 12px;
+}
+/* title block takes the free space and may shrink; amount/badge/buttons stay whole */
+#fin-invoices .card > div:first-child > div:first-child,
+#fin-expenses-list .card > div:first-child > div:first-child,
+#fin-contractors .card > div:first-child > div:first-child,
+#fin-permits .card > div:first-child > div:first-child { flex: 1 1 150px; min-width: 0; }
+#fin-invoices .card > div:first-child > div:first-child > div,
+#fin-expenses-list .card > div:first-child > div:first-child > div,
+#fin-contractors .card > div:first-child > div:first-child > div { min-width: 0; }
+#fin-invoices .card > div:first-child > div:last-child,
+#fin-expenses-list .card > div:first-child > div:last-child,
+#fin-contractors .card > div:first-child > div:last-child,
+#fin-permits .card > div:first-child > div:last-child { flex: 0 0 auto; margin-left: auto; }
+
 /* A seven-figure contract value used to overrun its tile. The first attempt at
    this used clamp() on vw plus overflow-wrap:anywhere — which is how "$45,000"
    ended up rendering as "$45,0 / 00". A dollar figure must never break across
@@ -11456,7 +11485,7 @@ console.log('[BP] v2.42 Send to Client ready');
 }
 
 @media (max-width: 620px) {
-  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .grid-4, .grid-fin { grid-template-columns: 1fr; }
   .view-actions { width: 100%; }
   .view-actions > .btn { flex: 1 1 auto; }
   .bp-tbl-scroll > .tbl { min-width: 560px; }
