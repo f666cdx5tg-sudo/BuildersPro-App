@@ -125,6 +125,7 @@ button,input,textarea,select{font-family:inherit}
 .job-progress{height:3px;background:var(--border);border-radius:99px;margin-top:10px;overflow:hidden}
 .job-progress-fill{height:3px;background:var(--accent);border-radius:99px;transition:width .3s}
 .job-chips{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.chip.live{color:#30D158;border-color:rgba(48,209,88,.5);background:rgba(48,209,88,.14);font-weight:800}
 .chip.yellow{color:#FFD60A;border-color:rgba(255,214,10,.4);background:rgba(255,214,10,.10)}
 .bp-jc-lines{margin-top:10px;border-top:1px solid var(--border);padding-top:6px}
 .bp-jc-line{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted);padding:5px 0;min-width:0}
@@ -1424,7 +1425,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.05';
+var APP_VERSION = '3.06';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -2442,8 +2443,8 @@ function buildJobCard(job, mini) {
   var pct       = prog.pct;
   var photos    = DB.photos.filter(function(p){ return p.jobId===job.id; }).length;
   var roomPunch = jobRoomPunchSummary(job.id);
-  var statusColor = {Active:'green',Pending:'yellow',Complete:'blue','On Hold':'red'}[job.status]||'';
-  var stDot = {Active:'var(--green)',Pending:'#FFD60A',Complete:'var(--blue)','On Hold':'var(--red)'}[job.status]||'var(--faint)';
+  var statusColor = {Active:'live',Pending:'yellow',Complete:'blue','On Hold':'red'}[job.status]||'';
+  var stDot = {Active:'#30D158',Pending:'#FFD60A',Complete:'var(--blue)','On Hold':'var(--red)'}[job.status]||'var(--faint)';
   var fund = jobFunding(job.id);
   // Balance = this job's Contract Value minus its own expenses and contractor/sub costs (same formula as Finance summary, job-scoped)
   var jobExpenses = (DB.expenses||[]).filter(function(e){return e.jobId===job.id;}).reduce(function(s,e){return s+(+e.amount||0);},0);
@@ -2493,7 +2494,7 @@ function openJobDetail(jobId) {
   (function(){
     var rows = [job.client&&('👤 '+job.client), fmtJobAddress(job)&&('📍 '+fmtJobAddress(job)), job.status].filter(Boolean);
     var m = document.getElementById('jd-meta'); m.textContent = '';
-    rows.forEach(function(t, i){ var d = document.createElement('div'); d.textContent = t; if (i) d.style.marginTop = '2px'; if (t === job.status) { d.style.fontWeight = '800'; d.style.color = ({Active:'var(--green)',Pending:'#FFD60A',Complete:'var(--blue)','On Hold':'var(--red)'})[t] || ''; } m.appendChild(d); });
+    rows.forEach(function(t, i){ var d = document.createElement('div'); d.textContent = t; if (i) d.style.marginTop = '2px'; if (t === job.status) { d.style.fontWeight = '800'; d.style.color = ({Active:'#30D158',Pending:'#FFD60A',Complete:'var(--blue)','On Hold':'var(--red)'})[t] || ''; } m.appendChild(d); });
   })();
   var contractor = job.contractorId ? (DB.contractors||[]).find(function(c){return c.id===job.contractorId;}) : null;
   var infoParts = [contractor&&('👷 '+contractor.name), (job.startDate||job.completionDate)&&('📅 '+(job.startDate?fmtDatePlain(job.startDate):'—')+' → '+(job.completionDate?fmtDatePlain(job.completionDate):'—'))].filter(Boolean);
