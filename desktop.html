@@ -1153,6 +1153,11 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       <div class="field"><div class="field-label">Length (ft)</div><input id="nr-length" type="number" step="0.1" placeholder="e.g. 12"/></div>
     </div>
     <div class="field-row">
+      <div class="field"><div class="field-label">Ceiling Height (ft)</div><input id="nr-height" type="number" step="0.1" placeholder="e.g. 8"/></div>
+      <div class="field"></div>
+    </div>
+    <div class="field"><div class="field-label">Description</div><textarea id="nr-desc" rows="2" placeholder="What the room is, layout, condition..."></textarea></div>
+    <div class="field-row">
       <div class="field"><div class="field-label">Contract Value ($)</div><input id="nr-contract" type="number" step="0.01" placeholder="0.00"/></div>
     </div>
     <div class="field"><div class="field-label">Contractors (select any that apply)</div><div id="nr-contractors-list" style="display:flex;flex-direction:column;gap:6px;padding:4px 0"></div></div>
@@ -1603,7 +1608,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.10';
+var APP_VERSION = '3.11';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -3130,7 +3135,7 @@ function renderDesktopRooms() {
       var contractVal=+(r.contractValue||0);
       var remaining=contractVal-itemsTotal;
       var conLines=cons.map(function(c){return '👷 '+esc(c.trade||'General')+': '+esc(c.name);}).join('<br/>');
-      return '<tr><td style="cursor:pointer;user-select:none" onclick="openRoomDetail(\''+r.id+'\')" onmouseover="this.style.background=\'var(--card2)\'" onmouseout="this.style.background=\'\'" title="Click for full location details"><span style="margin-right:6px">'+(icons[r.type]||'🏠')+'</span><strong>'+esc(r.name)+'</strong>'+(r.drawing?' <span title="Has a sketch">📐</span>':'')+addedOrUpdatedLine(r.created,r.updatedAt)+'</td>'
+      return '<tr><td style="cursor:pointer;user-select:none" onclick="openRoomDetail(\''+r.id+'\')" onmouseover="this.style.background=\'var(--card2)\'" onmouseout="this.style.background=\'\'" title="Click for full location details"><span style="margin-right:6px">'+((window.bpRoomIconHtml&&window.bpRoomIconHtml(r.name,r.type))||icons[r.type]||'🏠')+'</span><strong>'+esc(r.name)+'</strong>'+(r.drawing?' <span title="Has a sketch">📐</span>':'')+addedOrUpdatedLine(r.created,r.updatedAt)+'</td>'
         +'<td>'+esc(r.type)+'</td>'
         +'<td>'+(job?esc(job.name):'—')+'</td>'
         +'<td style="font-size:12px;color:var(--muted)">'+(conLines?conLines+'<br/>':'')+((r.startDate||r.completionDate)?'📅 '+(r.startDate?fmtDatePlain(r.startDate):'—')+' → '+(r.completionDate?fmtDatePlain(r.completionDate):'—'):(conLines?'':'—'))+'</td>'
@@ -3141,7 +3146,7 @@ function renderDesktopRooms() {
         +'</tr>';}).join('')
     +'</tbody></table></div>';
 }
-function openNewRoom(){['nr-name','nr-notes','nr-contract','nr-start','nr-completion','nr-width','nr-length'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';}); populateJobSelects(); populateRoomContractorCheckboxes(); openModal('modal-new-room');}
+function openNewRoom(){['nr-name','nr-notes','nr-contract','nr-start','nr-completion','nr-width','nr-length','nr-height','nr-desc'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';}); populateJobSelects(); populateRoomContractorCheckboxes(); openModal('modal-new-room');}
 function saveNewRoom(){
   var name=document.getElementById('nr-name').value.trim(); if(!name){toast('Name required');return;}
   var room={id:uid(),name:name,type:document.getElementById('nr-type').value,
@@ -3152,6 +3157,8 @@ function saveNewRoom(){
     completionDate:document.getElementById('nr-completion')?.value||'',
     width:  +(document.getElementById('nr-width')?.value||0) || null,
     length: +(document.getElementById('nr-length')?.value||0) || null,
+    height: +(document.getElementById('nr-height')?.value||0) || null,
+    description: (document.getElementById('nr-desc')?.value||'').trim(),
     notes:document.getElementById('nr-notes').value.trim(),created:now()};
   DB.rooms.push(room);
   closeModal('modal-new-room'); saveDB(); renderDesktopRooms(); toast('✅ Location added');
@@ -3204,6 +3211,8 @@ function openRoomDetail(roomId){
     +buildDesktopRoomDrawingSectionHtml(r)
     +'<div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between;margin-top:0">Contractors ('+cons.length+')<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="closeRoomDetailAnd(function(){editRoom(\''+r.id+'\');})">+ Manage</button></div>'
     +'<div style="margin-bottom:16px">'+conChips+'</div>'
+    +(r.description?'<div class="sec-hdr">Description</div><div style="font-size:13px;color:var(--text);margin-bottom:16px;white-space:pre-wrap">'+esc(r.description)+'</div>':'')
+    +((r.width&&r.length)?'<div class="sec-hdr">Size</div><div style="font-size:13px;color:var(--text);margin-bottom:16px">'+r.width+' \u00d7 '+r.length+(r.height?' \u00d7 '+r.height:'')+' ft'+(r.height?' (W \u00d7 L \u00d7 ceiling)':'')+'</div>':'')
     +(r.notes?'<div class="sec-hdr">Notes</div><div style="font-size:13px;color:var(--text);margin-bottom:16px;white-space:pre-wrap">'+esc(r.notes)+'</div>':'')
     +'<div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between">Checklist ('+items.filter(function(n){return n.done;}).length+'/'+items.length+')'
       +'<span><button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;margin-right:6px" onclick="closeRoomDetailAnd(function(){openBulkCheck(\''+(r.jobId||'')+'\',\''+r.id+'\');})">📋 Add List</button>'
@@ -8544,6 +8553,8 @@ function editRoom(id) {
   document.getElementById('nr-completion').value = r.completionDate || '';
   var nrW = document.getElementById('nr-width');  if (nrW) nrW.value = r.width  || '';
   var nrL = document.getElementById('nr-length'); if (nrL) nrL.value = r.length || '';
+  var nrH = document.getElementById('nr-height'); if (nrH) nrH.value = r.height || '';
+  var nrD = document.getElementById('nr-desc'); if (nrD) nrD.value = r.description || '';
   populateJobSelects();
   setTimeout(function(){
     var jel=document.getElementById('nr-job'); if(jel) jel.value=r.jobId||'';
@@ -8566,6 +8577,8 @@ function editRoom(id) {
       r.contractorId  = '';
       r.startDate      = document.getElementById('nr-start').value||'';
       r.completionDate = document.getElementById('nr-completion').value||'';
+      r.height = +(document.getElementById('nr-height') && document.getElementById('nr-height').value || 0) || null;
+      r.description = (document.getElementById('nr-desc') && document.getElementById('nr-desc').value || '').trim();
       r.updatedAt = now();
       closeModal('modal-new-room'); saveDB(); renderDesktopRooms(); toast('✅ Location updated');
       if (document.getElementById('modal-room-detail')) openRoomDetail(r.id);
@@ -9178,7 +9191,7 @@ function renderDesktopJobDetail(jobId) {
         var contractV = +(r.contractValue||0);
         var conCount = roomContractorList(r).length;
         return '<div class="card" style="cursor:pointer" onclick="openRoomDetail(\''+r.id+'\')">'
-          + '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px"><span style="font-size:20px;flex-shrink:0;line-height:1.3">'+(icons[r.type]||'🏠')+'</span><div style="font-size:14px;font-weight:700;flex:1;min-width:0;overflow-wrap:break-word">'+esc(r.name)+'</div></div>'
+          + '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px"><span style="font-size:20px;flex-shrink:0;line-height:1.3">'+((window.bpRoomIconHtml&&window.bpRoomIconHtml(r.name,r.type))||icons[r.type]||'🏠')+'</span><div style="font-size:14px;font-weight:700;flex:1;min-width:0;overflow-wrap:break-word">'+esc(r.name)+'</div></div>'
           + '<div style="font-size:12px;color:var(--muted)">'+done+'/'+items.length+' items · '+pct+'%'+(contractV?' · '+fmt$(contractV)+' contract':'')+(conCount?' · '+conCount+' contractor'+(conCount!==1?'s':''):'')+'</div>'
           + (items.length ? '<div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:'+pct+'%"></div></div>' : '')
           + '</div>';
@@ -11793,7 +11806,7 @@ window.bpDuplicateRoom = function(roomId) {
       contractorId: room.contractorId || '',
       startDate: room.startDate || '',
       completionDate: '',
-      width: room.width || null, length: room.length || null,
+      width: room.width || null, length: room.length || null, height: room.height || null, description: room.description || '',
       created: now(), updatedAt: now(),
     };
     if (Array.isArray(room.contractorIds)) copy.contractorIds = room.contractorIds.slice();
@@ -14161,7 +14174,7 @@ window.bpDuplicateRoom = function(roomId){
     var copy = {
       id: uid(), name: nm, baseName: baseOf(room), type: room.type, jobId: room.jobId,
       notes: room.notes || '', contractValue: +(room.contractValue || 0), contractorId: room.contractorId || '',
-      startDate: room.startDate || '', completionDate: '', width: room.width || null, length: room.length || null,
+      startDate: room.startDate || '', completionDate: '', width: room.width || null, length: room.length || null, height: room.height || null, description: room.description || '',
       created: now(), updatedAt: now()
     };
     if (Array.isArray(room.contractorIds)) copy.contractorIds = room.contractorIds.slice();
@@ -18231,5 +18244,102 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
   });
   setInterval(function(){ safe(fix); }, 1000);
   console.log('[BP] v3.09 ready — Sync screen is iCloud-first');
+})();
+</script>
+
+<script>
+/* ══ v3.11 — ROOM ICONS, ENTRANCE SPOTS, HOME DETAILS (laundry) — identical block in both apps ══════
+   Stan (Oct 3, 2026): kitchen / side door / bathroom icons on the room chips and room cards; a Description
+   and ceiling height on every room; front & back entrance spots; and "does the home have a laundry room, or
+   is the laundry in the basement, kitchen or the combined living space" — saved on the JOB as job.homeInfo.laundry.
+   (Everything else he listed — window/outlet counts, central air vs window unit, baseboard vs forced air,
+   width x length — already lives in each room's Design card from v2.75.) */
+(function(){
+  function safe(fn){ try { return fn(); } catch(e){ console.warn('[BP v3.11]', e); } }
+  var IC = window.BP_ICONS || {};
+  /* three new line icons, same 24px stroke style as the rest */
+  IC.kitchen  = '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8h16"/><circle class="f" cx="8" cy="5.5" r=".9"/><circle class="f" cx="12" cy="5.5" r=".9"/><circle class="f" cx="16" cy="5.5" r=".9"/><rect x="7" y="11" width="10" height="7" rx="1"/>';
+  IC.bathroom = '<path d="M7 3h10v5H7z"/><path d="M5 11h14c0 4-2.5 7-7 7s-7-3-7-7z"/><path d="M9.5 18L8.5 21h7l-1-3"/>';
+  IC.sidedoor = '<path d="M10 21V4.5A1.5 1.5 0 0111.5 3h6A1.5 1.5 0 0119 4.5V21M8 21h12"/><circle class="f" cx="16.6" cy="12.5" r=".9"/><path d="M2 12h5M5 9.5L7.5 12 5 14.5"/>';
+  function svgHtml(name){ return '<span class="bp-ic" data-v311="1" role="img" aria-label="' + name + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + IC[name] + '</svg></span>'; }
+  window.bpRoomIconHtml = function(name, type){
+    var n = String(name || '').toLowerCase(), t = String(type || '');
+    if (/\bside (door|entrance)\b/.test(n)) return svgHtml('sidedoor');
+    if (/\b(front|back|rear) (door|entrance)\b/.test(n)) return (window.bpIcon && window.bpIcon('door')) || '';
+    if (/bath|toilet|powder|restroom/.test(n) || t === 'Bathroom') return svgHtml('bathroom');
+    if (/kitchen/.test(n) || t === 'Kitchen') return svgHtml('kitchen');
+    return '';
+  };
+  /* entrance spots (Front Door / Rear Door / Side Door already exist) */
+  safe(function(){
+    var ext = window.BP_SPACE_PRESETS && window.BP_SPACE_PRESETS.Exterior; if (!ext) return;
+    var at = ext.findIndex(function(p){ return p.n === 'Side Door'; });
+    ['Front Entrance','Back Entrance'].forEach(function(nm){
+      if (!ext.some(function(p){ return p.n === nm; })) {
+        at = (at < 0) ? ext.length : at + 1;
+        ext.splice(at, 0, {n:nm, type:'Exterior'});
+      }
+    });
+  });
+  /* icons on the Add-screen chips (they have none) */
+  function chips(){
+    [].forEach.call(document.querySelectorAll('button[onclick^="bpTogglePreset("]'), function(b){
+      if (b.querySelector('[data-v311]')) return;
+      var m = /bpTogglePreset\('[^']*','((?:[^'\\]|\\.)*)'\)/.exec(b.getAttribute('onclick') || ''); if (!m) return;
+      var nm = m[1].replace(/\\'/g, "'"), h = window.bpRoomIconHtml(nm, '');
+      if (h) b.insertAdjacentHTML('afterbegin', h + ' ');
+    });
+  }
+  /* ── Home details card on the job screen: where is the laundry? ── */
+  var HOME_Q = [
+    ['laundry','Where is the laundry?', ['Laundry room','Basement','Kitchen','Hallway / closet','Living space (combined)','Garage','Hookups only','None']],
+    ['attic','Is there an attic?', ['None','Unfinished','Finished','Pull-down / scuttle only']],
+    ['chimneys','How many chimneys?', ['None','1','2','3','4 or more']]
+  ];
+  function saveNow(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else if (typeof save === 'function') save(); } catch(e){} }
+  window.bpSetHome = function(jobId, key, val){
+    var job = (DB.jobs || []).find(function(j){ return j.id === jobId; }); if (!job) return;
+    job.homeInfo = job.homeInfo || {};
+    job.homeInfo[key] = (job.homeInfo[key] === val) ? '' : val;
+    job.updatedAt = (typeof now === 'function') ? now() : new Date().toISOString();
+    saveNow(); paintHome();
+  };
+  window.bpSetLaundry = function(jobId, val){ window.bpSetHome(jobId, 'laundry', val); };
+  function homeHtml(job){
+    var info = job.homeInfo || {}, c = '#0A84FF';
+    var h = '<div style="font-size:15px;font-weight:800;margin-bottom:2px">🏠 Home details</div>'
+      + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5">Tap one in each row (tap again to clear).</div>';
+    HOME_Q.forEach(function(q){
+      var cur = info[q[0]] || '';
+      h += '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 0 7px">' + q[1]
+        + (cur ? '' : ' <span style="color:#FF9F0A;text-transform:none;letter-spacing:0">· not set</span>') + '</div><div style="display:flex;flex-wrap:wrap;gap:7px">';
+      q[2].forEach(function(o){
+        var on = o === cur;
+        h += '<button onclick="bpSetHome(\'' + job.id + '\',\'' + q[0] + '\',\'' + o.replace(/'/g, "\\'") + '\')" style="padding:10px 14px;border-radius:99px;border:1.5px solid ' + (on ? c : 'var(--border,#2a2a2a)')
+          + ';background:' + (on ? 'rgba(10,132,255,.16)' : 'transparent') + ';color:' + (on ? c : 'var(--muted)') + ';font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">' + (on ? '✓ ' : '') + o + '</button>';
+      });
+      h += '</div>';
+    });
+    return h;
+  }
+  function paintHome(){
+    var id = (typeof currentJobId !== 'undefined') ? currentJobId : null;
+    var anchorF = document.getElementById('jd-notes'), anchorM = document.getElementById('jd2-content');
+    var host = anchorF || anchorM; if (!host || !id) return;
+    var visible = host.offsetParent !== null; if (!visible) return;
+    var job = (DB.jobs || []).find(function(j){ return j.id === id; }); if (!job) return;
+    var card = document.getElementById('bp-home-card');
+    if (!card) {
+      card = document.createElement('div'); card.id = 'bp-home-card';
+      card.style.cssText = anchorF ? 'background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin:0 16px 12px'
+                                   : 'background:var(--card2);border-radius:12px;padding:14px;margin:0 0 14px;max-width:760px';
+      if (anchorF) anchorF.parentNode.insertBefore(card, anchorF); else host.insertBefore(card, host.firstChild);
+    }
+    var h = homeHtml(job);
+    if (card.__h !== h || card.getAttribute('data-job') !== id) { card.innerHTML = h; card.__h = h; card.setAttribute('data-job', id); }
+  }
+  function tick(){ safe(chips); safe(paintHome); }
+  setInterval(tick, 900);
+  console.log('[BP] v3.11 ready — room icons, entrances, home details');
 })();
 </script>

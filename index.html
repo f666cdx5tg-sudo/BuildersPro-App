@@ -1123,6 +1123,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         <div class="field"><div class="field-label">Length (ft)</div><input id="ar-length" type="number" inputmode="decimal" step="0.1" placeholder="e.g. 12"/></div>
       </div>
       <div class="field-row">
+        <div class="field"><div class="field-label">Ceiling Height (ft)</div><input id="ar-height" type="number" inputmode="decimal" step="0.1" placeholder="e.g. 8"/></div>
+        <div class="field"></div>
+      </div>
+      <div class="field"><div class="field-label">Description</div>
+        <textarea id="ar-desc" rows="2" placeholder="What the room is, layout, condition..."></textarea>
+      </div>
+      <div class="field-row">
         <div class="field"><div class="field-label">Contract Value ($)</div><input id="ar-contract" type="number" inputmode="decimal" placeholder="0.00" step="0.01"/></div>
         <div class="field"><div class="field-label">Contractor</div><select id="ar-contractor"><option value="">Unassigned</option></select></div>
       </div>
@@ -1425,7 +1432,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.10';
+var APP_VERSION = '3.11';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -5596,6 +5603,8 @@ function openAddRoom(jobId) {
   document.getElementById('ar-completion').value = '';
   var arW = document.getElementById('ar-width'); if (arW) arW.value = '';
   var arL = document.getElementById('ar-length'); if (arL) arL.value = '';
+  var arH = document.getElementById('ar-height'); if (arH) arH.value = '';
+  var arD = document.getElementById('ar-desc'); if (arD) arD.value = '';
   populateJobSelects();
   if (jobId) document.getElementById('ar-job').value = jobId;
   openSheet('sheet-add-room');
@@ -5619,6 +5628,8 @@ function saveRoom() {
     completionDate: document.getElementById('ar-completion')?.value || '',
     width:  +(document.getElementById('ar-width')?.value || 0) || null,
     length: +(document.getElementById('ar-length')?.value || 0) || null,
+    height: +(document.getElementById('ar-height')?.value || 0) || null,
+    description: (document.getElementById('ar-desc')?.value || '').trim(),
     created: now(),
   };
   DB.rooms.push(room);
@@ -5685,7 +5696,7 @@ function buildRoomCard(room) {
     Basement:'🏚️', Attic:'🏠', Garage:'🚗', Office:'💼', Hallway:'🚪',
     Laundry:'🧺', Exterior:'🏗️', Roof:'🏠', HVAC:'❄️', Electrical:'⚡',
     Plumbing:'🔧', Other:'📦' };
-  var icon = icons[room.type] || '🏠';
+  var icon = (window.bpRoomIconHtml && window.bpRoomIconHtml(room.name, room.type)) || icons[room.type] || '🏠';
 
   return '<div class="card card-tap" onclick="openRoomDetail(\'' + room.id + '\')" style="margin:0 16px 10px">'
     + '<div class="card-body">'
@@ -5705,6 +5716,7 @@ function buildRoomCard(room) {
     + (items.length ? '<span class="chip">' + items.length + ' item' + (items.length!==1?'s':'') + '</span>' : '<span class="chip">No checklist yet — tap + Item</span>')
     + (photos ? '<span class="chip blue">' + photos + ' photos</span>' : '')
     + (room.drawing ? '<span class="chip blue">📐 Drawing</span>' : '')
+    + (room.width && room.length ? '<span class="chip">' + room.width + ' \u00d7 ' + room.length + (room.height ? ' \u00d7 ' + room.height : '') + ' ft</span>' : '')
     + (room.notes ? '<span class="chip">' + esc(room.notes.slice(0,30)) + (room.notes.length>30?'…':'') + '</span>' : '')
     + buildRoomContractorChips(room)
     + '</div>'
@@ -5736,7 +5748,7 @@ function openRoomDetail(roomId) {
     Basement:'🏚️', Attic:'🏠', Garage:'🚗', Office:'💼', Hallway:'🚪',
     Laundry:'🧺', Exterior:'🏗️', Roof:'🏠', HVAC:'❄️', Electrical:'⚡',
     Plumbing:'🔧', Other:'📦' };
-  var icon = icons[room.type] || '🏠';
+  var icon = (window.bpRoomIconHtml && window.bpRoomIconHtml(room.name, room.type)) || icons[room.type] || '🏠';
 
   var screen = document.createElement('div');
   screen.className = 'screen active';
@@ -5787,6 +5799,7 @@ function openRoomDetail(roomId) {
     + '</div>'
 
     // Notes
+    + (room.description ? '<div style="margin:0 16px 10px;padding:12px 14px;background:var(--card);border-radius:12px;border:1px solid var(--border);font-size:14px;color:var(--text);line-height:1.6"><b>Description</b><br>' + esc(room.description) + '</div>' : '')
     + (room.notes ? '<div style="margin:0 16px 10px;padding:12px 14px;background:var(--card);border-radius:12px;border:1px solid var(--border);font-size:14px;color:var(--muted);line-height:1.6">' + esc(room.notes) + '</div>' : '')
 
     // Contractor / Dates / Balance
@@ -5967,7 +5980,7 @@ window.bpDuplicateRoom = function(roomId) {
       startDate:      room.startDate || '',
       completionDate: '',            /* a brand-new room isn't finished yet */
       width:  room.width  || null,
-      length: room.length || null,
+      length: room.length || null, height: room.height || null, description: room.description || '',
       created: now(),
       updatedAt: now(),
     };
@@ -6120,7 +6133,7 @@ renderJobDetail = function(jobId) {
         var itemsTotal = items.reduce(function(s,n){ return s+(+n.value||0); }, 0);
         var contractVal = +(room.contractValue||0);
         var remaining = contractVal - itemsTotal;
-        var icon  = icons[room.type]||'🏠';
+        var icon  = (window.bpRoomIconHtml && window.bpRoomIconHtml(room.name, room.type)) || icons[room.type]||'🏠';
         var conCount = roomContractorList(room).length;
         return '<div onclick="openRoomDetail(\'' + room.id + '\')" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:12px;cursor:pointer">'
           + '<span style="font-size:22px;flex-shrink:0">' + icon + '</span>'
@@ -6180,6 +6193,8 @@ window.openEditRoom = function(roomId) {
   html += '<div style="flex:1"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Width (ft)</div><input id="er-width" type="number" inputmode="decimal" step="0.1" value="'+(room.width||'')+'" style="'+s+'"/></div>';
   html += '<div style="flex:1"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Length (ft)</div><input id="er-length" type="number" inputmode="decimal" step="0.1" value="'+(room.length||'')+'" style="'+s+'"/></div>';
   html += '</div>';
+  html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Ceiling Height (ft)</div><input id="er-height" type="number" inputmode="decimal" step="0.1" value="'+(room.height||'')+'" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Description</div><textarea id="er-desc" rows="2" placeholder="What the room is, layout, condition..." style="'+s+';min-height:64px">'+esc(room.description||'')+'</textarea></div>';
   html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Contract Value ($)</div><input id="er-contract" type="number" inputmode="decimal" step="0.01" value="'+(room.contractValue||'')+'" style="'+s+'"/></div>';
   html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Contractors (select any that apply)</div>'+conCheckboxes+'</div>';
   html += '<div style="display:flex;gap:10px;margin-bottom:14px">';
@@ -6221,6 +6236,8 @@ window.saveEditRoom = function(roomId) {
   room.startDate      = (document.getElementById('er-start') && document.getElementById('er-start').value) || '';
   room.completionDate = (document.getElementById('er-completion') && document.getElementById('er-completion').value) || '';
   room.notes = ((document.getElementById('er-notes') && document.getElementById('er-notes').value) || '').trim();
+  room.height = +((document.getElementById('er-height') && document.getElementById('er-height').value) || 0) || null;
+  room.description = ((document.getElementById('er-desc') && document.getElementById('er-desc').value) || '').trim();
   room.updatedAt = now();
   document.getElementById('edit-room-modal') && document.getElementById('edit-room-modal').remove();
   save(); renderAll();
@@ -16537,7 +16554,7 @@ window.bpDuplicateRoom = function(roomId){
     var copy = {
       id: uid(), name: nm, baseName: baseOf(room), type: room.type, jobId: room.jobId,
       notes: room.notes || '', contractValue: +(room.contractValue || 0), contractorId: room.contractorId || '',
-      startDate: room.startDate || '', completionDate: '', width: room.width || null, length: room.length || null,
+      startDate: room.startDate || '', completionDate: '', width: room.width || null, length: room.length || null, height: room.height || null, description: room.description || '',
       created: now(), updatedAt: now()
     };
     if (Array.isArray(room.contractorIds)) copy.contractorIds = room.contractorIds.slice();
@@ -20143,7 +20160,7 @@ window.bpRoomPaste = function(jobId){
   var order = (DB.rooms||[]).filter(function(r){ return r.jobId === jobId; }).length;
   var copy = { id:nid(), name:name, type:src.type, jobId:jobId, notes:src.notes || '', level:src.level, space:src.space, order:order,
     contractValue:+(src.contractValue || 0), contractorId:same ? (src.contractorId || '') : '', contractorIds:same && Array.isArray(src.contractorIds) ? src.contractorIds.slice() : undefined,
-    startDate:'', completionDate:'', width:src.width || null, length:src.length || null, created:nowIso(), updatedAt:nowIso() };
+    startDate:'', completionDate:'', width:src.width || null, length:src.length || null, height:src.height || null, description:src.description || '', created:nowIso(), updatedAt:nowIso() };
   DB.rooms.push(copy);
   var n = 0;
   if (withItems) (DB.punchlist||[]).filter(function(x){ return x.roomId === src.id; }).forEach(function(it){
@@ -21068,5 +21085,102 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
   });
   setInterval(function(){ safe(fix); }, 1000);
   console.log('[BP] v3.09 ready — Sync screen is iCloud-first');
+})();
+</script>
+
+<script>
+/* ══ v3.11 — ROOM ICONS, ENTRANCE SPOTS, HOME DETAILS (laundry) — identical block in both apps ══════
+   Stan (Oct 3, 2026): kitchen / side door / bathroom icons on the room chips and room cards; a Description
+   and ceiling height on every room; front & back entrance spots; and "does the home have a laundry room, or
+   is the laundry in the basement, kitchen or the combined living space" — saved on the JOB as job.homeInfo.laundry.
+   (Everything else he listed — window/outlet counts, central air vs window unit, baseboard vs forced air,
+   width x length — already lives in each room's Design card from v2.75.) */
+(function(){
+  function safe(fn){ try { return fn(); } catch(e){ console.warn('[BP v3.11]', e); } }
+  var IC = window.BP_ICONS || {};
+  /* three new line icons, same 24px stroke style as the rest */
+  IC.kitchen  = '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8h16"/><circle class="f" cx="8" cy="5.5" r=".9"/><circle class="f" cx="12" cy="5.5" r=".9"/><circle class="f" cx="16" cy="5.5" r=".9"/><rect x="7" y="11" width="10" height="7" rx="1"/>';
+  IC.bathroom = '<path d="M7 3h10v5H7z"/><path d="M5 11h14c0 4-2.5 7-7 7s-7-3-7-7z"/><path d="M9.5 18L8.5 21h7l-1-3"/>';
+  IC.sidedoor = '<path d="M10 21V4.5A1.5 1.5 0 0111.5 3h6A1.5 1.5 0 0119 4.5V21M8 21h12"/><circle class="f" cx="16.6" cy="12.5" r=".9"/><path d="M2 12h5M5 9.5L7.5 12 5 14.5"/>';
+  function svgHtml(name){ return '<span class="bp-ic" data-v311="1" role="img" aria-label="' + name + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + IC[name] + '</svg></span>'; }
+  window.bpRoomIconHtml = function(name, type){
+    var n = String(name || '').toLowerCase(), t = String(type || '');
+    if (/\bside (door|entrance)\b/.test(n)) return svgHtml('sidedoor');
+    if (/\b(front|back|rear) (door|entrance)\b/.test(n)) return (window.bpIcon && window.bpIcon('door')) || '';
+    if (/bath|toilet|powder|restroom/.test(n) || t === 'Bathroom') return svgHtml('bathroom');
+    if (/kitchen/.test(n) || t === 'Kitchen') return svgHtml('kitchen');
+    return '';
+  };
+  /* entrance spots (Front Door / Rear Door / Side Door already exist) */
+  safe(function(){
+    var ext = window.BP_SPACE_PRESETS && window.BP_SPACE_PRESETS.Exterior; if (!ext) return;
+    var at = ext.findIndex(function(p){ return p.n === 'Side Door'; });
+    ['Front Entrance','Back Entrance'].forEach(function(nm){
+      if (!ext.some(function(p){ return p.n === nm; })) {
+        at = (at < 0) ? ext.length : at + 1;
+        ext.splice(at, 0, {n:nm, type:'Exterior'});
+      }
+    });
+  });
+  /* icons on the Add-screen chips (they have none) */
+  function chips(){
+    [].forEach.call(document.querySelectorAll('button[onclick^="bpTogglePreset("]'), function(b){
+      if (b.querySelector('[data-v311]')) return;
+      var m = /bpTogglePreset\('[^']*','((?:[^'\\]|\\.)*)'\)/.exec(b.getAttribute('onclick') || ''); if (!m) return;
+      var nm = m[1].replace(/\\'/g, "'"), h = window.bpRoomIconHtml(nm, '');
+      if (h) b.insertAdjacentHTML('afterbegin', h + ' ');
+    });
+  }
+  /* ── Home details card on the job screen: where is the laundry? ── */
+  var HOME_Q = [
+    ['laundry','Where is the laundry?', ['Laundry room','Basement','Kitchen','Hallway / closet','Living space (combined)','Garage','Hookups only','None']],
+    ['attic','Is there an attic?', ['None','Unfinished','Finished','Pull-down / scuttle only']],
+    ['chimneys','How many chimneys?', ['None','1','2','3','4 or more']]
+  ];
+  function saveNow(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else if (typeof save === 'function') save(); } catch(e){} }
+  window.bpSetHome = function(jobId, key, val){
+    var job = (DB.jobs || []).find(function(j){ return j.id === jobId; }); if (!job) return;
+    job.homeInfo = job.homeInfo || {};
+    job.homeInfo[key] = (job.homeInfo[key] === val) ? '' : val;
+    job.updatedAt = (typeof now === 'function') ? now() : new Date().toISOString();
+    saveNow(); paintHome();
+  };
+  window.bpSetLaundry = function(jobId, val){ window.bpSetHome(jobId, 'laundry', val); };
+  function homeHtml(job){
+    var info = job.homeInfo || {}, c = '#0A84FF';
+    var h = '<div style="font-size:15px;font-weight:800;margin-bottom:2px">🏠 Home details</div>'
+      + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5">Tap one in each row (tap again to clear).</div>';
+    HOME_Q.forEach(function(q){
+      var cur = info[q[0]] || '';
+      h += '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 0 7px">' + q[1]
+        + (cur ? '' : ' <span style="color:#FF9F0A;text-transform:none;letter-spacing:0">· not set</span>') + '</div><div style="display:flex;flex-wrap:wrap;gap:7px">';
+      q[2].forEach(function(o){
+        var on = o === cur;
+        h += '<button onclick="bpSetHome(\'' + job.id + '\',\'' + q[0] + '\',\'' + o.replace(/'/g, "\\'") + '\')" style="padding:10px 14px;border-radius:99px;border:1.5px solid ' + (on ? c : 'var(--border,#2a2a2a)')
+          + ';background:' + (on ? 'rgba(10,132,255,.16)' : 'transparent') + ';color:' + (on ? c : 'var(--muted)') + ';font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">' + (on ? '✓ ' : '') + o + '</button>';
+      });
+      h += '</div>';
+    });
+    return h;
+  }
+  function paintHome(){
+    var id = (typeof currentJobId !== 'undefined') ? currentJobId : null;
+    var anchorF = document.getElementById('jd-notes'), anchorM = document.getElementById('jd2-content');
+    var host = anchorF || anchorM; if (!host || !id) return;
+    var visible = host.offsetParent !== null; if (!visible) return;
+    var job = (DB.jobs || []).find(function(j){ return j.id === id; }); if (!job) return;
+    var card = document.getElementById('bp-home-card');
+    if (!card) {
+      card = document.createElement('div'); card.id = 'bp-home-card';
+      card.style.cssText = anchorF ? 'background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin:0 16px 12px'
+                                   : 'background:var(--card2);border-radius:12px;padding:14px;margin:0 0 14px;max-width:760px';
+      if (anchorF) anchorF.parentNode.insertBefore(card, anchorF); else host.insertBefore(card, host.firstChild);
+    }
+    var h = homeHtml(job);
+    if (card.__h !== h || card.getAttribute('data-job') !== id) { card.innerHTML = h; card.__h = h; card.setAttribute('data-job', id); }
+  }
+  function tick(){ safe(chips); safe(paintHome); }
+  setInterval(tick, 900);
+  console.log('[BP] v3.11 ready — room icons, entrances, home details');
 })();
 </script>
