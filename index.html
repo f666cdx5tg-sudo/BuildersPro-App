@@ -1433,7 +1433,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.25';
+var APP_VERSION = '3.26';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -21584,12 +21584,13 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   var prev = window.bpRoomIconHtml;
   if (typeof prev !== 'function' || prev.__v325) return;
   function ic(n){ return (window.bpIcon && window.bpIcon(n)) || ''; }
+  var WATER = '<span class="bp-ic" data-v326="1" role="img" aria-label="water service"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 15h4.5M17.5 15H22"/><circle cx="12" cy="15" r="5.5"/><path d="M12 12.2c-1.5 1.9-2.2 2.9-2.2 3.8a2.2 2.2 0 004.4 0c0-.9-.7-1.9-2.2-3.8z"/><path d="M12 9.5V5.5M9 5.5h6"/></svg></span>';
   window.bpRoomIconHtml = function(name, type){
     var n = String(name || '').toLowerCase(), L = window.BP_LOC_SVG || {};
     if (/handicap|wheelchair|\bramps?\b|\bada\b/.test(n) && L.ramp) return L.ramp;
     if (/\bstairs?\b|\bsteps?\b|\bstoops?\b|stairway|staircase/.test(n) && L.stairs) return L.stairs;
     if (/\bwindows?\b/.test(n)) return ic('window');
-    if (/water (service|line|main|meter)|\bmeter\b|\bhose bib|spigot/.test(n)) return ic('faucet');
+    if (/water (service|line|main|meter)|\bmeter\b|\bhose bib|spigot/.test(n)) return WATER;
     if (/\bmain (door|entrance)\b|\bentrance\b/.test(n)) return ic('door');
     return prev.apply(this, arguments);
   };
