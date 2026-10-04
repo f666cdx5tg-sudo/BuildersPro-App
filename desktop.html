@@ -614,7 +614,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   </button>
   <button class="ni c-pink" onclick="showView('rooms')">
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-    Locations
+    Areas
   </button>
   <button class="ni c-blue" onclick="showView('photos')">
     <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -749,8 +749,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <!-- ROOMS -->
 <div class="view" id="view-rooms">
   <div class="view-header">
-    <div><div class="view-title" style="color:#FFAA33">Locations</div><div class="hdr-datetime" id="hdr-dt-rooms"></div><div class="view-sub" id="rooms-sub"></div></div>
-    <div class="view-actions"><button class="btn btn-ghost" onclick="openNewRoom()">+ New Location</button></div>
+    <div><div class="view-title" style="color:#FFAA33">Areas</div><div class="hdr-datetime" id="hdr-dt-rooms"></div><div class="view-sub" id="rooms-sub"></div></div>
+    <div class="view-actions"><button class="btn btn-ghost" onclick="openNewRoom()">+ New Area</button></div>
   </div>
   <div id="rooms-table-wrap"></div>
 </div>
@@ -1144,8 +1144,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <!-- New Room Modal -->
 <div class="modal-overlay" id="modal-new-room">
   <div class="modal" style="max-width:500px">
-    <div class="modal-header"><div class="modal-title">New Location</div><button class="modal-close" onclick="closeModal('modal-new-room')">✕</button></div>
-    <div class="field"><div class="field-label">Location Name *</div><input id="nr-name" placeholder="e.g. Master Bathroom"/></div>
+    <div class="modal-header"><div class="modal-title">New Area</div><button class="modal-close" onclick="closeModal('modal-new-room')">✕</button></div>
+    <div class="field"><div class="field-label">Area Name *</div><input id="nr-name" placeholder="e.g. Master Bathroom"/></div>
     <div class="field-row">
       <div class="field"><div class="field-label">Job</div><select id="nr-job" onchange="populateRoomContractorCheckboxes(getCheckedRoomContractorIds())"><option value="">No job</option></select></div>
       <div class="field"><div class="field-label">Type</div><select id="nr-type"><option>Kitchen</option><option>Bathroom</option><option>Bedroom</option><option>Living Room</option><option>Basement</option><option>Exterior</option><option>Other</option></select></div>
@@ -1170,7 +1170,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     <div class="field"><div class="field-label">Notes</div><textarea id="nr-notes" rows="2" placeholder="Scope, condition..."></textarea></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-ghost" onclick="closeModal('modal-new-room')" style="flex:1">Cancel</button>
-      <button class="btn btn-pink" onclick="saveNewRoom()" style="flex:2">Add Location</button>
+      <button class="btn btn-pink" onclick="saveNewRoom()" style="flex:2">Add Area</button>
     </div>
   </div>
 </div>
@@ -1418,7 +1418,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <div class="modal" style="max-width:560px">
     <div class="modal-header"><div class="modal-title">Add Punch Item</div><button class="modal-close" onclick="closeModal('modal-new-punch')">✕</button></div>
     <div class="field"><div class="field-label">Job</div><select id="punch-job" onchange="renderPunchRoomOptions();renderPunchItemPicker()"><option value="">No job</option></select></div>
-    <div class="field"><div class="field-label">Location</div><select id="punch-room" onchange="renderPunchItemPicker()"><option value="">General (no location)</option></select></div>
+    <div class="field"><div class="field-label">Area</div><select id="punch-room" onchange="renderPunchItemPicker()"><option value="">General (no area)</option></select></div>
     <div class="field"><div class="field-label">Category</div><div id="punch-cat-pills"></div></div>
     <div id="punch-items-wrap"></div>
   </div>
@@ -1497,7 +1497,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       <div class="field"><div class="field-label">Priority</div><select id="nc2-priority"><option>Normal</option><option>High</option><option>Critical</option></select></div>
     </div>
     <div class="field-row">
-      <div class="field"><div class="field-label">Location</div><select id="nc2-room"><option value="">No location</option></select></div>
+      <div class="field"><div class="field-label">Area</div><select id="nc2-room"><option value="">No area</option></select></div>
       <div class="field"><div class="field-label">Value ($)</div><input id="nc2-value" type="number" step="0.01" placeholder="0.00"/></div>
     </div>
     <div style="display:flex;gap:8px">
@@ -1514,7 +1514,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     <div id="bc-context" style="font-size:13px;color:var(--muted);margin-bottom:10px"></div>
     <div class="field-row">
       <div class="field"><div class="field-label">Job</div><select id="bc-job"><option value="">No job</option></select></div>
-      <div class="field"><div class="field-label">Location</div><select id="bc-room"><option value="">No location</option></select></div>
+      <div class="field"><div class="field-label">Area</div><select id="bc-room"><option value="">No area</option></select></div>
     </div>
     <div class="field"><div class="field-label">Checklist Items *</div><textarea id="bc-text" rows="8" placeholder="Type or paste one item per line, e.g.&#10;Remove old cabinets&#10;Install new cabinets&#10;Paint walls&#10;Install fixtures"></textarea></div>
     <div style="font-size:12px;color:var(--muted);margin:-6px 0 10px">Each line becomes its own checklist item. Values default to $0 — edit them individually after.</div>
@@ -1610,7 +1610,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.17';
+var APP_VERSION = '3.18';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -2377,7 +2377,7 @@ function populateJobSelects() {
   }).join('');
   ['nc2-room','bc-room'].forEach(function(id){
     var rel = document.getElementById(id);
-    if (rel) rel.innerHTML = '<option value="">No location</option>' + roomOpts;
+    if (rel) rel.innerHTML = '<option value="">No area</option>' + roomOpts;
   });
 }
 
@@ -2621,7 +2621,7 @@ function renderDesktopJobs() {
           +'<div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px"><div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:'+pct+'%"></div></div><span style="font-size:12px;font-weight:700;color:var(--text)">'+pct+'%</span></div>'
           +'<label class="bp-jt-line'+(j.startDate?' bp-started':'')+'"><span><input type="checkbox" '+(j.startDate?'checked':'')+' onchange="toggleJobStarted(\''+j.id+'\')"/>Started</span><b>'+(j.startDate?fmtDatePlain(j.startDate):'—')+'</b></label>'
           +'<label class="bp-jt-line"><span><input type="checkbox" '+(j.completionDate?'checked':'')+' onchange="toggleJobCompleted(\''+j.id+'\')"/>Done</span><b>'+(j.completionDate?fmtDatePlain(j.completionDate):'—')+'</b></label>'
-          +(roomPunch?'<div style="font-size:11px;font-weight:700;margin-top:3px;color:'+(roomPunch.complete===roomPunch.total?'var(--green,#66bb6a)':'#EF5350')+'">🚪 '+roomPunch.complete+'/'+roomPunch.total+' locations</div>':'')+'</td>'
+          +(roomPunch?'<div style="font-size:11px;font-weight:700;margin-top:3px;color:'+(roomPunch.complete===roomPunch.total?'var(--green,#66bb6a)':'#EF5350')+'">🚪 '+roomPunch.complete+'/'+roomPunch.total+' areas</div>':'')+'</td>'
           +'<td style="min-width:190px;white-space:nowrap"><div class="bp-jt-line"><span>Received to date</span><b style="color:#66bb6a">'+fmt$(fund.received)+'</b></div><div class="bp-jt-line"><span>Balance owed</span><b style="color:'+(fund.owed>0?'#FF453A':'#66bb6a')+'">'+fmt$(fund.owed)+'</b></div>'+(con?'<div style="font-size:12px;color:var(--muted);margin-top:4px">👷 '+esc(con.name)+'</div>':'')+'</td>'
           +'<td onclick="event.stopPropagation()" style="white-space:nowrap"><div style="display:flex;flex-direction:column;gap:4px;width:150px">'
           +'<button class="btn btn-ghost" style="'+ib+'" title="Edit" onclick="editJob(\''+j.id+'\')">✏️ Edit</button>'
@@ -3132,10 +3132,10 @@ function renderDesktopRooms() {
   var el=document.getElementById('rooms-table-wrap');
   var sub=document.getElementById('rooms-sub');
   if(sub) sub.textContent=DB.rooms.length+' rooms';
-  if(!DB.rooms.length){el.innerHTML='<div class="empty"><div class="empty-icon">🏠</div><div class="empty-text">No locations yet</div></div>';return;}
+  if(!DB.rooms.length){el.innerHTML='<div class="empty"><div class="empty-icon">🏠</div><div class="empty-text">No areas yet</div></div>';return;}
   var icons={Kitchen:'🍳',Bathroom:'🚿',Bedroom:'🛏️','Living Room':'🛋️',Basement:'🏚️',Exterior:'🏗️',Other:'📦'};
   el.innerHTML='<div class="card" style="overflow-x:auto;padding:0"><table class="tbl">'
-    +'<thead><tr><th>Location</th><th>Type</th><th>Job</th><th>Contractors / Dates</th><th>Checklist</th><th>Checklist Balance</th><th>Photos</th><th>Actions</th></tr></thead>'
+    +'<thead><tr><th>Area</th><th>Type</th><th>Job</th><th>Contractors / Dates</th><th>Checklist</th><th>Checklist Balance</th><th>Photos</th><th>Actions</th></tr></thead>'
     +'<tbody>'+DB.rooms.map(function(r){
       var job=DB.jobs.find(function(j){return j.id===r.jobId;});
       var cons=roomContractorObjs(r);
@@ -3146,7 +3146,7 @@ function renderDesktopRooms() {
       var contractVal=+(r.contractValue||0);
       var remaining=contractVal-itemsTotal;
       var conLines=cons.map(function(c){return '👷 '+esc(c.trade||'General')+': '+esc(c.name);}).join('<br/>');
-      return '<tr><td style="cursor:pointer;user-select:none" onclick="openRoomDetail(\''+r.id+'\')" onmouseover="this.style.background=\'var(--card2)\'" onmouseout="this.style.background=\'\'" title="Click for full location details"><span style="margin-right:6px">'+((window.bpRoomIconHtml&&window.bpRoomIconHtml(r.name,r.type))||icons[r.type]||'🏠')+'</span><strong>'+esc(r.name)+'</strong>'+(r.drawing?' <span title="Has a sketch">📐</span>':'')+addedOrUpdatedLine(r.created,r.updatedAt)+'</td>'
+      return '<tr><td style="cursor:pointer;user-select:none" onclick="openRoomDetail(\''+r.id+'\')" onmouseover="this.style.background=\'var(--card2)\'" onmouseout="this.style.background=\'\'" title="Click for full area details"><span style="margin-right:6px">'+((window.bpRoomIconHtml&&window.bpRoomIconHtml(r.name,r.type))||icons[r.type]||'🏠')+'</span><strong>'+esc(r.name)+'</strong>'+(r.drawing?' <span title="Has a sketch">📐</span>':'')+addedOrUpdatedLine(r.created,r.updatedAt)+'</td>'
         +'<td>'+esc(r.type)+'</td>'
         +'<td>'+(job?esc(job.name):'—')+'</td>'
         +'<td style="font-size:12px;color:var(--muted)">'+(conLines?conLines+'<br/>':'')+((r.startDate||r.completionDate)?'📅 '+(r.startDate?fmtDatePlain(r.startDate):'—')+' → '+(r.completionDate?fmtDatePlain(r.completionDate):'—'):(conLines?'':'—'))+'</td>'
@@ -3172,13 +3172,13 @@ function saveNewRoom(){
     description: (document.getElementById('nr-desc')?.value||'').trim(),
     notes:document.getElementById('nr-notes').value.trim(),created:now()};
   DB.rooms.push(room);
-  closeModal('modal-new-room'); saveDB(); renderDesktopRooms(); toast('✅ Location added');
+  closeModal('modal-new-room'); saveDB(); renderDesktopRooms(); toast('✅ Area added');
   // v2.11: every room walks straight into the trade/task picker — pick a trade,
   // check off the tasks that apply, switch trades and repeat (a room can span
   // several trades), then close. Still reachable later via "+ Add Punch Item".
   setTimeout(function(){ openRoomTradePicker(room.jobId, room.id); }, 350);
 }
-function deleteRoom(id){if(!confirm('Delete location?'))return; bpRemoveFrom('rooms', function(r){return r.id!==id;}); saveDB(); renderDesktopRooms();}
+function deleteRoom(id){if(!confirm('Delete area?'))return; bpRemoveFrom('rooms', function(r){return r.id!==id;}); saveDB(); renderDesktopRooms();}
 
 /* ── Room Detail modal — the desktop equivalent of the field app's tap-to-open
    room screen. The rooms table alone never had a way to see the full picture
@@ -3214,7 +3214,7 @@ function openRoomDetail(roomId){
     +'<div class="modal-header"><div class="modal-title">'+esc(r.name)+'</div><button class="modal-close" onclick="document.getElementById(\'modal-room-detail\').remove()">✕</button></div>'
     +'<div style="font-size:13px;color:var(--muted);margin:-8px 0 16px">'+esc(r.type)+(job?' · '+esc(job.name):'')+'</div>'
     +'<div style="display:flex;gap:10px;margin-bottom:18px">'
-      +'<div class="card" style="flex:1;padding:14px;text-align:center"><div style="font-size:18px;font-weight:800">'+fmt$(contractVal)+'</div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Location Contract</div></div>'
+      +'<div class="card" style="flex:1;padding:14px;text-align:center"><div style="font-size:18px;font-weight:800">'+fmt$(contractVal)+'</div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Area Contract</div></div>'
       +'<div class="card" style="flex:1;padding:14px;text-align:center"><div style="font-size:18px;font-weight:800;color:#FF9500">'+fmt$(itemsTotal)+'</div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Items Value</div></div>'
       +'<div class="card" style="flex:1;padding:14px;text-align:center"><div style="font-size:18px;font-weight:800;color:'+(balance<0?'var(--red,#EF5350)':'#0A84FF')+'">'+fmt$(balance)+'</div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Balance</div></div>'
     +'</div>'
@@ -3230,8 +3230,8 @@ function openRoomDetail(roomId){
       +'<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="closeRoomDetailAnd(function(){openNewCheckItem(\''+(r.jobId||'')+'\',\''+r.id+'\');})">+ Add Item</button></span></div>'
     +'<div style="max-height:240px;overflow-y:auto;margin-bottom:18px">'+itemRows+'</div>'
     +'<div style="display:flex;gap:8px">'
-      +'<button class="btn btn-ghost" style="flex:1" onclick="closeRoomDetailAnd(function(){editRoom(\''+r.id+'\');})">✏️ Edit Location</button>'
-      +'<button class="btn btn-danger" style="flex:1" onclick="document.getElementById(\'modal-room-detail\').remove();deleteRoom(\''+r.id+'\')">🗑 Delete Location</button>'
+      +'<button class="btn btn-ghost" style="flex:1" onclick="closeRoomDetailAnd(function(){editRoom(\''+r.id+'\');})">✏️ Edit Area</button>'
+      +'<button class="btn btn-danger" style="flex:1" onclick="document.getElementById(\'modal-room-detail\').remove();deleteRoom(\''+r.id+'\')">🗑 Delete Area</button>'
     +'</div>'
     +'</div>';
   document.body.appendChild(mo);
@@ -3323,7 +3323,7 @@ window.openDesktopRoomDrawing = function(roomId) {
   var room = (DB.rooms||[]).find(function(r){ return r.id===roomId; });
   if (!room) return;
   if (!room.width || !room.length) {
-    toast('Add Width & Length to this location first');
+    toast('Add Width & Length to this area first');
     closeRoomDetailAnd(function(){ editRoom(roomId); });
     return;
   }
@@ -3442,7 +3442,7 @@ function buildDesktopRoomDrawingSectionHtml(room) {
   var html = '<div class="sec-hdr" style="margin-top:0">Sketch' + (hasDims ? ' (' + fmtFeetInches(room.width) + ' x ' + fmtFeetInches(room.length) + ')' : '') + '</div>'
     + '<div style="margin-bottom:16px">';
   if (!hasDims) {
-    html += '<div class="card" style="padding:14px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6">Add a Width &amp; Length to this location to start a sketch.<br>'
+    html += '<div class="card" style="padding:14px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6">Add a Width &amp; Length to this area to start a sketch.<br>'
       + '<button class="btn btn-ghost" style="margin-top:8px;font-size:12px;padding:6px 12px" onclick="closeRoomDetailAnd(function(){editRoom(\'' + room.id + '\');})">Add Dimensions</button></div>';
   } else if (room.drawing) {
     html += (room.drawingStale ? '<div style="font-size:12px;color:#FF9500;font-weight:700;margin-bottom:6px">⚠️ Dimensions changed since this was drawn — click to update</div>' : '')
@@ -6446,7 +6446,7 @@ function renderPunchRoomOptions(){
   if(!roomSel) return;
   var jobId=document.getElementById('punch-job')?.value||'';
   var rooms=(DB.rooms||[]).filter(function(r){return r.jobId===jobId;});
-  roomSel.innerHTML='<option value="">General (no location)</option>'+rooms.map(function(r){return '<option value="'+r.id+'">'+esc(r.name)+'</option>';}).join('');
+  roomSel.innerHTML='<option value="">General (no area)</option>'+rooms.map(function(r){return '<option value="'+r.id+'">'+esc(r.name)+'</option>';}).join('');
   roomSel.value='';
 }
 function renderPunchCatPills(){
@@ -6472,7 +6472,7 @@ function renderPunchItemPicker(){
   var room=roomId?(DB.rooms||[]).find(function(r){return r.id===roomId;}):null;
   var items=getTradeTaskList(room?room.type:null, _punchCategory);
   var existing=(DB.punchlist||[]).filter(function(p){return p.jobId===jobId && (p.roomId||'')===roomId && p.trade===_punchCategory;});
-  var html='<div style="font-size:11px;color:var(--muted);margin:2px 0 8px;line-height:1.5">Tap an item to add it to this location\'s punchlist (shows red/open until you check it off later).</div>';
+  var html='<div style="font-size:11px;color:var(--muted);margin:2px 0 8px;line-height:1.5">Tap an item to add it to this area\'s punchlist (shows red/open until you check it off later).</div>';
   html+='<div style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto">';
   html+=items.map(function(label){
     var ex=existing.find(function(p){return p.text===label;});
@@ -6662,7 +6662,7 @@ function renderDesktopPunchlist(){
       // table did too (Value/Priority/Tasks/Before/After), since both features
       // share DB.punchlist now — Stan asked for a full merge with nothing lost.
       pw.innerHTML=summaryHtml+'<div class="card" style="overflow-x:auto;padding:0"><table class="tbl">'
-        +'<thead><tr><th>Done</th><th>Description</th><th>Trade</th><th>Location</th><th>Job</th><th>Value</th><th>Priority</th><th>Tasks</th><th>Before</th><th>After</th><th>Completion Photo</th><th>Actions</th></tr></thead>'
+        +'<thead><tr><th>Done</th><th>Description</th><th>Trade</th><th>Area</th><th>Job</th><th>Value</th><th>Priority</th><th>Tasks</th><th>Before</th><th>After</th><th>Completion Photo</th><th>Actions</th></tr></thead>'
         +'<tbody>'+items.slice().reverse().map(function(it){
           var job=it.jobId?DB.jobs.find(function(j){return j.id===it.jobId;}):null;
           var room=it.roomId?(DB.rooms||[]).find(function(r){return r.id===it.roomId;}):null;
@@ -7210,7 +7210,7 @@ function bpRecycleLabel(coll, r) {
 }
 
 var BP_COLL_NAMES = {
-  jobs:'Job', rooms:'Location', tasks:'Task', photos:'Photo', notes:'Note',
+  jobs:'Job', rooms:'Area', tasks:'Task', photos:'Photo', notes:'Note',
   invoices:'Invoice', expenses:'Expense', contractors:'Contractor', reports:'Report',
   contacts:'Contact', permits:'Permit', punchlist:'Punch item', walkthroughs:'Walkthrough',
   documents:'Document', payments:'Payment', appointments:'Calendar event',
@@ -8318,7 +8318,7 @@ async function viewArchivedJob(jobId) {
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-size:19px;font-weight:800">'+esc(j.name)+'</div><button onclick="document.getElementById(\'archive-view-modal\').remove()" style="width:30px;height:30px;border-radius:50%;background:var(--card2);border:none;color:var(--muted);font-size:18px;cursor:pointer">x</button></div>';
     html += '<div style="font-size:13px;color:var(--muted);margin-bottom:14px">Client: '+esc(j.client||'—')+' &middot; Archived '+(bundle.archivedAt?new Date(bundle.archivedAt).toLocaleString():'—')+'</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">'
-      + archKpi('Locations', (bundle.rooms||[]).length, '#42A5F5')
+      + archKpi('Areas', (bundle.rooms||[]).length, '#42A5F5')
       + archKpi('Photos', (bundle.photos||[]).length, '#FF9500')
       + archKpi('Invoices', (bundle.invoices||[]).length, '#5E5CE6')
       + archKpi('Reports', (bundle.reports||[]).length, '#AF52DE')
@@ -8395,7 +8395,7 @@ async function renderArchivePage() {
           + '<td style="font-weight:700">' + esc(e.name) + '</td>'
           + '<td>' + esc(e.client||'—') + '</td>'
           + '<td style="font-size:12px;color:var(--muted)">' + (e.archivedAt ? new Date(e.archivedAt).toLocaleDateString() : '—') + '</td>'
-          + '<td style="font-size:12px;color:var(--muted)">' + (e.roomCount||0) + ' locations · ' + (e.photoCount||0) + ' photos · ' + (e.invoiceCount||0) + ' invoices</td>'
+          + '<td style="font-size:12px;color:var(--muted)">' + (e.roomCount||0) + ' areas · ' + (e.photoCount||0) + ' photos · ' + (e.invoiceCount||0) + ' invoices</td>'
           + '<td style="white-space:nowrap">'
           + '<button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;margin-right:4px" onclick="viewArchivedJob(\'' + e.id + '\')">👁 View</button>'
           + '<button class="btn btn-primary" style="font-size:12px;padding:6px 10px" onclick="restoreArchivedJob(\'' + e.id + '\')">↩ Restore</button>'
@@ -8573,7 +8573,7 @@ function editRoom(id) {
   }, 100);
   var btn = document.querySelector('#modal-new-room .btn-pink');
   if (btn) {
-    btn.textContent = 'Update Location';
+    btn.textContent = 'Update Area';
     btn.onclick = function() {
       r.name  = document.getElementById('nr-name').value.trim();
       r.type  = document.getElementById('nr-type').value;
@@ -8591,9 +8591,9 @@ function editRoom(id) {
       r.height = +(document.getElementById('nr-height') && document.getElementById('nr-height').value || 0) || null;
       r.description = (document.getElementById('nr-desc') && document.getElementById('nr-desc').value || '').trim();
       r.updatedAt = now();
-      closeModal('modal-new-room'); saveDB(); renderDesktopRooms(); toast('✅ Location updated');
+      closeModal('modal-new-room'); saveDB(); renderDesktopRooms(); toast('✅ Area updated');
       if (document.getElementById('modal-room-detail')) openRoomDetail(r.id);
-      btn.textContent='Add Location'; btn.onclick=saveNewRoom;
+      btn.textContent='Add Area'; btn.onclick=saveNewRoom;
     };
   }
   document.querySelector('#modal-new-room .modal-title').textContent = 'Edit Room';
@@ -8669,10 +8669,10 @@ function openCopyCheckItem(id) {
   mo.className = 'modal-overlay';
   mo.style.display = 'flex';
   var body = rooms.length
-    ? '<div class="field"><div class="field-label">Destination Location</div><select id="cc-room">'+roomOpts+'</select></div>'
+    ? '<div class="field"><div class="field-label">Destination Area</div><select id="cc-room">'+roomOpts+'</select></div>'
       + '<div style="display:flex;gap:8px"><button class="btn btn-ghost" onclick="document.getElementById(\'modal-copy-check\').remove()" style="flex:1">Cancel</button>'
       + '<button class="btn" style="background:#FF9500;color:#000;flex:2" onclick="copyCheckItemToRoom(\''+id+'\')">📋 Copy Item</button></div>'
-    : '<div style="text-align:center;color:var(--muted);padding:10px 0">No other locations to copy to yet.</div>';
+    : '<div style="text-align:center;color:var(--muted);padding:10px 0">No other areas to copy to yet.</div>';
   mo.innerHTML = '<div class="modal" style="max-width:440px">'
     + '<div class="modal-header"><div class="modal-title">Copy "'+esc(n.text)+'"</div><button class="modal-close" onclick="document.getElementById(\'modal-copy-check\').remove()">✕</button></div>'
     + body + '</div>';
@@ -9189,11 +9189,11 @@ function renderDesktopJobDetail(jobId) {
   html += '<div class="card" style="margin-bottom:16px">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:13px;font-weight:700;color:var(--muted)">Punchlist Progress</div><div style="font-size:13px;font-weight:800;color:#0A84FF">'+punchDone+'/'+punch.length+' · '+punchPct+'%</div></div>'
     + '<div class="progress-bar"><div class="progress-fill" style="width:'+punchPct+'%"></div></div>'
-    + (roomPunch ? '<div style="font-size:12px;font-weight:700;margin-top:8px;color:'+(roomPunch.complete===roomPunch.total?'#66BB6A':'#EF5350')+'">🚪 '+roomPunch.complete+'/'+roomPunch.total+' locations fully done</div>' : '')
+    + (roomPunch ? '<div style="font-size:12px;font-weight:700;margin-top:8px;color:'+(roomPunch.complete===roomPunch.total?'#66BB6A':'#EF5350')+'">🚪 '+roomPunch.complete+'/'+roomPunch.total+' areas fully done</div>' : '')
     + '</div>';
 
   // ── Rooms & Areas ──
-  html += '<div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between">Locations ('+rooms.length+')<button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="openAddRoomForJob(\''+jobId+'\')">+ Add Location</button></div>'
+  html += '<div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between">Areas ('+rooms.length+')<button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="openAddRoomForJob(\''+jobId+'\')">+ Add Area</button></div>'
     + '<div class="grid grid-3" style="margin-bottom:16px">'
     + (rooms.length ? rooms.map(function(r){
         var items = punch.filter(function(p){ return p.roomId===r.id; });
@@ -9206,14 +9206,14 @@ function renderDesktopJobDetail(jobId) {
           + '<div style="font-size:12px;color:var(--muted)">'+done+'/'+items.length+' items · '+pct+'%'+(contractV?' · '+fmt$(contractV)+' contract':'')+(conCount?' · '+conCount+' contractor'+(conCount!==1?'s':''):'')+'</div>'
           + (items.length ? '<div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:'+pct+'%"></div></div>' : '')
           + '</div>';
-      }).join('') : '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--muted);padding:20px">No locations yet</div>')
+      }).join('') : '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--muted);padding:20px">No areas yet</div>')
     + '</div>';
 
   // ── Punchlist ──
   html += '<div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between">Punchlist ('+punch.length+')<div style="display:flex;gap:6px"><button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="openBulkCheck(\''+jobId+'\',\'\')">📋 Add List</button><button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="openNewPunch(\''+jobId+'\',\'\')">+ Add Item</button></div></div>'
     + '<div class="card" style="margin-bottom:16px;padding:0">'
     + (punch.length
-        ? '<table class="tbl"><thead><tr><th></th><th>Item</th><th>Trade</th><th>Location</th><th>Value</th><th>Actions</th></tr></thead><tbody>'
+        ? '<table class="tbl"><thead><tr><th></th><th>Item</th><th>Trade</th><th>Area</th><th>Value</th><th>Actions</th></tr></thead><tbody>'
           + punch.slice().reverse().map(function(p){
               var room = p.roomId ? rooms.find(function(r){ return r.id===p.roomId; }) : null;
               return '<tr>'
@@ -9717,7 +9717,7 @@ function buildTradeBox(trade, items){
    reconciling contract values against checklist totals. */
 function buildAreaTable(rooms){
   return '<div class="card" style="overflow-x:auto;padding:0"><table class="tbl">'
-    + '<thead><tr><th>Location</th><th>Inside / Outside</th><th>Type</th><th>Job</th><th>Open</th><th>Done</th>'
+    + '<thead><tr><th>Area</th><th>Inside / Outside</th><th>Type</th><th>Job</th><th>Open</th><th>Done</th>'
     + '<th>Trades</th><th>Contract / Balance</th><th>Photos</th><th>Actions</th></tr></thead><tbody>'
     + rooms.map(function(r){
         var job = DB.jobs.find(function(j){ return j.id===r.jobId; });
@@ -9795,13 +9795,13 @@ window.renderDesktopRooms = function(){
 
   if (sub) {
     var totOpen = shown.reduce(function(s,r){ return s + window.bpAreaCounts(r.id).open; }, 0);
-    sub.textContent = shown.length + ' location' + (shown.length!==1?'s':'') + ' · ' + totOpen + ' open';
+    sub.textContent = shown.length + ' area' + (shown.length!==1?'s':'') + ' · ' + totOpen + ' open';
   }
 
   if (!shown.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">🏠</div>'
-      + '<div class="empty-text">No ' + (window._bpAreaSpace==='All'?'locations':window._bpAreaSpace.toLowerCase()+' locations') + ' yet</div>'
-      + '<div style="margin-top:14px"><button class="btn btn-pink" onclick="bpOpenSpacePicker()">+ Add Locations</button></div></div>';
+      + '<div class="empty-text">No ' + (window._bpAreaSpace==='All'?'areas':window._bpAreaSpace.toLowerCase()+' areas') + ' yet</div>'
+      + '<div style="margin-top:14px"><button class="btn btn-pink" onclick="bpOpenSpacePicker()">+ Add Areas</button></div></div>';
     return;
   }
 
@@ -9811,7 +9811,7 @@ window.renderDesktopRooms = function(){
     + 'border-radius:14px;min-height:132px;display:flex;flex-direction:column;align-items:center;'
     + 'justify-content:center;cursor:pointer;color:#0A84FF;gap:5px">'
     + '<div style="font-size:30px;line-height:1;font-weight:300">+</div>'
-    + '<div style="font-size:13px;font-weight:800">Add Locations</div></div>';
+    + '<div style="font-size:13px;font-weight:800">Add Areas</div></div>';
 
   el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">'
     + shown.map(buildAreaBox).join('') + addTile + '</div>';
@@ -9845,14 +9845,14 @@ function bpEnsureDesktopHeader(){
     + pill('Inside','Interior',window._bpAreaSpace,'bpSetAreaSpace')
     + pill('Outside','Exterior',window._bpAreaSpace,'bpSetAreaSpace')
     + '<div style="width:1px;height:26px;background:var(--border)"></div>'
-    + pill('By Location','area',window._bpAreaView,'bpSetAreaView')
+    + pill('By Area','area',window._bpAreaView,'bpSetAreaView')
     + pill('By Trade','trade',window._bpAreaView,'bpSetAreaView')
     + (window._bpAreaView === 'area'
         ? '<div style="width:1px;height:26px;background:var(--border)"></div>'
           + pill('▦ Grid','grid',window._bpAreaLayout,'bpSetAreaLayout')
           + pill('▤ Table','table',window._bpAreaLayout,'bpSetAreaLayout')
         : '')
-    + '<button class="btn btn-pink" style="margin-left:auto" onclick="bpOpenSpacePicker()">+ Add Locations</button>';
+    + '<button class="btn btn-pink" style="margin-left:auto" onclick="bpOpenSpacePicker()">+ Add Areas</button>';
 }
 
 window.bpSetAreaSpace  = function(v){ window._bpAreaSpace  = v; renderDesktopRooms(); };
@@ -9888,7 +9888,7 @@ window.bpOpenSpacePicker = function(preJobId){
   var mo = document.createElement('div');
   mo.id = 'bp-space-picker'; mo.className = 'modal-overlay'; mo.style.display = 'flex';
   mo.innerHTML = '<div class="modal" style="max-width:760px">'
-    + '<div class="modal-header"><div class="modal-title">Add Locations</div>'
+    + '<div class="modal-header"><div class="modal-title">Add Areas</div>'
     + '<button class="modal-close" onclick="document.getElementById(\'bp-space-picker\').remove()">✕</button></div>'
     + '<div style="font-size:13px;color:var(--muted);margin:-8px 0 12px">'
     + (job?esc(job.name):'')+' · tap to add, tap again to remove</div>'
@@ -9896,7 +9896,7 @@ window.bpOpenSpacePicker = function(preJobId){
     + group('Outside', window.BP_SPACE_PRESETS.Exterior, '#FF9F0A')
     + '<div class="sec-hdr">✏️ Custom</div>'
     + '<div style="display:flex;gap:8px;margin-bottom:16px">'
-    + '<input id="bp-custom-area" placeholder="Type any location name…" style="flex:1;padding:11px 14px;'
+    + '<input id="bp-custom-area" placeholder="Type any area name…" style="flex:1;padding:11px 14px;'
     + 'border-radius:9px;border:1px solid var(--border);background:var(--card2);color:var(--text);'
     + 'font-size:14px;font-family:inherit"/>'
     + '<select id="bp-custom-space" style="padding:11px;border-radius:9px;border:1px solid var(--border);'
@@ -9913,7 +9913,7 @@ window.bpTogglePreset = function(jobId, name){
     return r.jobId===jobId && String(r.name).toLowerCase()===String(name).toLowerCase(); });
   if (hit) {
     var n = (DB.punchlist||[]).filter(function(x){ return x.roomId===hit.id; }).length;
-    if (n && !confirm('"'+name+'" has '+n+' checklist item'+(n!==1?'s':'')+'.\n\nRemove the location and its items?')) return;
+    if (n && !confirm('"'+name+'" has '+n+' checklist item'+(n!==1?'s':'')+'.\n\nRemove the area and its items?')) return;
     bpRemoveFrom('rooms', function(r){ return r.id!==hit.id; });
     bpRemoveFrom('punchlist', function(x){ return x.roomId!==hit.id; });
     toast('Removed '+name);
@@ -10064,7 +10064,7 @@ window.bpSetRoomTrade = function(roomId, trade){
           + (window.BP_TRADE_COLOR[n.trade]||'#8E8E93')+'">· '+esc(n.tradeSub)+'</span>':'')+'</div>'
           + '<div style="font-size:12px;color:var(--muted)">'+(n.value?fmt$(n.value):'')+'</div>'
           + '</div>'; }).join('')
-    : '<div style="text-align:center;color:var(--muted);padding:14px 0">No '+(trade||'')+' items in this location</div>';
+    : '<div style="text-align:center;color:var(--muted);padding:14px 0">No '+(trade||'')+' items in this area</div>';
 };
 
 /* ── Boot ──────────────────────────────────────────────────────────── */
@@ -10363,7 +10363,7 @@ window.renderDesktopRooms = function(){
     + 'border-radius:14px;min-height:132px;display:flex;flex-direction:column;align-items:center;'
     + 'justify-content:center;cursor:pointer;color:#0A84FF;gap:5px">'
     + '<div style="font-size:30px;line-height:1;font-weight:300">+</div>'
-    + '<div style="font-size:13px;font-weight:800">Add Locations</div></div>';
+    + '<div style="font-size:13px;font-weight:800">Add Areas</div></div>';
 
   el.innerHTML = BPX.grid(boxes + addTile);
 };
@@ -10405,7 +10405,7 @@ window.renderDesktopPhotos = function(){
     var room = isUnfiled ? null : (DB.rooms||[]).find(function(r){ return r.id === window._bpPhotoArea; });
     var list = isUnfiled ? scope.filter(BPX.isOrphanPhoto)
                          : scope.filter(function(p){ return p.roomId === window._bpPhotoArea; });
-    hostH.innerHTML = '<button class="btn btn-ghost" onclick="bpClosePhotoArea()">‹ All Locations</button>'
+    hostH.innerHTML = '<button class="btn btn-ghost" onclick="bpClosePhotoArea()">‹ All Areas</button>'
       + '<div style="font-size:17px;font-weight:900;margin-left:6px">'
       + (isUnfiled ? '❓ Unfiled' : BPX.icon(room)+' '+esc(room?room.name:'')) + '</div>'
       + '<div style="font-size:13px;color:var(--muted);font-weight:700">'+list.length+' photo'+(list.length!==1?'s':'')+'</div>'
@@ -10427,7 +10427,7 @@ window.renderDesktopPhotos = function(){
               + fmtDate(ph.date)+'</div>':'')
             + '</div>'; }).join('')
       : '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📷</div>'
-        + '<div class="empty-text">No photos in this location</div></div>';
+        + '<div class="empty-text">No photos in this area</div></div>';
     return;
   }
 
@@ -10520,7 +10520,7 @@ window.renderDesktopPunchlist = function(){
     var c = isUn
       ? { open: keep.filter(function(n){return !n.done;}).length, done: keep.filter(function(n){return n.done;}).length }
       : window.bpAreaCounts(window._bpPunchArea);
-    hostH.innerHTML = '<button class="btn btn-ghost" onclick="bpClosePunchArea()">‹ All Locations</button>'
+    hostH.innerHTML = '<button class="btn btn-ghost" onclick="bpClosePunchArea()">‹ All Areas</button>'
       + '<div style="font-size:17px;font-weight:900;margin-left:6px">'
       + (isUn ? '❓ Unassigned' : BPX.icon(room)+' '+esc(room?room.name:'')) + '</div>'
       + '<div style="font-size:13px;font-weight:800;color:'+(c.open?'#FF453A':'#30D158')+'">'+c.open+' open</div>'
@@ -10541,7 +10541,7 @@ window.renderDesktopPunchlist = function(){
   var sub = document.getElementById('punchlist-sub');
   var scopeItems = (DB.punchlist||[]).filter(function(n){ return !jobId || n.jobId === jobId; });
   var doneN = scopeItems.filter(function(n){ return n.done; }).length;
-  if (sub) sub.textContent = doneN + '/' + scopeItems.length + ' complete · ' + rooms.length + ' locations';
+  if (sub) sub.textContent = doneN + '/' + scopeItems.length + ' complete · ' + rooms.length + ' areas';
 
   if (!rooms.length && !unassigned.length) {
     wrap.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>'
@@ -10605,7 +10605,7 @@ function areaSheet(title, jobId, onPick){
     + '<div class="modal-header"><div class="modal-title">'+title+'</div>'
     + '<button class="modal-close" onclick="document.getElementById(\'bp-file-sheet\').remove()">✕</button></div>'
     + (grp('Inside', bySpace.Interior, '#0A84FF') + grp('Outside', bySpace.Exterior, '#FF9F0A')
-       || '<div style="color:var(--muted);text-align:center;padding:20px">No locations on this job yet</div>')
+       || '<div style="color:var(--muted);text-align:center;padding:20px">No areas on this job yet</div>')
     + '</div>';
   document.body.appendChild(mo);
 }
@@ -10622,7 +10622,7 @@ window.bpFilePhotoTo = function(roomId){
   if (ph) { ph.roomId = roomId; ph.updatedAt = now(); saveDB(); }
   var s = document.getElementById('bp-file-sheet'); if (s) s.remove();
   var room = (DB.rooms||[]).find(function(r){ return r.id===roomId; });
-  toast('📁 Filed to ' + (room?room.name:'location'));
+  toast('📁 Filed to ' + (room?room.name:'area'));
   renderDesktopPhotos();
 };
 window.bpFileAllPrompt = function(){ areaSheet('File ALL unfiled photos', photoJobFilter(), 'bpFileAllTo'); };
@@ -10635,7 +10635,7 @@ window.bpFileAllTo = function(roomId){
   saveDB();
   var s = document.getElementById('bp-file-sheet'); if (s) s.remove();
   var room = (DB.rooms||[]).find(function(r){ return r.id===roomId; });
-  toast('📁 Filed ' + n + ' photo' + (n!==1?'s':'') + ' to ' + (room?room.name:'location'));
+  toast('📁 Filed ' + n + ' photo' + (n!==1?'s':'') + ' to ' + (room?room.name:'area'));
   window._bpPhotoArea = null;
   renderDesktopPhotos();
 };
@@ -10895,7 +10895,7 @@ function showGate(){
       + '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;color:#8e8e93;margin-bottom:10px">ON THIS DEVICE NOW</div>'
       + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px 16px;font-size:14px">'
       + '<div><b style="font-size:19px">'+c.jobs+'</b> <span style="color:#8e8e93">jobs</span></div>'
-      + '<div><b style="font-size:19px">'+c.areas+'</b> <span style="color:#8e8e93">locations</span></div>'
+      + '<div><b style="font-size:19px">'+c.areas+'</b> <span style="color:#8e8e93">areas</span></div>'
       + '<div><b style="font-size:19px">'+c.punch+'</b> <span style="color:#8e8e93">punch items</span></div>'
       + '<div><b style="font-size:19px;color:'+(c.photos?'#FF453A':'inherit')+'">'+c.photos+'</b> <span style="color:#8e8e93">photos</span></div>'
       + '<div><b style="font-size:19px">'+c.appts+'</b> <span style="color:#8e8e93">calendar events</span></div>'
@@ -11427,7 +11427,7 @@ window.bpSendEod = function(id){
     + '<div style="font-size:12.5px;color:var(--muted,#8e8e93);margin-bottom:16px">'
     + sesc((job ? job.name + ' · ' : '') + prettyDate(r.date||''))
     + ' · ' + n + ' photo' + (n !== 1 ? 's' : '') + '</div>'
-    + row('📄', 'Photo Report', n ? n + ' photos, grouped by location — print or Save as PDF'
+    + row('📄', 'Photo Report', n ? n + ' photos, grouped by area — print or Save as PDF'
                                  : 'No photos on this date — text only', 'bpSendPick(\'report\',\'' + id + '\')', true)
     + row('📧', 'Email', em ? 'To ' + sesc(em) : '⚠️ No client email on this job',
           'bpSendPick(\'email\',\'' + id + '\')')
@@ -11839,7 +11839,7 @@ window.bpDuplicateRoom = function(roomId) {
   var mo = document.getElementById('modal-dup-room'); if (mo) mo.remove();
   saveDB();
   if (typeof renderDesktopRooms === 'function') renderDesktopRooms();
-  toast('⧉ Created ' + names.length + ' location' + (names.length!==1?'s':'')
+  toast('⧉ Created ' + names.length + ' area' + (names.length!==1?'s':'')
         + (madeItems ? ' · ' + madeItems + ' checklist items' : ''));
 };
 
@@ -11905,7 +11905,7 @@ window.bpClipBarHtml = function(destRoomId) {
     + '<div style="font-size:12px;color:var(--muted);margin:2px 0 10px">' + names + '</div>'
     + '<div style="display:flex;gap:8px">';
   if (fromHere && isCut) {
-    h += '<div style="font-size:12px;color:var(--muted);padding:8px 0">Open another location to paste these.</div>';
+    h += '<div style="font-size:12px;color:var(--muted);padding:8px 0">Open another area to paste these.</div>';
   } else {
     h += '<button class="btn btn-primary" style="font-size:12px;padding:8px 14px" onclick="bpClipPasteHere(\'' + destRoomId + '\')">📥 Paste ' + items.length + ' Here</button>';
   }
@@ -11915,7 +11915,7 @@ window.bpClipBarHtml = function(destRoomId) {
 
 window.bpClipPasteHere = function(destRoomId) {
   var destRoom = (DB.rooms||[]).find(function(r){ return r.id===destRoomId; });
-  if (!destRoom) { toast('Location not found'); return; }
+  if (!destRoom) { toast('Area not found'); return; }
   var c = clipGet();
   var items = (DB.punchlist||[]).filter(function(n){ return c.ids.indexOf(n.id) !== -1; });
   if (!items.length) { clipSet(null); return; }
@@ -11987,14 +11987,14 @@ window.openRoomDetail = function(roomId) {
     var cut = document.createElement('button');
     cut.className = 'btn btn-ghost';
     cut.setAttribute('data-clip-btn', 'cut');
-    cut.title = 'Cut this item — paste it into another location';
+    cut.title = 'Cut this item — paste it into another area';
     cut.style.cssText = 'font-size:11px;padding:4px 8px' + (clipped ? ';border-color:#FF9F0A;color:#FF9F0A' : '');
     cut.textContent = clipped ? '✂️ ✓' : '✂️';
     cut.onclick = function(){ window.bpClipToggle(id, 'cut'); };
     var cp = document.createElement('button');
     cp.className = 'btn btn-ghost';
     cp.setAttribute('data-clip-btn', 'copy');
-    cp.title = 'Copy this item into another location';
+    cp.title = 'Copy this item into another area';
     cp.style.cssText = 'font-size:11px;padding:4px 8px';
     cp.textContent = '📋';
     cp.onclick = function(){ window.bpClipToggle(id, 'copy'); };
@@ -12011,7 +12011,7 @@ window.openRoomDetail = function(roomId) {
     dup.className = 'btn btn-ghost';
     dup.setAttribute('data-dup-room', '1');
     dup.style.flex = '1';
-    dup.textContent = '⧉ Duplicate Location';
+    dup.textContent = '⧉ Duplicate Area';
     dup.onclick = function(){ window.openDuplicateRoom(roomId); };
     editBtn.parentNode.insertBefore(dup, editBtn.nextSibling);
   }
@@ -12039,7 +12039,7 @@ if (typeof _origRenderRooms === 'function') {
       dup.setAttribute('data-dup-room', '1');
       dup.style.cssText = 'font-size:12px;padding:6px 10px;margin-right:4px';
       dup.textContent = '⧉';
-      dup.title = 'Duplicate this location and its checklist';
+      dup.title = 'Duplicate this area and its checklist';
       dup.onclick = function(){ window.openDuplicateRoom(m[1]); };
       cell.insertBefore(dup, b.nextSibling);
     });
@@ -12052,7 +12052,7 @@ if (typeof _origRenderRooms === 'function') {
       if (!m || card.querySelector('[data-dup-room]')) return;
       var dup = document.createElement('span');
       dup.setAttribute('data-dup-room', '1');
-      dup.title = 'Duplicate this location and its checklist';
+      dup.title = 'Duplicate this area and its checklist';
       dup.textContent = '⧉';
       dup.onclick = function(ev){ ev.stopPropagation(); window.openDuplicateRoom(m[1]); };
       /* Footer row, beside the 📷 count — the top-right corner is already taken
@@ -13491,7 +13491,7 @@ function addLevelHeaders(){
         + 'padding-bottom:5px;border-bottom:2px solid ' + LVL_COLOR(o.l) + '55';
       h.innerHTML = '<span style="font-size:13px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:' + LVL_COLOR(o.l) + '">'
         + E(o.l || 'Level not set') + '</span>'
-        + '<span style="font-size:12px;font-weight:700;color:var(--muted)">' + n + ' location' + (n !== 1 ? 's' : '') + '</span>'
+        + '<span style="font-size:12px;font-weight:700;color:var(--muted)">' + n + ' area' + (n !== 1 ? 's' : '') + '</span>'
         + '<button onclick="bpOpenSetLevels()" data-bp-arrange="1" style="margin-left:auto;background:' + (o.l ? 'transparent' : '#0A84FF') + ';'
             + 'border:1.5px solid ' + (o.l ? 'var(--border)' : '#0A84FF') + ';color:' + (o.l ? 'var(--muted)' : '#fff') + ';'
             + 'border-radius:9px;padding:7px 12px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">'
@@ -13566,7 +13566,7 @@ window.bpOpenSetLevels = function(){
   body += '<button onclick="document.getElementById(\'bp-set-levels\').remove()" style="width:100%;margin-top:16px;background:#0A84FF;'
     + 'border:none;color:#fff;border-radius:12px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Done</button>';
   var old = document.querySelector('#bp-set-levels > div'); var st = old ? old.scrollTop : 0;
-  var w = sheet('bp-set-levels', 'Arrange Locations', body);
+  var w = sheet('bp-set-levels', 'Arrange Areas', body);
   if (st) w.firstChild.scrollTop = st;
 };
 window.bpMoveRoom = function(roomId, dir){
@@ -13666,7 +13666,7 @@ window.bpOpenSpacePicker = function(preJobId){
     + lab('Add to ' + lvl, col) + '<div style="display:flex;flex-wrap:wrap;gap:7px">' + presets + '</div>'
     + lab('✏️ Custom on ' + lvl)
     + '<div style="display:flex;gap:8px">'
-    + '<input id="bp-custom-area" placeholder="Type any location name…" style="flex:1;min-width:0;background:var(--card2,#222);'
+    + '<input id="bp-custom-area" placeholder="Type any area name…" style="flex:1;min-width:0;background:var(--card2,#222);'
     + 'border:1px solid var(--border,#2a2a2a);border-radius:10px;color:var(--text,#f0f0f0);font-size:15px;padding:12px 14px;font-family:inherit"/>'
     + '<button onclick="bpAddCustomArea(\'' + jobId + '\')" style="background:#0A84FF;border:none;color:#fff;border-radius:10px;'
     + 'padding:12px 18px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">Add</button></div>'
@@ -13674,7 +13674,7 @@ window.bpOpenSpacePicker = function(preJobId){
     + 'border:none;color:#fff;border-radius:12px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Done</button>';
   var keepScroll = document.querySelector('#bp-space-picker > div');
   var top = keepScroll ? keepScroll.scrollTop : 0;
-  var w = sheet('bp-space-picker', 'Add Locations', body);
+  var w = sheet('bp-space-picker', 'Add Areas', body);
   if (top) w.firstChild.scrollTop = top;
 };
 window.bpPickLevel = function(jobId, l){ window._bpPickLevel = l; window.bpOpenSpacePicker(jobId); };
@@ -13692,7 +13692,7 @@ window.bpTogglePreset = function(jobId, name){
   var hit = roomOnLevel(jobId, lvl, name);
   if (hit) {
     var n = (DB.punchlist||[]).filter(function(x){ return x.roomId === hit.id; }).length;
-    if (n && !confirm('"' + hit.name + '" has ' + n + ' checklist item' + (n !== 1 ? 's' : '') + '.\n\nRemove the location and its items?')) return;
+    if (n && !confirm('"' + hit.name + '" has ' + n + ' checklist item' + (n !== 1 ? 's' : '') + '.\n\nRemove the area and its items?')) return;
     bpRemoveFrom('rooms', function(r){ return r.id !== hit.id; });
     bpRemoveFrom('punchlist', function(x){ return x.roomId !== hit.id; });
     toast('Removed ' + hit.name);
@@ -13840,7 +13840,7 @@ if (!IS_DESK) {
   }
 }
 try { rerender(); } catch(e){}
-console.log('[BP] v2.70 locations by level ready');
+console.log('[BP] v2.70 areas by level ready');
 })();
 </script>
 <script>
@@ -13930,7 +13930,7 @@ function bpSelPaint(){
   else {
     rooms.forEach(function(r){ var g = items.filter(function(n){ return n.roomId === r.id; }); if (g.length) groups.push({room:r, items:g}); });
     var loose = items.filter(function(n){ return !rooms.some(function(r){ return r.id === n.roomId; }); });
-    if (loose.length) groups.push({room:{name:'General (no location)'}, items:loose});
+    if (loose.length) groups.push({room:{name:'General (no area)'}, items:loose});
   }
   var body = items.length ? '' : '<div style="padding:24px 0;text-align:center;color:var(--muted)">No items here yet.</div>';
   groups.forEach(function(g){
@@ -13985,7 +13985,7 @@ function bpDestPaint(){
     + '</select>';
   var rooms = byLevel((DB.rooms||[]).filter(function(r){ return r.jobId === DEST.jobId; }));
   var body = '<div style="font-size:14px;color:var(--muted);margin-bottom:4px">' + (isCopy
-      ? 'Copies start unchecked. Photos stay with the originals. Pick one or more locations.'
+      ? 'Copies start unchecked. Photos stay with the originals. Pick one or more areas.'
       : 'The items move with their photos and history. Pick one location.') + '</div>'
     + '<div style="' + LBL + '">Job</div>' + jobSel;
   var last = null;
@@ -13995,7 +13995,7 @@ function bpDestPaint(){
     body += rowLabel('<input type="checkbox" class="bp-dest-cb" value="' + r.id + '"' + (DEST.ids[r.id] ? ' checked' : '')
       + ' onchange="bpDestTick(this)" style="' + CB + '"/><span style="flex:1;font-size:15px;font-weight:700">' + E(r.name) + '</span>');
   });
-  if (!rooms.length) body += '<div style="padding:18px 0;color:var(--muted)">This job has no locations yet.</div>';
+  if (!rooms.length) body += '<div style="padding:18px 0;color:var(--muted)">This job has no areas yet.</div>';
   var foot = '<div style="display:flex;gap:8px">'
     + '<button onclick="bpSelPaintBack()" style="flex:1;background:var(--card2,#222);color:var(--text);border:1px solid var(--border,#2a2a2a);' + BTN.replace('border:none;','') + '">‹ Back</button>'
     + '<button id="bp-dest-go" onclick="bpDestGo()" style="flex:2;background:' + (isCopy ? '#0A84FF;color:#fff' : '#FF9F0A;color:#000') + ';' + BTN + '"></button></div>';
@@ -14007,7 +14007,7 @@ function destIds(){ return Object.keys(DEST.ids).filter(function(k){ return DEST
 function bpDestLabel(){
   var b = document.getElementById('bp-dest-go'); if (!b) return;
   var k = destIds().length, isCopy = DEST.mode === 'copy';
-  b.textContent = !k ? 'Pick a location' : isCopy ? 'Copy to ' + k + ' location' + (k !== 1 ? 's' : '') : 'Move here';
+  b.textContent = !k ? 'Pick an area' : isCopy ? 'Copy to ' + k + ' area' + (k !== 1 ? 's' : '') : 'Move here';
   b.disabled = !k; b.style.opacity = k ? '1' : '.4';
 }
 window.bpDestTick = function(cb){
@@ -14041,7 +14041,7 @@ window.bpDestGo = function(){
   var n = 0, msg;
   if (DEST.mode === 'copy') {
     dests.forEach(function(d){ items.forEach(function(it){ DB.punchlist.push(copyItem(it, d)); n++; }); });
-    msg = '📋 Copied ' + items.length + ' item' + (items.length !== 1 ? 's' : '') + ' to ' + (dests.length === 1 ? dests[0].name : dests.length + ' locations');
+    msg = '📋 Copied ' + items.length + ' item' + (items.length !== 1 ? 's' : '') + ' to ' + (dests.length === 1 ? dests[0].name : dests.length + ' areas');
   } else {
     var d = dests[0];
     items.forEach(function(it){ if (it.roomId === d.id) return; it.roomId = d.id; it.jobId = d.jobId || it.jobId || ''; it.updatedAt = now(); n++; });
@@ -14200,7 +14200,7 @@ window.bpDuplicateRoom = function(roomId){
   try { if (!IS_DESK && typeof currentJobId !== 'undefined' && currentJobId) renderJobDetail(currentJobId); } catch(e){}
   try { if (!IS_DESK && typeof currentRoomId !== 'undefined' && currentRoomId === roomId) openRoomDetail(roomId); } catch(e){}
   try { if (IS_DESK && typeof renderDesktopRooms === 'function') renderDesktopRooms(); } catch(e){}
-  toast('⧉ Created ' + names.length + ' location' + (names.length !== 1 ? 's' : '') + (made ? ' · ' + made + ' checklist items' : ''));
+  toast('⧉ Created ' + names.length + ' area' + (names.length !== 1 ? 's' : '') + (made ? ' · ' + made + ' checklist items' : ''));
 };
 console.log('[BP] v2.71 select / copy / move + duplicate by level ready');
 })();
@@ -14269,7 +14269,7 @@ if (window.BP_SPACE_PRESETS && !window.BP_SPACE_PRESETS.Exterior.some(function(p
   ext.splice(at < 0 ? ext.length : at + 1, 0, {n:'Handicap Ramp', type:'Exterior'});
 }
 try { if (typeof renderDesktopRooms === 'function' && document.getElementById('modal-new-room')) renderDesktopRooms(); else if (typeof renderRooms === 'function') renderRooms(); } catch(e){}
-console.log('[BP] v2.73 location icons ready');
+console.log('[BP] v2.73 area icons ready');
 })();
 </script>
 <script>
@@ -14445,13 +14445,13 @@ function paintSheet(){
           + (sug.kitchen ? ' (kitchen +4,000)' : '') + ': about <b style="color:var(--text)">' + fmtBtu(sug.btu) + '</b>. '
           + '<button onclick="bpDesignBtu(' + sug.btu + ',1)" style="background:none;border:none;color:#0A84FF;font-weight:800;font-size:13px;cursor:pointer;padding:0;font-family:inherit">Use it</button>'
           + '<br>More sun, high ceilings or lots of people → go one size up.</div>'
-        : '<div style="font-size:13px;color:var(--muted);margin-top:6px">Add the room\'s width × length (Edit Location) and I\'ll suggest a size.</div>')
+        : '<div style="font-size:13px;color:var(--muted);margin-top:6px">Add the room\'s width × length (Edit Area) and I\'ll suggest a size.</div>')
       + '<div style="' + LBL + '">Heat</div><div style="display:flex;flex-wrap:wrap;gap:7px">'
       + HEAT_TYPES.map(function(t){ return chip('heat', t, (d.heat||[]).indexOf(t) >= 0); }).join('') + '</div>'
       + '<div style="margin-top:6px">' + stepper('heatUnits', 'Radiators / baseboards / registers', d.heatUnits) + '</div>';
   }
   body += '<div style="' + LBL + '">Notes</div>'
-    + '<textarea id="bp-dz-notes" rows="3" placeholder="Anything else: sizes, brands, locations…" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;'
+    + '<textarea id="bp-dz-notes" rows="3" placeholder="Anything else: sizes, brands, areas…" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;'
     + 'border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text);font-size:15px;font-family:inherit;resize:vertical">' + E(d.notes||'') + '</textarea>';
   var foot = '<button onclick="bpSaveDesign()" style="width:100%;background:#0A84FF;color:#fff;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit">Save Design</button>';
   var old = document.querySelector('#bp-design .bp-sheet-body'); var st = old ? old.scrollTop : 0;
@@ -15029,7 +15029,7 @@ window.bpOpenCamPhoto = function(key){
   PD.key = key; PD.tags = e.tags.slice(); PD.roomId = e.roomId; PD.jobId = e.jobId;
   var d = e.date ? new Date(e.date) : null;
   var when = d && !isNaN(d) ? d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' }) + ' · ' + d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) : '';
-  var meta = [['Job', jobName(e.jobId) || '—'], ['Location', roomName(e.roomId) || 'Unfiled'], ['Taken', when || '—']];
+  var meta = [['Job', jobName(e.jobId) || '—'], ['Area', roomName(e.roomId) || 'Unfiled'], ['Taken', when || '—']];
   if (e.geo) meta.push(['Where', e.geo]); if (e.weather) meta.push(['Weather', e.weather]); if (e.by) meta.push(['By', e.by]);
   var body = '<img src="' + img(e.src) + '" style="width:100%;max-height:52vh;object-fit:contain;border-radius:12px;background:#000;display:block;margin-bottom:12px"/>';
   if (e.gallery) {
@@ -17751,7 +17751,7 @@ var ICONS = {
   eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   eyeoff:'<path d="M3 3l18 18M10.6 5.2A9.5 9.5 0 0112 5c6.4 0 10 7 10 7a17 17 0 01-3.2 4M6.5 6.7C3.9 8.5 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.2"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
-  pan:'<circle cx="9" cy="13" r="6.5"/><circle cx="9" cy="13" r="2.6"/><path d="M15.5 13H22"/>',
+  pan:'<path d="M5 11h14"/><path d="M6.5 11v7a2.5 2.5 0 002.5 2.5h6a2.5 2.5 0 002.5-2.5v-7"/><path d="M2.5 13.5H6M18 13.5h3.5"/><path d="M10.5 8.2h3"/><path d="M9.5 3.5c0 1.2 1.3 1.3 1.3 2.5M14 3.5c0 1.2 1.3 1.3 1.3 2.5"/>',
   shower:'<path d="M4 21V7a3.5 3.5 0 013.5-3.5H12"/><path d="M12 6.5a6 6 0 016 6H12z"/><path d="M10.5 16v2.5M14 16v3.5M17.5 16v2.5"/>',
   bed:'<path d="M3 19V6M3 15h18v4M21 15v-3a3 3 0 00-3-3h-8v6"/><circle cx="6.5" cy="11.5" r="1.8"/>',
   sofa:'<path d="M5 11V8a2 2 0 012-2h10a2 2 0 012 2v3"/><path d="M3 12.5a2 2 0 014 0V15h10v-2.5a2 2 0 014 0V18H3zM5 18v2M19 18v2"/>',
@@ -18051,7 +18051,7 @@ function kindBarHtml(){
       + (on ? '#BF5AF2' : 'var(--border)') + ';background:' + (on ? 'rgba(191,90,242,.13)' : 'var(--card2)')
       + ';color:' + (on ? '#BF5AF2' : 'var(--muted)') + ';font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + label + '</button>';
   }
-  return '<span class="bp-kindbar">' + b('All kinds','All') + b('Rooms','room') + b('Locations','location') + '</span>';
+  return '<span class="bp-kindbar">' + b('All kinds','All') + b('Rooms','room') + b('Areas','location') + '</span>';
 }
 function injectKind(){
   var btns = document.querySelectorAll('[onclick^="bpSetAreaSpace("]');
@@ -18110,7 +18110,7 @@ safe(function(){
         + (on ? c : 'var(--border,#2a2a2a)') + ';background:' + (on ? 'rgba(191,90,242,.14)' : 'transparent') + ';color:' + (on ? c : 'var(--muted)')
         + ';font-size:15px;font-weight:800;cursor:pointer;font-family:inherit"><span class="bp-ic"><svg viewBox="0 0 24 24">' + ICONS[ic] + '</svg></span> ' + label + '</button>';
     }
-    bar.innerHTML = kb('Rooms','room','door') + kb('Locations','location','pin');
+    bar.innerHTML = kb('Rooms','room','door') + kb('Areas','location','pin');
     if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(bar, anchor); else host.firstChild && host.firstChild.appendChild(bar);
     if (kind === 'location' && first && first.getAttribute('onclick').indexOf('bpTogglePreset(') === 0) {
       var chipBox = first.parentNode, lvl = window._bpPickLevel || 'Level 1';
@@ -18129,8 +18129,8 @@ safe(function(){
     }
     var labs = host.querySelectorAll('div');
     [].forEach.call(labs, function(d){
-      if (d.children.length === 0 && /^Add to /.test(d.textContent)) d.textContent = (kind === 'location' ? 'Locations on ' : 'Rooms on ') + (window._bpPickLevel || 'Level 1');
-      if (d.children.length === 0 && /^✏️ Custom on|^Custom on/.test(d.textContent)) d.textContent = 'Custom ' + (kind === 'location' ? 'location' : 'room') + ' on ' + (window._bpPickLevel || 'Level 1');
+      if (d.children.length === 0 && /^Add to /.test(d.textContent)) d.textContent = (kind === 'location' ? 'Areas on ' : 'Rooms on ') + (window._bpPickLevel || 'Level 1');
+      if (d.children.length === 0 && /^✏️ Custom on|^Custom on/.test(d.textContent)) d.textContent = 'Custom ' + (kind === 'location' ? 'area' : 'room') + ' on ' + (window._bpPickLevel || 'Level 1');
     });
   }
   ['bpTogglePreset','bpAddCustomArea'].forEach(function(nm){
@@ -18176,7 +18176,7 @@ function levelize(){
         h.setAttribute('data-bp-lvl3', '1');
         h.style.cssText = 'grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:' + (last === null ? '0' : '8px') + ' 0 -2px;padding-bottom:5px;border-bottom:2px solid ' + LC(o.l) + '55';
         h.innerHTML = '<span style="font-size:13px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:' + LC(o.l) + '">' + E(o.l || 'Level not set')
-          + '</span><span style="font-size:12px;font-weight:700;color:var(--muted)">' + n + ' location' + (n !== 1 ? 's' : '') + '</span>';
+          + '</span><span style="font-size:12px;font-weight:700;color:var(--muted)">' + n + ' area' + (n !== 1 ? 's' : '') + '</span>';
         grid.appendChild(h);
         last = o.l;
       }
@@ -18202,7 +18202,7 @@ safe(function(){
   if (sub) sub.textContent = 'Finished jobs, stored safely in your private cloud and removed from daily sync so the app stays fast. Restore any job here.';
 });
 
-console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job on every tab · auto tax · rooms/locations');
+console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job on every tab · auto tax · rooms/areas');
 })();
 </script>
 <script>
@@ -18270,7 +18270,7 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
   function safe(fn){ try { return fn(); } catch(e){ console.warn('[BP v3.11]', e); } }
   var IC = window.BP_ICONS || {};
   /* three new line icons, same 24px stroke style as the rest */
-  IC.kitchen  = '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8h16"/><circle class="f" cx="8" cy="5.5" r=".9"/><circle class="f" cx="12" cy="5.5" r=".9"/><circle class="f" cx="16" cy="5.5" r=".9"/><rect x="7" y="11" width="10" height="7" rx="1"/>';
+  IC.kitchen  = '<path d="M5 11h14"/><path d="M6.5 11v7a2.5 2.5 0 002.5 2.5h6a2.5 2.5 0 002.5-2.5v-7"/><path d="M2.5 13.5H6M18 13.5h3.5"/><path d="M10.5 8.2h3"/><path d="M9.5 3.5c0 1.2 1.3 1.3 1.3 2.5M14 3.5c0 1.2 1.3 1.3 1.3 2.5"/>';
   IC.bathroom = '<path d="M7 3h10v5H7z"/><path d="M5 11h14c0 4-2.5 7-7 7s-7-3-7-7z"/><path d="M9.5 18L8.5 21h7l-1-3"/>';
   IC.sidedoor = '<path d="M10 21V4.5A1.5 1.5 0 0111.5 3h6A1.5 1.5 0 0119 4.5V21M8 21h12"/><circle class="f" cx="16.6" cy="12.5" r=".9"/><path d="M2 12h5M5 9.5L7.5 12 5 14.5"/>';
   function svgHtml(name){ return '<span class="bp-ic" data-v311="1" role="img" aria-label="' + name + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + IC[name] + '</svg></span>'; }
@@ -18389,10 +18389,10 @@ function locations(){
 }
 window.bpConvertAllToRooms = function(){
   var list = locations();
-  if (!list.length) { say('No locations to convert'); return; }
+  if (!list.length) { say('No areas to convert'); return; }
   var j = scopeJob(), jn = '';
   if (j) { var jb = (DB.jobs || []).find(function(x){ return x.id === j; }); jn = jb ? ' on ' + jb.name : ''; }
-  if (!confirm('Turn ' + list.length + ' location' + (list.length !== 1 ? 's' : '') + jn + ' into rooms?\n\nNothing is deleted. You can undo it right after.')) return;
+  if (!confirm('Turn ' + list.length + ' area' + (list.length !== 1 ? 's' : '') + jn + ' into rooms?\n\nNothing is deleted. You can undo it right after.')) return;
   var stamp = (typeof now === 'function') ? now() : new Date().toISOString();
   window._bpLastConv = list.map(function(r){ return r.id; });
   list.forEach(function(r){ r.kindWas = r.kind || 'location'; r.kind = 'room'; r.updatedAt = stamp; });
@@ -18408,7 +18408,7 @@ window.bpUndoConvert = function(){
   });
   window._bpLastConv = [];
   persist(); repaint();
-  say('Undone — back to locations');
+  say('Undone — back to areas');
 };
 window.bpSetRoomKind = function(id, kind){
   var r = (DB.rooms || []).find(function(x){ return x.id === id; });
@@ -18416,7 +18416,7 @@ window.bpSetRoomKind = function(id, kind){
   r.kindWas = kindOf(r); r.kind = kind;
   r.updatedAt = (typeof now === 'function') ? now() : new Date().toISOString();
   persist(); repaint();
-  say(kind === 'room' ? 'Now a room' : 'Now a location');
+  say(kind === 'room' ? 'Now a room' : 'Now an area');
 };
 
 /* ── banner on the Rooms screen ── */
@@ -18435,7 +18435,7 @@ function banner(){
   }
   var btn = 'padding:9px 14px;border-radius:10px;border:none;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;';
   var h = '<span style="flex:1;min-width:140px;font-size:13px;font-weight:700;color:var(--text)">'
-    + (n ? n + ' location' + (n !== 1 ? 's' : '') + ' that could be rooms' : 'Converted') + '</span>'
+    + (n ? n + ' area' + (n !== 1 ? 's' : '') + ' that could be rooms' : 'Converted') + '</span>'
     + (n ? '<button onclick="bpConvertAllToRooms()" style="' + btn + 'background:#BF5AF2;color:#fff">Convert to rooms</button>' : '')
     + (undo ? '<button onclick="bpUndoConvert()" style="' + btn + 'background:transparent;color:#BF5AF2;border:1.5px solid #BF5AF2">Undo</button>' : '');
   if (el.__h !== h) { el.innerHTML = h; el.__h = h; }
@@ -18452,7 +18452,7 @@ function chipsFor(id){
       + (on ? '#BF5AF2' : 'var(--border)') + ';background:' + (on ? 'rgba(191,90,242,.15)' : 'transparent') + ';color:' + (on ? '#BF5AF2' : 'var(--muted)')
       + ';font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit">' + (on ? '✓ ' : '') + label + '</button>';
   }
-  return b('Room', 'room') + b('Location', 'location');
+  return b('Room', 'room') + b('Area', 'location');
 }
 function switcher(){
   /* field app: next to the Copy button in the room header */
@@ -18487,6 +18487,38 @@ function switcher(){
   }
 }
 setInterval(function(){ safe(banner); safe(switcher); }, 900);
-console.log('[BP] v3.12 ready — convert locations to rooms');
+console.log('[BP] v3.12 ready — convert areas to rooms');
+})();
+</script>
+<script>
+/* ══ v3.18 — Start / Completion dates can never overlap (identical block in both apps) ══════════
+   Stan (Oct 3): "calendar start and completion dates are overlapping again"
+   iPhone Safari gives a date box a minimum width of its own, so two side by side spill over each other.
+   1) every date box drops the native min-width (appearance:none, width:100%, min-width:0)
+   2) any two date boxes sitting side by side are stacked one under the other on a phone-width screen
+   (a marker class is added by a small watcher so every form — job, area, edit, Mac — is covered). */
+(function(){
+  if (window.__bpDatePair) return; window.__bpDatePair = 1;
+  var st = document.createElement('style'); st.id = 'bp-v318-css';
+  st.textContent = [
+    'input[type="date"]{-webkit-appearance:none;appearance:none;width:100%;min-width:0;max-width:100%;box-sizing:border-box;display:block}',
+    '@media (max-width:620px){.bp-datepair{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important}',
+    '.bp-datepair>*{min-width:0!important;width:100%!important;flex:none!important;margin-bottom:0!important}}'
+  ].join('\n');
+  document.head.appendChild(st);
+  function mark(){
+    try {
+      var dates = document.querySelectorAll('input[type="date"]'), seen = [];
+      for (var i = 0; i < dates.length; i++) {
+        var p = dates[i].parentElement; if (!p) continue;
+        var row = p.parentElement; if (!row || seen.indexOf(row) >= 0) continue;
+        var n = 0;
+        for (var k = 0; k < row.children.length; k++) if (row.children[k].querySelector && row.children[k].querySelector('input[type="date"]')) n++;
+        if (n >= 2) { seen.push(row); if (!row.classList.contains('bp-datepair')) row.classList.add('bp-datepair'); }
+      }
+    } catch(e){ console.warn('[BP v3.18]', e); }
+  }
+  setInterval(mark, 700); mark();
+  console.log('[BP] v3.18 ready — date boxes never overlap');
 })();
 </script>
