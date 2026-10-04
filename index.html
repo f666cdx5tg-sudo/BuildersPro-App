@@ -1433,7 +1433,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.19';
+var APP_VERSION = '3.20';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -20591,7 +20591,7 @@ var ICONS = {
   eyeoff:'<path d="M3 3l18 18M10.6 5.2A9.5 9.5 0 0112 5c6.4 0 10 7 10 7a17 17 0 01-3.2 4M6.5 6.7C3.9 8.5 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.2"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
   pan:'<path d="M5 11h14"/><path d="M6.5 11v7a2.5 2.5 0 002.5 2.5h6a2.5 2.5 0 002.5-2.5v-7"/><path d="M2.5 13.5H6M18 13.5h3.5"/><path d="M10.5 8.2h3"/><path d="M9.5 3.5c0 1.2 1.3 1.3 1.3 2.5M14 3.5c0 1.2 1.3 1.3 1.3 2.5"/>',
-  shower:'<path d="M4 21V7a3.5 3.5 0 013.5-3.5H12"/><path d="M12 6.5a6 6 0 016 6H12z"/><path d="M10.5 16v2.5M14 16v3.5M17.5 16v2.5"/>',
+  shower:'<path d="M3 12h18v2.5a4.5 4.5 0 01-4.5 4.5h-9A4.5 4.5 0 013 14.5z"/><path d="M6 12V6.5A2.5 2.5 0 018.5 4H10"/><path d="M7 19l-1 2M17 19l1 2"/><circle class="f" cx="13" cy="7.5" r=".9"/><circle class="f" cx="16" cy="6" r=".9"/><circle class="f" cx="17" cy="9" r=".9"/>',
   bed:'<path d="M3 19V6M3 15h18v4M21 15v-3a3 3 0 00-3-3h-8v6"/><circle cx="6.5" cy="11.5" r="1.8"/>',
   sofa:'<path d="M5 11V8a2 2 0 012-2h10a2 2 0 012 2v3"/><path d="M3 12.5a2 2 0 014 0V15h10v-2.5a2 2 0 014 0V18H3zM5 18v2M19 18v2"/>',
   thermo:'<path d="M10 14.5V5a2 2 0 014 0v9.5a4 4 0 11-4 0zM12 9v7"/>',
@@ -21111,7 +21111,7 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
   var IC = window.BP_ICONS || {};
   /* three new line icons, same 24px stroke style as the rest */
   IC.kitchen  = '<path d="M5 11h14"/><path d="M6.5 11v7a2.5 2.5 0 002.5 2.5h6a2.5 2.5 0 002.5-2.5v-7"/><path d="M2.5 13.5H6M18 13.5h3.5"/><path d="M10.5 8.2h3"/><path d="M9.5 3.5c0 1.2 1.3 1.3 1.3 2.5M14 3.5c0 1.2 1.3 1.3 1.3 2.5"/>';
-  IC.bathroom = '<path d="M7 3h10v5H7z"/><path d="M5 11h14c0 4-2.5 7-7 7s-7-3-7-7z"/><path d="M9.5 18L8.5 21h7l-1-3"/>';
+  IC.bathroom = '<path d="M3 12h18v2.5a4.5 4.5 0 01-4.5 4.5h-9A4.5 4.5 0 013 14.5z"/><path d="M6 12V6.5A2.5 2.5 0 018.5 4H10"/><path d="M7 19l-1 2M17 19l1 2"/><circle class="f" cx="13" cy="7.5" r=".9"/><circle class="f" cx="16" cy="6" r=".9"/><circle class="f" cx="17" cy="9" r=".9"/>';
   IC.sidedoor = '<path d="M10 21V4.5A1.5 1.5 0 0111.5 3h6A1.5 1.5 0 0119 4.5V21M8 21h12"/><circle class="f" cx="16.6" cy="12.5" r=".9"/><path d="M2 12h5M5 9.5L7.5 12 5 14.5"/>';
   function svgHtml(name){ return '<span class="bp-ic" data-v311="1" role="img" aria-label="' + name + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + IC[name] + '</svg></span>'; }
   window.bpRoomIconHtml = function(name, type){
