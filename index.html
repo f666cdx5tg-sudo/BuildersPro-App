@@ -1433,7 +1433,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.15';
+var APP_VERSION = '3.16';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -2516,7 +2516,7 @@ function buildJobCard(job, mini) {
     + '<div class="card-body">'
     + '<div class="card-row">'
     + '<div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:' + stDot + '"></div>'
-    + '<div style="flex:1;min-width:0"><div class="job-name">' + esc(job.name) + '</div>'
+    + '<div style="flex:1;min-width:0"><div class="job-name" data-bp-wrap="1" style="white-space:normal;overflow-wrap:anywhere">' + esc(job.name) + '</div>'
     + (function(){
         var csz=[[job.city,job.state].filter(Boolean).join(', '),job.zip].filter(Boolean).join(' ');
         var em=(typeof clientEmailFor==='function'?clientEmailFor(job):'')||job.clientEmail||'';
@@ -20358,6 +20358,7 @@ console.log('[BP] v2.95 field-test fixes ready');
   function ok(el){
     if (!el || el.nodeType !== 1 || SKIP.test(el.tagName)) return false;
     if (el.isContentEditable || el.closest('[contenteditable="true"],textarea,select,#toast,.toast,[id^="bp-toast"]')) return false;
+    if (el.closest('[data-bp-wrap]')) return false;   /* v3.16: Jobs-card names wrap instead of shrinking */
     if (el.querySelector('div,p,ul,ol,table,button,label,textarea,input,select,img')) return false;   // only leaf-ish lines
     var t = el.textContent || '';
     return t.length <= 80;
