@@ -1433,7 +1433,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.30';
+var APP_VERSION = '3.31';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1677,12 +1677,36 @@ function bpRenderZoomButtons() {
   });
 }
 
+/* v3.31 — diagnostic only. Tap the version number under the logo to see how
+   the phone measures its screen. Used to find why the tab bar ends above the
+   bottom edge on Stan's iPhone. Changes nothing. */
+function bpShowScreenInfo() {
+  try {
+    var p = function(css){ var d = document.createElement('div'); d.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:' + css; document.documentElement.appendChild(d); var h = Math.round(d.getBoundingClientRect().height * 10) / 10; d.remove(); return h; };
+    var nav = document.querySelector('.nav'), nr = nav ? nav.getBoundingClientRect() : {top:0,bottom:0};
+    var vv = window.visualViewport;
+    var L = [
+      'inner ' + innerWidth + ' x ' + innerHeight,
+      'visualViewport ' + (vv ? Math.round(vv.width) + ' x ' + Math.round(vv.height) + ' (scale ' + vv.scale + ', top ' + Math.round(vv.offsetTop) + ')' : 'none'),
+      'html clientH ' + document.documentElement.clientHeight + ', body H ' + Math.round(document.body.getBoundingClientRect().height),
+      'screen ' + screen.width + ' x ' + screen.height + ' (avail ' + screen.availHeight + '), outerH ' + outerHeight,
+      '100vh ' + p('100vh') + ', 100svh ' + p('100svh') + ', 100lvh ' + p('100lvh') + ', 100dvh ' + p('100dvh'),
+      'inset top ' + p('env(safe-area-inset-top)') + ', bottom ' + p('env(safe-area-inset-bottom)'),
+      'nav top ' + Math.round(nr.top) + ', bottom ' + Math.round(nr.bottom) + ', style.bottom ' + (nav ? nav.style.bottom : ''),
+      'standalone ' + (navigator.standalone === true) + ', display-mode ' + (window.matchMedia('(display-mode: standalone)').matches ? 'standalone' : 'browser'),
+      'zoom ' + document.body.style.zoom + ', dpr ' + devicePixelRatio,
+      'version ' + APP_VERSION
+    ];
+    alert(L.join('\n'));
+  } catch (e) { alert('info failed: ' + e); }
+}
+
 function init() {
   bpApplyZoom();
   var vEl = document.getElementById('app-version-display');
   if (vEl) vEl.textContent = APP_VERSION;
   var vBadge = document.getElementById('home-version-badge');
-  if (vBadge) vBadge.textContent = 'v' + APP_VERSION;
+  if (vBadge) { vBadge.textContent = 'v' + APP_VERSION; vBadge.onclick = bpShowScreenInfo; }
   var vLock = document.getElementById('bp-lock-version');
   if (vLock) vLock.textContent = 'v' + APP_VERSION;
   loadSyncSettings();
