@@ -1433,7 +1433,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.14';
+var APP_VERSION = '3.15';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1683,6 +1683,15 @@ function todayStr() {
 }
 /* v3.02: every date shown in the app is MM/DD/YYYY. Date-only strings (YYYY-MM-DD) are read
    as plain calendar dates so they never slip a day across time zones. */
+function bpSameAddr(name, addr) {
+  /* Stan: job names are usually the street address — don't print it twice on the card. */
+  function n(s){ return String(s||'').toLowerCase().replace(/\./g,'').replace(/,.*$/,'')
+    .replace(/\bstreet\b/g,'st').replace(/\bavenue\b/g,'ave').replace(/\broad\b/g,'rd').replace(/\bdrive\b/g,'dr')
+    .replace(/\blane\b/g,'ln').replace(/\bboulevard\b/g,'blvd').replace(/\bcourt\b/g,'ct').replace(/\bplace\b/g,'pl')
+    .replace(/[^a-z0-9]+/g,' ').trim(); }
+  var a = n(addr), b = n(name);
+  return !!a && a === b;
+}
 function bpMDY(v) {
   if (!v) return '';
   var m = /^(\d{4})-(\d{2})-(\d{2})(?![\d])/.exec(String(v));
@@ -2512,7 +2521,7 @@ function buildJobCard(job, mini) {
         var csz=[[job.city,job.state].filter(Boolean).join(', '),job.zip].filter(Boolean).join(' ');
         var em=(typeof clientEmailFor==='function'?clientEmailFor(job):'')||job.clientEmail||'';
         var L=function(v,st){ return '<div style="font-size:13px;color:var(--muted);padding:1px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(st||'')+'">'+(v?v:'<span style="opacity:.4">\u2014</span>')+'</div>'; };
-        return L(esc(job.address||''))+L(esc(csz))+L(job.client?esc(job.client):'')+L(em?esc(em):'')+L(job.clientPhone?esc(bpPhone(job.clientPhone)):'')+L(contractNow?'$'+contractNow.toLocaleString()+(bpCOApproved(job.id)?' \u21b3CO':''):'','font-weight:700;color:var(--text)');
+        return (bpSameAddr(job.name,job.address)?'':L(esc(job.address||'')))+L(esc(csz))+L(job.client?esc(job.client):'')+L(em?esc(em):'')+L(job.clientPhone?esc(bpPhone(job.clientPhone)):'')+L(contractNow?'$'+contractNow.toLocaleString()+(bpCOApproved(job.id)?' \u21b3CO':''):'','font-weight:700;color:var(--text)');
       })()
     + '</div>'
     + '<span class="chip ' + statusColor + '">' + job.status + '</span>'

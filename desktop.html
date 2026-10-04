@@ -1610,7 +1610,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.14';
+var APP_VERSION = '3.15';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1709,6 +1709,15 @@ function resolveJobClientEmail(job) {
 function fmt$  (n) { return '$' + (+n||0).toLocaleString(); }
 /* v3.02: every date shown in the app is MM/DD/YYYY. Date-only strings (YYYY-MM-DD) are read
    as plain calendar dates so they never slip a day across time zones. */
+function bpSameAddr(name, addr) {
+  /* Stan: job names are usually the street address — don't print it twice on the card. */
+  function n(s){ return String(s||'').toLowerCase().replace(/\./g,'').replace(/,.*$/,'')
+    .replace(/\bstreet\b/g,'st').replace(/\bavenue\b/g,'ave').replace(/\broad\b/g,'rd').replace(/\bdrive\b/g,'dr')
+    .replace(/\blane\b/g,'ln').replace(/\bboulevard\b/g,'blvd').replace(/\bcourt\b/g,'ct').replace(/\bplace\b/g,'pl')
+    .replace(/[^a-z0-9]+/g,' ').trim(); }
+  var a = n(addr), b = n(name);
+  return !!a && a === b;
+}
 function bpMDY(v) {
   if (!v) return '';
   var m = /^(\d{4})-(\d{2})-(\d{2})(?![\d])/.exec(String(v));
@@ -2605,7 +2614,7 @@ function renderDesktopJobs() {
         var csz=[[j.city,j.state].filter(Boolean).join(', '),j.zip].filter(Boolean).join(' ');
         var cEmail=(typeof clientEmailFor==='function'?clientEmailFor(j):'')||j.clientEmail||'';
         var L=function(v,st){ return '<div style="'+(st||'font-size:12px;color:var(--muted)')+';padding:1px 0">'+(v?v:'<span style="opacity:.4">—</span>')+'</div>'; };
-        var cell='<div class="bp-jt-name" style="font-size:17px;padding:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(j.name)+'</div>'+L(esc(j.address||''))+L(esc(csz))+L(j.client?esc(j.client):'')+L(cEmail?esc(cEmail):'')+L(j.clientPhone?esc(bpPhone(j.clientPhone)):'')+L((+j.contract||0)?fmt$(j.contract):'','font-size:12px;font-weight:700;color:var(--text)');
+        var cell='<div class="bp-jt-name" style="font-size:17px;padding:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(j.name)+'</div>'+(bpSameAddr(j.name,j.address)?'':L(esc(j.address||'')))+L(esc(csz))+L(j.client?esc(j.client):'')+L(cEmail?esc(cEmail):'')+L(j.clientPhone?esc(bpPhone(j.clientPhone)):'')+L((+j.contract||0)?fmt$(j.contract):'','font-size:12px;font-weight:700;color:var(--text)');
         return '<tr onclick="openJobDetail(\''+j.id+'\')" style="cursor:pointer"'+(addr?' title="'+esc(addr)+'"':'')+'>'
           +'<td style="white-space:nowrap">'+cell+'</td>'
           +'<td onclick="event.stopPropagation()" style="min-width:190px"><span class="badge '+({Active:'badge-ok',Pending:'badge-warn',Complete:'badge-green','On Hold':'badge-red'}[j.status]||'badge-muted')+'">'+j.status+'</span>'
