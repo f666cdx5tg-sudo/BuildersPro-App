@@ -1435,7 +1435,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.34';
+var APP_VERSION = '3.35';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -15127,6 +15127,13 @@ window.bpFitNums = function() {
        strip, so no inset padding under the buttons (JS in bpPinNav does the
        same; this rule just avoids a flash before it runs). */
     '@media (display-mode: browser){.nav{padding-bottom:6px!important}}',
+    /* v3.35 — Stan (home-screen app, Oct 4): a ~62pt strip of page colour still
+       showed UNDER the tab bar. His iPhone's page ends about one status-bar
+       height above the screen bottom, and the bar can't be pushed past the
+       page edge (v3.30). What shows below is the page's own background, so
+       paint that the same colour as the bar: the bar then runs to the bottom
+       edge like a normal iPhone tab bar. The body keeps its own colour. */
+    'html{background:var(--card)!important}',
     /* v2.99 — Money screen: tabs become ONE slim scrolling row instead of two
        rows of tall tiles, so the numbers show without scrolling. */
     '#ftab-grid{display:flex!important;gap:6px!important;overflow-x:auto!important;padding:0 16px 8px!important;-webkit-overflow-scrolling:touch;scrollbar-width:none}',
