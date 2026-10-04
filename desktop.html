@@ -1610,7 +1610,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.23';
+var APP_VERSION = '3.24';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -9340,7 +9340,7 @@ function renderDesktopJobDetail(jobId) {
 
   // ── Photos ──
   html += '<div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between">Photos ('+photos.length+')'
-    + '<label class="btn btn-ghost" style="font-size:12px;padding:6px 10px;cursor:pointer">+ Add Photo<input type="file" accept="image/*" multiple style="display:none" onchange="addDesktopPhotosForJob(this,\''+jobId+'\')"/></label>'
+    + '<label class="btn btn-ghost" style="font-size:12px;padding:6px 10px;cursor:pointer">+ Add Photo<input type="file" accept="image/*" multiple style="display:none" onchange="bpAddPhotoToJob(this,\''+jobId+'\')"/></label>'
     + '</div>'
     + '<div class="grid grid-4" style="margin-bottom:8px">'
     + (photos.length ? photos.slice().reverse().map(function(ph){
@@ -18664,5 +18664,72 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     arrow.parentNode.insertBefore(b, arrow.nextSibling);
   });
   console.log('[BP] v3.19 ready — text on photo markup');
+})();
+</script>
+<script>
+/* ══ v3.24 — "Add Photo" on a job asks which AREA the photo goes in (identical block in both apps) ══
+   Stan (Oct 3): "the add photo on jobs is stupid"
+   Before: Add Photo on a job dropped every picture into "Unfiled" — you had to open each one and file it later.
+   Now: pick the photo(s), then one tap on the area they belong to (or "No area"). Jobs with no areas yet add
+   straight away, as before. Photos added from inside an area, and the Photos tab, are untouched. */
+(function(){
+  if (window.__bpPhotoArea) return; window.__bpPhotoArea = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  function E(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function rooms(jobId){
+    var list = (DB.rooms || []).filter(function(r){ return r.jobId === jobId; });
+    if (typeof window.bpRoomCmp === 'function') list.sort(window.bpRoomCmp);
+    return list;
+  }
+  function addTo(input, jobId, roomId){
+    if (IS_DESK) {
+      var before = (DB.photos || []).length;
+      window.addDesktopPhotosForJob(input, jobId);
+      if (roomId) {                                   // the reader is async: tag whatever lands
+        var tries = 0, t = setInterval(function(){
+          var added = (DB.photos || []).slice(before);
+          added.forEach(function(p){ if (!p.roomId) p.roomId = roomId; });
+          if (added.length || ++tries > 24) {
+            clearInterval(t);
+            if (added.length) { try { saveDB(); renderDesktopPhotos(); if (currentJobId === jobId) renderDesktopJobDetail(jobId); } catch(e){} }
+          }
+        }, 250);
+      }
+    } else {
+      window.addPhotos(input, jobId, roomId || '');
+      setTimeout(function(){ try { input.value = ''; } catch(e){} }, 3000);
+    }
+  }
+  function close(){ var o = document.getElementById('bp-pa-sheet'); if (o) o.remove(); }
+  window.bpAddPhotoToJob = function(input, jobId){
+    if (!input || !input.files || !input.files.length) return;
+    var list = rooms(jobId);
+    if (!list.length) return addTo(input, jobId, '');
+    var n = input.files.length;
+    close();
+    var o = document.createElement('div'); o.id = 'bp-pa-sheet';
+    o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);display:flex;align-items:' + (IS_DESK ? 'center' : 'flex-end') + ';justify-content:center';
+    var btn = 'display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;text-align:left;padding:13px 14px;margin-bottom:8px;border-radius:12px;border:1px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:15px;font-weight:700;cursor:pointer;font-family:inherit';
+    var h = '<div style="width:100%;max-width:460px;max-height:82vh;display:flex;flex-direction:column;background:var(--card,#1c1c1e);border-radius:' + (IS_DESK ? '16px' : '18px 18px 0 0') + ';padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))">'
+      + '<div style="font-size:17px;font-weight:800;margin-bottom:4px">Which area is ' + (n === 1 ? 'this photo' : 'each of these ' + n + ' photos') + ' in?</div>'
+      + '<div style="font-size:12.5px;color:var(--muted,#999);margin-bottom:12px">All ' + n + ' go to the area you tap.</div>'
+      + '<div style="overflow-y:auto;flex:1;min-height:0">';
+    list.forEach(function(r){
+      var ic = (window.bpRoomIconHtml && window.bpRoomIconHtml(r.name, r.type)) || (window.BPX && BPX.icon ? BPX.icon(r) : '');
+      var lv = (window.bpLevelOf ? window.bpLevelOf(r) : '') || '';
+      h += '<button data-room="' + E(r.id) + '" style="' + btn + '"><span style="width:26px;text-align:center;flex-shrink:0">' + ic + '</span><span style="flex:1;min-width:0">' + E(r.name) + '</span>'
+        + (lv ? '<span style="font-size:11px;font-weight:700;color:var(--muted,#999)">' + E(lv) + '</span>' : '') + '</button>';
+    });
+    h += '<button data-room="" style="' + btn + ';border-style:dashed"><span style="width:26px;text-align:center;flex-shrink:0">—</span><span style="flex:1">No area (leave unfiled)</span></button>'
+      + '</div><button id="bp-pa-cancel" style="margin-top:6px;padding:13px;border-radius:12px;border:none;background:transparent;color:#0A84FF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Cancel</button></div>';
+    o.innerHTML = h;
+    document.body.appendChild(o);
+    o.addEventListener('click', function(e){
+      var b = e.target.closest && e.target.closest('button[data-room]');
+      if (b) { var rid = b.getAttribute('data-room'); close(); addTo(input, jobId, rid); return; }
+      if (e.target === o || (e.target.id === 'bp-pa-cancel')) { close(); try { input.value = ''; } catch(x){} }
+    });
+  };
+  console.log('[BP] v3.24 ready — Add Photo on a job picks the area');
 })();
 </script>
