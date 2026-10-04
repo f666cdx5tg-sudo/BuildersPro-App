@@ -1610,7 +1610,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.18';
+var APP_VERSION = '3.19';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -18520,5 +18520,141 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   }
   setInterval(mark, 700); mark();
   console.log('[BP] v3.18 ready — date boxes never overlap');
+})();
+</script>
+<script>
+/* ══ v3.19 — TEXT ON PHOTO MARKUP (identical block in both apps) ══════════════════════════════
+   Stan (Oct 3): "add text to photo markup"
+   A new "Aa Text" tool next to Pen / Circle / Square / Arrow. Tap the photo → type → Add. The text is its
+   own object like the shapes: tap it to select, drag to move, drag a corner to make it bigger or smaller,
+   tap ✕ to delete, tap it once more to edit the words. Color = the swatch picked at the time. A thin
+   contrasting outline keeps it readable on any photo. Undo works. Saved into the photo with Save.
+   Works in the field app's editor and the Mac editor (Room Drawing is untouched). */
+(function(){
+  if (window.__bpMarkupText) return; window.__bpMarkupText = 1;
+  var ADAPT = {
+    'markup-canvas':      { p:'_markup',     editor:'markup-editor',      tools:'markup-tools',      cls:'markup-tool-btn',  pick:'pickMarkupTool' },
+    'desk-markup-canvas': { p:'_deskMarkup', editor:'desk-markup-editor', tools:'desk-markup-tools', cls:'dmarkup-tool-btn', pick:'pickDesktopMarkupTool' }
+  };
+  function g(A, k){ return window[A.p + k]; }
+  function s(A, k, v){ window[A.p + k] = v; }
+  function id(){ return 'shp_' + Math.random().toString(36).slice(2, 10); }
+  function light(c){ var m = /^#?([0-9a-f]{6})$/i.exec(c || ''); if (!m) return false; var n = parseInt(m[1], 16);
+    return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 150; }
+  function FONT(fs){ return 'bold ' + fs + 'px -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif'; }
+
+  /* draw one text shape; also keeps its box (x1,y1) hugging the words so select / move / handles line up */
+  function drawText(ctx, t){
+    var lines = String(t.text || '').split('\n'), n = Math.max(1, lines.length);
+    var fs = Math.max(8, Math.abs(t.y1 - t.y0) / (n * 1.2)); t.fs = fs;
+    var x = Math.min(t.x0, t.x1), y = Math.min(t.y0, t.y1);
+    ctx.save();
+    ctx.font = FONT(fs); ctx.textBaseline = 'top'; ctx.lineJoin = 'round';
+    var w = 1; lines.forEach(function(l){ w = Math.max(w, ctx.measureText(l).width); });
+    t.x0 = x; t.y0 = y; t.x1 = x + w; t.y1 = y + n * fs * 1.2;
+    ctx.lineWidth = Math.max(2, fs * 0.16);
+    ctx.strokeStyle = light(t.color) ? 'rgba(0,0,0,.85)' : 'rgba(255,255,255,.92)';
+    ctx.fillStyle = t.color;
+    lines.forEach(function(l, i){ var yy = y + i * fs * 1.2 + fs * 0.1; ctx.strokeText(l, x, yy); ctx.fillText(l, x, yy); });
+    ctx.restore();
+  }
+
+  /* wrap the shape renderer: text goes on top of the other shapes; its selection box goes on top of it */
+  var oRender = window.renderShapeCanvas;
+  if (typeof oRender === 'function') {
+    window.renderShapeCanvas = function(canvas, ctx, base, shapes, selId){
+      var texts = (shapes || []).filter(function(t){ return t.tool === 'text'; });
+      if (!texts.length) return oRender.apply(this, arguments);
+      var others = shapes.filter(function(t){ return t.tool !== 'text'; });
+      var selText = texts.filter(function(t){ return t.id === selId; })[0];
+      oRender.call(this, canvas, ctx, base, others, selText ? null : selId);
+      texts.forEach(function(t){ drawText(ctx, t); });
+      if (selText && typeof drawSelectionUI === 'function') drawSelectionUI(ctx, selText, canvas.width);
+    };
+  }
+
+  /* the small "type your text" box */
+  function dialog(A, canvas, at, existing){
+    var ed = document.getElementById(A.editor); if (!ed) return;
+    var old = document.getElementById('bp-mt-dlg'); if (old) old.remove();
+    var d = document.createElement('div'); d.id = 'bp-mt-dlg';
+    d.style.cssText = 'position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:18px';
+    d.innerHTML = '<div style="width:100%;max-width:420px;background:#1c1c1e;border:1px solid #333;border-radius:16px;padding:16px">'
+      + '<div style="color:#fff;font-size:16px;font-weight:800;margin-bottom:10px">' + (existing ? 'Edit text' : 'Add text') + '</div>'
+      + '<textarea id="bp-mt-ta" rows="3" placeholder="Type your note…" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #444;background:#111;color:#fff;font-size:16px;font-family:inherit;resize:none"></textarea>'
+      + '<div style="display:flex;gap:10px;margin-top:12px">'
+      + '<button id="bp-mt-cancel" style="flex:1;padding:12px;border-radius:10px;border:1px solid #444;background:#2a2a2c;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">Cancel</button>'
+      + '<button id="bp-mt-ok" style="flex:2;padding:12px;border-radius:10px;border:none;background:#0A84FF;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">' + (existing ? 'Update' : 'Add') + '</button>'
+      + '</div></div>';
+    ed.appendChild(d);
+    var ta = d.querySelector('#bp-mt-ta'); ta.value = existing ? existing.text : '';
+    setTimeout(function(){ try { ta.focus(); ta.select(); } catch(e){} }, 60);
+    function close(){ d.remove(); }
+    d.querySelector('#bp-mt-cancel').onclick = close;
+    d.querySelector('#bp-mt-ok').onclick = function(){
+      var text = ta.value.replace(/\s+$/, ''); close();
+      if (!text) return;
+      var shapes = g(A, 'Shapes') || [];
+      var snap = { baseRaster: g(A, 'BaseRaster'), shapes: shapes.map(function(x){ return Object.assign({}, x); }), selected: g(A, 'SelectedId') };
+      (g(A, 'UndoStack') || []).push(snap);
+      if (existing) {
+        s(A, 'Shapes', shapes.map(function(x){ return x.id === existing.id ? Object.assign({}, x, { text: text }) : x; }));
+        s(A, 'SelectedId', existing.id);
+      } else {
+        var fs = Math.round(canvas.width * 0.07), nl = text.split('\n').length, nid = id();
+        s(A, 'Shapes', shapes.concat([{ id: nid, tool: 'text', text: text, x0: at.x, y0: at.y, x1: at.x + 10, y1: at.y + nl * fs * 1.2, color: g(A, 'Color'), lw: 1 }]));
+        s(A, 'SelectedId', nid);
+      }
+      window.renderShapeCanvas(canvas, g(A, 'Ctx'), g(A, 'BaseRaster'), g(A, 'Shapes'), g(A, 'SelectedId'));
+    };
+  }
+
+  /* hook the pointer wiring for the two photo editors only */
+  var oWire = window.wireShapeAwareCanvas;
+  if (typeof oWire === 'function') {
+    window.wireShapeAwareCanvas = function(canvas){
+      var r = oWire.apply(this, arguments);
+      var A = ADAPT[canvas && canvas.id]; if (!A) return r;
+      var down = canvas.onpointerdown, up = canvas.onpointerup, tap = null;
+      function pos(e){ var b = canvas.getBoundingClientRect(); return { x: (e.clientX - b.left) * canvas.width / b.width, y: (e.clientY - b.top) * canvas.height / b.height }; }
+      canvas.onpointerdown = function(e){
+        tap = null;
+        if (g(A, 'Tool') !== 'text') return down.call(this, e);
+        var p = pos(e), shapes = g(A, 'Shapes') || [], selId = g(A, 'SelectedId');
+        var sel = shapes.filter(function(x){ return x.id === selId; })[0];
+        if (sel) {
+          var onHandle = hitTestHandle(sel, p.x, p.y, canvas.width), onBody = hitTestBody(sel, p.x, p.y, canvas.width);
+          if (sel.tool === 'text' && onBody && !onHandle) tap = { id: sel.id, x: p.x, y: p.y };   // a second tap = edit the words
+          if (onHandle || onBody) return down.call(this, e);
+        }
+        for (var i = shapes.length - 1; i >= 0; i--) if (hitTestBody(shapes[i], p.x, p.y, canvas.width)) return down.call(this, e);
+        e.preventDefault();
+        dialog(A, canvas, p, null);
+      };
+      canvas.onpointerup = function(e){
+        var t = tap; tap = null;
+        var res = up.apply(this, arguments);
+        if (t && e) {
+          var p = pos(e);
+          if (Math.hypot(p.x - t.x, p.y - t.y) < canvas.width * 0.01) {
+            var ex = (g(A, 'Shapes') || []).filter(function(x){ return x.id === t.id; })[0];
+            if (ex) dialog(A, canvas, p, ex);
+          }
+        }
+        return res;
+      };
+      return r;
+    };
+  }
+
+  /* the toolbar button */
+  Object.keys(ADAPT).forEach(function(cid){
+    var A = ADAPT[cid], bar = document.getElementById(A.tools); if (!bar || bar.querySelector('[data-tool="text"]')) return;
+    var arrow = bar.querySelector('[data-tool="arrow"]'); if (!arrow) return;
+    var b = arrow.cloneNode(false);
+    b.setAttribute('data-tool', 'text'); b.setAttribute('onclick', A.pick + "(this,'text')"); b.textContent = 'Aa Text';
+    arrow.parentNode.insertBefore(b, arrow.nextSibling);
+  });
+  console.log('[BP] v3.19 ready — text on photo markup');
 })();
 </script>
