@@ -125,6 +125,15 @@ button,input,textarea,select{font-family:inherit}
 .job-progress{height:3px;background:var(--border);border-radius:99px;margin-top:10px;overflow:hidden}
 .job-progress-fill{height:3px;background:var(--accent);border-radius:99px;transition:width .3s}
 .job-chips{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.chip.yellow{color:#FFD60A;border-color:rgba(255,214,10,.4);background:rgba(255,214,10,.10)}
+.bp-jc-lines{margin-top:10px;border-top:1px solid var(--border);padding-top:6px}
+.bp-jc-line{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted);padding:5px 0;min-width:0}
+.bp-jc-line b{color:var(--text);font-weight:700;white-space:nowrap}
+.bp-jc-line input{width:18px;height:18px;accent-color:#0A84FF;cursor:pointer;margin:0 8px 0 0;vertical-align:middle}
+.bp-jc-prog{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:var(--muted)}
+.bp-jc-prog .job-progress{flex:1;margin-top:0;height:6px}
+.bp-jc-prog .job-progress-fill{height:6px}
+.bp-jc-prog b{color:var(--text);min-width:38px;text-align:right}
 .chip{font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--card2);color:var(--muted);border:1px solid var(--border)}
 .chip.amber{color:var(--accent);border-color:rgba(10,132,255,.3);background:rgba(10,132,255,.08)}
 .chip.green{color:var(--green);border-color:rgba(102,187,106,.3);background:rgba(102,187,106,.08)}
@@ -1415,7 +1424,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.04';
+var APP_VERSION = '3.05';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -2409,6 +2418,12 @@ function jobProgress(jobId) {
     pct:   items.length ? Math.round(done / items.length * 100) : 0
   };
 }
+function jobFunding(jobId) {
+  var job = (DB.jobs||[]).find(function(j){ return j.id===jobId; }) || {};
+  var contract = (typeof bpRevisedContract==='function') ? bpRevisedContract(jobId) : (+job.contract||0);
+  var received = (DB.invoices||[]).filter(function(i){ return i.jobId===jobId && i.status==='Paid'; }).reduce(function(s,i){ return s+(+i.amount||0); },0);
+  return { contract: contract, received: received, owed: Math.max(0, contract - received) };
+}
 function jobRoomPunchSummary(jobId) {
   var items = (DB.punchlist||[]).filter(function(x){ return x.jobId===jobId && x.roomId; });
   if (!items.length) return null;
@@ -2427,7 +2442,9 @@ function buildJobCard(job, mini) {
   var pct       = prog.pct;
   var photos    = DB.photos.filter(function(p){ return p.jobId===job.id; }).length;
   var roomPunch = jobRoomPunchSummary(job.id);
-  var statusColor = {Active:'amber',Complete:'green','On Hold':'red',Pending:''}[job.status]||'';
+  var statusColor = {Active:'green',Pending:'yellow',Complete:'blue','On Hold':'red'}[job.status]||'';
+  var stDot = {Active:'var(--green)',Pending:'#FFD60A',Complete:'var(--blue)','On Hold':'var(--red)'}[job.status]||'var(--faint)';
+  var fund = jobFunding(job.id);
   // Balance = this job's Contract Value minus its own expenses and contractor/sub costs (same formula as Finance summary, job-scoped)
   var jobExpenses = (DB.expenses||[]).filter(function(e){return e.jobId===job.id;}).reduce(function(s,e){return s+(+e.amount||0);},0);
   var jobSubCosts = (DB.contractors||[]).filter(function(c){return c.jobId===job.id;}).reduce(function(s,c){return s+(+c.value||0);},0);
@@ -2438,28 +2455,30 @@ function buildJobCard(job, mini) {
   var cline = [];
   if (job.client) cline.push('👤 ' + esc(job.client));
   if (contractNow) cline.push('<b style="color:var(--text)">$' + contractNow.toLocaleString() + (bpCOApproved(job.id) ? ' \u21b3CO' : '') + '</b>');
-  var tick = function(on, fn, label){
-    return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer" onclick="event.stopPropagation()">'
-      + '<input type="checkbox" ' + (on?'checked':'') + ' onchange="' + fn + '(\'' + job.id + '\')" style="width:16px;height:16px;accent-color:#0A84FF;cursor:pointer"/>' + label + '</label>';
+  var tickLine = function(date, fn, label){
+    return '<label class="bp-jc-line" onclick="event.stopPropagation()"><span><input type="checkbox" ' + (date?'checked':'') + ' onchange="' + fn + '(\'' + job.id + '\')"/>' + label + '</span><b>' + (date ? fmtDatePlain(date) : '—') + '</b></label>';
   };
+  var fmtM = function(n){ return '$' + (+n||0).toLocaleString(); };
   return '<div class="card card-tap" onclick="openJobDetail(\'' + job.id + '\')">'
     + '<div class="card-body">'
     + '<div class="card-row">'
-    + '<div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:' + ({Active:'var(--accent)',Complete:'var(--green)','On Hold':'var(--red)',Pending:'var(--muted)'}[job.status]||'var(--faint)') + '"></div>'
+    + '<div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:' + stDot + '"></div>'
     + '<div style="flex:1;min-width:0"><div class="job-name">' + esc(job.name) + '</div>'
     + (cline.length ? '<div style="font-size:13px;color:var(--muted);margin-top:2px">' + cline.join(' · ') + '</div>' : '')
     + (fmtJobAddress(job) ? '<div style="font-size:12px;color:var(--faint);margin-top:1px">📍 ' + esc(fmtJobAddress(job)) + '</div>' : '')
     + '</div>'
-    + '<span class="chip ' + statusColor + '">' + job.status + (prog.total ? ' · ' + pct + '%' : '') + '</span>'
+    + '<span class="chip ' + statusColor + '">' + job.status + '</span>'
     + '</div>'
-    + (prog.total ? '<div class="job-progress"><div class="job-progress-fill" style="width:' + pct + '%"></div></div>' : '')
-    + '<div class="job-chips">'
-    + '<span class="chip">📅 Start ' + (job.startDate ? fmtDatePlain(job.startDate) : '—') + '</span>'
-    + (photos ? '<span class="chip blue">' + photos + ' photos</span>' : '')
-    + (job.contract ? '<span class="chip" style="color:'+(jobBalance>=0?'#0A84FF':'var(--red)')+';border-color:'+(jobBalance>=0?'#0A84FF':'var(--red)')+'44">Balance ' + (jobBalance<0?'-':'') + '$' + Math.abs(jobBalance).toLocaleString() + '</span>' : '')
-    + (roomPunch ? '<span class="chip" style="color:'+(roomPunch.complete===roomPunch.total?'var(--green)':'var(--red)')+';border-color:'+(roomPunch.complete===roomPunch.total?'var(--green)':'var(--red)')+'44">🚪 ' + roomPunch.complete + '/' + roomPunch.total + ' locations done</span>' : '')
-    + (mini ? '' : tick(!!job.startDate, 'toggleJobStarted', 'Started') + tick(!!job.completionDate, 'toggleJobCompleted', 'Completed'))
+    + '<div class="bp-jc-prog"><span>Progress</span><div class="job-progress"><div class="job-progress-fill" style="width:' + pct + '%"></div></div><b>' + pct + '%</b></div>'
+    + '<div class="bp-jc-lines">'
+    + '<div class="bp-jc-line"><span>Received to date</span><b style="color:var(--green)">' + fmtM(fund.received) + '</b></div>'
+    + '<div class="bp-jc-line"><span>Balance owed</span><b style="color:' + (fund.owed>0?'#FFD60A':'var(--green)') + '">' + fmtM(fund.owed) + '</b></div>'
+    + (mini ? '' : tickLine(job.startDate, 'toggleJobStarted', 'Started') + tickLine(job.completionDate, 'toggleJobCompleted', 'Done'))
     + '</div>'
+    + ((photos || roomPunch) ? '<div class="job-chips">'
+      + (photos ? '<span class="chip blue">' + photos + ' photos</span>' : '')
+      + (roomPunch ? '<span class="chip" style="color:'+(roomPunch.complete===roomPunch.total?'var(--green)':'var(--red)')+';border-color:'+(roomPunch.complete===roomPunch.total?'var(--green)':'var(--red)')+'44">🚪 ' + roomPunch.complete + '/' + roomPunch.total + ' locations done</span>' : '')
+      + '</div>' : '')
     + '</div></div>';
 }
 
@@ -2474,16 +2493,22 @@ function openJobDetail(jobId) {
   (function(){
     var rows = [job.client&&('👤 '+job.client), fmtJobAddress(job)&&('📍 '+fmtJobAddress(job)), job.status].filter(Boolean);
     var m = document.getElementById('jd-meta'); m.textContent = '';
-    rows.forEach(function(t, i){ var d = document.createElement('div'); d.textContent = t; if (i) d.style.marginTop = '2px'; m.appendChild(d); });
+    rows.forEach(function(t, i){ var d = document.createElement('div'); d.textContent = t; if (i) d.style.marginTop = '2px'; if (t === job.status) { d.style.fontWeight = '800'; d.style.color = ({Active:'var(--green)',Pending:'#FFD60A',Complete:'var(--blue)','On Hold':'var(--red)'})[t] || ''; } m.appendChild(d); });
   })();
   var contractor = job.contractorId ? (DB.contractors||[]).find(function(c){return c.id===job.contractorId;}) : null;
   var infoParts = [contractor&&('👷 '+contractor.name), (job.startDate||job.completionDate)&&('📅 '+(job.startDate?fmtDatePlain(job.startDate):'—')+' → '+(job.completionDate?fmtDatePlain(job.completionDate):'—'))].filter(Boolean);
   var jdInfo = document.getElementById('jd-info');
   if (jdInfo) jdInfo.textContent = infoParts.join('  ·  ');
   var jdToggles = document.getElementById('jd-progress-toggles');
-  if (jdToggles) jdToggles.innerHTML =
-    '<label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--muted);cursor:pointer"><input type="checkbox" ' + (job.startDate?'checked':'') + ' onchange="toggleJobStarted(\'' + job.id + '\')" style="width:17px;height:17px;accent-color:#0A84FF;cursor:pointer"/>Started</label>'
-    + '<label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--muted);cursor:pointer"><input type="checkbox" ' + (job.completionDate?'checked':'') + ' onchange="toggleJobCompleted(\'' + job.id + '\')" style="width:17px;height:17px;accent-color:#0A84FF;cursor:pointer"/>Completed</label>';
+  if (jdToggles) {
+    var fd = jobFunding(job.id), fm = function(n){ return '$' + (+n||0).toLocaleString(); };
+    var tl = function(date, fn, label){ return '<label class="bp-jc-line"><span><input type="checkbox" ' + (date?'checked':'') + ' onchange="' + fn + '(\'' + job.id + '\')"/>' + label + '</span><b>' + (date ? fmtDatePlain(date) : '—') + '</b></label>'; };
+    jdToggles.style.cssText = 'display:block;margin-top:8px';
+    jdToggles.innerHTML =
+      '<div class="bp-jc-line"><span>Received to date</span><b style="color:var(--green)">' + fm(fd.received) + '</b></div>'
+      + '<div class="bp-jc-line"><span>Balance owed</span><b style="color:' + (fd.owed>0?'#FFD60A':'var(--green)') + '">' + fm(fd.owed) + '</b></div>'
+      + tl(job.startDate, 'toggleJobStarted', 'Started') + tl(job.completionDate, 'toggleJobCompleted', 'Done');
+  }
   renderJobDetail(jobId);
   showScreen('s-job-detail');
   document.getElementById('nav-s-jobs').classList.add('active');

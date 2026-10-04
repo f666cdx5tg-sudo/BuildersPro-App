@@ -139,6 +139,11 @@ html,body{height:100%;overflow:hidden;font-family:var(--font-main);background:va
 .badge-red{background:rgba(239,83,80,.12);color:#EF5350;border:1px solid rgba(239,83,80,.3)}
 .badge-blue{background:rgba(66,165,245,.12);color:#42A5F5;border:1px solid rgba(66,165,245,.3)}
 .badge-muted{background:var(--card2);color:var(--muted);border:1px solid var(--border)}
+.badge-ok{background:rgba(102,187,106,.14);color:#66bb6a;border:1px solid rgba(102,187,106,.4)}
+.badge-warn{background:rgba(255,214,10,.12);color:#FFD60A;border:1px solid rgba(255,214,10,.4)}
+.bp-jt-line{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);padding:3px 0;white-space:nowrap}
+.bp-jt-line b{color:var(--text);font-weight:700}
+.bp-jt-line input{width:15px;height:15px;accent-color:#0A84FF;cursor:pointer;margin:0 6px 0 0;vertical-align:middle}
 
 /* ── BUTTONS ── */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:10px;font-family:inherit;font-weight:700;cursor:pointer;padding:12px 20px;font-size:15px;transition:opacity .15s}
@@ -1598,7 +1603,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.04';
+var APP_VERSION = '3.05';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -2547,22 +2552,23 @@ function renderDesktopJobs() {
      "Added" stamp removed, Start date shown instead, action buttons on a single row. */
   var ib = 'font-size:14px;padding:6px 9px;min-width:34px';
   el.innerHTML = '<div class="card" style="overflow-x:auto;padding:0"><table class="tbl">'
-    +'<thead><tr><th>Job / Client / Contract</th><th>Status / Progress</th><th>Start</th><th>Actions</th></tr></thead>'
+    +'<thead><tr><th>Job / Client / Contract</th><th>Status / Progress</th><th>Funding</th><th>Actions</th></tr></thead>'
     +'<tbody>'
     + DB.jobs.slice().reverse().map(function(j){
         var pct=jobProgress(j.id).pct;   // v2.51: checklist, same as everywhere else
         var con=j.contractorId?(DB.contractors||[]).find(function(c){return c.id===j.contractorId;}):null;
         var roomPunch=jobRoomPunchSummary(j.id);
+        var fund=jobFunding(j.id);
         var addr=fmtJobAddress(j);
         var line2=[j.client?esc(j.client):'', (+j.contract||0)?'<span style="font-weight:700;color:var(--text)">'+fmt$(j.contract)+'</span>':''].filter(Boolean).join(' · ');
         return '<tr onclick="openJobDetail(\''+j.id+'\')" style="cursor:pointer"'+(addr?' title="'+esc(addr)+'"':'')+'>'
           +'<td style="white-space:nowrap"><div style="font-weight:700">'+esc(j.name)+'</div>'+(line2?'<div style="font-size:12px;color:var(--muted);margin-top:2px">'+line2+'</div>':'')+'</td>'
-          +'<td onclick="event.stopPropagation()" style="min-width:150px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="badge '+(j.status==='Active'?'badge-green':j.status==='Complete'?'badge-muted':'badge-amber')+'">'+j.status+'</span>'
-          +'<label style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted);cursor:pointer"><input type="checkbox" '+(j.startDate?'checked':'')+' onchange="toggleJobStarted(\''+j.id+'\')" style="width:14px;height:14px;accent-color:#0A84FF;cursor:pointer"/>Started</label>'
-          +'<label style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted);cursor:pointer"><input type="checkbox" '+(j.completionDate?'checked':'')+' onchange="toggleJobCompleted(\''+j.id+'\')" style="width:14px;height:14px;accent-color:#0A84FF;cursor:pointer"/>Done</label></div>'
-          +'<div style="display:flex;align-items:center;gap:8px;margin-top:6px"><div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:'+pct+'%"></div></div><span style="font-size:11px;color:var(--muted)">'+pct+'%</span></div>'
+          +'<td onclick="event.stopPropagation()" style="min-width:190px"><span class="badge '+({Active:'badge-ok',Pending:'badge-warn',Complete:'badge-green','On Hold':'badge-red'}[j.status]||'badge-muted')+'">'+j.status+'</span>'
+          +'<div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px"><div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:'+pct+'%"></div></div><span style="font-size:12px;font-weight:700;color:var(--text)">'+pct+'%</span></div>'
+          +'<label class="bp-jt-line"><span><input type="checkbox" '+(j.startDate?'checked':'')+' onchange="toggleJobStarted(\''+j.id+'\')"/>Started</span><b>'+(j.startDate?fmtDatePlain(j.startDate):'—')+'</b></label>'
+          +'<label class="bp-jt-line"><span><input type="checkbox" '+(j.completionDate?'checked':'')+' onchange="toggleJobCompleted(\''+j.id+'\')"/>Done</span><b>'+(j.completionDate?fmtDatePlain(j.completionDate):'—')+'</b></label>'
           +(roomPunch?'<div style="font-size:11px;font-weight:700;margin-top:3px;color:'+(roomPunch.complete===roomPunch.total?'var(--green,#66bb6a)':'#EF5350')+'">🚪 '+roomPunch.complete+'/'+roomPunch.total+' locations</div>':'')+'</td>'
-          +'<td style="font-size:12px;color:var(--muted);white-space:nowrap">'+(j.startDate?'📅 '+fmtDatePlain(j.startDate):'—')+(con?'<br/>👷 '+esc(con.name):'')+'</td>'
+          +'<td style="min-width:190px;white-space:nowrap"><div class="bp-jt-line"><span>Received to date</span><b style="color:#66bb6a">'+fmt$(fund.received)+'</b></div><div class="bp-jt-line"><span>Balance owed</span><b style="color:'+(fund.owed>0?'#FFD60A':'#66bb6a')+'">'+fmt$(fund.owed)+'</b></div>'+(con?'<div style="font-size:12px;color:var(--muted);margin-top:4px">👷 '+esc(con.name)+'</div>':'')+'</td>'
           +'<td onclick="event.stopPropagation()" style="white-space:nowrap"><div style="display:flex;gap:4px">'
           +'<button class="btn btn-ghost" style="'+ib+'" title="Edit" onclick="editJob(\''+j.id+'\')">✏️</button>'
           +'<button class="btn btn-ghost" style="'+ib+'" title="Duplicate" onclick="duplicateJobDesktop(\''+j.id+'\')">📋</button>'
@@ -6544,6 +6550,12 @@ function jobProgress(jobId) {
     total: items.length,
     pct:   items.length ? Math.round(done / items.length * 100) : 0
   };
+}
+function jobFunding(jobId) {
+  var job = (DB.jobs||[]).find(function(j){ return j.id===jobId; }) || {};
+  var contract = (typeof bpRevisedContract==='function') ? bpRevisedContract(jobId) : (+job.contract||0);
+  var received = (DB.invoices||[]).filter(function(i){ return i.jobId===jobId && i.status==='Paid'; }).reduce(function(s,i){ return s+(+i.amount||0); },0);
+  return { contract: contract, received: received, owed: Math.max(0, contract - received) };
 }
 function jobRoomPunchSummary(jobId){
   var items=(DB.punchlist||[]).filter(function(x){return x.jobId===jobId && x.roomId;});
