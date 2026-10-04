@@ -1425,7 +1425,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.08';
+var APP_VERSION = '3.09';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -20980,5 +20980,58 @@ safe(function(){
 });
 
 console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job on every tab · auto tax · rooms/locations');
+})();
+</script>
+<script>
+/* ══ v3.09 — SYNC SCREEN: iCloud first, GitHub token tucked under "Advanced" ═══
+   Stan (Oct 3, 2026): "this build was supposed to be done by the app automatically."
+   Problem: the Sync screen led with a red "Sync isn't set up yet" + GitHub token box,
+   while the automatic iCloud Sync card sat far down. Fix (identical block in both apps):
+   1) iCloud card moves to the very top of the Sync screen.
+   2) The status line stops nagging about GitHub when iCloud is on (or tells you to
+      turn iCloud on when nothing is).
+   3) GitHub token setup + pairing code live in a collapsed "Advanced (optional)" box. */
+(function(){
+  function safe(fn){ try { return fn(); } catch(e){ console.warn('[BP v3.09]', e); } }
+  function icOn(){ try { return localStorage.getItem('bp_ck_on') === '1'; } catch(e){ return false; } }
+  function ghOn(){ try { return !!_syncToken; } catch(e){ return false; } }
+  function fix(){
+    var disp  = document.getElementById('sync-status-display') || document.getElementById('sync-status-box');
+    var setup = document.getElementById('setup-section');
+    var pair  = document.getElementById('pair-section');
+    if (!disp || !setup || !pair) return;
+    var host = disp.parentElement;
+    var card = document.getElementById('bp-cksync-card');
+    /* 1. iCloud card first */
+    if (card && host && host.firstElementChild !== card) host.insertBefore(card, host.firstChild);
+    /* 2. GitHub token + pairing under Advanced */
+    var adv = document.getElementById('bp-gh-adv');
+    if (!adv) {
+      adv = document.createElement('details'); adv.id = 'bp-gh-adv'; adv.style.cssText = 'margin:0 0 14px';
+      var sum = document.createElement('summary'); sum.id = 'bp-gh-adv-sum';
+      sum.style.cssText = 'cursor:pointer;font-size:13px;font-weight:700;color:var(--muted);padding:10px 2px';
+      adv.appendChild(sum);
+      setup.parentElement.insertBefore(adv, setup);
+      adv.appendChild(setup); adv.appendChild(pair);
+      if (ghOn()) adv.open = true;
+    }
+    var sumEl = document.getElementById('bp-gh-adv-sum');
+    var t = ghOn() ? 'GitHub backup · connected' : 'Advanced — GitHub token backup (optional)';
+    if (sumEl && sumEl.textContent !== t) sumEl.textContent = t;
+    /* 3. status line */
+    if (ghOn()) return;                       /* GitHub is set up: leave its own status text alone */
+    var key = icOn() ? 'on' : 'off';
+    if (disp.querySelector('[data-v309="' + key + '"]')) return;
+    disp.innerHTML = icOn()
+      ? '<span data-v309="on" style="color:var(--green)">✅ iCloud Sync is on — your phone, iPad and Mac stay in step by themselves. No token needed.</span>'
+      : '<span data-v309="off" style="color:var(--accent)">☁️ Tap <b>Turn on iCloud Sync</b> below — once per device, then it is automatic. The GitHub token is optional.</span>';
+  }
+  ['openSync','showView','openSheet'].forEach(function(fn){
+    var o = window[fn];
+    if (typeof o !== 'function') return;
+    window[fn] = function(){ var r = o.apply(this, arguments); safe(fix); return r; };
+  });
+  setInterval(function(){ safe(fix); }, 1000);
+  console.log('[BP] v3.09 ready — Sync screen is iCloud-first');
 })();
 </script>
