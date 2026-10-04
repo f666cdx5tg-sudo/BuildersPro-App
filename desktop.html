@@ -1608,7 +1608,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.11';
+var APP_VERSION = '3.12';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -18341,5 +18341,140 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
   function tick(){ safe(chips); safe(paintHome); }
   setInterval(tick, 900);
   console.log('[BP] v3.11 ready — room icons, entrances, home details');
+})();
+</script>
+<script>
+/* ══ v3.12 — Convert locations into rooms (identical block in both apps) ═══════
+   Stan (Oct 3): "i want to convert existing locations into rooms"
+   A "location" is just a room record whose kind is 'location' (or, with no kind
+   saved, whose space is Exterior). Converting sets kind='room' and remembers
+   the old kind in kindWas, so nothing is lost and Undo works.
+   - Banner on the Rooms screen: "N locations · Convert to rooms" (this job if one
+     is picked, otherwise all jobs), with Undo after.
+   - Room screen: a Room / Location switch for a single room.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+function $(id){ return document.getElementById(id); }
+function safe(fn){ try { return fn(); } catch(e){ console.warn('[BP v3.12]', e); } }
+function persist(){ safe(function(){ if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); }); }
+function kindOf(r){ return window.bpKindOf ? window.bpKindOf(r) : (r.kind || 'room'); }
+function say(m){ safe(function(){ if (typeof toast === 'function') toast(m); }); }
+function repaint(){
+  safe(function(){
+    ['renderRooms','renderDesktopRooms','renderPhotos','renderDesktopPhotos','renderPunchlist','renderDesktopPunchlist'].forEach(function(n){
+      if (typeof window[n] === 'function') window[n]();
+    });
+    var id = (typeof currentRoomId !== 'undefined') ? currentRoomId : null;
+    if (id && $('s-room-detail') && $('s-room-detail').classList.contains('active') && typeof openRoomDetail === 'function') openRoomDetail(id);
+  });
+}
+window._bpLastConv = window._bpLastConv || [];
+function scopeJob(){ return window._bpAreaJob || ''; }
+function locations(){
+  var j = scopeJob();
+  return (DB.rooms || []).filter(function(r){ return kindOf(r) === 'location' && (!j || r.jobId === j); });
+}
+window.bpConvertAllToRooms = function(){
+  var list = locations();
+  if (!list.length) { say('No locations to convert'); return; }
+  var j = scopeJob(), jn = '';
+  if (j) { var jb = (DB.jobs || []).find(function(x){ return x.id === j; }); jn = jb ? ' on ' + jb.name : ''; }
+  if (!confirm('Turn ' + list.length + ' location' + (list.length !== 1 ? 's' : '') + jn + ' into rooms?\n\nNothing is deleted. You can undo it right after.')) return;
+  var stamp = (typeof now === 'function') ? now() : new Date().toISOString();
+  window._bpLastConv = list.map(function(r){ return r.id; });
+  list.forEach(function(r){ r.kindWas = r.kind || 'location'; r.kind = 'room'; r.updatedAt = stamp; });
+  persist(); repaint();
+  say('Converted ' + list.length + ' to rooms');
+};
+window.bpUndoConvert = function(){
+  var ids = window._bpLastConv || [];
+  if (!ids.length) return;
+  var stamp = (typeof now === 'function') ? now() : new Date().toISOString();
+  (DB.rooms || []).forEach(function(r){
+    if (ids.indexOf(r.id) >= 0) { r.kind = 'location'; delete r.kindWas; r.updatedAt = stamp; }
+  });
+  window._bpLastConv = [];
+  persist(); repaint();
+  say('Undone — back to locations');
+};
+window.bpSetRoomKind = function(id, kind){
+  var r = (DB.rooms || []).find(function(x){ return x.id === id; });
+  if (!r || kindOf(r) === kind) return;
+  r.kindWas = kindOf(r); r.kind = kind;
+  r.updatedAt = (typeof now === 'function') ? now() : new Date().toISOString();
+  persist(); repaint();
+  say(kind === 'room' ? 'Now a room' : 'Now a location');
+};
+
+/* ── banner on the Rooms screen ── */
+function banner(){
+  var host = $('s-rooms') || $('view-rooms');
+  if (!host || host.offsetParent === null) return;
+  var bar = host.querySelector('.bp-kindbar');
+  var el = $('bp-conv-banner');
+  if (!bar) { if (el) el.remove(); return; }
+  var n = locations().length, undo = (window._bpLastConv || []).length;
+  if (!n && !undo) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div'); el.id = 'bp-conv-banner';
+    el.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:10px 12px;border-radius:12px;'
+      + 'border:1.5px solid rgba(191,90,242,.45);background:rgba(191,90,242,.10);width:100%;box-sizing:border-box';
+  }
+  var btn = 'padding:9px 14px;border-radius:10px;border:none;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;';
+  var h = '<span style="flex:1;min-width:140px;font-size:13px;font-weight:700;color:var(--text)">'
+    + (n ? n + ' location' + (n !== 1 ? 's' : '') + ' that could be rooms' : 'Converted') + '</span>'
+    + (n ? '<button onclick="bpConvertAllToRooms()" style="' + btn + 'background:#BF5AF2;color:#fff">Convert to rooms</button>' : '')
+    + (undo ? '<button onclick="bpUndoConvert()" style="' + btn + 'background:transparent;color:#BF5AF2;border:1.5px solid #BF5AF2">Undo</button>' : '');
+  if (el.__h !== h) { el.innerHTML = h; el.__h = h; }
+  if (el.previousElementSibling !== bar && !(bar.parentNode === el.parentNode && bar.nextSibling === el)) bar.parentNode.insertBefore(el, bar.nextSibling);
+}
+
+/* ── Room / Location switch on a single room ── */
+function chipsFor(id){
+  var r = (DB.rooms || []).find(function(x){ return x.id === id; }); if (!r) return '';
+  var k = kindOf(r);
+  function b(label, val){
+    var on = k === val;
+    return '<button onclick="bpSetRoomKind(\'' + id + '\',\'' + val + '\')" style="padding:7px 12px;border-radius:99px;border:1.5px solid '
+      + (on ? '#BF5AF2' : 'var(--border)') + ';background:' + (on ? 'rgba(191,90,242,.15)' : 'transparent') + ';color:' + (on ? '#BF5AF2' : 'var(--muted)')
+      + ';font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit">' + (on ? '✓ ' : '') + label + '</button>';
+  }
+  return b('Room', 'room') + b('Location', 'location');
+}
+function switcher(){
+  /* field app: next to the Copy button in the room header */
+  var cp = document.querySelector('#s-room-detail [onclick^="bpRoomCopy("]');
+  if (cp && cp.offsetParent !== null) {
+    var id = /bpRoomCopy\('([^']+)'\)/.exec(cp.getAttribute('onclick'))[1];
+    var host = $('s-room-detail');
+    var box = $('bp-kind-switch');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'bp-kind-switch';
+      box.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 16px 0';
+    }
+    var h = '<span style="font-size:12px;font-weight:700;color:var(--muted)">Counts as</span>' + chipsFor(id);
+    if (box.__h !== h) { box.innerHTML = h; box.__h = h; }
+    var hdr = cp.closest('.detail-header') || cp.parentNode.parentNode;
+    if (hdr && box.previousElementSibling !== hdr) hdr.parentNode.insertBefore(box, hdr.nextSibling);
+  }
+  /* Mac: in the room detail modal, above the Edit / Delete row */
+  var ed = document.querySelector('#modal-room-detail [onclick*="editRoom("]');
+  if (ed) {
+    var m = /editRoom\(\\?'([^'\\]+)/.exec(ed.getAttribute('onclick') || '');
+    if (m) {
+      var row = ed.parentNode, b2 = $('bp-kind-switch-m');
+      if (!b2) {
+        b2 = document.createElement('div'); b2.id = 'bp-kind-switch-m';
+        b2.style.cssText = 'display:flex;gap:8px;align-items:center;margin:0 0 10px';
+      }
+      var h2 = '<span style="font-size:12px;font-weight:700;color:var(--muted)">Counts as</span>' + chipsFor(m[1]);
+      if (b2.__h !== h2) { b2.innerHTML = h2; b2.__h = h2; }
+      if (b2.nextSibling !== row) row.parentNode.insertBefore(b2, row);
+    }
+  }
+}
+setInterval(function(){ safe(banner); safe(switcher); }, 900);
+console.log('[BP] v3.12 ready — convert locations to rooms');
 })();
 </script>
