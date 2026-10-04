@@ -1610,7 +1610,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.26';
+var APP_VERSION = '3.27';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -9637,6 +9637,7 @@ window._bpAreaJob    = '';
 window._bpAreaLayout = 'grid';   // grid | table
 
 function areaIcon(room){
+  try { var _h = window.bpRoomIconHtml && window.bpRoomIconHtml(room.name, room.type); if (_h) return _h; } catch(e){}   // v3.27: one icon source
   var n = String(room.name||'').toLowerCase();
   var map = [
     [/roof|shingle/,'🛖'],[/gutter|downspout/,'🪣'],[/chimney/,'🏭'],
@@ -18756,5 +18757,28 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   };
   window.bpRoomIconHtml.__v325 = 1;
   console.log('[BP] v3.25 ready — area icons for windows, water, handicap, entrance, stairs');
+})();
+</script>
+<script>
+/* ══ v3.27 — one icon source for every Areas screen ══════════════════════════════
+   Stan (Oct 3, 2026): "water service icon has not changed". v3.25/3.26 only fixed the job-screen cards; the Areas
+   list, Photos and the pickers still asked areaIcon()/BPX.icon(), which gave the old emoji. Both now ask
+   bpRoomIconHtml first (kitchen, bath, roof, windows, water service, handicap, stairs, entrances). Identical in both apps. */
+(function(){
+  'use strict';
+  function first(room){
+    try { return (room && window.bpRoomIconHtml && window.bpRoomIconHtml(room.name, room.type)) || ''; } catch(e){ return ''; }
+  }
+  if (window.BPX && typeof BPX.icon === 'function' && !BPX.icon.__v327) {
+    var a = BPX.icon;
+    BPX.icon = function(room){ return first(room) || a.apply(this, arguments); };
+    BPX.icon.__v327 = 1;
+  }
+  if (typeof window.areaIcon === 'function' && !window.areaIcon.__v327) {
+    var b = window.areaIcon;
+    window.areaIcon = function(room){ return first(room) || b.apply(this, arguments); };
+    window.areaIcon.__v327 = 1;
+  }
+  console.log('[BP] v3.27 ready — shared area icons');
 })();
 </script>
