@@ -1433,7 +1433,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.29';
+var APP_VERSION = '3.30';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1594,7 +1594,20 @@ function bpPinNav(scale) {
         if (sh > ref && sh - ref < 120) ref = sh;
       }
     } catch (e2) {}
-    var gap = ref - nav.getBoundingClientRect().bottom;
+    /* v3.30 — v3.29 slid the bar down past the page's bottom edge and the
+       phone clipped it (labels cut off). The page really ends there, so the
+       bar can't go lower. Instead, when the page ends short of the screen
+       (the home-indicator strip is NOT under the bar), drop the extra bottom
+       padding that was reserving room for that strip. Labels move down; the
+       bar never leaves the page. */
+    var navBottom = nav.getBoundingClientRect().bottom;
+    nav.style.removeProperty('padding-bottom');
+    var floatGap = ref - navBottom;                 // ref includes the screen height when installed
+    var layoutGap = Math.max(window.innerHeight, vh) - navBottom;
+    if (floatGap > 20 && floatGap < 120 && layoutGap < 2) {
+      nav.style.setProperty('padding-bottom', '6px', 'important');
+    }
+    var gap = Math.max(window.innerHeight, vh) - nav.getBoundingClientRect().bottom;
     if (gap > 1 && gap < 200) nav.style.bottom = (-gap / (scale || 1)).toFixed(2) + 'px';
   } catch (e) {}
 }
