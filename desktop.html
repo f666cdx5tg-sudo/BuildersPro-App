@@ -1603,7 +1603,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.07';
+var APP_VERSION = '3.08';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -3098,7 +3098,7 @@ function renderDesktopRooms() {
       return '<tr><td style="cursor:pointer;user-select:none" onclick="openRoomDetail(\''+r.id+'\')" onmouseover="this.style.background=\'var(--card2)\'" onmouseout="this.style.background=\'\'" title="Click for full location details"><span style="margin-right:6px">'+(icons[r.type]||'🏠')+'</span><strong>'+esc(r.name)+'</strong>'+(r.drawing?' <span title="Has a sketch">📐</span>':'')+addedOrUpdatedLine(r.created,r.updatedAt)+'</td>'
         +'<td>'+esc(r.type)+'</td>'
         +'<td>'+(job?esc(job.name):'—')+'</td>'
-        +'<td style="font-size:12px;color:var(--muted)">'+(conLines?conLines+'<br/>':'')+((r.startDate||r.completionDate)?'📅 '+(r.startDate||'—')+' → '+(r.completionDate||'—'):(conLines?'':'—'))+'</td>'
+        +'<td style="font-size:12px;color:var(--muted)">'+(conLines?conLines+'<br/>':'')+((r.startDate||r.completionDate)?'📅 '+(r.startDate?fmtDatePlain(r.startDate):'—')+' → '+(r.completionDate?fmtDatePlain(r.completionDate):'—'):(conLines?'':'—'))+'</td>'
         +'<td>'+done+'/'+items.length+'</td>'
         +'<td style="font-size:12px">'+fmt$(contractVal)+' contract<br/><span style="color:'+(remaining<0?'var(--red)':'#0A84FF')+'">'+fmt$(remaining)+' balance</span></td>'
         +'<td>'+photos+'</td>'
@@ -3165,7 +3165,7 @@ function openRoomDetail(roomId){
       +'<div class="card" style="flex:1;padding:14px;text-align:center"><div style="font-size:18px;font-weight:800;color:#FF9500">'+fmt$(itemsTotal)+'</div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Items Value</div></div>'
       +'<div class="card" style="flex:1;padding:14px;text-align:center"><div style="font-size:18px;font-weight:800;color:'+(balance<0?'var(--red,#EF5350)':'#0A84FF')+'">'+fmt$(balance)+'</div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Balance</div></div>'
     +'</div>'
-    +((r.startDate||r.completionDate)?'<div style="font-size:12px;color:var(--muted);margin-bottom:14px">📅 '+(r.startDate||'—')+' → '+(r.completionDate||'—')+'</div>':'')
+    +((r.startDate||r.completionDate)?'<div style="font-size:12px;color:var(--muted);margin-bottom:14px">📅 '+(r.startDate?fmtDatePlain(r.startDate):'—')+' → '+(r.completionDate?fmtDatePlain(r.completionDate):'—')+'</div>':'')
     +buildDesktopRoomDrawingSectionHtml(r)
     +'<div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between;margin-top:0">Contractors ('+cons.length+')<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="closeRoomDetailAnd(function(){editRoom(\''+r.id+'\');})">+ Manage</button></div>'
     +'<div style="margin-bottom:16px">'+conChips+'</div>'
@@ -9081,7 +9081,7 @@ function renderDesktopJobDetail(jobId) {
   var con = job.contractorId ? (DB.contractors||[]).find(function(c){return c.id===job.contractorId;}) : null;
 
   document.getElementById('jd2-name').textContent = job.name;
-  document.getElementById('jd2-meta').textContent = [job.client&&('👤 '+job.client), fmtJobAddress(job)&&('📍 '+fmtJobAddress(job)), job.status, con&&('👷 '+con.name), (job.startDate||job.completionDate)&&('📅 '+(job.startDate||'—')+' → '+(job.completionDate||'—'))].filter(Boolean).join('  ·  ');
+  document.getElementById('jd2-meta').textContent = [job.client&&('👤 '+job.client), fmtJobAddress(job)&&('📍 '+fmtJobAddress(job)), job.status, con&&('👷 '+con.name), (job.startDate||job.completionDate)&&('📅 '+(job.startDate?fmtDatePlain(job.startDate):'—')+' → '+(job.completionDate?fmtDatePlain(job.completionDate):'—'))].filter(Boolean).join('  ·  ');
   document.getElementById('jd2-actions').innerHTML =
       '<button class="btn btn-ghost" onclick="editJob(\''+job.id+'\')">✏️ Edit</button>'
     + '<button class="btn btn-ghost" onclick="duplicateJobDesktop(\''+job.id+'\')">📋 Duplicate</button>'
