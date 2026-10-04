@@ -1043,7 +1043,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       </div>
       <div class="field"><div class="field-label">Client Name</div><input id="aj-client" type="text" placeholder="Client name" spellcheck="true" autocapitalize="words"/></div>
       <div class="field"><div class="field-label">Client Email</div><input id="aj-client-email" type="email" placeholder="client@example.com"/></div>
-      <div class="field"><div class="field-label">Client Cell</div><input id="aj-client-phone" type="tel" inputmode="tel" placeholder="(555) 555-5555"/></div>
+      <div class="field"><div class="field-label">Client Cell</div><input id="aj-client-phone" type="tel" inputmode="tel" placeholder="(123)-456-7890"/></div>
       <div class="field"><div class="field-label">Contract Value ($)</div><input id="aj-contract" type="number" inputmode="decimal" placeholder="0.00"/></div>
       <div class="field"><div class="field-label">Status</div>
         <select id="aj-status"><option>Active</option><option>Pending</option><option>Complete</option><option>On Hold</option></select>
@@ -1425,7 +1425,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.09';
+var APP_VERSION = '3.10';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1684,6 +1684,41 @@ function bpMDY(v) {
   var mm = dt.getMonth() + 1, dd = dt.getDate();
   return (mm < 10 ? '0' : '') + mm + '/' + (dd < 10 ? '0' : '') + dd + '/' + dt.getFullYear();
 }
+
+/* v3.10: phone numbers are always (123)-456-7890. bpPhone() formats a stored/typed number for display;
+   the input mask formats as you type in every phone box (type=tel or id containing "phone"). 11 digits
+   starting with 1 drops the 1. Anything that isn't a plain 10-digit number (extensions, letters) is left alone. */
+function bpPhone(v) {
+  if (v === null || v === undefined) return '';
+  var s = String(v).trim(); if (!s) return '';
+  if (/[a-wyz]/i.test(s)) return s;
+  var d = s.replace(/\D/g, '');
+  if (d.length === 11 && d.charAt(0) === '1') d = d.slice(1);
+  if (d.length !== 10 || /x|ext/i.test(s)) return s;
+  return '(' + d.slice(0,3) + ')-' + d.slice(3,6) + '-' + d.slice(6);
+}
+function bpPhoneTyping(v) {
+  var s = String(v || '');
+  if (/[a-wyz]/i.test(s) || /x|ext/i.test(s)) return s;
+  var d = s.replace(/\D/g, '');
+  if (d.length === 11 && d.charAt(0) === '1') d = d.slice(1);
+  if (d.length > 10) return s;
+  if (!d.length) return '';
+  if (d.length <= 3) return '(' + d;
+  if (d.length <= 6) return '(' + d.slice(0,3) + ')-' + d.slice(3);
+  return '(' + d.slice(0,3) + ')-' + d.slice(3,6) + '-' + d.slice(6);
+}
+(function(){
+  function isPh(el){ return el && el.tagName === 'INPUT' && (el.type === 'tel' || /phone/i.test(el.id || '')); }
+  document.addEventListener('input', function(e){
+    var el = e.target; if (!isPh(el)) return;
+    var f = bpPhoneTyping(el.value); if (f !== el.value) el.value = f;
+  }, true);
+  document.addEventListener('change', function(e){
+    var el = e.target; if (!isPh(el)) return;
+    var f = bpPhone(el.value); if (f !== el.value) el.value = f;
+  }, true);
+})();
 function fmtDate(iso) { return bpMDY(iso); }
 function fmtTime(iso) {
   if (!iso) return '';
@@ -2469,7 +2504,7 @@ function buildJobCard(job, mini) {
         var csz=[[job.city,job.state].filter(Boolean).join(', '),job.zip].filter(Boolean).join(' ');
         var em=(typeof clientEmailFor==='function'?clientEmailFor(job):'')||job.clientEmail||'';
         var L=function(v,st){ return '<div style="font-size:13px;color:var(--muted);padding:1px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(st||'')+'">'+(v?v:'<span style="opacity:.4">\u2014</span>')+'</div>'; };
-        return L(esc(job.address||''))+L(esc(csz))+L(job.client?esc(job.client):'')+L(em?esc(em):'')+L(job.clientPhone?esc(job.clientPhone):'')+L(contractNow?'$'+contractNow.toLocaleString()+(bpCOApproved(job.id)?' \u21b3CO':''):'','font-weight:700;color:var(--text)');
+        return L(esc(job.address||''))+L(esc(csz))+L(job.client?esc(job.client):'')+L(em?esc(em):'')+L(job.clientPhone?esc(bpPhone(job.clientPhone)):'')+L(contractNow?'$'+contractNow.toLocaleString()+(bpCOApproved(job.id)?' \u21b3CO':''):'','font-weight:700;color:var(--text)');
       })()
     + '</div>'
     + '<span class="chip ' + statusColor + '">' + job.status + '</span>'
@@ -5311,7 +5346,7 @@ setInterval(updateHeaderClocks, 10000);
       <div class="field"><div class="field-label">Scope of Work *</div>
         <textarea id="con-scope" rows="4" placeholder="Detailed scope of work, inclusions, exclusions..."></textarea>
       </div>
-      <div class="field"><div class="field-label">Contact Phone</div><input id="con-phone" type="tel" placeholder="(555) 000-0000"/></div>
+      <div class="field"><div class="field-label">Contact Phone</div><input id="con-phone" type="tel" placeholder="(123)-456-7890"/></div>
       <div class="field"><div class="field-label">Status</div>
         <select id="con-status"><option>Active</option><option>Pending</option><option>Completed</option><option>On Hold</option></select>
       </div>
@@ -7665,7 +7700,7 @@ function renderFinanceContent() {
           +'<div style="font-size:16px;font-weight:800">'+esc(con.name)+'</div>'
           +(con.created?'<div style="font-size:11px;color:var(--faint);margin-top:1px">Added '+fmtDate(con.created)+' · '+fmtTime(con.created)+'</div>':'')
           +'<div style="font-size:12px;color:var(--muted);margin-top:2px">🔧 '+esc(con.trade)+(job?' · 📋 '+esc(job.name):'')+'</div>'
-          +(con.phone?'<div style="font-size:12px;color:var(--muted)">📞 '+esc(con.phone)+'</div>':'')
+          +(con.phone?'<div style="font-size:12px;color:var(--muted)">📞 '+esc(bpPhone(con.phone))+'</div>':'')
           +'</div>'
           +'<div style="text-align:right;flex-shrink:0">'
           +'<div style="font-size:20px;font-weight:900;color:#FFAA33">$'+(+con.value||0).toLocaleString()+'</div>'
@@ -9163,7 +9198,7 @@ window.openEditContractor = function(conId) {
   html += '<div style="flex:1"><div style="'+lbl+'">End Date</div><input id="ec-end" type="date" value="'+(con.end||'')+'" style="'+s+'"/></div>';
   html += '</div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Scope of Work</div><textarea id="ec-scope" rows="4" style="'+s+'">'+esc(con.scope||'')+'</textarea></div>';
-  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Contact Phone</div><input id="ec-phone" type="tel" value="'+esc(con.phone||'')+'" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Contact Phone</div><input id="ec-phone" type="tel" value="'+esc(bpPhone(con.phone||''))+'" style="'+s+'"/></div>';
   html += '<div style="margin-bottom:18px"><div style="'+lbl+'">Status</div><select id="ec-status" style="'+s+'">'+statusOpts+'</select></div>';
   html += '<div style="display:flex;gap:8px">';
   html += '<button onclick="deleteFinItem(\'contractors\',\''+conId+'\');document.getElementById(\'edit-con-modal\').remove()" style="flex:1;padding:13px;border-radius:12px;border:1px solid var(--red);background:transparent;color:var(--red);font-weight:700;cursor:pointer;font-family:inherit">Delete</button>';
@@ -9918,7 +9953,7 @@ renderJobDetail = function(jobId) {
               + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">'
               + '<div style="flex:1;min-width:0;overflow-wrap:anywhere">'
               + '<div style="font-size:15px;font-weight:800">'+esc(con.name)+'</div>'
-              + '<div style="font-size:12px;color:var(--muted);margin-top:2px">🔧 '+esc(con.trade)+(con.phone?' · 📞 '+esc(con.phone):'')+'</div>'
+              + '<div style="font-size:12px;color:var(--muted);margin-top:2px">🔧 '+esc(con.trade)+(con.phone?' · 📞 '+esc(bpPhone(con.phone)):'')+'</div>'
               + '<div style="font-size:11px;font-weight:700;margin-top:3px;color:'+(statusColor[con.status]||'var(--muted)')+'">'+con.status+' · $'+paid.toLocaleString()+' paid / $'+Math.max(0,bal).toLocaleString()+' remaining</div>'
               + '</div>'
               + '<div style="text-align:right;flex-shrink:0">'
@@ -10909,7 +10944,7 @@ window.openEditJob = function(jobId) {
   html += '</div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Client Name</div><input id="ej-client" type="text" value="'+esc(job.client||'')+'" spellcheck="true" autocapitalize="words" style="'+s+'"/></div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Client Email</div><input id="ej-client-email" type="email" value="'+esc(job.clientEmail||'')+'" placeholder="client@example.com" style="'+s+'"/></div>';
-  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Client Cell</div><input id="ej-client-phone" type="tel" inputmode="tel" value="'+esc(job.clientPhone||'')+'" placeholder="(555) 555-5555" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Client Cell</div><input id="ej-client-phone" type="tel" inputmode="tel" value="'+esc(bpPhone(job.clientPhone||''))+'" placeholder="(123)-456-7890" style="'+s+'"/></div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Contract Value ($)</div><input id="ej-contract" type="number" inputmode="decimal" step="0.01" value="'+(job.contract||'')+'" style="'+s+'"/></div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Status</div><select id="ej-status" style="'+s+'">'+statusOpts+'</select></div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Contractor</div><select id="ej-contractor" style="'+s+'">'+conOpts+'</select></div>';

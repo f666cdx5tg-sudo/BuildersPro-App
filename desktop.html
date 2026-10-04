@@ -1075,7 +1075,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     </div>
     <div class="field"><div class="field-label">Client Name</div><input id="nj-client" placeholder="Client name" spellcheck="true" autocapitalize="words"/></div>
     <div class="field"><div class="field-label">Client Email</div><input id="nj-client-email" type="email" placeholder="client@example.com"/></div>
-    <div class="field"><div class="field-label">Client Cell</div><input id="nj-client-phone" type="tel" placeholder="(555) 555-5555"/></div>
+    <div class="field"><div class="field-label">Client Cell</div><input id="nj-client-phone" type="tel" placeholder="(123)-456-7890"/></div>
     <div class="field"><div class="field-label">Contract Value ($)</div><input id="nj-contract" type="number" placeholder="0.00"/></div>
     <div class="field-row">
       <div class="field"><div class="field-label">Contractor</div><select id="nj-contractor"><option value="">Unassigned</option></select></div>
@@ -1327,7 +1327,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     </div>
     <div class="field"><div class="field-label">Scope of Work *</div><textarea id="nc-scope" rows="4" placeholder="Detailed scope of work, inclusions, exclusions..."></textarea></div>
     <div class="field-row">
-      <div class="field"><div class="field-label">Phone</div><input id="nc-phone" type="tel" placeholder="(555) 000-0000"/></div>
+      <div class="field"><div class="field-label">Phone</div><input id="nc-phone" type="tel" placeholder="(123)-456-7890"/></div>
       <div class="field"><div class="field-label">Status</div><select id="nc-status"><option>Active</option><option>Pending</option><option>Completed</option></select></div>
     </div>
     <div style="display:flex;gap:8px">
@@ -1469,7 +1469,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     </div>
     <div class="field-row">
       <div class="field"><div class="field-label">Email</div><input id="con2-email" type="email" placeholder="email@example.com"/></div>
-      <div class="field"><div class="field-label">Phone</div><input id="con2-phone" type="tel" placeholder="(555) 000-0000"/></div>
+      <div class="field"><div class="field-label">Phone</div><input id="con2-phone" type="tel" placeholder="(123)-456-7890"/></div>
     </div>
     <div class="field"><div class="field-label">Associated Job</div><select id="con2-job"><option value="">No specific job</option></select></div>
     <div class="field"><div class="field-label">Notes</div><textarea id="con2-notes" rows="2" placeholder="License #, address, notes..."></textarea></div>
@@ -1603,7 +1603,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.09';
+var APP_VERSION = '3.10';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1711,6 +1711,41 @@ function bpMDY(v) {
   var mm = dt.getMonth() + 1, dd = dt.getDate();
   return (mm < 10 ? '0' : '') + mm + '/' + (dd < 10 ? '0' : '') + dd + '/' + dt.getFullYear();
 }
+
+/* v3.10: phone numbers are always (123)-456-7890. bpPhone() formats a stored/typed number for display;
+   the input mask formats as you type in every phone box (type=tel or id containing "phone"). 11 digits
+   starting with 1 drops the 1. Anything that isn't a plain 10-digit number (extensions, letters) is left alone. */
+function bpPhone(v) {
+  if (v === null || v === undefined) return '';
+  var s = String(v).trim(); if (!s) return '';
+  if (/[a-wyz]/i.test(s)) return s;
+  var d = s.replace(/\D/g, '');
+  if (d.length === 11 && d.charAt(0) === '1') d = d.slice(1);
+  if (d.length !== 10 || /x|ext/i.test(s)) return s;
+  return '(' + d.slice(0,3) + ')-' + d.slice(3,6) + '-' + d.slice(6);
+}
+function bpPhoneTyping(v) {
+  var s = String(v || '');
+  if (/[a-wyz]/i.test(s) || /x|ext/i.test(s)) return s;
+  var d = s.replace(/\D/g, '');
+  if (d.length === 11 && d.charAt(0) === '1') d = d.slice(1);
+  if (d.length > 10) return s;
+  if (!d.length) return '';
+  if (d.length <= 3) return '(' + d;
+  if (d.length <= 6) return '(' + d.slice(0,3) + ')-' + d.slice(3);
+  return '(' + d.slice(0,3) + ')-' + d.slice(3,6) + '-' + d.slice(6);
+}
+(function(){
+  function isPh(el){ return el && el.tagName === 'INPUT' && (el.type === 'tel' || /phone/i.test(el.id || '')); }
+  document.addEventListener('input', function(e){
+    var el = e.target; if (!isPh(el)) return;
+    var f = bpPhoneTyping(el.value); if (f !== el.value) el.value = f;
+  }, true);
+  document.addEventListener('change', function(e){
+    var el = e.target; if (!isPh(el)) return;
+    var f = bpPhone(el.value); if (f !== el.value) el.value = f;
+  }, true);
+})();
 function fmtDate(iso) { return bpMDY(iso); }
 function fmtTime(iso) { if (!iso) return ''; return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
 /* ── Permit expiration status (shared by Dashboard/Finance) ── */
@@ -2563,7 +2598,7 @@ function renderDesktopJobs() {
         var csz=[[j.city,j.state].filter(Boolean).join(', '),j.zip].filter(Boolean).join(' ');
         var cEmail=(typeof clientEmailFor==='function'?clientEmailFor(j):'')||j.clientEmail||'';
         var L=function(v,st){ return '<div style="'+(st||'font-size:12px;color:var(--muted)')+';padding:1px 0">'+(v?v:'<span style="opacity:.4">—</span>')+'</div>'; };
-        var cell=L(esc(j.name),'font-weight:700;font-size:14px')+L(esc(j.address||''))+L(esc(csz))+L(j.client?esc(j.client):'')+L(cEmail?esc(cEmail):'')+L(j.clientPhone?esc(j.clientPhone):'')+L((+j.contract||0)?fmt$(j.contract):'','font-size:12px;font-weight:700;color:var(--text)');
+        var cell=L(esc(j.name),'font-weight:700;font-size:14px')+L(esc(j.address||''))+L(esc(csz))+L(j.client?esc(j.client):'')+L(cEmail?esc(cEmail):'')+L(j.clientPhone?esc(bpPhone(j.clientPhone)):'')+L((+j.contract||0)?fmt$(j.contract):'','font-size:12px;font-weight:700;color:var(--text)');
         return '<tr onclick="openJobDetail(\''+j.id+'\')" style="cursor:pointer"'+(addr?' title="'+esc(addr)+'"':'')+'>'
           +'<td style="white-space:nowrap">'+cell+'</td>'
           +'<td onclick="event.stopPropagation()" style="min-width:190px"><span class="badge '+({Active:'badge-ok',Pending:'badge-warn',Complete:'badge-green','On Hold':'badge-red'}[j.status]||'badge-muted')+'">'+j.status+'</span>'
@@ -2611,7 +2646,7 @@ function editJob(id) {
   document.getElementById('nj-name').value=j.name||'';
   document.getElementById('nj-client').value=j.client||'';
   document.getElementById('nj-client-email').value=j.clientEmail||'';
-  document.getElementById('nj-client-phone').value=j.clientPhone||'';
+  document.getElementById('nj-client-phone').value=bpPhone(j.clientPhone||'');
   document.getElementById('nj-address').value=j.address||'';
   document.getElementById('nj-city').value=j.city||'';
   document.getElementById('nj-state').value=j.state||'';
@@ -5941,7 +5976,7 @@ function editContractor(id) {
   document.getElementById('nc-trade').value=c.trade||'General';
   document.getElementById('nc-value').value=c.value||'';
   document.getElementById('nc-scope').value=c.scope||'';
-  document.getElementById('nc-phone').value=c.phone||'';
+  document.getElementById('nc-phone').value=bpPhone(c.phone||'');
   document.getElementById('nc-status').value=c.status||'Active';
   populateJobSelects();
   setTimeout(function(){ var jel=document.getElementById('nc-job'); if(jel) jel.value=c.jobId||''; }, 100);
@@ -8424,7 +8459,7 @@ function renderContacts() {
           + '<td><span class="badge '+(typeBadge[con.type]||'badge-muted')+'">'+esc(con.type)+'</span></td>'
           + '<td><div>'+esc(con.company||'—')+'</div>'+(con.role?'<div style="font-size:11px;color:var(--muted)">'+esc(con.role)+'</div>':'')+'</td>'
           + '<td>'+(con.email?'<a href="mailto:'+esc(con.email)+'" style="color:#42A5F5;text-decoration:none;font-size:13px">'+esc(con.email)+'</a>':'—')+'</td>'
-          + '<td>'+(con.phone?'<a href="tel:'+esc(con.phone)+'" style="color:#0A84FF;text-decoration:none;font-size:13px">'+esc(con.phone)+'</a>':'—')+'</td>'
+          + '<td>'+(con.phone?'<a href="tel:'+esc(con.phone)+'" style="color:#0A84FF;text-decoration:none;font-size:13px">'+esc(bpPhone(con.phone))+'</a>':'—')+'</td>'
           + '<td style="font-size:12px;color:var(--muted)">'+(job?esc(job.name):'—')+'</td>'
           + '<td style="white-space:nowrap">'
           + '<button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;margin-right:4px" onclick="editContact(\''+con.id+'\')">✏️</button>'
@@ -8456,7 +8491,7 @@ function editContact(id) {
   document.getElementById('con2-company').value = con.company || '';
   document.getElementById('con2-role').value    = con.role    || '';
   document.getElementById('con2-email').value   = con.email   || '';
-  document.getElementById('con2-phone').value   = con.phone   || '';
+  document.getElementById('con2-phone').value   = bpPhone(con.phone   || '');
   document.getElementById('con2-notes').value   = con.notes   || '';
   document.getElementById('con2-type').value    = con.type    || 'Client';
   populateJobSelects();
@@ -9176,7 +9211,7 @@ function renderDesktopJobDetail(jobId) {
         var pays = contractorPayments(c.id), paid = pays.reduce(function(s,p){return s+(+p.amount||0);},0), bal = (+c.value||0)-paid;
         return '<div class="card" style="margin-bottom:8px">'
           + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-          + '<div><div style="font-size:13px;font-weight:700">'+esc(c.name)+'</div><div style="font-size:11px;color:var(--muted)">'+esc(c.trade)+(c.phone?' · 📞 '+esc(c.phone):'')+'</div></div>'
+          + '<div><div style="font-size:13px;font-weight:700">'+esc(c.name)+'</div><div style="font-size:11px;color:var(--muted)">'+esc(c.trade)+(c.phone?' · 📞 '+esc(bpPhone(c.phone)):'')+'</div></div>'
           + '<div style="text-align:right"><div style="font-size:16px;font-weight:900;color:#FFAA33">'+fmt$(c.value)+'</div><span class="badge '+(c.status==='Active'?'badge-green':'badge-muted')+'">'+esc(c.status)+'</span></div>'
           + '</div>'
           + '<div style="display:flex;justify-content:space-between;align-items:center">'
