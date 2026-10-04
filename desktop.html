@@ -1610,7 +1610,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.24';
+var APP_VERSION = '3.25';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -18731,5 +18731,29 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     });
   };
   console.log('[BP] v3.24 ready — Add Photo on a job picks the area');
+})();
+</script>
+<script>
+/* ══ v3.25 — Area-card icons on the Command Center: windows, water service, handicap, main entrance, stairs ══
+   Stan (Oct 3, 2026): "windows, water service, handicap, main entrance, stairs icon on the command center
+   app is not correct". Cause: the Mac Areas cards only asked bpRoomIconHtml(name,type), which knew a handful of
+   names, then fell back to the generic type emoji (a construction crane for every outdoor area). The stairs /
+   ramp drawings from v2.73 were never consulted there. Identical block in both apps. */
+(function(){
+  'use strict';
+  var prev = window.bpRoomIconHtml;
+  if (typeof prev !== 'function' || prev.__v325) return;
+  function ic(n){ return (window.bpIcon && window.bpIcon(n)) || ''; }
+  window.bpRoomIconHtml = function(name, type){
+    var n = String(name || '').toLowerCase(), L = window.BP_LOC_SVG || {};
+    if (/handicap|wheelchair|\bramps?\b|\bada\b/.test(n) && L.ramp) return L.ramp;
+    if (/\bstairs?\b|\bsteps?\b|\bstoops?\b|stairway|staircase/.test(n) && L.stairs) return L.stairs;
+    if (/\bwindows?\b/.test(n)) return ic('window');
+    if (/water (service|line|main|meter)|\bmeter\b|\bhose bib|spigot/.test(n)) return ic('faucet');
+    if (/\bmain (door|entrance)\b|\bentrance\b/.test(n)) return ic('door');
+    return prev.apply(this, arguments);
+  };
+  window.bpRoomIconHtml.__v325 = 1;
+  console.log('[BP] v3.25 ready — area icons for windows, water, handicap, entrance, stairs');
 })();
 </script>
