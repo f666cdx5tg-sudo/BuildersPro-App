@@ -187,6 +187,8 @@ button,input,textarea,select{font-family:inherit}
 .field textarea{resize:vertical;min-height:80px;line-height:1.5}
 .field select option{background:var(--card2)}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bp-csz{display:grid;grid-template-columns:minmax(0,1fr) 68px 104px;gap:10px}
+.bp-csz .field{min-width:0}
 
 /* EMPTY STATE */
 .empty{text-align:center;padding:60px 24px;color:var(--muted)}
@@ -1023,19 +1025,18 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     </div>
     <div class="sheet-body">
       <div class="field"><div class="field-label">Job Name *</div><input id="aj-name" type="text" placeholder="e.g. Smith Kitchen Reno" spellcheck="true" autocapitalize="words"/></div>
-      <div class="field"><div class="field-label">Client</div><input id="aj-client" type="text" placeholder="Client name" spellcheck="true" autocapitalize="words"/></div>
-      <div class="field"><div class="field-label">Client Email</div><input id="aj-client-email" type="email" placeholder="client@example.com"/></div>
-      <div class="field"><div class="field-label">Address</div><input id="aj-address" type="text" placeholder="Street address" spellcheck="true" autocapitalize="words"/></div>
-      <div class="field-row">
+      <div class="field"><div class="field-label">Job Address</div><input id="aj-address" type="text" placeholder="Street address" spellcheck="true" autocapitalize="words"/></div>
+      <div class="bp-csz">
         <div class="field"><div class="field-label">City</div><input id="aj-city" type="text" placeholder="City" spellcheck="true" autocapitalize="words"/></div>
-        <div class="field"><div class="field-label">State</div><input id="aj-state" type="text" placeholder="State" maxlength="2" style="text-transform:uppercase"/></div>
+        <div class="field"><div class="field-label">State</div><input id="aj-state" type="text" placeholder="NJ" maxlength="2" style="text-transform:uppercase"/></div>
+        <div class="field"><div class="field-label">Zip Code</div><input id="aj-zip" type="text" inputmode="numeric" placeholder="Zip" maxlength="10"/></div>
       </div>
-      <div class="field"><div class="field-label">Zip Code</div><input id="aj-zip" type="text" placeholder="Zip code" maxlength="10"/></div>
-      <div class="field-row">
-        <div class="field"><div class="field-label">Status</div>
-          <select id="aj-status"><option>Active</option><option>Pending</option><option>Complete</option><option>On Hold</option></select>
-        </div>
-        <div class="field"><div class="field-label">Contract ($)</div><input id="aj-contract" type="number" inputmode="decimal" placeholder="0.00"/></div>
+      <div class="field"><div class="field-label">Client Name</div><input id="aj-client" type="text" placeholder="Client name" spellcheck="true" autocapitalize="words"/></div>
+      <div class="field"><div class="field-label">Client Email</div><input id="aj-client-email" type="email" placeholder="client@example.com"/></div>
+      <div class="field"><div class="field-label">Client Cell</div><input id="aj-client-phone" type="tel" inputmode="tel" placeholder="(555) 555-5555"/></div>
+      <div class="field"><div class="field-label">Contract Value ($)</div><input id="aj-contract" type="number" inputmode="decimal" placeholder="0.00"/></div>
+      <div class="field"><div class="field-label">Status</div>
+        <select id="aj-status"><option>Active</option><option>Pending</option><option>Complete</option><option>On Hold</option></select>
       </div>
       <div class="field"><div class="field-label">Contractor</div><select id="aj-contractor"><option value="">Unassigned</option></select></div>
       <div class="field-row">
@@ -1414,7 +1415,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.03';
+var APP_VERSION = '3.04';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -3095,7 +3096,7 @@ window.saveMarkup = function() {
 /* ── JOB ACTIONS ── */
 function openAddJob() {
   try { bpResetProfileFields(null); } catch(e) {}
-  ['aj-name','aj-client','aj-client-email','aj-address','aj-city','aj-state','aj-zip','aj-notes'].forEach(function(id){ var el=document.getElementById(id);if(el)el.value=''; });
+  ['aj-name','aj-client','aj-client-email','aj-client-phone','aj-address','aj-city','aj-state','aj-zip','aj-notes'].forEach(function(id){ var el=document.getElementById(id);if(el)el.value=''; });
   document.getElementById('aj-status').value = 'Active';
   document.getElementById('aj-contract').value = '';
   var ajStart = document.getElementById('aj-start'); if (ajStart) ajStart.value = '';
@@ -3233,6 +3234,7 @@ function saveJob() {
     name:     toTitleCase(name),
     client:   toTitleCase(document.getElementById('aj-client').value.trim()),
     clientEmail: document.getElementById('aj-client-email')?.value.trim() || '',
+    clientPhone: document.getElementById('aj-client-phone')?.value.trim() || '',
     address:  toTitleCase(document.getElementById('aj-address').value.trim()),
     city:     toTitleCase(document.getElementById('aj-city')?.value.trim() || ''),
     state:    (document.getElementById('aj-state')?.value.trim() || '').toUpperCase(),
@@ -10869,18 +10871,17 @@ window.openEditJob = function(jobId) {
   html += '<button onclick="document.getElementById(\'edit-job-modal\').remove()" style="width:30px;height:30px;border-radius:50%;background:var(--card2);border:none;color:var(--muted);font-size:18px;cursor:pointer">x</button>';
   html += '</div><div style="padding:16px 18px">';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Job Name *</div><input id="ej-name" type="text" value="'+esc(job.name)+'" spellcheck="true" autocapitalize="words" style="'+s+'"/></div>';
-  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Client</div><input id="ej-client" type="text" value="'+esc(job.client||'')+'" spellcheck="true" autocapitalize="words" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Job Address</div><input id="ej-address" type="text" value="'+esc(job.address||'')+'" placeholder="Street address" spellcheck="true" autocapitalize="words" style="'+s+'"/></div>';
+  html += '<div style="display:grid;grid-template-columns:minmax(0,1fr) 68px 104px;gap:10px;margin-bottom:14px">';
+  html += '<div style="min-width:0"><div style="'+lbl+'">City</div><input id="ej-city" type="text" value="'+esc(job.city||'')+'" spellcheck="true" autocapitalize="words" style="'+s+'"/></div>';
+  html += '<div style="min-width:0"><div style="'+lbl+'">State</div><input id="ej-state" type="text" maxlength="2" value="'+esc(job.state||'')+'" style="'+s+';text-transform:uppercase"/></div>';
+  html += '<div style="min-width:0"><div style="'+lbl+'">Zip Code</div><input id="ej-zip" type="text" inputmode="numeric" maxlength="10" value="'+esc(job.zip||'')+'" style="'+s+'"/></div>';
+  html += '</div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Client Name</div><input id="ej-client" type="text" value="'+esc(job.client||'')+'" spellcheck="true" autocapitalize="words" style="'+s+'"/></div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Client Email</div><input id="ej-client-email" type="email" value="'+esc(job.clientEmail||'')+'" placeholder="client@example.com" style="'+s+'"/></div>';
-  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Address</div><input id="ej-address" type="text" value="'+esc(job.address||'')+'" placeholder="Street address" spellcheck="true" autocapitalize="words" style="'+s+'"/></div>';
-  html += '<div style="display:flex;gap:10px;margin-bottom:14px">';
-  html += '<div style="flex:1"><div style="'+lbl+'">City</div><input id="ej-city" type="text" value="'+esc(job.city||'')+'" spellcheck="true" autocapitalize="words" style="'+s+'"/></div>';
-  html += '<div style="flex:1"><div style="'+lbl+'">State</div><input id="ej-state" type="text" maxlength="2" value="'+esc(job.state||'')+'" style="'+s+';text-transform:uppercase"/></div>';
-  html += '</div>';
-  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Zip Code</div><input id="ej-zip" type="text" maxlength="10" value="'+esc(job.zip||'')+'" style="'+s+'"/></div>';
-  html += '<div style="display:flex;gap:10px;margin-bottom:14px">';
-  html += '<div style="flex:1"><div style="'+lbl+'">Status</div><select id="ej-status" style="'+s+'">'+statusOpts+'</select></div>';
-  html += '<div style="flex:1"><div style="'+lbl+'">Contract ($)</div><input id="ej-contract" type="number" inputmode="decimal" step="0.01" value="'+(job.contract||'')+'" style="'+s+'"/></div>';
-  html += '</div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Client Cell</div><input id="ej-client-phone" type="tel" inputmode="tel" value="'+esc(job.clientPhone||'')+'" placeholder="(555) 555-5555" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Contract Value ($)</div><input id="ej-contract" type="number" inputmode="decimal" step="0.01" value="'+(job.contract||'')+'" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Status</div><select id="ej-status" style="'+s+'">'+statusOpts+'</select></div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Contractor</div><select id="ej-contractor" style="'+s+'">'+conOpts+'</select></div>';
   html += '<div style="display:flex;gap:10px;margin-bottom:14px">';
   html += '<div style="flex:1"><div style="'+lbl+'">Start Date</div><input id="ej-start" type="date" value="'+(job.startDate||'')+'" style="'+s+'"/></div>';
@@ -10903,6 +10904,7 @@ window.saveEditJob = function(jobId) {
   job.name    = toTitleCase(name);
   job.client  = toTitleCase((document.getElementById('ej-client').value||'').trim());
   job.clientEmail = (document.getElementById('ej-client-email')?.value||'').trim();
+  job.clientPhone = (document.getElementById('ej-client-phone')?.value||'').trim();
   job.address = toTitleCase((document.getElementById('ej-address').value||'').trim());
   job.city    = toTitleCase((document.getElementById('ej-city')?.value||'').trim());
   job.state   = (document.getElementById('ej-state')?.value||'').trim().toUpperCase();

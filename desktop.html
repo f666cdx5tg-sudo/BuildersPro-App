@@ -156,6 +156,8 @@ html,body{height:100%;overflow:hidden;font-family:var(--font-main);background:va
 .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent)}
 .field textarea{resize:vertical;min-height:80px;line-height:1.6}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.bp-csz{display:grid;grid-template-columns:minmax(0,1fr) 80px 130px;gap:12px}
+.bp-csz .field{min-width:0}
 .field-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
 
 /* ── MODAL ── */
@@ -1059,28 +1061,24 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <div class="modal-overlay" id="modal-new-job">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">New Job</div><button class="modal-close" onclick="closeModal('modal-new-job')">✕</button></div>
-    <div class="field-row">
-      <div class="field"><div class="field-label">Job Name *</div><input id="nj-name" placeholder="e.g. Smith Renovation" spellcheck="true" autocapitalize="words"/></div>
-      <div class="field"><div class="field-label">Status</div><select id="nj-status"><option>Active</option><option>Pending</option><option>Complete</option><option>On Hold</option></select></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><div class="field-label">Client</div><input id="nj-client" placeholder="Client name" spellcheck="true" autocapitalize="words"/></div>
-      <div class="field"><div class="field-label">Contract ($)</div><input id="nj-contract" type="number" placeholder="0.00"/></div>
-    </div>
-    <div class="field"><div class="field-label">Client Email</div><input id="nj-client-email" type="email" placeholder="client@example.com"/></div>
-    <div class="field"><div class="field-label">Address</div><input id="nj-address" placeholder="Street address" spellcheck="true" autocapitalize="words"/></div>
-    <div class="field-row">
+    <div class="field"><div class="field-label">Job Name *</div><input id="nj-name" placeholder="e.g. Smith Renovation" spellcheck="true" autocapitalize="words"/></div>
+    <div class="field"><div class="field-label">Job Address</div><input id="nj-address" placeholder="Street address" spellcheck="true" autocapitalize="words"/></div>
+    <div class="bp-csz">
       <div class="field"><div class="field-label">City</div><input id="nj-city" placeholder="City" spellcheck="true" autocapitalize="words"/></div>
-      <div class="field"><div class="field-label">State</div><input id="nj-state" placeholder="State" maxlength="2" style="text-transform:uppercase"/></div>
+      <div class="field"><div class="field-label">State</div><input id="nj-state" placeholder="NJ" maxlength="2" style="text-transform:uppercase"/></div>
+      <div class="field"><div class="field-label">Zip Code</div><input id="nj-zip" placeholder="Zip" maxlength="10"/></div>
     </div>
-    <div class="field"><div class="field-label">Zip Code</div><input id="nj-zip" placeholder="Zip code" maxlength="10"/></div>
+    <div class="field"><div class="field-label">Client Name</div><input id="nj-client" placeholder="Client name" spellcheck="true" autocapitalize="words"/></div>
+    <div class="field"><div class="field-label">Client Email</div><input id="nj-client-email" type="email" placeholder="client@example.com"/></div>
+    <div class="field"><div class="field-label">Client Cell</div><input id="nj-client-phone" type="tel" placeholder="(555) 555-5555"/></div>
+    <div class="field"><div class="field-label">Contract Value ($)</div><input id="nj-contract" type="number" placeholder="0.00"/></div>
     <div class="field-row">
       <div class="field"><div class="field-label">Contractor</div><select id="nj-contractor"><option value="">Unassigned</option></select></div>
       <div class="field"><div class="field-label">Start Date</div><input id="nj-start" type="date"/></div>
     </div>
     <div class="field-row">
       <div class="field"><div class="field-label">Completion Date</div><input id="nj-completion" type="date"/></div>
-      <div class="field"></div>
+      <div class="field"><div class="field-label">Status</div><select id="nj-status"><option>Active</option><option>Pending</option><option>Complete</option><option>On Hold</option></select></div>
     </div>
     <div class="field"><div class="field-label">Scope / Notes</div><textarea id="nj-notes" rows="3" placeholder="Scope of work..."></textarea></div>
     <div style="display:flex;gap:8px;margin-top:4px">
@@ -1600,7 +1598,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.03';
+var APP_VERSION = '3.04';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -2577,13 +2575,14 @@ function renderDesktopJobs() {
     +'</tbody></table></div>';
 }
 
-function openNewJob() { ['nj-name','nj-client','nj-client-email','nj-address','nj-city','nj-state','nj-zip','nj-notes','nj-start','nj-completion'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';}); document.getElementById('nj-status').value='Active'; document.getElementById('nj-contract').value=''; populateJobSelects(); openModal('modal-new-job'); }
+function openNewJob() { ['nj-name','nj-client','nj-client-email','nj-client-phone','nj-address','nj-city','nj-state','nj-zip','nj-notes','nj-start','nj-completion'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';}); document.getElementById('nj-status').value='Active'; document.getElementById('nj-contract').value=''; populateJobSelects(); openModal('modal-new-job'); }
 
 function saveNewJob() {
   var name=document.getElementById('nj-name').value.trim();
   if(!name){toast('Job name required');return;}
   DB.jobs.push({id:uid(),name:toTitleCase(name),client:toTitleCase(document.getElementById('nj-client').value.trim()),
     clientEmail:document.getElementById('nj-client-email')?.value.trim()||'',
+    clientPhone:document.getElementById('nj-client-phone')?.value.trim()||'',
     address:toTitleCase(document.getElementById('nj-address').value.trim()),
     city:toTitleCase(document.getElementById('nj-city')?.value.trim()||''),
     state:(document.getElementById('nj-state')?.value.trim()||'').toUpperCase(),
@@ -2603,6 +2602,7 @@ function editJob(id) {
   document.getElementById('nj-name').value=j.name||'';
   document.getElementById('nj-client').value=j.client||'';
   document.getElementById('nj-client-email').value=j.clientEmail||'';
+  document.getElementById('nj-client-phone').value=j.clientPhone||'';
   document.getElementById('nj-address').value=j.address||'';
   document.getElementById('nj-city').value=j.city||'';
   document.getElementById('nj-state').value=j.state||'';
@@ -2620,6 +2620,7 @@ function editJob(id) {
     j.name=toTitleCase(document.getElementById('nj-name').value.trim());
     j.client=toTitleCase(document.getElementById('nj-client').value.trim());
     j.clientEmail=document.getElementById('nj-client-email')?.value.trim()||'';
+    j.clientPhone=document.getElementById('nj-client-phone')?.value.trim()||'';
     j.address=toTitleCase(document.getElementById('nj-address').value.trim());
     j.city=toTitleCase((document.getElementById('nj-city')?.value||'').trim());
     j.state=(document.getElementById('nj-state')?.value||'').trim().toUpperCase();
@@ -9757,7 +9758,7 @@ function bpEnsureDesktopHeader(){
   }).join('');
   function pill(label, val, cur, fn){
     var on = cur === val;
-    return '<button onclick="'+fn+'(\''+val+'\')" style="padding:7px 4px;border-radius:8px;border:1.5px solid '
+    return '<button onclick="'+fn+'(\''+val+'\')" style="padding:8px 14px;border-radius:9px;border:1.5px solid '
       + (on?'#0A84FF':'var(--border)')+';background:'+(on?'rgba(10,132,255,.12)':'var(--card2)')
       + ';color:'+(on?'#0A84FF':'var(--muted)')+';font-size:13px;font-weight:700;cursor:pointer;'
       + 'font-family:inherit">'+label+'</button>';
@@ -10172,7 +10173,7 @@ BPX.flag = function(room){
 BPX.tabs = function(cur, fnName){
   function t(label, val){
     var on = cur === val;
-    return '<button onclick="'+fnName+'(\''+val+'\')" style="padding:7px 4px;border-radius:8px;border:1.5px solid '
+    return '<button onclick="'+fnName+'(\''+val+'\')" style="padding:8px 14px;border-radius:9px;border:1.5px solid '
       + (on?'#0A84FF':'var(--border)')+';background:'+(on?'rgba(10,132,255,.12)':'var(--card2)')
       + ';color:'+(on?'#0A84FF':'var(--muted)')+';font-size:13px;font-weight:700;cursor:pointer;'
       + 'font-family:inherit">'+label+'</button>';
@@ -17586,9 +17587,7 @@ css.textContent = [
   '.bp-ic svg{display:block;width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}',
   '.bp-ic svg .f{fill:currentColor;stroke:none}',
   '.bp-ic-t{position:absolute;left:0;top:0;width:0;height:0;overflow:hidden;font-size:0;opacity:0;pointer-events:none}',
-  /* v3.03: kind filter is its OWN full-width row (it used to share the row and crush the filters) */
-  '.bp-kindbar{display:flex;gap:6px;align-items:stretch;width:100%;margin:6px 0 0;padding:0;border:0;box-sizing:border-box}',
-  '.bp-kindbar button{flex:1 1 0;min-width:0;white-space:nowrap}'
+  '.bp-kindbar{display:inline-flex;gap:6px;align-items:center;margin-left:8px;padding-left:10px;border-left:1px solid var(--border,#2a2a2a)}'
 ].join('\n');
 document.head.appendChild(css);
 
@@ -17973,9 +17972,9 @@ function rerenderLocViews(){
 function kindBarHtml(){
   function b(label, val){
     var on = window._bpKind === val;
-    return '<button onclick="bpSetKind(\'' + val + '\')" style="padding:7px 4px;border-radius:8px;border:1.5px solid '
+    return '<button onclick="bpSetKind(\'' + val + '\')" style="padding:8px 14px;border-radius:9px;border:1.5px solid '
       + (on ? '#BF5AF2' : 'var(--border)') + ';background:' + (on ? 'rgba(191,90,242,.13)' : 'var(--card2)')
-      + ';color:' + (on ? '#BF5AF2' : 'var(--muted)') + ';font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit">' + label + '</button>';
+      + ';color:' + (on ? '#BF5AF2' : 'var(--muted)') + ';font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + label + '</button>';
   }
   return '<span class="bp-kindbar">' + b('All kinds','All') + b('Rooms','room') + b('Locations','location') + '</span>';
 }
@@ -17983,9 +17982,8 @@ function injectKind(){
   var btns = document.querySelectorAll('[onclick^="bpSetAreaSpace("]');
   if (!btns.length) return;
   var last = btns[btns.length - 1];
-  var row = last.parentNode;
-  if (row.parentNode && row.parentNode.querySelector('.bp-kindbar')) return;
-  row.insertAdjacentHTML('afterend', kindBarHtml());
+  if (last.parentNode.querySelector('.bp-kindbar')) return;
+  last.insertAdjacentHTML('afterend', kindBarHtml());
 }
 window.bpSetKind = function(k){ window._bpKind = k; rerenderLocViews(); };
 safe(function(){
