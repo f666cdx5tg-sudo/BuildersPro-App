@@ -1435,7 +1435,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.33';
+var APP_VERSION = '3.34';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1604,6 +1604,14 @@ function bpPinNav(scale) {
        bar never leaves the page. */
     var navBottom = nav.getBoundingClientRect().bottom;
     nav.style.removeProperty('padding-bottom');
+    /* v3.34 — Stan (Safari-tab screenshot, Oct 4): "move the footer to the
+       bottom of the page." In a plain Safari tab (not the home-screen app) the
+       browser's own toolbar sits over the home-indicator strip, so the page
+       ends ABOVE it. The bar was still reserving the home-indicator inset +
+       4px under the buttons, and that dead strip is the gap he saw. v3.29/3.30
+       only handled the installed app. In a browser tab, keep just a small
+       breathing margin so the buttons sit right on the edge of the page. */
+    if (!standalone) nav.style.setProperty('padding-bottom', '6px', 'important');
     var floatGap = ref - navBottom;                 // ref includes the screen height when installed
     var layoutGap = Math.max(window.innerHeight, vh) - navBottom;
     if (floatGap > 20 && floatGap < 120 && layoutGap < 2) {
@@ -15115,6 +15123,10 @@ window.bpFitNums = function() {
   var css = document.createElement('style');
   css.textContent = [
     '.nav{background:var(--card)!important;border-top:1px solid var(--border)!important;gap:4px;padding:6px 6px calc(var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 4px)!important;height:auto!important;min-height:var(--nav-h)}',
+    /* v3.34 — in a Safari tab the browser toolbar covers the home-indicator
+       strip, so no inset padding under the buttons (JS in bpPinNav does the
+       same; this rule just avoids a flash before it runs). */
+    '@media (display-mode: browser){.nav{padding-bottom:6px!important}}',
     /* v2.99 — Money screen: tabs become ONE slim scrolling row instead of two
        rows of tall tiles, so the numbers show without scrolling. */
     '#ftab-grid{display:flex!important;gap:6px!important;overflow-x:auto!important;padding:0 16px 8px!important;-webkit-overflow-scrolling:touch;scrollbar-width:none}',
