@@ -1,0 +1,9 @@
+{
+  "name": "BuildersPro",
+  "short_name": "BuildersPro",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f0f5ff",
+  "theme_color": "#f0f5ff"
+}
