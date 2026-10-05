@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.56';
+var APP_VERSION = '3.57';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -22579,25 +22579,37 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   try { paint(); } catch(e){}
 })();
 
-/* ── v3.56: the thumb dock slides out of the way while you scroll, and comes back ~0.7 s after you stop ── */
+/* ── v3.57: the thumb dock is hidden until you scroll (or tap / change screen); then it shows for ~3 s ── */
 (function(){
   if (window.__bpV356) return; window.__bpV356 = 1;
+  var SHOW_MS = 3000;
   var css = document.createElement('style'); css.id = 'bp-v356-css';
-  css.textContent = '#bp-dock{transition:transform .18s ease,opacity .18s ease}#bp-dock.bp-dock-away{transform:translateY(90px);opacity:0 !important;pointer-events:none}';
+  css.textContent = '#bp-dock{transition:transform .2s ease,opacity .2s ease;transform:translateY(90px);opacity:0 !important;pointer-events:none}#bp-dock.bp-dock-on{transform:none;opacity:.94 !important;pointer-events:auto}';
   document.head.appendChild(css);
   var t = 0, last = {};
-  function away(on){ var d = document.getElementById('bp-dock'); if (d) d.classList.toggle('bp-dock-away', on); }
+  function show(){
+    var d = document.getElementById('bp-dock'); if (!d) return;
+    d.classList.add('bp-dock-on'); clearTimeout(t);
+    t = setTimeout(function(){ d.classList.remove('bp-dock-on'); }, SHOW_MS);
+  }
+  window.bpDockShow = show;
   document.addEventListener('scroll', function(e){
     var el = e.target === document ? document.scrollingElement : e.target;
     if (!el || (el.closest && el.closest('#bp-dock'))) return;
     var y = el.scrollTop || 0, key = el.id || el.className || 'doc';
     var moved = Math.abs(y - (last[key] == null ? 0 : last[key])) > 2;   /* ignore tiny jitters and redraws */
     last[key] = y;
-    if (!moved) return;
-    away(true); clearTimeout(t); t = setTimeout(function(){ away(false); }, 700);
+    if (moved) show();
   }, true);
-  /* a tap anywhere brings it straight back */
-  document.addEventListener('touchstart', function(){ if (t) { clearTimeout(t); t = 0; } away(false); }, { passive:true, capture:true });
-  console.log('[BP] v3.56 ready — dock hides while scrolling');
+  /* a touch anywhere also brings it up (short screens that don't scroll still get their buttons) */
+  document.addEventListener('touchstart', show, { passive:true, capture:true });
+  /* changing screen shows it briefly too */
+  var _ss = window.showScreen;
+  if (typeof _ss === 'function' && !_ss.__v357) {
+    window.showScreen = function(){ var r = _ss.apply(this, arguments); show(); return r; };
+    window.showScreen.__v357 = 1;
+  }
+  setTimeout(show, 600);
+  console.log('[BP] v3.57 ready — dock shows while scrolling, then hides');
 })();
 </script>
