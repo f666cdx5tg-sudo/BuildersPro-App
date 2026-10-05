@@ -19,7 +19,7 @@ async def main():
             b = await p.chromium.launch()
             for zoom in (1.0, 1.15, 1.3, 1.45):
                 ctx, pg, errs = await make_page(b, zoom=zoom)
-                await pg.evaluate("openRoomDetail('r4')"); await pg.wait_for_timeout(1500)   # switcher runs every 900ms
+                await pg.evaluate("openRoomDetail('r4')"); await pg.wait_for_timeout(2400)   # switcher runs every 900ms
                 ok(await pg.evaluate("!!document.querySelector('#s-room-detail .detail-header #bp-kind-slot #bp-kind-switch')"), f'[{zoom}] Room/Area switch is not inside the header')
                 ok(await pg.evaluate("!document.querySelector('#s-room-detail .detail-header ~ #bp-kind-switch')"), f'[{zoom}] old Counts-as row still below the header')
                 ok(await pg.evaluate("document.querySelector('#bp-kind-switch').innerText.indexOf('Counts as')<0"), f'[{zoom}] "Counts as" label still showing')

@@ -282,6 +282,19 @@ body.bp-drawer-open #bp-drawer{transform:none;visibility:visible;transition:tran
 .bp-act .bp-act-lb{display:none;margin-left:8px;font-weight:700;white-space:nowrap}
 .bp-act.bp-open{flex:2.2}
 .bp-act.bp-open .bp-act-lb{display:inline}
+/* v3.49 drop-down menu */
+.bp-hm{position:relative;display:inline-flex;flex:0 0 auto}
+.bp-hm-btn{width:44px;height:44px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;font-family:inherit}
+.bp-hm-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
+.bp-hm-pop{display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:210px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:6px;z-index:300}
+.bp-hm.open .bp-hm-pop{display:block}
+.detail-header:has(.bp-hm.open),#finance-sticky:has(.bp-hm.open),#bp-photo-header:has(.bp-hm.open){z-index:500 !important;position:relative}
+.detail-header:has(.bp-hm.open){position:sticky}
+.bp-hm-it{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:0 12px;border:none;background:transparent;color:var(--text);font-size:16px;font-weight:700;border-radius:10px;font-family:inherit;text-align:left;cursor:pointer;white-space:nowrap}
+.bp-hm-it .bp-hm-ic{width:22px;text-align:center;flex:0 0 22px}
+.bp-hm-it.on{color:#0A84FF;background:rgba(10,132,255,.12)}
+.bp-hm-it.danger{color:#FF453A}
+.bp-hm-sep{display:block;height:1px;background:var(--border);margin:4px 6px}
 .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--accent);font-size:15px;font-weight:600;cursor:pointer;padding:0;margin-bottom:10px}
 .back-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 .detail-title{font-size:22px;font-weight:800;letter-spacing:-.3px;line-height:1.2}
@@ -738,7 +751,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     </div>
     <div class="kpi" onclick="showScreen('s-rooms')">
       <div class="kpi-val" id="kpi-notes">0</div>
-      <div class="kpi-lbl">Areas</div>
+      <div class="kpi-lbl">Spaces</div>
     </div>
   </div>
   <div class="section-header">Recent Jobs</div>
@@ -768,9 +781,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <div class="screen" id="s-rooms">
   <div class="topbar">
     <div>
-      <div class="topbar-title">Areas</div>
+      <div class="topbar-title">Spaces</div>
       <div class="hdr-datetime" id="hdr-dt-rooms"></div>
-      <div class="topbar-sub" id="rooms-count">All areas</div>
+      <div class="topbar-sub" id="rooms-count">All spaces</div>
     </div>
     <button class="topbar-btn" onclick="(window.bpOpenSpacePicker?bpOpenSpacePicker():openAddRoom())"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
   </div>
@@ -1151,18 +1164,21 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-header">
-      <div class="sheet-title">New Area</div>
+      <div class="sheet-title">New Space</div>
       <button class="sheet-close" onclick="closeSheet('sheet-add-room')">✕</button>
     </div>
     <div class="sheet-body">
-      <div class="field"><div class="field-label">Area Name *</div>
+      <div class="field"><div class="field-label">Space Name *</div>
         <input id="ar-name" type="text" placeholder="e.g. Kitchen, Front Yard, Roof, Basement"/>
       </div>
       <div class="field"><div class="field-label">Job</div>
         <select id="ar-job"><option value="">No job</option></select>
       </div>
+      <div class="field"><div class="field-label">Counts as</div>
+        <select id="ar-kind"><option value="room">Room</option><option value="location">Area</option></select>
+      </div>
       <div class="field"><div class="field-label">Type</div>
-        <select id="ar-type">
+        <select id="ar-type" onchange="var k=document.getElementById('ar-kind');if(k)k.value=/^(Exterior|Roof)$/.test(this.value)?'location':'room'">
           <option>Kitchen</option><option>Bathroom</option><option>Bedroom</option>
           <option>Living Room</option><option>Basement</option><option>Attic</option>
           <option>Garage</option><option>Office</option><option>Hallway</option>
@@ -1193,7 +1209,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       <div class="field"><div class="field-label">Notes</div>
         <textarea id="ar-notes" rows="2" placeholder="Scope, condition, special instructions..."></textarea>
       </div>
-      <button class="btn btn-primary" onclick="saveRoom()" style="margin-bottom:6px">Add Area</button>
+      <button class="btn btn-primary" onclick="saveRoom()" style="margin-bottom:6px">Add Space</button>
       <div style="height:10px"></div>
     </div>
   </div>
@@ -1224,7 +1240,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       </div>
       <div class="field-row">
         <div class="field"><div class="field-label">Area</div>
-          <select id="an-room"><option value="">No area</option></select>
+          <select id="an-room"><option value="">No space</option></select>
         </div>
         <div class="field"><div class="field-label">Value ($)</div>
           <input id="an-value" type="number" inputmode="decimal" placeholder="0.00" step="0.01"/>
@@ -1485,7 +1501,30 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.48';
+var APP_VERSION = '3.49';
+/* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
+var _bpHmN = 0;
+window.bpHMenu = function(label, items, opts){
+  opts = opts || {};
+  var id = 'bphm' + (++_bpHmN);
+  var h = '<span class="bp-hm" id="' + id + '"><button type="button" class="bp-hm-btn" aria-label="' + String(label).replace(/"/g,'&quot;') + '" aria-haspopup="true" onclick="bpHMenuToggle(\'' + id + '\')">'
+    + '<svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>'
+    + '<span class="bp-hm-pop" role="menu">';
+  items.forEach(function(it){
+    if (it.sep) { h += '<span class="bp-hm-sep"></span>'; return; }
+    h += '<button type="button" role="menuitem" class="bp-hm-it' + (it.on ? ' on' : '') + (it.danger ? ' danger' : '') + '" onclick="bpHMenuClose();' + String(it.js).replace(/"/g,'&quot;') + '">'
+      + '<span class="bp-hm-ic">' + (it.on ? '✓' : (it.icon || '')) + '</span><span>' + it.label + '</span></button>';
+  });
+  return h + '</span></span>';
+};
+window.bpHMenuToggle = function(id){
+  var el = document.getElementById(id); if (!el) return;
+  var was = el.classList.contains('open');
+  bpHMenuClose();
+  if (!was) el.classList.add('open');
+};
+window.bpHMenuClose = function(){ [].forEach.call(document.querySelectorAll('.bp-hm.open'), function(e){ e.classList.remove('open'); }); };
+document.addEventListener('click', function(e){ if (!e.target.closest || !e.target.closest('.bp-hm')) bpHMenuClose(); }, true);
 /* v3.48: tapping an icon-only action button slides its name out next to the icon for ~2.5s */
 window.bpActTap = function(btn){
   try {
@@ -5772,6 +5811,7 @@ function openAddRoom(jobId) {
   var arL = document.getElementById('ar-length'); if (arL) arL.value = '';
   var arH = document.getElementById('ar-height'); if (arH) arH.value = '';
   var arD = document.getElementById('ar-desc'); if (arD) arD.value = '';
+  var arK = document.getElementById('ar-kind'); if (arK) arK.value = 'room';
   populateJobSelects();
   if (jobId) document.getElementById('ar-job').value = jobId;
   openSheet('sheet-add-room');
@@ -5781,7 +5821,7 @@ function openAddRoom(jobId) {
 /* ── Save Room ── */
 function saveRoom() {
   var name = document.getElementById('ar-name').value.trim();
-  if (!name) { alert('Area name required'); return; }
+  if (!name) { alert('Space name required'); return; }
   if (!DB.rooms) DB.rooms = [];
   var room = {
     id:     uid(),
@@ -5797,6 +5837,7 @@ function saveRoom() {
     length: +(document.getElementById('ar-length')?.value || 0) || null,
     height: +(document.getElementById('ar-height')?.value || 0) || null,
     description: (document.getElementById('ar-desc')?.value || '').trim(),
+    kind: (document.getElementById('ar-kind')?.value === 'location') ? 'location' : 'room',   /* v3.49: every new space is filed as a Room or an Area */
     created: now(),
   };
   DB.rooms.push(room);
@@ -5821,7 +5862,7 @@ function renderRooms() {
   if (cnt) cnt.textContent = rooms.length + ' area' + (rooms.length!==1?'s':'');
 
   if (!rooms.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🏠</div><div class="empty-text">No areas yet</div><div class="empty-sub">Tap + to add an area</div></div>';
+    el.innerHTML = '<div class="empty"><div class="empty-icon">🏠</div><div class="empty-text">No spaces yet</div><div class="empty-sub">Tap + to add an area</div></div>';
     return;
   }
 
@@ -5890,7 +5931,7 @@ function buildRoomCard(room) {
     + '<div style="border-top:1px solid var(--border,#2a2a2a);margin-top:8px;padding-top:8px;display:flex;gap:6px">'
     + '<button onclick="event.stopPropagation();openEditRoom(\'' + room.id + '\')" style="flex:1;padding:8px;border-radius:9px;border:1px solid var(--border);background:var(--card2);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Edit</button>'
     + '<button onclick="event.stopPropagation();openDuplicateRoom(\'' + room.id + '\')" title="Duplicate this area" style="flex:1;padding:8px;border-radius:9px;border:1px solid rgba(10,132,255,.3);background:rgba(10,132,255,.1);color:#0A84FF;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">⧉ Duplicate</button>'
-    + '<button onclick="event.stopPropagation();openBulkChecklist(\'' + (room.jobId||'') + '\',\'' + room.id + '\')" style="flex:1;padding:8px;border-radius:9px;border:none;background:#0A84FF;color:#000;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 Add List</button>'
+    + '<button onclick="event.stopPropagation();openBulkChecklist(\'' + (room.jobId||'') + '\',\'' + room.id + '\')" style="flex:1;padding:8px;border-radius:9px;border:none;background:#0A84FF;color:#000;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit"><svg viewBox="0 0 24 24" style="width:1.15em;height:1.15em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M4 6l1.5 1.5L8 5"/><path d="M4 12l1.5 1.5L8 11"/><path d="M4 18l1.5 1.5L8 17"/><line x1="11" y1="6.5" x2="20" y2="6.5"/><line x1="11" y1="12.5" x2="20" y2="12.5"/><line x1="11" y1="18.5" x2="20" y2="18.5"/></svg> Add List</button>'
     + '</div>'
     + '</div></div>';
 }
@@ -5924,7 +5965,7 @@ function openRoomDetail(roomId) {
   screen.innerHTML =
     '<div class="detail-header">'
     + '<button class="back-btn" onclick="closeRoomDetail()">'
-    + '<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>Areas'
+    + '<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>Spaces'
     + '</button>'
     + '<div style="display:flex;align-items:center;gap:12px">'
     + '<div style="width:48px;height:48px;border-radius:12px;background:var(--card2);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">' + icon + '</div>'
@@ -5940,15 +5981,15 @@ function openRoomDetail(roomId) {
     /* v3.48: left side of this row (under the icon) holds the Room / Area switch — see #bp-kind-slot */
     + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:10px">'
     + '<div id="bp-kind-slot" style="display:flex;align-items:center;flex:0 0 auto;max-width:100%"></div>'
-    /* Icon-only, and the same 34px box as the bin beside it. A "⧉ Duplicate"
-       text button was tried here first and overflowed the header at XL/XXL,
-       shoving the bin off the right edge — the header is a single flex row and
-       its title already eats the width at those sizes. The word lives on the
-       tooltip and on the Rooms cards instead. */
-    + '<div style="margin-left:auto;display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px;flex-shrink:0">'
-    + '<button onclick="openDuplicateRoom(\'' + roomId + '\')" title="Duplicate this area and its checklist" aria-label="Duplicate area" style="background:rgba(10,132,255,.14);border:1px solid rgba(10,132,255,.35);border-radius:9px;color:#0A84FF;font-size:16px;font-weight:800;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;padding:0">⧉</button>'
-    + '<button onclick="bpRoomCopy(\'' + roomId + '\')" title="Copy this area (then paste it into any job)" aria-label="Copy area" style="background:rgba(255,159,10,.14);border:1px solid rgba(255,159,10,.4);border-radius:9px;color:#FF9F0A;font-size:16px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;padding:0">📋</button>'
-    + '<button onclick="deleteRoom(\'' + roomId + '\')" title="Delete area" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;width:30px;height:34px;padding:0">🗑</button>'
+    /* v3.49: Duplicate / Copy / Edit / Delete are one ☰ menu in the header */
+    + '<div style="margin-left:auto;flex-shrink:0">'
+    + bpHMenu('Space actions', [
+        { icon:'⧉', label:'Duplicate', js:'openDuplicateRoom(\'' + roomId + '\')' },
+        { icon:'📋', label:'Copy (paste into any job)', js:'bpRoomCopy(\'' + roomId + '\')' },
+        { icon:'✏️', label:'Edit', js:'openEditRoom(\'' + roomId + '\')' },
+        { sep:true },
+        { icon:'🗑', label:'Delete', danger:true, js:'deleteRoom(\'' + roomId + '\')' }
+      ])
     + '</div>'
     + '</div>'
     // Progress
@@ -5960,7 +6001,7 @@ function openRoomDetail(roomId) {
     /* v3.48: icon-only. Tap one and its name slides out next to the icon for a couple of seconds. */
     + '<div class="bp-act-row">'
     + '<button class="btn btn-primary bp-act" title="Add Item" aria-label="Add Item" onclick="bpActTap(this);openAddNote(\'' + (room.jobId||'') + '\',\'' + roomId + '\')"><span class="bp-act-ic">＋</span><span class="bp-act-lb">Add Item</span></button>'
-    + '<button class="btn btn-ghost bp-act" title="Add List" aria-label="Add List" onclick="bpActTap(this);openBulkChecklist(\'' + (room.jobId||'') + '\',\'' + roomId + '\')"><span class="bp-act-ic">📋</span><span class="bp-act-lb">Add List</span></button>'
+    + '<button class="btn btn-ghost bp-act" title="Add List" aria-label="Add List" onclick="bpActTap(this);openBulkChecklist(\'' + (room.jobId||'') + '\',\'' + roomId + '\')"><span class="bp-act-ic"><svg viewBox="0 0 24 24" style="width:1.15em;height:1.15em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M4 6l1.5 1.5L8 5"/><path d="M4 12l1.5 1.5L8 11"/><path d="M4 18l1.5 1.5L8 17"/><line x1="11" y1="6.5" x2="20" y2="6.5"/><line x1="11" y1="12.5" x2="20" y2="12.5"/><line x1="11" y1="18.5" x2="20" y2="18.5"/></svg></span><span class="bp-act-lb">Add List</span></button>'
     + '<label class="btn btn-ghost bp-act" title="Add Photo" aria-label="Add Photo" onclick="bpActTap(this)"><span class="bp-act-ic">📷</span><span class="bp-act-lb">Add Photo</span><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(this,\'' + (room.jobId||'') + '\',\'' + roomId + '\')"></label>'
     + '</div>'
 
@@ -5980,7 +6021,7 @@ function openRoomDetail(roomId) {
            narrower than the dollar figures in them, so the numbers spilled past
            the right edge of the screen. This wraps to two columns instead. */
         return '<div style="margin:0 16px 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px">'
-          + mkKpi('Area Contract', '$'+contractVal.toLocaleString(), 'var(--text,#f0f0f0)')
+          + mkKpi('Space Contract', '$'+contractVal.toLocaleString(), 'var(--text,#f0f0f0)')
           + mkKpi('Items Value', '$'+itemsTotal.toLocaleString(), '#FF9F0A')
           + mkKpi('Balance', (remaining<0?'-':'')+'$'+Math.abs(remaining).toLocaleString(), remaining<0?'var(--red)':'#0A84FF')
           + '</div>'
@@ -6032,11 +6073,11 @@ function closeRoomDetail() {
 
 function deleteRoom(roomId) {
   var room = (DB.rooms||[]).find(function(r){return r.id===roomId;});
-  if (!confirm('Delete area "' + (room?room.name:'') + '"? Its punchlist items will remain.')) return;
+  if (!confirm('Delete space "' + (room?room.name:'') + '"? Its punchlist items will remain.')) return;
   bpRemoveFrom('rooms', function(r){ return r.id!==roomId; });
   save(); renderAll();
   closeRoomDetail();
-  toast('Area deleted');
+  toast('Space deleted');
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -6248,7 +6289,7 @@ populateJobSelects = function() {
       var jn = r.jobId ? (DB.jobs.find(function(j){return j.id===r.jobId;})||{}).name : '';
       return '<option value="' + r.id + '">' + esc(r.name) + (jn ? ' (' + esc(jn) + ')' : '') + '</option>';
     }).join('');
-    anr.innerHTML = '<option value="">No area</option>' + roomOpts;
+    anr.innerHTML = '<option value="">No space</option>' + roomOpts;
   }
 };
 
@@ -6289,7 +6330,7 @@ renderJobDetail = function(jobId) {
     Laundry:'🧺', Exterior:'🏗️', Roof:'🏠', HVAC:'❄️', Electrical:'⚡',
     Plumbing:'🔧', Other:'📦' };
 
-  section.innerHTML = '<div class="section-header">Areas (' + rooms.length + ')</div>'
+  section.innerHTML = '<div class="section-header">Spaces (' + rooms.length + ')</div>'
     + '<div style="padding:0 16px;display:flex;flex-direction:column;gap:8px;margin-bottom:14px">'
     + rooms.map(function(room) {
         var items = (DB.punchlist||[]).filter(function(n){ return n.roomId===room.id; });
@@ -6348,10 +6389,10 @@ window.openEditRoom = function(roomId) {
   var html = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">';
   html += '<div style="width:36px;height:4px;background:var(--faint,#444);border-radius:99px;margin:12px auto 4px"></div>';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 14px;border-bottom:1px solid var(--border,#2a2a2a)">';
-  html += '<div style="font-size:17px;font-weight:700">Edit Area</div>';
+  html += '<div style="font-size:17px;font-weight:700">Edit Space</div>';
   html += '<button onclick="document.getElementById(\'edit-room-modal\').remove()" style="width:30px;height:30px;border-radius:50%;background:var(--card2);border:none;color:var(--muted);font-size:18px;cursor:pointer">x</button>';
   html += '</div><div style="padding:16px 18px">';
-  html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Area Name *</div><input id="er-name" type="text" value="'+esc(room.name)+'" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Space Name *</div><input id="er-name" type="text" value="'+esc(room.name)+'" style="'+s+'"/></div>';
   html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Type</div><select id="er-type" style="'+s+'">'+typeOpts+'</select></div>';
   html += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Job</div><select id="er-job" style="'+s+'">'+jobOpts+'</select></div>';
   html += '<div style="display:flex;gap:10px;margin-bottom:14px">';
@@ -6368,7 +6409,7 @@ window.openEditRoom = function(roomId) {
   html += '</div>';
   html += '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Notes</div><textarea id="er-notes" rows="2" style="'+s+';resize:vertical">'+esc(room.notes||'')+'</textarea></div>';
   html += '<div style="display:flex;gap:8px">';
-  html += '<button onclick="erDeleteRoom(\''+roomId+'\')" style="flex:1;padding:13px;border-radius:12px;border:1px solid rgba(239,83,80,.35);background:rgba(239,83,80,.08);color:#ef5350;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Delete Area</button>';
+  html += '<button onclick="erDeleteRoom(\''+roomId+'\')" style="flex:1;padding:13px;border-radius:12px;border:1px solid rgba(239,83,80,.35);background:rgba(239,83,80,.08);color:#ef5350;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Delete Space</button>';
   html += '<button onclick="saveEditRoom(\''+roomId+'\')" style="flex:2;padding:13px;border-radius:12px;border:none;background:#0A84FF;color:#000;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Save Changes</button>';
   html += '</div></div></div>';
   mo.innerHTML = html;
@@ -6380,7 +6421,7 @@ window.saveEditRoom = function(roomId) {
   var room = (DB.rooms||[]).find(function(r){ return r.id===roomId; });
   if (!room) return;
   var name = (document.getElementById('er-name') && document.getElementById('er-name').value || '').trim();
-  if (!name) { toast('Area name required'); return; }
+  if (!name) { toast('Space name required'); return; }
   room.name  = name;
   room.type  = (document.getElementById('er-type') && document.getElementById('er-type').value) || room.type;
   room.jobId = (document.getElementById('er-job')  && document.getElementById('er-job').value)  || '';
@@ -6407,7 +6448,7 @@ window.saveEditRoom = function(roomId) {
   document.getElementById('edit-room-modal') && document.getElementById('edit-room-modal').remove();
   save(); renderAll();
   if (currentRoomId === roomId) openRoomDetail(roomId);
-  toast('Area updated');
+  toast('Space updated');
 };
 
 window.erDeleteRoom = function(roomId) {
@@ -6422,7 +6463,7 @@ window.erDeleteRoom = function(roomId) {
   if (detail) detail.remove();
   save(); renderAll();
   showScreen('s-rooms');
-  toast('Area deleted');
+  toast('Space deleted');
 };
 
 /* ── Add Edit button inside room detail header ── */
@@ -6431,7 +6472,7 @@ openRoomDetail = function(roomId) {
   _origORD(roomId);
   (function() { /* v2.53: was setTimeout(…,100) — ran after paint and made the screen jump */
     var screen = document.getElementById('s-room-detail');
-    if (!screen || screen.querySelector('.room-edit-btn')) return;
+    if (!screen || screen.querySelector('.room-edit-btn') || screen.querySelector('.bp-hm')) return;   /* v3.49: Edit lives in the ☰ menu */
     var delBtn = screen.querySelector('[onclick*="deleteRoom"]');
     if (!delBtn) return;
     /* v2.41: was a text "Edit" button. Three text-and-padding buttons in one
@@ -6441,8 +6482,8 @@ openRoomDetail = function(roomId) {
     var btn = document.createElement('button');
     btn.className = 'room-edit-btn';
     btn.textContent = '✏️';
-    btn.title = 'Edit area';
-    btn.setAttribute('aria-label', 'Edit area');
+    btn.title = 'Edit space';
+    btn.setAttribute('aria-label', 'Edit space');
     btn.style.cssText = 'background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:9px;color:#0A84FF;font-size:15px;font-weight:700;width:34px;height:34px;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;font-family:inherit;margin-right:6px';
     btn.onclick = function(){ openEditRoom(roomId); };
     delBtn.parentElement.insertBefore(btn, delBtn);
@@ -7095,7 +7136,7 @@ window.openEditChecklistItem = function(itemId) {
   var s = 'width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit';
   var lbl = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px';
   var jobOpts  = '<option value="">No job</option>'+DB.jobs.map(function(j){ return '<option value="'+j.id+'"'+(j.id===item.jobId?' selected':'')+'>'+esc(j.name)+'</option>'; }).join('');
-  var roomOpts = '<option value="">No area</option>'+(DB.rooms||[]).map(function(r){ return '<option value="'+r.id+'"'+(r.id===item.roomId?' selected':'')+'>'+esc(r.name)+'</option>'; }).join('');
+  var roomOpts = '<option value="">No space</option>'+(DB.rooms||[]).map(function(r){ return '<option value="'+r.id+'"'+(r.id===item.roomId?' selected':'')+'>'+esc(r.name)+'</option>'; }).join('');
   var priOpts  = ['Normal','High','Critical'].map(function(p){ return '<option'+(p===item.priority?' selected':'')+'>'+p+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'edit-cli-modal';
@@ -7161,7 +7202,7 @@ window.openCopyChecklistItem = function(itemId) {
   if (!rooms.length) {
     html += '<div style="text-align:center;color:var(--faint);padding:14px 0">No other areas to copy to yet.</div>';
   } else {
-    html += '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Destination Area</div><select id="cci-room" style="'+s+'">'+roomOpts+'</select></div>';
+    html += '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Destination Space</div><select id="cci-room" style="'+s+'">'+roomOpts+'</select></div>';
     html += '<button onclick="copyChecklistItemToRoom(\''+itemId+'\')" style="width:100%;padding:13px;border-radius:12px;border:none;background:#0A84FF;color:#000;font-weight:700;cursor:pointer;font-family:inherit">📋 Copy Item</button>';
   }
   html += '</div></div>';
@@ -7297,7 +7338,7 @@ function bpClipBar(destRoomId) {
 
 window.bpClipPasteHere = function(destRoomId) {
   var destRoom = (DB.rooms||[]).find(function(r){ return r.id === destRoomId; });
-  if (!destRoom) { toast('Area not found'); return; }
+  if (!destRoom) { toast('Space not found'); return; }
   var c = bpClipGet();
   var items = (DB.punchlist||[]).filter(function(n){ return c.ids.indexOf(n.id) !== -1; });
   if (!items.length) { bpClipSet(null); return; }
@@ -10428,7 +10469,7 @@ window.openAddPunchItem = function(jobId, roomId) {
   var roomSel = document.getElementById('punch-room');
   if (roomSel) {
     var rooms = (DB.rooms||[]).filter(function(r){ return r.jobId===jobId; });
-    roomSel.innerHTML = '<option value="">General (no area)</option>' + rooms.map(function(r){ return '<option value="'+r.id+'">'+esc(r.name)+'</option>'; }).join('');
+    roomSel.innerHTML = '<option value="">General (no space)</option>' + rooms.map(function(r){ return '<option value="'+r.id+'">'+esc(r.name)+'</option>'; }).join('');
     roomSel.value = roomId || '';
     roomSel.onchange = renderPunchItemPicker;
   }
@@ -10555,7 +10596,7 @@ function buildPunchRoomGroups(jobId) {
   return orderedKeys.map(function(key){
     var roomItems = groups[key];
     var room = key ? rooms.find(function(r){ return r.id===key; }) : null;
-    var roomName = room ? room.name : 'General (no area)';
+    var roomName = room ? room.name : 'General (no space)';
     var doneN = roomItems.filter(function(x){ return x.done; }).length;
     var allDone = doneN === roomItems.length;
     return '<div style="margin-bottom:8px">'
@@ -12377,9 +12418,9 @@ window.renderRooms = function(){
   if (!shown.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">🏠</div>'
       + '<div class="empty-text">No ' + (window._bpAreaSpace==='All'?'areas':window._bpAreaSpace.toLowerCase()+' areas') + ' yet</div>'
-      + '<div class="empty-sub">Tap <b>+ Add Areas</b> to pick from the preset list</div>'
+      + '<div class="empty-sub">Tap <b>+ Add Spaces</b> to pick from the preset list</div>'
       + '<div style="margin-top:14px"><button onclick="bpOpenSpacePicker()" style="background:#0A84FF;border:none;color:#fff;'
-      + 'border-radius:11px;padding:12px 22px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">+ Add Areas</button></div>'
+      + 'border-radius:11px;padding:12px 22px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">+ Add Spaces</button></div>'
       + '</div>';
     return;
   }
@@ -12391,7 +12432,7 @@ window.renderRooms = function(){
     + 'border-radius:14px;min-height:118px;display:flex;flex-direction:column;align-items:center;'
     + 'justify-content:center;cursor:pointer;color:#0A84FF;gap:4px">'
     + '<div style="font-size:26px;line-height:1;font-weight:300">+</div>'
-    + '<div style="font-size:12px;font-weight:800">Add Areas</div></div>';
+    + '<div style="font-size:12px;font-weight:800">Add Spaces</div></div>';
 
   el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 20px">'
     + shown.map(buildAreaBox).join('') + addTile + '</div>';
@@ -12488,7 +12529,7 @@ window.bpOpenSpacePicker = function(preJobId){
     '<div style="background:var(--bg,#111);border-radius:20px 20px 0 0;width:100%;max-width:560px;'
     + 'max-height:100%;overflow-y:auto;padding:18px 18px calc(28px + env(safe-area-inset-bottom,0px))">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
-    + '<div style="font-size:19px;font-weight:900">Add Areas</div>'
+    + '<div style="font-size:19px;font-weight:900">Add Spaces</div>'
     + '<button onclick="document.getElementById(\'bp-space-picker\').remove()" '
     + 'style="background:none;border:none;color:var(--muted);font-size:26px;cursor:pointer;line-height:1">×</button>'
     + '</div>'
@@ -12598,7 +12639,7 @@ function bpRelabelBack(){
   var b = document.querySelector('#s-room-detail .back-btn');
   if (!b) return;
   b.childNodes.forEach(function(n){
-    if (n.nodeType === 3 && /Rooms/.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace('Rooms','Areas');
+    if (n.nodeType === 3 && /Rooms/.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace('Rooms','Spaces');
   });
 }
 
@@ -13037,7 +13078,7 @@ window.renderRooms = function(){
     + 'border-radius:14px;min-height:126px;display:flex;flex-direction:column;align-items:center;'
     + 'justify-content:center;cursor:pointer;color:#0A84FF;gap:4px">'
     + '<div style="font-size:26px;line-height:1;font-weight:300">+</div>'
-    + '<div style="font-size:12px;font-weight:800">Add Areas</div></div>';
+    + '<div style="font-size:12px;font-weight:800">Add Spaces</div></div>';
 
   el.innerHTML = BPX.grid(boxes + addTile);
 };
@@ -13085,8 +13126,6 @@ window.renderPhotos = function(){
                          : scope.filter(function(p){ return p.roomId === window._bpPhotoArea; });
     hostA.innerHTML = '';
     hostH.innerHTML = '<div style="padding:0 16px 10px">'
-      + '<button onclick="bpClosePhotoArea()" style="background:none;border:none;color:#0A84FF;font-size:15px;'
-      + 'font-weight:800;cursor:pointer;font-family:inherit;padding:0 0 8px">‹ All Areas</button>'
       + '<div style="display:flex;align-items:center;justify-content:space-between">'
       + '<div style="font-size:18px;font-weight:900">'
       + (isUnfiled ? '❓ Unfiled' : BPX.icon(room)+' '+esc(room?room.name:'')) + '</div>'
@@ -13094,7 +13133,7 @@ window.renderPhotos = function(){
       + (isUnfiled && list.length
           ? '<button onclick="bpFileAllPrompt()" style="width:100%;margin-top:10px;background:rgba(100,210,255,.12);'
             + 'border:1.5px solid rgba(100,210,255,.4);border-radius:10px;color:#64D2FF;font-size:13px;'
-            + 'font-weight:800;padding:10px;cursor:pointer;font-family:inherit">📁 File all '+list.length+' to an area…</button>'
+            + 'font-weight:800;padding:10px;cursor:pointer;font-family:inherit">📁 File all '+list.length+' to a space…</button>'
           : '')
       + '</div>';
     grid.style.display = '';
@@ -13110,13 +13149,19 @@ window.renderPhotos = function(){
             + 'top:4px;right:4px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:7px;font-size:11px;'
             + 'font-weight:800;padding:4px 7px;cursor:pointer;font-family:inherit">📁</button></div>'; }).join('')
       : '<div style="grid-column:1/-1" class="empty"><div class="empty-icon">📷</div>'
-        + '<div class="empty-text">No photos in this area</div></div>';
+        + '<div class="empty-text">No photos in this space</div></div>';
     return;
   }
 
   grid.style.display = 'none';
   grid.innerHTML = '';
-  hostH.innerHTML = '<div style="padding:0 16px 7px">' + BPX.tabs(window._bpPhotoSpace, 'bpSetPhotoSpace') + '</div>';
+  (function(){
+    var sp = window._bpPhotoSpace, k = window._bpKind || 'All';
+    var cur = k === 'room' ? 'Rooms' : k === 'location' ? 'Areas' : sp === 'Interior' ? 'Inside' : sp === 'Exterior' ? 'Outside' : 'All';
+    var items = ['All','Inside','Outside','Rooms','Areas'].map(function(l){ return {label:l, on:cur===l, js:"bpPhotoFilter('"+l+"')"}; });
+    hostH.innerHTML = '<div style="padding:0 16px 7px;display:flex;align-items:center;gap:10px">'
+      + bpHMenu('Filter photos', items) + '<span style="font-size:13px;font-weight:800;color:var(--muted)">'+cur+'</span></div>';
+  })();
 
   var rooms = BPX.areas(photoJobFilter(), window._bpPhotoSpace, function(r){ return BPX.photoCount(r.id); });
   var unfiled = scope.filter(BPX.isOrphanPhoto).length;
@@ -13127,7 +13172,7 @@ window.renderPhotos = function(){
   if (!rooms.length && !unfiled) {
     hostA.innerHTML = '<div class="empty"><div class="empty-icon">📷</div>'
       + '<div class="empty-text">No photos yet</div>'
-      + '<div class="empty-sub">Add areas first, then shoot into them</div></div>';
+      + '<div class="empty-sub">Add spaces first, then shoot into them</div></div>';
     return;
   }
 
@@ -13147,13 +13192,19 @@ window.renderPhotos = function(){
   }).join(''));
 };
 
+window.bpPhotoFilter = function(l){
+  window._bpPhotoSpace = l === 'Inside' ? 'Interior' : l === 'Outside' ? 'Exterior' : 'All';
+  window._bpKind = l === 'Rooms' ? 'room' : l === 'Areas' ? 'location' : 'All';
+  renderPhotos();
+};
 window.bpSetPhotoSpace  = function(v){ window._bpPhotoSpace = v; renderPhotos(); };
 window.bpOpenPhotoArea  = function(rid){
   window._bpPhotoArea = rid;
   if (typeof showScreen === 'function') showScreen('s-photos');
   renderPhotos();
+  if (window.__bpDockSoon) window.__bpDockSoon();
 };
-window.bpClosePhotoArea = function(){ window._bpPhotoArea = null; renderPhotos(); };
+window.bpClosePhotoArea = function(){ window._bpPhotoArea = null; renderPhotos(); if (window.__bpDockSoon) window.__bpDockSoon(); };
 
 /* ── Filing tools ──────────────────────────────────────────────────── */
 function areaSheet(title, jobId, onPick){
@@ -13183,7 +13234,7 @@ function areaSheet(title, jobId, onPick){
     + '<button onclick="document.getElementById(\'bp-file-sheet\').remove()" style="background:none;border:none;'
     + 'color:var(--muted);font-size:26px;cursor:pointer;line-height:1">×</button></div>'
     + (grp('Inside', bySpace.Interior, '#0A84FF') + grp('Outside', bySpace.Exterior, '#FF9F0A')
-       || '<div style="color:var(--faint);font-size:14px;padding:20px 0;text-align:center">No areas on this job yet</div>')
+       || '<div style="color:var(--faint);font-size:14px;padding:20px 0;text-align:center">No spaces on this job yet</div>')
     + '</div>';
   document.body.appendChild(wrap);
 }
@@ -14604,12 +14655,18 @@ window.bpFitNums = function() {
     var n = activeCount();
     var a = "'" + scope + "','" + id + "'";
     var h = '<div id="bp-clf-' + scope + '" style="margin:0 0 8px;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:12px">'
-      + '<div style="display:flex;gap:8px;align-items:center">'
-      +   '<input type="search" placeholder="🔎 Search by name" value="' + esc(F.q||'') + '" oninput="bpClSet(\'q\',this.value,' + a + ')" '
-      +     'style="flex:1;min-width:0;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:16px;font-family:inherit"/>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">'
+      +   '<button type="button" onclick="bpClSet(\'searchOpen\',' + (!(F.searchOpen || F.q)) + ',' + a + ')" aria-label="Search" title="Search" style="flex-shrink:0;width:48px;height:46px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:10px;border:1.5px solid ' + ((F.searchOpen || F.q) ? '#0A84FF' : 'var(--border)') + ';background:' + ((F.searchOpen || F.q) ? 'rgba(10,132,255,.14)' : 'var(--card2)') + ';color:' + ((F.searchOpen || F.q) ? '#0A84FF' : 'var(--text)') + ';cursor:pointer">'
+      +     '<svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.2" y2="15.2"/></svg></button>'
+      +   '<span style="flex:1"></span>'
       +   '<button onclick="bpClSet(\'panel\',' + (!F.panel) + ',' + a + ')" style="flex-shrink:0;padding:11px 12px;border-radius:10px;border:1.5px solid ' + (n ? '#0A84FF' : 'var(--border)') + ';background:' + (n ? 'rgba(10,132,255,.14)' : 'var(--card2)') + ';color:' + (n ? '#0A84FF' : 'var(--text)') + ';font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">'
       +     'Filter' + (n ? ' (' + n + ')' : '') + ' ' + (F.panel ? '▴' : '▾') + '</button>'
       + '</div>';
+    /* v3.49: search is an icon; tap it and the box appears (no "Search by name" wording) */
+    if (F.searchOpen || F.q) {
+      h += '<input id="bp-clf-q-' + scope + '" type="search" aria-label="Search" value="' + esc(F.q||'') + '" oninput="bpClSet(\'q\',this.value,' + a + ')" '
+        +   'style="width:100%;box-sizing:border-box;margin-top:8px;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:16px;font-family:inherit"/>';
+    }
     if (F.panel) {
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'
         + '<select onchange="bpClSet(\'sort\',this.value,' + a + ')" style="' + SEL + '">'
@@ -14660,9 +14717,13 @@ window.bpFitNums = function() {
     F[key] = val;
     redrawList(scope, id);
     if (key !== 'q') redrawBar(scope, id);   /* never rebuild the box you are typing in */
+    if (key === 'searchOpen') {
+      if (val) setTimeout(function(){ var i = document.getElementById('bp-clf-q-' + scope); if (i) try { i.focus(); } catch(e){} }, 30);
+      else if (F.q) { F.q = ''; redrawList(scope, id); redrawBar(scope, id); }   /* closing the search clears it */
+    }
   };
   window.bpClReset = function(scope, id) {
-    F.q = ''; F.sort = 'open'; F.show = 'all'; F.dateField = 'added'; F.from = ''; F.to = '';
+    F.q = ''; F.searchOpen = false; F.sort = 'open'; F.show = 'all'; F.dateField = 'added'; F.from = ''; F.to = '';
     redrawList(scope, id); redrawBar(scope, id);
   };
 
@@ -14711,7 +14772,7 @@ window.bpFitNums = function() {
         + '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px">'
         + (room
             ? '<div onclick="openRoomDetail(\'' + room.id + '\')" style="font-size:12.5px;font-weight:800;color:#0A84FF;cursor:pointer">🚪 ' + esc(room.name) + ' ›</div>'
-            : '<div style="font-size:12.5px;font-weight:800;color:var(--text)">🚪 General (no area)</div>')
+            : '<div style="font-size:12.5px;font-weight:800;color:var(--text)">🚪 General (no space)</div>')
         + '<div style="font-size:11.5px;font-weight:800;color:' + (allDone ? 'var(--green)' : 'var(--red)') + '">' + doneN + '/' + list.length + '</div>'
         + '</div>'
         + list.map(function(it){ return buildPunchItemRow(it); }).join('')
@@ -14850,7 +14911,7 @@ window.bpFitNums = function() {
                 if (!e.tag) t = t.replace(/<\/div>$/, '<button onclick="event.stopPropagation();bpFilePhoto(\'' + e.key + '\')" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:7px;font-size:11px;font-weight:800;padding:4px 7px;cursor:pointer;font-family:inherit">📁</button></div>');
                 return t;
               }).join('')
-            : '<div style="grid-column:1/-1" class="empty"><div class="empty-icon">📷</div><div class="empty-text">No photos in this area</div></div>';
+            : '<div style="grid-column:1/-1" class="empty"><div class="empty-icon">📷</div><div class="empty-text">No photos in this space</div></div>';
         }
         var lbl = ents.length + ' photo' + (ents.length !== 1 ? 's' : '');
         if (cnt) cnt.textContent = lbl;
@@ -16109,7 +16170,7 @@ window.bpOpenSetLevels = function(){
   body += '<button onclick="document.getElementById(\'bp-set-levels\').remove()" style="width:100%;margin-top:16px;background:#0A84FF;'
     + 'border:none;color:#fff;border-radius:12px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Done</button>';
   var old = document.querySelector('#bp-set-levels > div'); var st = old ? old.scrollTop : 0;
-  var w = sheet('bp-set-levels', 'Arrange Areas', body);
+  var w = sheet('bp-set-levels', 'Arrange Spaces', body);
   if (st) w.firstChild.scrollTop = st;
 };
 window.bpMoveRoom = function(roomId, dir){
@@ -16217,7 +16278,7 @@ window.bpOpenSpacePicker = function(preJobId){
     + 'border:none;color:#fff;border-radius:12px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Done</button>';
   var keepScroll = document.querySelector('#bp-space-picker > div');
   var top = keepScroll ? keepScroll.scrollTop : 0;
-  var w = sheet('bp-space-picker', 'Add Areas', body);
+  var w = sheet('bp-space-picker', 'Add Spaces', body);
   if (top) w.firstChild.scrollTop = top;
 };
 window.bpPickLevel = function(jobId, l){ window._bpPickLevel = l; window.bpOpenSpacePicker(jobId); };
@@ -16473,7 +16534,7 @@ function bpSelPaint(){
   else {
     rooms.forEach(function(r){ var g = items.filter(function(n){ return n.roomId === r.id; }); if (g.length) groups.push({room:r, items:g}); });
     var loose = items.filter(function(n){ return !rooms.some(function(r){ return r.id === n.roomId; }); });
-    if (loose.length) groups.push({room:{name:'General (no area)'}, items:loose});
+    if (loose.length) groups.push({room:{name:'General (no space)'}, items:loose});
   }
   var body = items.length ? '' : '<div style="padding:24px 0;text-align:center;color:var(--muted)">No items here yet.</div>';
   groups.forEach(function(g){
@@ -18022,23 +18083,8 @@ function drawShop(){
   open.sort(byNew); done.sort(function(a, b){ return (a.boughtAt||'') < (b.boughtAt||'') ? 1 : -1; });
   var body = '<div style="margin-top:4px">' + jobSelect('bp-shop-job', SH.job, 'bpShopJob(this.value)', true) + '</div>'
     + '<button id="bp-shop-scan" onclick="bpShopScan()" style="' + BTN + ';width:100%;margin-top:10px;background:rgba(10,132,255,.14);color:#0A84FF;border:1.5px solid #0A84FF">📷 Scan a receipt</button>'
-    + '<div style="margin:12px 0;padding:14px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)">'
-    + '<div style="display:flex;gap:8px;align-items:flex-start">'
-    + '<textarea id="bp-shop-text" rows="1" placeholder="Add an item — e.g. 10 PEX elbows @2" '
-    + 'onkeydown="if(event.key===\'Enter\'&amp;&amp;!event.shiftKey){event.preventDefault();bpShopAdd();}" '
-    + 'oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,140)+\'px\'" '
-    + 'style="' + INP + ';resize:none;line-height:1.35;min-height:50px"></textarea>'
-    + '<button id="bp-shop-add" onclick="bpShopAdd()" aria-label="Add to list" style="' + BTN + ';width:54px;height:50px;padding:0;font-size:28px;background:#0A84FF;color:#fff;flex-shrink:0">+</button></div>'
-    + '<div style="font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.4">Quantity and price are picked out of what you type ("10 elbows @2"). Paste a list — one item per line — and each line becomes an item.</div>'
-    + '<button type="button" onclick="var m=document.getElementById(\'bp-shop-more\');var o=m.style.display===\'none\';m.style.display=o?\'block\':\'none\';this.textContent=o?\'− Hide details\':\'+ Quantity · price · store\'" '
-    + 'style="background:none;border:none;color:#0A84FF;font-size:14px;font-weight:800;padding:10px 0 0;cursor:pointer;font-family:inherit">+ Quantity · price · store</button>'
-    + '<div id="bp-shop-more" style="display:none">'
-    + '<div style="display:flex;gap:8px;margin-top:8px">'
-    + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">How many</div><div style="display:flex;gap:6px"><input id="bp-shop-qty" inputmode="decimal" placeholder="1" style="' + INP + '"/>' + calcBtn('bp-shop-qty') + '</div></div>'
-    + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">Price each $</div><div style="display:flex;gap:6px"><input id="bp-shop-price" inputmode="decimal" placeholder="0.00" style="' + INP + '"/>' + calcBtn('bp-shop-price') + '</div></div>'
-    + '</div>'
-    + '<div style="' + LBL + '">Store / vendor</div>' + (window.bpVendorField ? window.bpVendorField('bp-shop-store', SH.lastStore || '') : '<input id="bp-shop-store" style="' + INP + '"/>')
-    + '</div></div>'
+    + '<div style="display:flex;align-items:center;gap:12px;margin:14px 0 4px"><button id="bp-shop-add" onclick="bpShopOpenAdd()" aria-label="Add item" style="width:60px;height:60px;border-radius:50%;border:none;background:#30D158;color:#000;font-size:36px;font-weight:900;line-height:1;cursor:pointer;flex-shrink:0;box-shadow:0 4px 14px rgba(48,209,88,.4)">+</button>'
+    + '<div style="font-size:15px;font-weight:800;color:var(--muted)">Add item</div></div>'
     + '<div style="' + LBL + '">To buy (' + open.length + ')</div>'
     + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Add items above.</div>')
     + (done.length ? '<div style="' + LBL + ';margin-top:18px">Bought (' + done.length + ')</div>' + done.map(shopRow).join('') : '')
@@ -18057,8 +18103,37 @@ function drawShop(){
     + '<div style="text-align:right"><div style="font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Bought</div>'
     + '<div style="font-size:20px;font-weight:900;color:#30D158">' + money(t.bought) + '</div></div>'
     + '<button onclick="bpOpenCalc()" aria-label="Calculator" style="' + BTN + ';background:#FF9F0A;color:#000;padding:12px 14px">' + ICON.calc + '</button></div>';
-  overlay('bp-shop', ICON.cart + 'Shopping List', body, foot);
+  var ow = overlay('bp-shop', ICON.cart + 'Shopping List', body, foot);
+  /* v3.49: floating back button -> closes the list and reopens the slide-over menu */
+  if (ow) ow.insertAdjacentHTML('beforeend', '<button type="button" id="bp-shop-back" aria-label="Back to menu" onclick="bpShopBack()" style="position:absolute;left:16px;bottom:calc(112px + env(safe-area-inset-bottom,0px));width:52px;height:52px;border-radius:50%;border:1.5px solid var(--border);background:var(--card);color:var(--text);box-shadow:0 4px 14px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3"><svg viewBox="0 0 24 24" style="width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round"><polyline points="15 5 8 12 15 19"/></svg></button>');
 }
+window.bpShopBack = function(){
+  var o = document.getElementById('bp-shop'); if (o) o.remove();
+  if (typeof bpDrawerSet === 'function') bpDrawerSet(true);
+};
+/* v3.49: easy add — Qty | Item name / description | Cost, then Add (or Add + next) */
+window.bpShopOpenAdd = function(){
+  var body = '<div style="display:flex;gap:8px"><div style="width:26%"><div style="' + LBL + ';margin-top:0">Qty</div><input id="bp-sa-qty" inputmode="decimal" value="1" style="' + INP + ';text-align:center"/></div>'
+    + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">Item name / description</div><input id="bp-sa-text" autocomplete="off" placeholder="1/2&quot; PEX elbow" style="' + INP + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpShopSaveNew(false)}"/></div>'
+    + '<div style="width:28%"><div style="' + LBL + ';margin-top:0">Cost $</div><input id="bp-sa-price" inputmode="decimal" placeholder="0.00" style="' + INP + '"/></div></div>'
+    + '<div style="font-size:13px;color:var(--muted);margin-top:10px">Cost is per item. Tap the item afterwards to add store, notes and more.</div>';
+  var foot = '<div style="display:flex;gap:8px"><button onclick="bpShopSaveNew(true)" style="' + BTN + ';background:var(--card2,#222);color:var(--text)">Add + next</button>'
+    + '<button onclick="bpShopSaveNew(false)" style="' + BTN + ';flex:1;background:#30D158;color:#000">Add item</button></div>';
+  overlay('bp-shop-new', 'Add item', body, foot);
+  setTimeout(function(){ var t = document.getElementById('bp-sa-text'); if (t) t.focus(); }, 200);
+};
+window.bpShopSaveNew = function(next){
+  var g = function(k){ var e = document.getElementById('bp-sa-' + k); return e ? e.value.trim() : ''; };
+  var name = g('text');
+  if (!name) { say('Type the item name first'); var t = document.getElementById('bp-sa-text'); if (t) t.focus(); return; }
+  var qty = g('qty') ? window.bpCalcEval(g('qty')) : 1, price = g('price') ? window.bpCalcEval(g('price')) : 0;
+  if (isNaN(qty) || isNaN(price)) { say('Check the numbers'); return; }
+  DB.shopping = DB.shopping || [];
+  DB.shopping.push({ id:newId(), jobId:SH.job || '', text:name, qty:qty || 1, unit:'', price:price || 0, store:SH.lastStore || '', bought:false, created:ts(), updatedAt:ts() });
+  persist(); drawShop(); say('Added');
+  if (next) { window.bpShopOpenAdd(); }
+  else { var o = document.getElementById('bp-shop-new'); if (o) o.remove(); }
+};
 window.bpShopJob = function(v){ SH.job = v || ''; drawShop(); };
 window.bpShopJobNow = function(){ return SH.job || ''; };  /* v2.91: receipt scan files to the list you're looking at */
 window.bpShopAdd = function(){
@@ -18090,6 +18165,7 @@ window.bpShopToggle = function(id){
   var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
   x.bought = !x.bought; x.boughtAt = x.bought ? ts() : ''; x.updatedAt = ts();
   persist(); drawShop();
+  if (x.bought) window.bpShopEdit(id);   /* v3.49: checking an item off opens its edit page */
 };
 window.bpShopEdit = function(id){
   var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
@@ -20320,7 +20396,7 @@ function rcGet(){ try { var r = JSON.parse(localStorage.getItem(RC_KEY) || 'null
 window.bpRoomCopy = function(roomId){
   var r = roomById(roomId); if (!r) return;
   try { localStorage.setItem(RC_KEY, JSON.stringify({ id:roomId })); } catch(e){}
-  say('📋 "' + r.name + '" copied — open any job → Add Areas → Paste');
+  say('📋 "' + r.name + '" copied — open any job → Add Spaces → Paste');
 };
 window.bpRoomPaste = function(jobId){
   var c = rcGet(); if (!c) { say('Nothing copied'); return; }
@@ -21400,7 +21476,7 @@ function locations(){
 }
 window.bpConvertAllToRooms = function(){
   var list = locations();
-  if (!list.length) { say('No areas to convert'); return; }
+  if (!list.length) { say('No spaces to convert'); return; }
   var j = scopeJob(), jn = '';
   if (j) { var jb = (DB.jobs || []).find(function(x){ return x.id === j; }); jn = jb ? ' on ' + jb.name : ''; }
   if (!confirm('Turn ' + list.length + ' area' + (list.length !== 1 ? 's' : '') + jn + ' into rooms?\n\nNothing is deleted. You can undo it right after.')) return;
@@ -21467,9 +21543,10 @@ function chipsFor(id){
 }
 function switcher(){
   /* field app: next to the Copy button in the room header */
-  var cp = document.querySelector('#s-room-detail [onclick^="bpRoomCopy("]');
-  if (cp && cp.offsetParent !== null) {
-    var id = /bpRoomCopy\('([^']+)'\)/.exec(cp.getAttribute('onclick'))[1];
+  var rs = document.querySelector('#s-room-detail');
+  var cp = rs && rs.getAttribute('data-room-id') ? rs : null;   /* v3.49: the Copy button is now inside the ☰ menu, so read the id off the screen */
+  if (cp && cp.getClientRects().length) {
+    var id = cp.getAttribute('data-room-id');
     var host = $('s-room-detail');
     var box = $('bp-kind-switch');
     var slot = $('bp-kind-slot');   /* v3.48: Room / Area now lives in the header, under the icon */
@@ -21482,7 +21559,7 @@ function switcher(){
     if (slot) {
       if (box.parentNode !== slot) slot.appendChild(box);
     } else {
-      var hdr = cp.closest('.detail-header') || cp.parentNode.parentNode;
+      var hdr = cp.querySelector('.detail-header') || cp.firstElementChild;
       if (hdr && box.previousElementSibling !== hdr) hdr.parentNode.insertBefore(box, hdr.nextSibling);
     }
   }
@@ -21960,7 +22037,7 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   function tabNoAdd(){ var t = window._financeTab; return t === 'overview' || t === 'spending'; }
   var ADD = {
     's-jobs':     { label:'Add job',         icon:PLUS, go:function(){ if (window._jobsTab === 'estimates' && window.openNewEstimate) return openNewEstimate(); openAddJob(); } },
-    's-rooms':    { label:'Add area',        icon:PLUS, go:function(){ if (window.bpOpenSpacePicker) bpOpenSpacePicker(); else openAddRoom(); } },
+    's-rooms':    { label:'Add space',        icon:PLUS, go:function(){ if (window.bpOpenSpacePicker) bpOpenSpacePicker(); else openAddRoom(); } },
     's-punch':    { label:'Add punch item',  icon:PLUS, go:function(){ var b = $('#punch-add-btn'); if (b) b.click(); } },
     's-photos':   { label:'Add photo',       icon:CAM,  go:function(){ var i = $('#s-photos .topbar input[type=file]'); if (i) i.click(); } },
     's-finance':  { label:'Add',             icon:PLUS, go:function(){ if (!tabNoAdd() && window.openFinanceAdd) openFinanceAdd(); }, skip:tabNoAdd },
@@ -21971,10 +22048,10 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     var s = active(); if (!s) return; var id = s.id;
     var back = document.getElementById('bp-dock-back'), add = document.getElementById('bp-dock-add');
     if (!back || !add) return;
-    var showBack = !MAIN[id];
+    var showBack = !MAIN[id] || (id === 's-photos' && !!window._bpPhotoArea);
     var a = ADD[id]; var showAdd = !!a && !(a.skip && a.skip());
     back.hidden = !showBack; add.hidden = !showAdd;
-    var sig = id + '|' + showBack + '|' + showAdd + '|' + (a && a.label);
+    var sig = id + '|' + showBack + '|' + showAdd + '|' + (a && a.label) + '|' + (window._bpPhotoArea || '');
     if (sig === lastPaint) return; lastPaint = sig;
     if (a) { add.setAttribute('aria-label', a.label); add.innerHTML = a.icon; }
     var bb = s.querySelector('.back-btn');
@@ -21990,12 +22067,14 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   document.getElementById('bp-dock-add').onclick = function(){ var s = active(), a = s && ADD[s.id]; if (a) a.go(); };
   document.getElementById('bp-dock-back').onclick = function(){
     var s = active(); if (!s) return;
+    if (s.id === 's-photos' && window._bpPhotoArea && window.bpClosePhotoArea) { bpClosePhotoArea(); soon(); return; }
     var bb = s.querySelector('.back-btn');
     if (bb && bb.offsetParent !== null) { bb.click(); return; }
     showScreen(prevScreen && prevScreen !== s.id && !/room-detail|job-detail/.test(prevScreen) ? prevScreen : 's-home');
   };
   var timer = 0;
   function soon(){ if (timer) return; timer = setTimeout(function(){ timer = 0; paint(); tap(); }, 60); }
+  window.__bpDockSoon = soon;
   ['setFinanceTab', 'setJobsTab'].forEach(function(n){
     var f = window[n]; if (typeof f !== 'function' || f.__v343) return;
     window[n] = function(){ var r = f.apply(this, arguments); soon(); return r; }; window[n].__v343 = 1;
@@ -22195,12 +22274,15 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
 
   var css = document.createElement('style'); css.id = 'bp-v347-css';
   css.textContent = [
-    '.bp-cl-row{position:relative;display:flex;align-items:center;gap:12px;padding:12px;background:var(--card);border-radius:12px;margin-bottom:8px;transition:transform .18s ease;will-change:transform;touch-action:pan-y}',
+    '.bp-cl-row{position:relative;display:flex;align-items:center;gap:12px;padding:12px;background:var(--card);border-radius:12px;margin-bottom:8px;transition:transform .16s cubic-bezier(.22,.9,.3,1);will-change:transform;touch-action:pan-y}',
     '.bp-cl-row.bp-cl-drag{transition:none}',
     '.bp-cl-name{font-size:15px;font-weight:600;line-height:1.3;overflow-wrap:anywhere;word-break:normal}',
     '.bp-cl-acts{position:absolute;left:calc(100% + 6px);top:0;bottom:0;display:flex;gap:6px}',
     '.bp-cl-acts button{width:78px;min-height:56px;border:none;border-radius:12px;color:#fff;font-weight:800;font-size:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;padding:0;font-family:inherit}',
     '.bp-cl-acts svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}',
+    '.bp-cl-undoacts{position:absolute;right:calc(100% + 6px);top:0;bottom:0;display:flex}',
+    '.bp-cl-undoacts button{width:106px;min-height:56px;border:none;border-radius:12px;background:#0A84FF;color:#fff;font-weight:800;font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;padding:0 4px;font-family:inherit;line-height:1.1;text-align:center}',
+    '.bp-cl-undoacts svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}',
     '.bp-cl-cut{background:#FF9F0A;color:#1a1200 !important}',
     '.bp-cl-del{background:#FF453A}',
     /* photo stack */
@@ -22291,19 +22373,54 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     return h + '</div>';
   };
 
-  /* ── slide-to-reveal Cut / Delete ── */
+  /* ── slide-to-reveal ──────────────────────────────────────────────────────────────────────────
+     v3.49: quicker and smoother. The buttons are built the moment a slide starts (no pop-in at the end),
+     the snap is a short ease-out, a quick flick opens a row even if it was not dragged far, and the
+     slide starts after 6 px instead of 10.
+       LEFT  → Cut / Delete (as before)
+       RIGHT → Undo: puts back whatever you did last (a delete, a check-off or a cut).                */
   var ICON_CUT = '<svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>';
   var ICON_DEL = '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+  var ICON_UNDO = '<svg viewBox="0 0 24 24"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>';
+  var UNDOW = 112;                                    /* css px the row slides right for Undo */
   function zoom(){ return parseFloat(getComputedStyle(document.body).zoom) || 1; }
-  var open = null;                                    /* the row that is slid open */
-  function closeOpen(){
-    if (!open) return; var t = open; open = null;
-    t.style.transform = '';
-    var a = t.querySelector(':scope > .bp-cl-acts'); if (a) setTimeout(function(){ a.remove(); }, 200);
+
+  /* what can be undone (newest last) */
+  var undoStack = [], undoing = false;
+  function pushUndo(u){ if (undoing) return; undoStack.push(u); if (undoStack.length > 12) undoStack.shift(); }
+  window.bpUndoPeek = function(){ return undoStack.length ? undoStack[undoStack.length - 1] : null; };
+  window.bpUndoLast = function(){
+    var u = undoStack.pop();
+    if (!u) { if (typeof toast === 'function') toast('Nothing to undo'); return false; }
+    undoing = true;
+    try { u.run(); } catch(e){ console.warn('[BP v3.49] undo failed', e); }
+    undoing = false;
+    return true;
+  };
+  var _tog = window.toggleChecklistItem;
+  if (typeof _tog === 'function' && !_tog.__v349) {
+    window.toggleChecklistItem = function(id){
+      var it = item(id), wasDone = !!(it && it.done);
+      var r = _tog.apply(this, arguments);
+      if (it) pushUndo({ label:(wasDone ? 'Undo un-check' : 'Undo check'), run:function(){ _tog.call(window, id); } });
+      return r;
+    };
+    window.toggleChecklistItem.__v349 = 1;
   }
-  function openRow(t){
-    if (open && open !== t) closeOpen();
-    open = t; t.style.transform = 'translateX(' + (-REVEAL) + 'px)';
+  function recycleEntryFor(id){
+    var rc = (DB.recycle || []), i;
+    for (i = rc.length - 1; i >= 0; i--) if (rc[i] && rc[i].coll === 'punchlist' && rc[i].rec && rc[i].rec.id === id) return rc[i];
+    return null;
+  }
+
+  var open = null, openSide = '';                     /* the row that is slid open, and which way */
+  function dropActs(t, sel){ [].forEach.call(t.querySelectorAll(':scope > ' + sel), function(a){ a.remove(); }); }
+  function closeOpen(){
+    if (!open) return; var t = open; open = null; openSide = '';
+    t.style.transform = '';
+    setTimeout(function(){ if (!open || open !== t) { dropActs(t, '.bp-cl-acts'); dropActs(t, '.bp-cl-undoacts'); } }, 180);
+  }
+  function buildLeft(t){
     if (t.querySelector(':scope > .bp-cl-acts')) return;
     var id = t.getAttribute('data-cl-id'), it = item(id), cut = typeof bpClipHas === 'function' && bpClipHas(id);
     var a = document.createElement('div'); a.className = 'bp-cl-acts';
@@ -22311,11 +22428,18 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
       + '<button type="button" class="bp-cl-del" aria-label="Delete">' + ICON_DEL + 'Delete</button>';
     a.querySelector('.bp-cl-cut').addEventListener('click', function(e){
       e.stopPropagation(); e.preventDefault(); closeOpen();
-      if (typeof bpClipToggle === 'function') bpClipToggle(id, 'cut');
+      if (typeof bpClipToggle === 'function') {
+        bpClipToggle(id, 'cut');
+        pushUndo({ label:(cut ? 'Undo un-cut' : 'Undo cut'), run:function(){ bpClipToggle(id, 'cut'); } });
+      }
     });
     a.querySelector('.bp-cl-del').addEventListener('click', function(e){
       e.stopPropagation(); e.preventDefault();
-      var r = { tile:t, label:(it && it.text) || '', run:function(){ window.deleteChecklistItem(id); } };
+      var r = { tile:t, label:(it && it.text) || '', run:function(){
+        window.deleteChecklistItem(id);
+        var en = recycleEntryFor(id);
+        if (en) pushUndo({ label:'Undo delete', run:function(){ bpRestore(en.id); } });
+      } };
       if (typeof window.bpSwipeAsk === 'function') {
         window.bpSwipeAsk(r);
         /* sheet closed with Cancel → slide the row shut again */
@@ -22327,29 +22451,50 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     });
     t.appendChild(a);
   }
+  function buildRight(t){
+    var u = window.bpUndoPeek(); if (!u) return false;
+    dropActs(t, '.bp-cl-undoacts');
+    var a = document.createElement('div'); a.className = 'bp-cl-undoacts';
+    a.innerHTML = '<button type="button" class="bp-cl-undo" aria-label="' + E(u.label) + '">' + ICON_UNDO + E(u.label) + '</button>';
+    a.querySelector('button').addEventListener('click', function(e){
+      e.stopPropagation(); e.preventDefault(); closeOpen(); window.bpUndoLast();
+    });
+    t.appendChild(a);
+    return true;
+  }
+  function openRow(t, side){
+    if (open && open !== t) closeOpen();
+    open = t; openSide = side;
+    t.style.transform = 'translateX(' + (side === 'L' ? -REVEAL : UNDOW) + 'px)';
+  }
 
   var st = null, swallow = 0;
   function rowAt(tg){
     if (!tg || !tg.closest) return null;
-    if (tg.closest('#bp-dock, #bp-drawer, #bp-sw-confirm, .bp-cl-acts, .bp-stack, .bp-clphoto-btn')) return null;
+    if (tg.closest('#bp-dock, #bp-drawer, #bp-sw-confirm, .bp-cl-acts, .bp-cl-undoacts, .bp-stack, .bp-clphoto-btn')) return null;
     return tg.closest('.bp-cl-row');
   }
   document.addEventListener('touchstart', function(e){
     if (e.touches.length !== 1) { st = null; return; }
     var tg = e.target, t = rowAt(tg), t0 = e.touches[0];
-    if (open && !(tg.closest && tg.closest('.bp-cl-acts')) && open !== (tg.closest && tg.closest('.bp-cl-row'))) closeOpen();
-    st = t ? { t:t, x:t0.clientX, y:t0.clientY, mode:null, base:(open === t) ? -REVEAL : 0, last:null } : null;
+    if (open && !(tg.closest && tg.closest('.bp-cl-acts, .bp-cl-undoacts')) && open !== (tg.closest && tg.closest('.bp-cl-row'))) closeOpen();
+    var base = (open === t) ? (openSide === 'L' ? -REVEAL : UNDOW) : 0;
+    st = t ? { t:t, x:t0.clientX, y:t0.clientY, mode:null, base:base, last:null, lx:t0.clientX, lt:e.timeStamp, v:0 } : null;
   }, { passive:true });
   document.addEventListener('touchmove', function(e){
     if (!st) return; var t0 = e.touches[0], dx = t0.clientX - st.x, dy = t0.clientY - st.y;
     if (!st.mode) {
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      st.mode = (Math.abs(dx) > Math.abs(dy) * 1.4) ? 'h' : 'v';
-      if (st.mode === 'h') st.t.classList.add('bp-cl-drag');
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      st.mode = (Math.abs(dx) > Math.abs(dy) * 1.2) ? 'h' : 'v';
+      if (st.mode === 'h') { st.t.classList.add('bp-cl-drag'); buildLeft(st.t); st.canUndo = !!window.bpUndoPeek(); if (st.canUndo) buildRight(st.t); }
     }
     if (st.mode !== 'h') return;
     if (e.cancelable) e.preventDefault();
-    var v = Math.max(-REVEAL - 14, Math.min(0, st.base + dx / zoom()));
+    var dt = e.timeStamp - st.lt; if (dt > 0) st.v = (t0.clientX - st.lx) / dt / zoom();   /* px per ms, recent */
+    st.lx = t0.clientX; st.lt = e.timeStamp;
+    var raw = st.base + dx / zoom();
+    var lo = -REVEAL - 14, hi = st.canUndo ? UNDOW + 14 : 14;
+    var v = Math.max(lo, Math.min(hi, raw));
     st.t.style.transform = 'translateX(' + v + 'px)'; st.last = v;
   }, { passive:false });
   function end(){
@@ -22357,8 +22502,17 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     if (s.mode !== 'h') return;
     swallow = Date.now();
     s.t.classList.remove('bp-cl-drag');
-    if ((s.last || 0) < -REVEAL / 2) openRow(s.t);
-    else { if (open === s.t) open = null; s.t.style.transform = ''; var a = s.t.querySelector(':scope > .bp-cl-acts'); if (a) a.remove(); }
+    var v = s.last || 0, fast = Math.abs(s.v) > 0.45;                       /* a flick */
+    var wantL = v < -REVEAL / 3 || (fast && s.v < 0 && v < -28);
+    var wantR = s.canUndo && (v > UNDOW / 3 || (fast && s.v > 0 && v > 28));
+    if (wantL) openRow(s.t, 'L');
+    else if (wantR) openRow(s.t, 'R');
+    else {
+      if (open === s.t) { open = null; openSide = ''; }
+      s.t.style.transform = '';
+      setTimeout(function(){ if (open !== s.t) { dropActs(s.t, '.bp-cl-acts'); dropActs(s.t, '.bp-cl-undoacts'); } }, 180);
+      if (v > 20 && !s.canUndo && typeof toast === 'function') toast('Nothing to undo');
+    }
   }
   document.addEventListener('touchend', end, { passive:true });
   document.addEventListener('touchcancel', end, { passive:true });
@@ -22366,13 +22520,42 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   document.addEventListener('click', function(e){
     var tg = e.target;
     if (Date.now() - swallow < 350 && tg.closest && tg.closest('.bp-cl-row')) { e.stopPropagation(); e.preventDefault(); return; }
-    if (open && open.contains(tg) && !(tg.closest && tg.closest('.bp-cl-acts'))) { e.stopPropagation(); e.preventDefault(); closeOpen(); }
+    if (open && open.contains(tg) && !(tg.closest && tg.closest('.bp-cl-acts, .bp-cl-undoacts'))) { e.stopPropagation(); e.preventDefault(); closeOpen(); }
   }, true);
 
   /* the list was redrawn (check-off, cut, paste…) → forget a row that no longer exists */
-  new MutationObserver(function(){ if (open && !document.body.contains(open)) open = null; }).observe(document.body, { childList:true, subtree:true });
+  new MutationObserver(function(){ if (open && !document.body.contains(open)) { open = null; openSide = ''; } }).observe(document.body, { childList:true, subtree:true });
 
   try { if (typeof currentRoomId !== 'undefined' && currentRoomId && typeof openRoomDetail === 'function') openRoomDetail(currentRoomId); } catch(e){}
   console.log('[BP] v3.47 ready — slide a row for Cut / Delete; photo stack opens a grid');
+})();
+
+/* ── v3.49: Finance ☰ menu replaces the tab grid ─────────────────────── */
+(function(){
+  var TABS = [['overview','Overview'],['invoices','Invoices'],['expenses','Expenses'],['changeorders','Changes'],['deliveries','Delivery'],['contractors','Subs'],['permits','Permits'],['spending','Spend']];
+  function paint(){
+    var t = document.getElementById('finance-sticky'); if (!t) return;
+    if (!document.getElementById('bp-fin-css')) { var st = document.createElement('style'); st.id = 'bp-fin-css'; st.textContent = '#ftab-grid{display:none !important}'; document.head.appendChild(st); }
+    var cur = window._financeTab || 'overview';
+    var host = document.getElementById('bp-fin-hm');
+    if (!host) {
+      var sel = document.getElementById('finance-job-filter'); if (!sel) return;
+      host = document.createElement('span'); host.id = 'bp-fin-hm'; host.style.cssText = 'display:inline-flex;margin-right:8px;flex-shrink:0';
+      sel.parentNode.insertBefore(host, sel);
+      sel.parentNode.style.gap = '8px';
+    }
+    if (host.getAttribute('data-cur') === cur && host.firstChild) return;
+    host.setAttribute('data-cur', cur);
+    host.innerHTML = bpHMenu('Finance sections', TABS.map(function(x){ return { label:x[1], on:cur === x[0], js:"setFinanceTab('" + x[0] + "')" }; }));
+    var nm = (TABS.filter(function(x){ return x[0] === cur; })[0] || ['',''])[1];
+    var sub = document.getElementById('finance-sub'); if (sub && nm) sub.textContent = nm;
+  }
+  var f = window.setFinanceTab;
+  if (typeof f === 'function' && !f.__v349) {
+    window.setFinanceTab = function(){ var r = f.apply(this, arguments); try { paint(); } catch(e){} return r; };
+    window.setFinanceTab.__v349 = 1;
+  }
+  setInterval(function(){ try { if (document.getElementById('s-finance').classList.contains('active')) paint(); } catch(e){} }, 1200);
+  try { paint(); } catch(e){}
 })();
 </script>
