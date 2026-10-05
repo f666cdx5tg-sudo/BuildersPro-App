@@ -68,6 +68,16 @@ async def main():
             await pg.screenshot(path='/tmp/v349-shop.png')
             await pg.evaluate("bpShopBack()"); await pg.wait_for_timeout(500)
             ok(await pg.evaluate("!document.getElementById('bp-shop') && document.body.classList.contains('bp-drawer-open')"), 'back did not reopen slide-over menu')
+            # punch filter
+            await pg.evaluate("showScreen('s-punch')"); await pg.wait_for_timeout(900)
+            ok(await pg.evaluate("document.querySelectorAll('#bp-clf-punch > div > button').length===1 && !document.querySelector('#bp-clf-punch [data-bp-select]')"), 'punch filter is not a single button')
+            await pg.evaluate("document.querySelector('#bp-clf-punch > div > button').click()"); await pg.wait_for_timeout(300)
+            ok(await pg.evaluate("['All','Open','Complete'].every(t=>[...document.querySelectorAll('#bp-clf-punch button')].some(b=>b.innerText.trim()===t))"), 'status chips missing')
+            ok(await pg.evaluate("document.body.innerText.includes('SPACE')"), 'space choices missing')
+            await pg.evaluate("[...document.querySelectorAll('#bp-clf-punch button')].find(b=>b.innerText.trim()==='Complete').click()"); await pg.wait_for_timeout(300)
+            ok(await pg.evaluate("window._bpClFilter.show==='done'"), 'Complete chip did not filter')
+            await pg.screenshot(path='/tmp/v352-punch.png')
+            await pg.evaluate("bpClReset('punch', document.getElementById('pn-job').value)")
             # new space kind
             await pg.evaluate("bpDrawerSet(false); openAddRoom()"); await pg.wait_for_timeout(500)
             ok(await pg.evaluate("document.getElementById('ar-kind').value==='room'"), 'ar-kind default')

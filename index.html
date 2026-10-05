@@ -1499,7 +1499,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.51';
+var APP_VERSION = '3.52';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -14602,6 +14602,8 @@ window.bpFitNums = function() {
   function activeCount() {
     var n = 0;
     if (F.show !== 'all') n++;
+    if (F.space) n++;
+    if (F.q) n++;
     if (F.from || F.to) n++;
     if (F.sort !== 'open') n++;
     return n;
@@ -14613,6 +14615,7 @@ window.bpFitNums = function() {
     var out = items.filter(function(it){
       if (F.show === 'open' && it.done) return false;
       if (F.show === 'done' && !it.done) return false;
+      if (F.space && it.roomId !== F.space) return false;
       if (q) {
         var hay = ((it.text||'') + ' ' + (it.extraNotes||'') + ' ' + (it.trade||'')).toLowerCase();
         if (hay.indexOf(q) < 0) return false;
@@ -14650,20 +14653,41 @@ window.bpFitNums = function() {
   window.bpClFilterBar = function(scope, id) {
     var n = activeCount();
     var a = "'" + scope + "','" + id + "'";
-    var h = '<div id="bp-clf-' + scope + '" style="margin:0 0 8px;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:12px">'
-      + '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">'
-      +   '<button type="button" onclick="bpClSet(\'searchOpen\',' + (!(F.searchOpen || F.q)) + ',' + a + ')" aria-label="Search" title="Search" style="flex-shrink:0;width:48px;height:46px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:10px;border:1.5px solid ' + ((F.searchOpen || F.q) ? '#0A84FF' : 'var(--border)') + ';background:' + ((F.searchOpen || F.q) ? 'rgba(10,132,255,.14)' : 'var(--card2)') + ';color:' + ((F.searchOpen || F.q) ? '#0A84FF' : 'var(--text)') + ';cursor:pointer">'
-      +     '<svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.2" y2="15.2"/></svg></button>'
-      +   '<span style="flex:1"></span>'
-      +   '<button onclick="bpClSet(\'panel\',' + (!F.panel) + ',' + a + ')" style="flex-shrink:0;padding:11px 12px;border-radius:10px;border:1.5px solid ' + (n ? '#0A84FF' : 'var(--border)') + ';background:' + (n ? 'rgba(10,132,255,.14)' : 'var(--card2)') + ';color:' + (n ? '#0A84FF' : 'var(--text)') + ';font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">'
-      +     'Filter' + (n ? ' (' + n + ')' : '') + ' ' + (F.panel ? '▴' : '▾') + '</button>'
-      + '</div>';
-    /* v3.49: search is an icon; tap it and the box appears (no "Search by name" wording) */
-    if (F.searchOpen || F.q) {
-      h += '<input id="bp-clf-q-' + scope + '" type="search" aria-label="Search" value="' + esc(F.q||'') + '" oninput="bpClSet(\'q\',this.value,' + a + ')" '
-        +   'style="width:100%;box-sizing:border-box;margin-top:8px;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:16px;font-family:inherit"/>';
-    }
+    var on = n > 0 || F.panel;
+    var FUN = '<svg viewBox="0 0 24 24" style="width:20px;height:20px;vertical-align:-4px;margin-right:8px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><polygon points="3 4 21 4 14 12.5 14 20 10 18 10 12.5 3 4"/></svg>';
+    var h = '<div id="bp-clf-' + scope + '" style="margin:0 0 8px">'
+      + '<div style="display:flex"><button type="button" onclick="bpClSet(\'panel\',' + (!F.panel) + ',' + a + ')" aria-label="Filter" style="flex:1;padding:13px 14px;border-radius:12px;border:1.5px solid ' + (on ? '#0A84FF' : 'var(--border)') + ';background:' + (on ? 'rgba(10,132,255,.14)' : 'var(--card)') + ';color:' + (on ? '#0A84FF' : 'var(--text)') + ';font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">'
+      +   FUN + 'Filter' + (n ? ' (' + n + ')' : '') + ' ' + (F.panel ? '▴' : '▾') + '</button></div>';
     if (F.panel) {
+      var chip = function(label, key, val, cur){
+        var o = cur === val;
+        return '<button type="button" onclick="bpClSet(\'' + key + '\',\'' + String(val).replace(/'/g, "\\'") + '\',' + a + ')" style="padding:10px 14px;border-radius:99px;border:1.5px solid ' + (o ? '#0A84FF' : 'var(--border)') + ';background:' + (o ? 'rgba(10,132,255,.16)' : 'var(--card2)') + ';color:' + (o ? '#0A84FF' : 'var(--text)') + ';font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">' + label + '</button>';
+      };
+      var LB = 'font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:12px 0 6px';
+      var jobRooms = (scope === 'room' || !id) ? [] : (DB.rooms||[]).filter(function(r){ return r.jobId === id; });
+      h += '<div style="margin-top:8px;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:12px">'
+        + '<div style="' + LB + ';margin-top:0">STATUS</div><div style="display:flex;flex-wrap:wrap;gap:8px">'
+        +   chip('All', 'show', 'all', F.show) + chip('Open', 'show', 'open', F.show) + chip('Complete', 'show', 'done', F.show) + '</div>'
+        + (jobRooms.length ? '<div style="' + LB + '">SPACE</div><div style="display:flex;flex-wrap:wrap;gap:8px">'
+        +   chip('All', 'space', '', F.space || '') + jobRooms.map(function(r){ return chip(esc(r.name), 'space', r.id, F.space || ''); }).join('') + '</div>' : '')
+        + '<div style="' + LB + '">SEARCH</div>'
+        + '<input id="bp-clf-q-' + scope + '" type="search" aria-label="Search" value="' + esc(F.q||'') + '" oninput="bpClSet(\'q\',this.value,' + a + ')" style="width:100%;box-sizing:border-box;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:16px;font-family:inherit"/>'
+        + '<div style="' + LB + '">SORT</div>'
+        + '<select onchange="bpClSet(\'sort\',this.value,' + a + ')" style="' + SEL + ';width:100%">'
+        +   [['open','Open items first'],['name','Name A–Z'],['addedNew','Newest added'],['addedOld','Oldest added'],['doneNew','Recently completed']]
+              .map(function(o){ return '<option value="' + o[0] + '"' + (F.sort===o[0]?' selected':'') + '>' + o[1] + '</option>'; }).join('')
+        + '</select>'
+        + '<div style="' + LB + '">DATE</div>'
+        + '<select onchange="bpClSet(\'dateField\',this.value,' + a + ')" style="' + SEL + ';width:100%">'
+        +   '<option value="added"' + (F.dateField==='added'?' selected':'') + '>Date ADDED</option>'
+        +   '<option value="done"' + (F.dateField==='done'?' selected':'') + '>Date COMPLETED</option></select>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'
+        +   '<label style="font-size:11px;font-weight:800;color:var(--muted)">FROM<input type="date" value="' + (F.from||'') + '" onchange="bpClSet(\'from\',this.value,' + a + ')" style="' + SEL + ';width:100%;margin-top:3px;box-sizing:border-box"/></label>'
+        +   '<label style="font-size:11px;font-weight:800;color:var(--muted)">TO<input type="date" value="' + (F.to||'') + '" onchange="bpClSet(\'to\',this.value,' + a + ')" style="' + SEL + ';width:100%;margin-top:3px;box-sizing:border-box"/></label></div>'
+        + '<div style="display:flex;gap:8px;margin-top:12px"><!--bp-sel-->'
+        +   '<button type="button" onclick="bpClReset(' + a + ')" style="flex:1;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--muted);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">✕ Clear</button></div></div>';
+    }
+    if (false) {
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'
         + '<select onchange="bpClSet(\'sort\',this.value,' + a + ')" style="' + SEL + '">'
         +   [['open','Open items first'],['name','Name A–Z'],['addedNew','Newest added'],['addedOld','Oldest added'],['doneNew','Recently completed']]
@@ -14719,7 +14743,7 @@ window.bpFitNums = function() {
     }
   };
   window.bpClReset = function(scope, id) {
-    F.q = ''; F.searchOpen = false; F.sort = 'open'; F.show = 'all'; F.dateField = 'added'; F.from = ''; F.to = '';
+    F.q = ''; F.space = ''; F.searchOpen = false; F.sort = 'open'; F.show = 'all'; F.dateField = 'added'; F.from = ''; F.to = '';
     redrawList(scope, id); redrawBar(scope, id);
   };
 
@@ -15327,7 +15351,7 @@ window.bpFitNums = function() {
     }).join('');
     body.innerHTML =
         '<div style="display:flex;gap:8px;margin-bottom:10px">'
-      +   '<select id="pn-job" onchange="window._bpPunchJob=this.value;bpRenderPunch()" style="flex:1;min-width:0;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;font-weight:700;font-family:inherit">' + opts + '</select>'
+      +   '<select id="pn-job" onchange="window._bpPunchJob=this.value;window._bpClFilter.space=\'\';bpRenderPunch()" style="flex:1;min-width:0;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;font-weight:700;font-family:inherit">' + opts + '</select>'
       +   '<button onclick="window._bpAreaJob=\'' + jobId + '\';showScreen(\'s-rooms\')" style="flex-shrink:0;padding:12px 14px;border-radius:12px;border:1px solid rgba(10,132,255,.35);background:rgba(10,132,255,.12);color:#0A84FF;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">🏠 Areas</button>'
       + '</div>'
       + (typeof buildPunchCategorySummary === 'function' ? '<div style="margin:0 -16px">' + buildPunchCategorySummary(jobId) + '</div>' : '')
@@ -16665,9 +16689,7 @@ if (!IS_DESK && typeof window.bpClFilterBar === 'function' && !window.bpClFilter
   window.bpClFilterBar = function(scope, id){
     var h = _fb.apply(this, arguments);
     if (!id) return h;
-    var b = selBtn(scope === 'room' ? 'room' : 'job', id, true);
-    var i = h.indexOf('</button></div>');
-    return i < 0 ? h : h.slice(0, i) + '</button>' + b + h.slice(i + 9);
+    return h.replace('<!--bp-sel-->', selBtn(scope === 'room' ? 'room' : 'job', id, true).replace('flex-shrink:0;', 'flex:1;'));
   };
   window.bpClFilterBar.__sel = 1;
 }
