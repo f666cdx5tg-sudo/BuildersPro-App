@@ -1497,7 +1497,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.58';
+var APP_VERSION = '3.59';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -22619,5 +22619,117 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   }
   setTimeout(show, 600);
   console.log('[BP] v3.57 ready — dock shows while scrolling, then hides');
+})();
+</script>
+<script>
+/* ══ v3.59 — JOB PAGE = STACK OF COLLAPSIBLE SECTIONS ═══════════════════════
+   Spaces (grouped by level) · Finance · Expenses · Contractors · Invoices ·
+   Permits · Daily Reports · Photos. The existing section builders are left
+   alone; this wraps what they inject into accordions, in that order. */
+(function(){
+'use strict';
+if (window.IS_DESK || document.getElementById('modal-new-room')) return;
+if (typeof renderJobDetail !== 'function' || renderJobDetail.__v359) return;
+var css = document.createElement('style');
+css.textContent = '#jd-stack{padding:12px 16px 0;display:flex;flex-direction:column;gap:8px}'
+ + '.bp-acc{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}'
+ + '.bp-acc-h{width:100%;min-height:48px;display:flex;align-items:center;gap:10px;padding:0 14px;background:none;border:none;color:var(--text);font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;text-align:left}'
+ + '.bp-acc-h .ic{width:22px;text-align:center}.bp-acc-h .ct{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted)}'
+ + '.bp-acc-h .cv{color:var(--muted);transition:transform .15s;font-size:18px;line-height:1}'
+ + '.bp-acc.open .bp-acc-h .cv{transform:rotate(90deg)}'
+ + '.bp-acc-b{display:none;padding:0 0 10px;border-top:1px solid var(--border)}.bp-acc.open .bp-acc-b{display:block}'
+ + '.bp-acc-b .section-header{padding-top:10px}'
+ + '.bp-lvl{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:12px 16px 6px}'
+ + '.bp-acc-b>div>div[style*="padding:0 16px"]{padding:0 12px !important}'
+ + '.bp-acc-fin{padding:12px 14px 4px}';
+document.head.appendChild(css);
+var OPEN = { spaces:true };
+var DEF = [
+  ['spaces','🚪','Spaces','jd-rooms-section'],
+  ['finance','💰','Finance',null],
+  ['expenses','🧾','Expenses','jd-expenses-section'],
+  ['contractors','👷','Contractors','jd-contractors-section'],
+  ['invoices','📄','Invoices','jd-invoices-section'],
+  ['permits','📋','Permits','jd-permits-section'],
+  ['reports','📝','Daily Reports','jd-eod-section'],
+  ['photos','📷','Photos',null]
+];
+function fm(n){ return '$' + (+n||0).toLocaleString(); }
+function countFrom(node){ var h = node && node.querySelector('.section-header'); var m = h && /\((\d+)\)/.exec(h.textContent); return m ? m[1] : ''; }
+function unwrap(){
+  var st = document.getElementById('jd-stack');
+  var ph = document.getElementById('jd-photos');
+  var notes = document.getElementById('jd-notes');
+  if (ph && notes && st && st.contains(ph)) notes.parentNode.insertBefore(ph, notes);
+  if (st) st.remove();
+}
+function financeBody(jobId){
+  var job = (DB.jobs||[]).find(function(j){ return j.id === jobId; }) || {};
+  var fd = (typeof jobFunding === 'function') ? jobFunding(jobId) : { received:0, owed:0 };
+  var ex = (DB.expenses||[]).filter(function(e){ return e.jobId === jobId; }).reduce(function(s,e){ return s + (+e.amount||0); }, 0);
+  var sub = (DB.contractors||[]).filter(function(c){ return c.jobId === jobId; }).reduce(function(s,c){ return s + (+c.value||0); }, 0);
+  var contract = (typeof bpRevisedContract === 'function') ? bpRevisedContract(jobId) : (+job.contract||0);
+  var L = function(a,b,c){ return '<div class="bp-jc-line"><span>' + a + '</span><b' + (c ? ' style="color:' + c + '"' : '') + '>' + b + '</b></div>'; };
+  return '<div class="bp-acc-fin">' + L('Contract', fm(contract)) + L('Received to date', fm(fd.received), 'var(--green)')
+    + L('Balance owed', fm(fd.owed), fd.owed > 0 ? '#FF453A' : 'var(--green)') + L('Expenses', fm(ex)) + L('Contractor costs', fm(sub))
+    + L('Left after costs', fm(contract - ex - sub), (contract - ex - sub) < 0 ? '#FF453A' : 'var(--green)')
+    + '<button onclick="bpJobOpenFinance(\'' + jobId + '\')" style="width:100%;min-height:44px;margin-top:8px;border-radius:10px;border:1px solid rgba(10,132,255,.35);background:rgba(10,132,255,.1);color:#0A84FF;font-weight:800;font-size:14px;font-family:inherit;cursor:pointer">Open Finance for this job ›</button></div>';
+}
+window.bpJobOpenFinance = function(jobId){
+  var sel = document.getElementById('finance-job-filter'); if (sel) sel.value = jobId;
+  if (typeof showScreen === 'function') showScreen('s-finance');
+  if (typeof setFinanceTab === 'function') setFinanceTab('overview');
+  if (typeof renderFinance === 'function') renderFinance();
+};
+window.bpJobAccToggle = function(key){
+  OPEN[key] = !OPEN[key];
+  var a = document.querySelector('#jd-stack .bp-acc[data-k="' + key + '"]'); if (a) a.classList.toggle('open', !!OPEN[key]);
+  var h = a && a.querySelector('.bp-acc-h'); if (h) h.setAttribute('aria-expanded', OPEN[key] ? 'true' : 'false');
+};
+function groupSpaces(sec, jobId){
+  var list = sec.querySelector('div[style*="flex-direction:column"]'); if (!list) return;
+  var rooms = (DB.rooms||[]).filter(function(r){ return r.jobId === jobId; });
+  var cards = Array.prototype.slice.call(list.children);
+  if (cards.length !== rooms.length) return;
+  var items = rooms.map(function(r, i){ return { r:r, el:cards[i] }; });
+  if (window.bpRoomCmp) items.sort(function(a,b){ return window.bpRoomCmp(a.r, b.r); });
+  var last = null;
+  items.forEach(function(it){
+    var lv = (window.bpLevelOf && window.bpLevelOf(it.r)) || 'Level not set';
+    if (lv !== last) { var h = document.createElement('div'); h.className = 'bp-lvl'; h.textContent = lv; h.style.padding = '8px 2px 2px'; list.appendChild(h); last = lv; }
+    list.appendChild(it.el);
+  });
+}
+function build(jobId){
+  var stack = document.createElement('div'); stack.id = 'jd-stack';
+  DEF.forEach(function(d){
+    var key = d[0], node = d[3] ? document.getElementById(d[3]) : null, ct = '', body;
+    if (key === 'spaces') { if (!node) { node = document.createElement('div'); node.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">No spaces yet — tap Add Space.</div>'; ct = '0'; } else { groupSpaces(node, jobId); ct = countFrom(node); } }
+    else if (key === 'finance') { node = document.createElement('div'); node.innerHTML = financeBody(jobId); }
+    else if (key === 'photos') { node = document.getElementById('jd-photos'); ct = String((DB.photos||[]).filter(function(p){ return p.jobId === jobId; }).length); }
+    else if (!node) { node = document.createElement('div'); node.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">Nothing yet.</div>'; ct = '0'; }
+    else ct = countFrom(node);
+    var acc = document.createElement('div'); acc.className = 'bp-acc' + (OPEN[key] ? ' open' : ''); acc.setAttribute('data-k', key);
+    acc.innerHTML = '<button class="bp-acc-h" aria-expanded="' + (OPEN[key] ? 'true' : 'false') + '" onclick="bpJobAccToggle(\'' + key + '\')"><span class="ic">' + d[1] + '</span><span>' + d[2] + '</span><span class="ct">' + ct + '</span><span class="cv">›</span></button><div class="bp-acc-b"></div>';
+    acc.querySelector('.bp-acc-b').appendChild(node);
+    stack.appendChild(acc);
+  });
+  return stack;
+}
+var _orig = renderJobDetail;
+renderJobDetail = function(jobId){
+  unwrap();
+  var r = _orig.apply(this, arguments);
+  try {
+    var oldHdr = document.querySelector('#s-job-detail > .section-header'); /* static "Photos" label */
+    if (oldHdr && /^\s*Photos\s*$/.test(oldHdr.textContent)) oldHdr.style.display = 'none';
+    var row = document.querySelector('#s-job-detail .bp-act-row');
+    var stack = build(jobId);
+    if (row && row.parentNode) row.parentNode.insertBefore(stack, row.nextSibling);
+  } catch(e){ console.warn('[BP] v3.59 stack', e); }
+  return r;
+};
+renderJobDetail.__v359 = 1;
+console.log('[BP] v3.59 job page stack ready');
 })();
 </script>
