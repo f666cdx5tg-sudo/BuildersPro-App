@@ -73,7 +73,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 button,input,textarea,select{font-family:inherit}
 
 /* NAV */
-.nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:var(--card);border-top:none;display:flex;align-items:stretch;z-index:100;padding-bottom:env(safe-area-inset-bottom)}
+.nav{position:fixed;left:0;top:50px;width:260px;height:calc(100vh-50px);background:var(--card);display:flex;flex-direction:column;z-index:101;transform:translateX(-260px);transition:transform .3s ease;padding-bottom:0;border-top:1px solid var(--border)}.nav.active{transform:translateX(0)}
 .nav-btn{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:none;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:0;line-height:1.15;cursor:pointer;transition:color .15s;padding:7px 2px 6px}
 .nav-btn span{white-space:normal;word-break:break-word;text-align:center;max-width:100%}
 .nav-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
@@ -83,14 +83,14 @@ button,input,textarea,select{font-family:inherit}
 /* v2.55: per-tab colors removed — the new tab bar uses one highlight box (see v2.55 block) */
 
 /* SCREENS */
-.screen{position:fixed;inset:0;bottom:var(--nav-h);overflow-y:auto;-webkit-overflow-scrolling:touch;display:none;padding:0 0 20px}
+.screen{position:fixed;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none;padding:0 0 20px}
 /* SAFETY NET: every screen's top element clears the island, whether or not it
    uses a known header class. This is what catches a screen like Finance, whose
    header is a bare inline-styled sticky div — it had only 8px of top padding and
    sat under the island for two builds while .topbar and .detail-header were
    being fixed. Headers that already set this compute the identical value, so
    nothing doubles up, and any header added later is covered automatically. */
-.screen > div:first-child{padding-top:var(--safe-top)}
+.screen > div:first-child{padding-top:max(var(--safe-top), 12px)}
 .screen.active{display:block}
 
 /* TOPBAR */
@@ -1447,7 +1447,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.38';
+var APP_VERSION = '3.39';  // Hamburger menu refactor - remove bottom ribbon;
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
