@@ -882,7 +882,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       Add Area
     </button>
     <label class="btn btn-ghost" style="flex-direction:column;gap:4px;padding:12px;font-size:12px;cursor:pointer">
-      <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8"/><path d="M2 5l8 8 4-4 7 7"/></svg>
+      <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
       Add Photo
       <input type="file" accept="image/*" multiple style="display:none" onchange="bpAddPhotoToJob(this,currentJobId)"/>
     </label>
@@ -1478,7 +1478,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.43';
+var APP_VERSION = '3.44';
 /* v3.40 — slide-out menu (hamburger in the header). The five old tab-bar buttons
    live in #bp-drawer; showScreen() still highlights them through the .nav-btn ids. */
 function bpDrawerSet(open){
@@ -21888,10 +21888,11 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     '.back-btn{min-height:44px;padding-right:14px;margin-bottom:4px}',
     '.topbar-btn{width:48px;height:48px}',
     '#bp-fin-filter-row{padding:0 16px 10px}',
+    '#bp-dock{opacity:.94}',
     'body[data-zoom="xl"] #s-room-detail div[style*="grid-template-columns:1fr 1fr;gap:8px"], body[data-zoom="xxl"] #s-room-detail div[style*="grid-template-columns:1fr 1fr;gap:8px"]{grid-template-columns:1fr !important}',
     '#bp-fin-filter-row select{width:100%;max-width:none !important;min-height:48px;font-size:16px !important;padding:10px 14px !important;border-radius:12px !important}',
     '#bp-dock{position:fixed;z-index:96;right:64px;bottom:10px;display:flex;flex-direction:row-reverse;align-items:center;gap:calc(12px / var(--bp-zoom,1))}',
-    '#bp-dock button{width:calc(54px / var(--bp-zoom,1));height:calc(54px / var(--bp-zoom,1));min-width:0;min-height:0;padding:0;border-radius:50%;border:1.5px solid var(--border);background:var(--card);color:var(--text);box-shadow:0 4px 14px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}',
+    '#bp-dock button{width:calc(48px / var(--bp-zoom,1));height:calc(48px / var(--bp-zoom,1));min-width:0;min-height:0;padding:0;border-radius:50%;border:1.5px solid var(--border);background:var(--card);color:var(--text);box-shadow:0 4px 14px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}',
     '#bp-dock button[hidden]{display:none}',
     '#bp-dock button:active{transform:scale(.94)}',
     '#bp-dock button svg{width:calc(26px / var(--bp-zoom,1));height:calc(26px / var(--bp-zoom,1));stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}',
