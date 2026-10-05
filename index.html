@@ -1478,7 +1478,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.45';
+var APP_VERSION = '3.46';
 /* v3.40 — slide-out menu (hamburger in the header). The five old tab-bar buttons
    live in #bp-drawer; showScreen() still highlights them through the .nav-btn ids. */
 function bpDrawerSet(open){
@@ -22015,5 +22015,137 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     window.errDot = wrap;
   }
   console.log('[BP] v3.45 ready — one floating Menu button');
+})();
+</script>
+
+<script>
+/* ══ v3.46 — Swipe a tile LEFT to delete (field app) ══
+   Slide a tile to the left → a red Delete button appears on the tile. Tap it → a "Delete this?" sheet
+   with big Cancel / Delete buttons at the bottom (thumb zone). Nothing is removed until you confirm.
+   Works on: shopping-list items, checklist / punch items, and Money tiles (invoices, expenses,
+   contractors, change orders, deliveries…). Tiles re-use each screen's own delete function. */
+(function(){
+  if (window.__bpSwipe) return; window.__bpSwipe = true;
+  var DEL_RE = /^\s*(deleteFinItem|deleteDelivery|deleteChecklistItem|deletePunchItem|deleteChangeOrder|deletePayment|deleteEstimate|deleteDocument|deleteWalkthrough)\(/;
+  var REVEAL = 92;                       /* css px the tile slides */
+  var css = document.createElement('style'); css.id = 'bp-v346-css';
+  css.textContent = [
+    '.bp-sw-tile{position:relative;transition:transform .18s ease;will-change:transform}',
+    '.bp-sw-tile.bp-sw-drag{transition:none}',
+    '.bp-sw-del{position:absolute;left:calc(100% + 6px);top:0;bottom:0;width:' + (REVEAL - 12) + 'px;border:none;border-radius:12px;background:#FF453A;color:#fff;font-weight:800;font-size:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;padding:0}',
+    '.bp-sw-del svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}',
+    '#bp-sw-confirm{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center}',
+    '#bp-sw-confirm .bp-sw-box{width:100%;max-width:520px;box-sizing:border-box;background:var(--card,#1c1c1e);border-radius:20px 20px 0 0;padding:20px 16px calc(24px + var(--safe-bottom,0px));border:1px solid var(--border,#2a2a2a)}',
+    '#bp-sw-confirm .bp-sw-t{font-size:18px;font-weight:800;margin-bottom:4px}',
+    '#bp-sw-confirm .bp-sw-s{font-size:14px;color:var(--muted,#8e8e93);margin-bottom:16px;overflow-wrap:anywhere}',
+    '#bp-sw-confirm .bp-sw-row{display:flex;gap:10px}',
+    '#bp-sw-confirm button{flex:1;min-height:56px;border-radius:14px;font-size:17px;font-weight:800;cursor:pointer;font-family:inherit}',
+    '#bp-sw-confirm .bp-sw-no{background:var(--card2,#2a2a2a);color:var(--text,#fff);border:1px solid var(--border,#3a3a3a)}',
+    '#bp-sw-confirm .bp-sw-yes{background:#FF453A;color:#fff;border:none}'
+  ].join('\n');
+  document.head.appendChild(css);
+
+  function zoom(){ return parseFloat(getComputedStyle(document.body).zoom) || 1; }
+  function nameOf(el){ var L=(el.innerText||'').split('\n').map(function(x){return x.trim();}); for(var i=0;i<L.length;i++){ if(/[A-Za-z0-9]{3,}/.test(L[i]) && !/^Delete$/.test(L[i])) return L[i]; } return ''; }
+  function delBtns(el){ return [].filter.call(el.querySelectorAll('button[onclick]'), function(b){ return DEL_RE.test(b.getAttribute('onclick')||''); }); }
+
+  /* find the tile under a touch + how to delete it */
+  function resolve(t){
+    if (!t || !t.closest) return null;
+    if (t.closest('#bp-dock, #bp-drawer, #bp-sw-confirm, .bp-sw-del')) return null;
+    var sh = t.closest('[data-shop-id]');
+    if (sh && typeof window.bpShopDelete === 'function') {
+      var id = sh.getAttribute('data-shop-id');
+      return { tile: sh, label: nameOf(sh), run: function(){ window.bpShopDelete(id); } };
+    }
+    var scr = t.closest('.screen');
+    if (!scr) return null;
+    for (var a = t; a && a !== scr; a = a.parentElement) {
+      var bs = delBtns(a);
+      if (bs.length > 1) return null;                 /* reached a list, not a tile */
+      if (bs.length === 1) {
+        var pw = a.parentElement ? a.parentElement.clientWidth : 0;
+        if (a.offsetWidth < 120 || (pw && a.offsetWidth < pw * 0.8)) continue;   /* just a row inside the tile */
+        var cs = getComputedStyle(a);
+        if (parseFloat(cs.borderTopLeftRadius) < 6) continue;
+        var btn = bs[0], code = btn.getAttribute('onclick');
+        var m = code.match(/^\s*([A-Za-z]+\([^)]*\))/);
+        return { tile: a, label: nameOf(a), run: function(){ (new Function(m[1])).call(btn); } };
+      }
+    }
+    return null;
+  }
+
+  var open = null;                                    /* currently opened tile */
+  function closeOpen(){
+    if (!open) return; var t = open.tile; open = null;
+    t.style.transform = ''; var b = t.querySelector(':scope > .bp-sw-del'); if (b) setTimeout(function(){ b.remove(); }, 200);
+    setTimeout(function(){ t.classList.remove('bp-sw-tile'); }, 220);
+  }
+  function openTile(r){
+    if (open && open.tile !== r.tile) closeOpen();
+    open = r; var t = r.tile;
+    t.classList.add('bp-sw-tile'); t.style.transform = 'translateX(' + (-REVEAL) + 'px)';
+    if (!t.querySelector(':scope > .bp-sw-del')) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'bp-sw-del'; b.setAttribute('aria-label', 'Delete');
+      b.innerHTML = '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete';
+      b.addEventListener('click', function(e){ e.stopPropagation(); e.preventDefault(); ask(r); });
+      t.appendChild(b);
+    }
+  }
+  function ask(r){
+    var old = document.getElementById('bp-sw-confirm'); if (old) old.remove();
+    var o = document.createElement('div'); o.id = 'bp-sw-confirm';
+    var lab = (r.label || '').replace(/[<>&]/g, '');
+    o.innerHTML = '<div class="bp-sw-box"><div class="bp-sw-t">Delete this?</div><div class="bp-sw-s">' + (lab ? '“' + lab.slice(0, 70) + '”<br>' : '') + 'This can’t be undone.</div>'
+      + '<div class="bp-sw-row"><button type="button" class="bp-sw-no">Cancel</button><button type="button" class="bp-sw-yes">Delete</button></div></div>';
+    document.body.appendChild(o);
+    o.addEventListener('click', function(e){ if (e.target === o) { o.remove(); closeOpen(); } });
+    o.querySelector('.bp-sw-no').onclick = function(){ o.remove(); closeOpen(); };
+    o.querySelector('.bp-sw-yes').onclick = function(){
+      o.remove(); var oc = window.confirm; window.confirm = function(){ return true; };
+      try { r.run(); } catch(e) { console.error('[BP] swipe delete', e); } finally { window.confirm = oc; }
+      open = null;
+    };
+  }
+  window.bpSwipeAsk = ask;
+
+  /* ── touch tracking ── */
+  var st = null, swallow = 0;
+  document.addEventListener('touchstart', function(e){
+    if (e.touches.length !== 1) { st = null; return; }
+    var t = e.touches[0], tg = e.target;
+    if (open && !(tg.closest && tg.closest('.bp-sw-del')) && !(open.tile.contains(tg))) closeOpen();
+    var r = resolve(tg);
+    st = r ? { r: r, x: t.clientX, y: t.clientY, mode: null, base: (open && open.tile === r.tile) ? -REVEAL : 0 } : null;
+  }, { passive: true });
+  document.addEventListener('touchmove', function(e){
+    if (!st) return; var t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
+    if (!st.mode) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      st.mode = (Math.abs(dx) > Math.abs(dy) * 1.4) ? 'h' : 'v';
+      if (st.mode === 'h') { st.r.tile.classList.add('bp-sw-tile', 'bp-sw-drag'); }
+    }
+    if (st.mode !== 'h') return;
+    if (e.cancelable) e.preventDefault();
+    var v = Math.max(-REVEAL - 14, Math.min(0, st.base + dx / zoom()));
+    st.r.tile.style.transform = 'translateX(' + v + 'px)'; st.last = v;
+  }, { passive: false });
+  function end(){
+    if (!st) return; var s = st; st = null;
+    if (s.mode !== 'h') return;
+    swallow = Date.now();
+    s.r.tile.classList.remove('bp-sw-drag');
+    if ((s.last || 0) < -REVEAL / 2) openTile(s.r);
+    else { if (open && open.tile === s.r.tile) open = null; s.r.tile.style.transform = ''; s.r.tile.querySelector(':scope > .bp-sw-del') && s.r.tile.querySelector(':scope > .bp-sw-del').remove(); setTimeout(function(){ s.r.tile.classList.remove('bp-sw-tile'); }, 220); }
+  }
+  document.addEventListener('touchend', end, { passive: true });
+  document.addEventListener('touchcancel', end, { passive: true });
+  /* a tap on an opened tile only closes it; a swipe never triggers the tile's own tap */
+  document.addEventListener('click', function(e){
+    if (Date.now() - swallow < 350) { e.stopPropagation(); e.preventDefault(); return; }
+    if (open && open.tile.contains(e.target) && !(e.target.closest && e.target.closest('.bp-sw-del'))) { e.stopPropagation(); e.preventDefault(); closeOpen(); }
+  }, true);
+  console.log('[BP] v3.46 ready — swipe left on a tile to delete (with confirmation)');
 })();
 </script>
