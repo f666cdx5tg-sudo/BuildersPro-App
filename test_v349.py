@@ -40,6 +40,9 @@ async def main():
             ok(await pg.evaluate("getComputedStyle(document.getElementById('ftab-grid')).display==='none'"), 'finance tab grid still showing')
             await pg.evaluate("setFinanceTab('permits')"); await pg.wait_for_timeout(300)
             ok(await pg.evaluate("document.querySelector('#bp-fin-hm .bp-hm-it.on').innerText.includes('Permits')"), 'finance ☰ does not show current tab')
+            await pg.evaluate("document.querySelector('#bp-fin-hm .bp-hm-btn').click()"); await pg.wait_for_timeout(200)
+            ok(await pg.evaluate("(()=>{const r=document.querySelector('#bp-fin-hm .bp-hm-pop').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.width>100})()"), 'finance menu popup is off-screen')
+            await pg.evaluate("bpHMenuClose()")
             # shopping
             await pg.evaluate("bpOpenShop('')"); await pg.wait_for_timeout(500)
             ok(await pg.evaluate("!document.getElementById('bp-shop-text') && !document.body.innerText.includes('Quantity and price are picked out')"), 'old shopping composer/instructions remain')

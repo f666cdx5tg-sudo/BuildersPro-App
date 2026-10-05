@@ -288,6 +288,7 @@ body.bp-drawer-open #bp-drawer{transform:none;visibility:visible;transition:tran
 .bp-hm-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
 .bp-hm-pop{display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:210px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:6px;z-index:300}
 .bp-hm.open .bp-hm-pop{display:block}
+#bp-fin-hm .bp-hm-pop,#bp-photo-header .bp-hm-pop{left:0;right:auto}
 .detail-header:has(.bp-hm.open),#finance-sticky:has(.bp-hm.open),#bp-photo-header:has(.bp-hm.open){z-index:500 !important;position:relative}
 .detail-header:has(.bp-hm.open){position:sticky}
 .bp-hm-it{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:0 12px;border:none;background:transparent;color:var(--text);font-size:16px;font-weight:700;border-radius:10px;font-family:inherit;text-align:left;cursor:pointer;white-space:nowrap}
@@ -1501,7 +1502,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.49';
+var APP_VERSION = '3.50';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
