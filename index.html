@@ -873,18 +873,17 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <div class="screen" id="s-job-detail">
   <div class="detail-header">
-    <button class="back-btn" onclick="showScreen('s-jobs')">
-      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-      Jobs
-    </button>
-    <div class="detail-title" id="jd-name" data-bp-wrap="1" style="white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.2">Job Name</div>
-    <div class="detail-meta" id="jd-meta"></div>
-    <div id="jd-info" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
-    <div id="jd-progress-toggles" style="display:flex;gap:16px;margin-top:8px"></div>
-    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-      <button onclick="openEditJob(currentJobId)" style="background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:9px;color:#0A84FF;font-size:13px;font-weight:700;padding:6px 16px;cursor:pointer;font-family:inherit;font-size:17px" title="Edit job" aria-label="Edit job">✏️</button>
-      <button onclick="bpClientUpdateMenu(currentJobId)" style="background:rgba(66,165,245,.1);border:1px solid rgba(66,165,245,.3);border-radius:9px;color:#42A5F5;font-size:13px;font-weight:700;padding:6px 16px;cursor:pointer;font-family:inherit;font-size:17px" title="Send update to client" aria-label="Send update to client">📤</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <button class="back-btn" onclick="showScreen('s-jobs')" style="margin-bottom:0">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Jobs
+      </button>
+      <div id="jd-menu-host" style="flex:0 0 auto"></div>
     </div>
+    <div class="detail-title" id="jd-name" data-bp-wrap="1" style="white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.15;font-size:20px;margin-top:2px">Job Name</div>
+    <div class="detail-meta" id="jd-meta" style="margin-top:2px;font-size:12px"></div>
+    <div id="jd-info" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
+    <div id="jd-progress-toggles" style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;margin-top:4px"></div>
   </div>
   <!-- Progress bar -->
   <div style="padding:14px 16px 0">
@@ -1498,7 +1497,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.57';
+var APP_VERSION = '3.58';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -2741,9 +2740,13 @@ function openJobDetail(jobId) {
   var meta = [job.client&&('👤 '+job.client), fmtJobAddress(job)&&('📍 '+fmtJobAddress(job)), job.status].filter(Boolean).join(' · ');
   /* v2.96: client, address and status each get their own one-line row, so a long client name never wraps */
   (function(){
-    var rows = [job.client&&('👤 '+job.client), fmtJobAddress(job)&&('📍 '+fmtJobAddress(job)), job.status].filter(Boolean);
     var m = document.getElementById('jd-meta'); m.textContent = '';
-    rows.forEach(function(t, i){ var d = document.createElement('div'); d.textContent = t; if (i) d.style.marginTop = '2px'; if (t === job.status) { d.style.fontWeight = '800'; d.style.color = ({Active:'#30D158',Pending:'#FFD60A',Complete:'var(--blue)','On Hold':'var(--red)'})[t] || ''; } m.appendChild(d); });
+    var sc = ({Active:'#30D158',Pending:'#FFD60A',Complete:'var(--blue)','On Hold':'var(--red)'})[job.status] || '';
+    var parts = [job.client&&('👤 '+job.client), fmtJobAddress(job)&&('📍 '+fmtJobAddress(job))].filter(Boolean);
+    var d = document.createElement('div'); d.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    d.appendChild(document.createTextNode(parts.join(' · ') + (parts.length && job.status ? ' · ' : '')));
+    if (job.status) { var st = document.createElement('b'); st.textContent = job.status; st.style.color = sc; d.appendChild(st); }
+    m.appendChild(d);
   })();
   var contractor = job.contractorId ? (DB.contractors||[]).find(function(c){return c.id===job.contractorId;}) : null;
   var infoParts = [contractor&&('👷 '+contractor.name), (job.startDate||job.completionDate)&&('📅 '+(job.startDate?fmtDatePlain(job.startDate):'—')+' → '+(job.completionDate?fmtDatePlain(job.completionDate):'—'))].filter(Boolean);
@@ -2753,12 +2756,17 @@ function openJobDetail(jobId) {
   if (jdToggles) {
     var fd = jobFunding(job.id), fm = function(n){ return '$' + (+n||0).toLocaleString(); };
     var tl = function(date, fn, label){ return '<label class="bp-jc-line' + ((date && label==='Started') ? ' bp-started' : '') + '"><span><input type="checkbox" ' + (date?'checked':'') + ' onchange="' + fn + '(\'' + job.id + '\')"/>' + label + '</span><b>' + (date ? fmtDatePlain(date) : '—') + '</b></label>'; };
-    jdToggles.style.cssText = 'display:block;margin-top:8px';
+    jdToggles.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:0 16px;margin-top:4px';
     jdToggles.innerHTML =
       '<div class="bp-jc-line"><span>Received to date</span><b style="color:var(--green)">' + fm(fd.received) + '</b></div>'
       + '<div class="bp-jc-line"><span>Balance owed</span><b style="color:' + (fd.owed>0?'#FF453A':'var(--green)') + '">' + fm(fd.owed) + '</b></div>'
       + tl(job.startDate, 'toggleJobStarted', 'Started') + tl(job.completionDate, 'toggleJobCompleted', 'Done');
   }
+  var _mh = document.getElementById('jd-menu-host');
+  if (_mh && typeof bpHMenu === 'function') _mh.innerHTML = bpHMenu('Job actions', [
+    { icon:'✏️', label:'Edit', js:'openEditJob(currentJobId)' },
+    { icon:'📤', label:'Send update to client', js:'bpClientUpdateMenu(currentJobId)' }
+  ]);
   renderJobDetail(jobId);
   showScreen('s-job-detail');
   document.getElementById('nav-s-jobs').classList.add('active');
