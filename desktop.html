@@ -1610,24 +1610,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.39';  // Hamburger menu refactor - remove bottom ribbon;
-/* Hamburger menu toggle for drawer nav */
-function toggleNavDrawer(){
-  var nav = document.querySelector("nav.nav");
-  if (!nav) return;
-  nav.classList.toggle("active");
-  var toggle = document.getElementById("nav-toggle");
-  if (toggle) toggle.classList.toggle("active");
-}
-
-/* Close drawer when clicking overlay or a nav button */
-function closeNavDrawer(){
-  var nav = document.querySelector("nav.nav.active");
-  if (nav) nav.classList.remove("active");
-  var toggle = document.getElementById("nav-toggle");
-  if (toggle && toggle.classList.contains("active")) toggle.classList.remove("active");
-}
-
+var APP_VERSION = '3.40';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -11039,23 +11022,6 @@ function bpCheckForUpdate(manual) {
     .then(function(r){ return r.text(); })
     .then(function(t){
       var m = t.match(/var APP_VERSION = '([0-9.]+)'/);
-/* Hamburger menu toggle for drawer nav */
-function toggleNavDrawer(){
-  var nav = document.querySelector("nav.nav");
-  if (!nav) return;
-  nav.classList.toggle("active");
-  var toggle = document.getElementById("nav-toggle");
-  if (toggle) toggle.classList.toggle("active");
-}
-
-/* Close drawer when clicking overlay or a nav button */
-function closeNavDrawer(){
-  var nav = document.querySelector("nav.nav.active");
-  if (nav) nav.classList.remove("active");
-  var toggle = document.getElementById("nav-toggle");
-  if (toggle && toggle.classList.contains("active")) toggle.classList.remove("active");
-}
-
       if (!m) { if (manual) toast('Could not read the published version'); return; }
       if (bpVersionGreater(m[1], APP_VERSION)) bpShowUpdateBanner(m[1]);
       else if (manual) toast('✅ You are on the latest version (v' + APP_VERSION + ')');
