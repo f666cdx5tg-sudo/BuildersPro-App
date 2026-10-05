@@ -1497,7 +1497,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.60';
+var APP_VERSION = '3.61';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -18417,6 +18417,11 @@ function barHtml(job){
   var t = window.bpShopTotals(job === undefined ? activeJob() : job);
   var logged = !!logFor(job === undefined ? activeJob() : job, today());
   var B = 'flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:14px 8px;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;line-height:1.15;text-align:center';
+  if (job === undefined) {
+    var IC = function(svg){ return svg.replace('margin-right:6px','margin-right:0').replace('width:20px;height:20px','width:28px;height:28px'); };
+    return '<button data-bp-open="shop" aria-label="Shopping List" title="Shopping List" onclick="bpOpenShop()" style="' + B + ';padding:16px 8px;background:rgba(255,159,10,.13);color:#FF9F0A;border:1.5px solid rgba(255,159,10,.55)">' + IC(ICON.cart) + '</button>'
+      + '<button data-bp-open="log" aria-label="Daily Log" title="Daily Log" onclick="bpOpenDailyLog(\'\',\'' + today() + '\')" style="' + B + ';padding:16px 8px;background:rgba(10,132,255,.13);color:#0A84FF;border:1.5px solid rgba(10,132,255,.55)">' + IC(ICON.log) + '</button>';
+  }
   return '<button data-bp-open="shop" onclick="bpOpenShop(' + (job === undefined ? '' : '\'' + Q(job) + '\'') + ')" style="' + B + ';background:rgba(255,159,10,.13);color:#FF9F0A;border:1.5px solid rgba(255,159,10,.55)">' + ICON.cart
     + '<span>Shopping List' + (t.nOpen ? '<span style="display:block;font-size:12.5px;font-weight:700;opacity:.85">' + t.nOpen + ' to buy · ' + money(t.toBuyWithTax) + '</span>' : '') + '</span></button>'
     + '<button data-bp-open="log" onclick="bpOpenDailyLog(' + (job === undefined ? '' : '\'' + Q(job) + '\'') + ',\'' + today() + '\')" style="' + B + ';background:rgba(10,132,255,.13);color:#0A84FF;border:1.5px solid rgba(10,132,255,.55)">' + ICON.log
@@ -20360,7 +20365,7 @@ window.bpRenderJobNotes = function(){
   var el = document.getElementById('jd-notes'); if (!el) return;
   var jobId = window.currentJobId; if (!jobId) { el.innerHTML = ''; return; }
   var L = jobNotes(jobId);
-  el.innerHTML = '<div class="section-header" style="display:flex;align-items:center">Notes (' + L.length + ')'
+  el.innerHTML = '<div class="section-header" style="display:flex;align-items:center">Project Notes (' + L.length + ')'
     + '<button onclick="bpNoteEdit(\'\')" style="margin-left:auto;background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.4);border-radius:9px;color:#0A84FF;font-size:13px;font-weight:800;padding:6px 14px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0">+ Add Note</button></div>'
     + '<div style="margin:0 16px 14px">' + (L.length ? L.map(function(n){
       var r = roomById(n.roomId);
@@ -22652,7 +22657,8 @@ var DEF = [
   ['invoices','📄','Invoices','jd-invoices-section'],
   ['permits','📋','Permits','jd-permits-section'],
   ['reports','📝','Daily Reports','jd-eod-section'],
-  ['photos','📷','Photos',null]
+  ['photos','📷','Photos',null],
+  ['notes','🗒️','Project Notes','jd-notes']
 ];
 function fm(n){ return '$' + (+n||0).toLocaleString(); }
 function countFrom(node){ var h = node && node.querySelector('.section-header'); var m = h && /\((\d+)\)/.exec(h.textContent); return m ? m[1] : ''; }
@@ -22660,7 +22666,9 @@ function unwrap(){
   var st = document.getElementById('jd-stack');
   var ph = document.getElementById('jd-photos');
   var notes = document.getElementById('jd-notes');
-  if (ph && notes && st && st.contains(ph)) notes.parentNode.insertBefore(ph, notes);
+  var scr = document.getElementById('s-job-detail');
+  if (ph && st && st.contains(ph) && scr) scr.appendChild(ph);
+  if (notes && st && st.contains(notes) && scr) scr.appendChild(notes);
   if (st) st.remove();
 }
 function financeBody(jobId){
@@ -22706,6 +22714,7 @@ function build(jobId){
     var key = d[0], node = d[3] ? document.getElementById(d[3]) : null, ct = '', body;
     if (key === 'spaces') { if (!node) { node = document.createElement('div'); node.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">No spaces yet — tap Add Space.</div>'; ct = '0'; } else { groupSpaces(node, jobId); ct = countFrom(node); } }
     else if (key === 'finance') { node = document.createElement('div'); node.innerHTML = financeBody(jobId); }
+    else if (key === 'notes') { node = document.getElementById('jd-notes') || document.createElement('div'); ct = String((DB.jobNotes||[]).filter(function(n){ return n && n.jobId === jobId; }).length); }
     else if (key === 'photos') { node = document.getElementById('jd-photos'); ct = String((DB.photos||[]).filter(function(p){ return p.jobId === jobId; }).length); }
     else if (!node) { node = document.createElement('div'); node.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">Nothing yet.</div>'; ct = '0'; }
     else ct = countFrom(node);
@@ -22731,5 +22740,49 @@ renderJobDetail = function(jobId){
 };
 renderJobDetail.__v359 = 1;
 console.log('[BP] v3.59 job page stack ready');
+})();
+</script>
+<script>
+/* ══ v3.61 — PUNCH PAGE: Status ☰ and Space ☰ ═══════════════════════════════
+   The Status and Space chip rows inside the Filter panel are replaced by two
+   hamburger menus that sit right above the Filter button. */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;
+if (typeof window.bpClFilterBar !== 'function' || window.bpClFilterBar.__v361 || typeof bpHMenu !== 'function') return;
+var st = document.createElement('style');
+st.textContent = '#bp-clf-punch{position:relative}#bp-clf-punch:has(.bp-hm.open){z-index:500}'
+ + '.bp-pmrow{display:flex;gap:8px;margin-bottom:8px}.bp-pm{flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:0 0 0 12px;border:1px solid var(--border);border-radius:12px;background:var(--card);min-height:46px}'
+ + '.bp-pm-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:800}.bp-pm-t i{font-style:normal;color:var(--muted);font-weight:700;font-size:12px;display:block;line-height:1.1}'
+ + '.bp-pm .bp-hm-btn{border:none;background:transparent;height:46px}';
+document.head.appendChild(st);
+var _fb = window.bpClFilterBar;
+window.bpClFilterBar = function(scope, id){
+  var h = _fb.apply(this, arguments);
+  if (scope !== 'punch' || !id) return h;
+  try {
+    var F = window._bpClFilter || {};
+    var a = "'punch','" + id + "'";
+    var tmp = document.createElement('div'); tmp.innerHTML = h;
+    var root = tmp.firstElementChild; if (!root) return h;
+    [].slice.call(root.querySelectorAll('div')).forEach(function(d){
+      if (/^(STATUS|SPACE)$/.test(d.textContent.trim()) && d.children.length === 0) { var nx = d.nextElementSibling; d.remove(); if (nx) nx.remove(); }
+    });
+    var show = F.show || 'all', space = F.space || '';
+    var rooms = (DB.rooms||[]).filter(function(r){ return r.jobId === id; });
+    var sName = (rooms.find(function(r){ return r.id === space; }) || {}).name || 'All';
+    var sTxt = { all:'All', open:'Open', done:'Complete' }[show] || 'All';
+    var stItems = [['all','All'],['open','Open'],['done','Complete']].map(function(o){ return { label:o[1], on:show === o[0], js:"bpClSet('show','" + o[0] + "'," + a + ")" }; });
+    var spItems = [{ label:'All spaces', on:!space, js:"bpClSet('space',''," + a + ")" }].concat(rooms.map(function(r){ return { label:esc(r.name), on:space === r.id, js:"bpClSet('space','" + r.id + "'," + a + ")" }; }));
+    var row = document.createElement('div'); row.className = 'bp-pmrow';
+    row.innerHTML = '<div class="bp-pm"><span class="bp-pm-t"><i>Status</i>' + sTxt + '</span>' + bpHMenu('Status', stItems) + '</div>'
+      + '<div class="bp-pm"><span class="bp-pm-t"><i>Space</i>' + esc(sName) + '</span>' + bpHMenu('Space', spItems) + '</div>';
+    root.insertBefore(row, root.firstChild);
+    return root.outerHTML;
+  } catch(e){ console.warn('[BP] v3.61 punch menus', e); return h; }
+};
+window.bpClFilterBar.__v361 = 1;
+if (window.bpClFilterBar.__sel === undefined && _fb.__sel) window.bpClFilterBar.__sel = 1;
+console.log('[BP] v3.61 punch menus ready');
 })();
 </script>
