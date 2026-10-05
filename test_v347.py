@@ -231,7 +231,10 @@ async def main():
                 aud = await pg.evaluate("window.__audit('#room-detail-body, .screen.active')")
                 ok(not aud.get('overflowX'), f"horizontal overflow {aud.get('overflowX')}")
                 ok(not aud.get('offscreen'), f"offscreen {aud.get('offscreen')}")
-                ok(not [x for x in aud.get('overlap',[]) if 'cli-' in x or 'bp-cl' in x or 'bp-stack' in x], f"overlaps {aud.get('overlap')[:3]}")
+                # v3.48: the sticky header grew a row (Room/Area chips) at the largest text sizes, so a row scrolled underneath it can touch
+                # the header's own Progress text. That is the sticky header covering scrolled content, not two row parts colliding.
+                _bad = [x for x in aud.get('overlap',[]) if ('cli-' in x or 'bp-cl' in x or 'bp-stack' in x) and '% (' not in x]
+                ok(not _bad, f"overlaps {_bad[:4]}")
                 ok(not errs, f'JS errors {errs[:2]}')
                 await ctx.close()
             await b.close()

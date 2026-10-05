@@ -275,6 +275,13 @@ body.bp-drawer-open #bp-drawer{transform:none;visibility:visible;transition:tran
    were added for (v2.18) is handled by bpForceRepaintNudge()'s 1px scroll,
    which is the fix that actually worked; it needs no composited layer. */
 .detail-header{position:sticky;top:0;z-index:10;background:var(--bg);padding:var(--safe-top) 16px 12px;border-bottom:1px solid var(--border)}
+/* v3.48 icon-only action row on an area */
+.bp-act-row{display:flex;gap:8px;padding:14px 16px}
+.bp-act{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;border-radius:12px;padding:14px 10px;cursor:pointer;transition:flex .18s ease}
+.bp-act .bp-act-ic{font-size:22px;line-height:1;font-weight:800}
+.bp-act .bp-act-lb{display:none;margin-left:8px;font-weight:700;white-space:nowrap}
+.bp-act.bp-open{flex:2.2}
+.bp-act.bp-open .bp-act-lb{display:inline}
 .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--accent);font-size:15px;font-weight:600;cursor:pointer;padding:0;margin-bottom:10px}
 .back-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 .detail-title{font-size:22px;font-weight:800;letter-spacing:-.3px;line-height:1.2}
@@ -1478,7 +1485,17 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.47';
+var APP_VERSION = '3.48';
+/* v3.48: tapping an icon-only action button slides its name out next to the icon for ~2.5s */
+window.bpActTap = function(btn){
+  try {
+    var row = btn.parentNode;
+    [].forEach.call(row.querySelectorAll('.bp-act.bp-open'), function(b){ if (b !== btn) b.classList.remove('bp-open'); });
+    btn.classList.add('bp-open');
+    clearTimeout(btn.__bpT);
+    btn.__bpT = setTimeout(function(){ btn.classList.remove('bp-open'); }, 2500);
+  } catch(e){}
+};
 /* v3.40 — slide-out menu (hamburger in the header). The five old tab-bar buttons
    live in #bp-drawer; showScreen() still highlights them through the .nav-btn ids. */
 function bpDrawerSet(open){
@@ -5920,7 +5937,9 @@ function openRoomDetail(roomId) {
     + '</div>'
     /* v2.96: the action buttons now sit on their own row UNDER the name, so the name always has the full
        width and never wraps into "M.. / E..." beside them. */
-    + '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px">'
+    /* v3.48: left side of this row (under the icon) holds the Room / Area switch — see #bp-kind-slot */
+    + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:10px">'
+    + '<div id="bp-kind-slot" style="display:flex;align-items:center;flex:0 0 auto;max-width:100%"></div>'
     /* Icon-only, and the same 34px box as the bin beside it. A "⧉ Duplicate"
        text button was tried here first and overflowed the header at XL/XXL,
        shoving the bin off the right edge — the header is a single flex row and
@@ -5938,14 +5957,11 @@ function openRoomDetail(roomId) {
     + '</div>'
 
     // Actions
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px 16px">'
-    + '<div style="display:flex;gap:8px">'
-    + '<button class="btn btn-primary" onclick="openAddNote(\'' + (room.jobId||'') + '\',\'' + roomId + '\')" style="flex:1;border-radius:12px;padding:14px">+ Add Item</button>'
-    + '<button class="btn btn-ghost" onclick="openBulkChecklist(\'' + (room.jobId||'') + '\',\'' + roomId + '\')" style="flex:1;border-radius:12px;padding:14px">📋 Add List</button>'
-    + '</div>'
-    + '<label class="btn btn-ghost" style="border-radius:12px;padding:14px;cursor:pointer;justify-content:center">'
-    + '📷 Add Photo<input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(this,\'' + (room.jobId||'') + '\',\'' + roomId + '\')">'
-    + '</label>'
+    /* v3.48: icon-only. Tap one and its name slides out next to the icon for a couple of seconds. */
+    + '<div class="bp-act-row">'
+    + '<button class="btn btn-primary bp-act" title="Add Item" aria-label="Add Item" onclick="bpActTap(this);openAddNote(\'' + (room.jobId||'') + '\',\'' + roomId + '\')"><span class="bp-act-ic">＋</span><span class="bp-act-lb">Add Item</span></button>'
+    + '<button class="btn btn-ghost bp-act" title="Add List" aria-label="Add List" onclick="bpActTap(this);openBulkChecklist(\'' + (room.jobId||'') + '\',\'' + roomId + '\')"><span class="bp-act-ic">📋</span><span class="bp-act-lb">Add List</span></button>'
+    + '<label class="btn btn-ghost bp-act" title="Add Photo" aria-label="Add Photo" onclick="bpActTap(this)"><span class="bp-act-ic">📷</span><span class="bp-act-lb">Add Photo</span><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(this,\'' + (room.jobId||'') + '\',\'' + roomId + '\')"></label>'
     + '</div>'
 
     // Notes
@@ -5983,8 +5999,7 @@ function openRoomDetail(roomId) {
     // Room Checklist
     + '<div class="section-header" style="display:flex;align-items:center;justify-content:space-between">'
     + '<span>Checklist (' + roomChecklist.length + ')</span>'
-    + '<button onclick="openAddNote(\'' + (room.jobId||'') + '\',\'' + roomId + '\')" style="background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:9px;color:#0A84FF;font-size:12px;font-weight:700;padding:5px 12px;cursor:pointer;font-family:inherit">+ Add Item</button>'
-    + '<button onclick="openBulkChecklist(\'' + (room.jobId||'') + '\',\'' + roomId + '\')" style="background:rgba(255,159,10,.1);border:1px solid rgba(255,159,10,.3);border-radius:9px;color:#FF9F0A;font-size:12px;font-weight:700;padding:5px 12px;cursor:pointer;font-family:inherit;margin-left:6px">📋 Add List</button>'
+    /* v3.48: the second Add Item / Add List pair that lived here is gone — the icon row at the top does it */
     + '</div>'
     + '<div id="rd-checklist" style="margin:0 16px 10px">'
     + bpClipBar(roomId)
@@ -21446,7 +21461,7 @@ function chipsFor(id){
     var on = k === val;
     return '<button onclick="bpSetRoomKind(\'' + id + '\',\'' + val + '\')" style="padding:7px 12px;border-radius:99px;border:1.5px solid '
       + (on ? '#BF5AF2' : 'var(--border)') + ';background:' + (on ? 'rgba(191,90,242,.15)' : 'transparent') + ';color:' + (on ? '#BF5AF2' : 'var(--muted)')
-      + ';font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit">' + (on ? '✓ ' : '') + label + '</button>';
+      + ';font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">' + (on ? '✓ ' : '') + label + '</button>';
   }
   return b('Room', 'room') + b('Area', 'location');
 }
@@ -21457,14 +21472,19 @@ function switcher(){
     var id = /bpRoomCopy\('([^']+)'\)/.exec(cp.getAttribute('onclick'))[1];
     var host = $('s-room-detail');
     var box = $('bp-kind-switch');
+    var slot = $('bp-kind-slot');   /* v3.48: Room / Area now lives in the header, under the icon */
     if (!box) {
       box = document.createElement('div'); box.id = 'bp-kind-switch';
-      box.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 16px 0';
     }
-    var h = '<span style="font-size:12px;font-weight:700;color:var(--muted)">Counts as</span>' + chipsFor(id);
+    box.style.cssText = slot ? 'display:flex;gap:6px;align-items:center' : 'display:flex;gap:8px;align-items:center;padding:8px 16px 0';
+    var h = (slot ? '' : '<span style="font-size:12px;font-weight:700;color:var(--muted)">Counts as</span>') + chipsFor(id);
     if (box.__h !== h) { box.innerHTML = h; box.__h = h; }
-    var hdr = cp.closest('.detail-header') || cp.parentNode.parentNode;
-    if (hdr && box.previousElementSibling !== hdr) hdr.parentNode.insertBefore(box, hdr.nextSibling);
+    if (slot) {
+      if (box.parentNode !== slot) slot.appendChild(box);
+    } else {
+      var hdr = cp.closest('.detail-header') || cp.parentNode.parentNode;
+      if (hdr && box.previousElementSibling !== hdr) hdr.parentNode.insertBefore(box, hdr.nextSibling);
+    }
   }
   /* Mac: in the room detail modal, above the Edit / Delete row */
   var ed = document.querySelector('#modal-room-detail [onclick*="editRoom("]');
