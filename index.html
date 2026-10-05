@@ -1478,7 +1478,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.46';
+var APP_VERSION = '3.47';
 /* v3.40 — slide-out menu (hamburger in the header). The five old tab-bar buttons
    live in #bp-drawer; showScreen() still highlights them through the .nav-btn ids. */
 function bpDrawerSet(open){
@@ -22147,5 +22147,212 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     if (open && open.tile.contains(e.target) && !(e.target.closest && e.target.closest('.bp-sw-del'))) { e.stopPropagation(); e.preventDefault(); closeOpen(); }
   }, true);
   console.log('[BP] v3.46 ready — swipe left on a tile to delete (with confirmation)');
+})();
+</script>
+
+<script>
+/* ══ v3.47 — Area checklist rows: slide for Cut / Delete, photo stack opens a grid (field app) ══
+   Rows in an Area (Room Detail) now show only: checkbox · full item name · photo stack.
+   Slide a row LEFT → Cut (orange) and Delete (red) buttons appear on the row.
+   Delete still asks "Delete this?" first (re-uses the v3.46 sheet).
+   Photos: 0 = tap to add · 1 = tap opens the picture · 2+ = drawn as a stack, tap opens a grid; tap a picture in the grid to view it large. */
+(function(){
+  if (window.__bpV347) return; window.__bpV347 = true;
+  var REVEAL = 176;                                   /* css px a row slides: two 78px buttons + gaps */
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function item(id){ return (DB.punchlist || []).find(function(x){ return x.id === id; }); }
+
+  /* same picture list + order as the big viewer (v2.9x itemPhotos) so grid taps open the right one */
+  function srcOf(p){ var s = (p && typeof p === 'object') ? p.src : p; return s ? (window.bpImgSrc ? window.bpImgSrc(s) : s) : ''; }
+  function photosOf(it){
+    var out = [], seen = {};
+    function add(p, label){ var s = srcOf(p); if (!s || seen[s]) return; seen[s] = 1; out.push({ src:s, label:label }); }
+    (it.photosBefore || []).forEach(function(p){ add(p, 'Before'); });
+    (it.photosAfter || []).forEach(function(p){ add(p, 'After'); });
+    if (it.completionPhoto) add(it.completionPhoto, 'Completed');
+    return out;
+  }
+
+  var css = document.createElement('style'); css.id = 'bp-v347-css';
+  css.textContent = [
+    '.bp-cl-row{position:relative;display:flex;align-items:center;gap:12px;padding:12px;background:var(--card);border-radius:12px;margin-bottom:8px;transition:transform .18s ease;will-change:transform;touch-action:pan-y}',
+    '.bp-cl-row.bp-cl-drag{transition:none}',
+    '.bp-cl-name{font-size:15px;font-weight:600;line-height:1.3;overflow-wrap:anywhere;word-break:normal}',
+    '.bp-cl-acts{position:absolute;left:calc(100% + 6px);top:0;bottom:0;display:flex;gap:6px}',
+    '.bp-cl-acts button{width:78px;min-height:56px;border:none;border-radius:12px;color:#fff;font-weight:800;font-size:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;padding:0;font-family:inherit}',
+    '.bp-cl-acts svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}',
+    '.bp-cl-cut{background:#FF9F0A;color:#1a1200 !important}',
+    '.bp-cl-del{background:#FF453A}',
+    /* photo stack */
+    '.bp-stack{position:relative;flex-shrink:0;width:46px;height:46px;padding:0;background:none;border:none;cursor:pointer}',
+    '.bp-stack .bp-sk{position:absolute;inset:0;border-radius:9px;background-size:cover;background-position:center;border:1.5px solid var(--border,#3a3a3a);box-sizing:border-box}',
+    '.bp-stack .bp-sk1{transform:translate(5px,-4px) rotate(8deg);opacity:.75}',
+    '.bp-stack .bp-sk2{transform:translate(-4px,-2px) rotate(-7deg);opacity:.85}',
+    '.bp-stack .bp-sk0{box-shadow:0 2px 6px rgba(0,0,0,.5)}',
+    '.bp-stack .bp-sn{position:absolute;bottom:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:#0A84FF;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-sizing:border-box}',
+    /* grid */
+    '#bp-clgrid{position:fixed;inset:0;z-index:10050;background:var(--bg,#0d0d0d);color:var(--text,#fff);display:flex;flex-direction:column;font-family:inherit}',
+    '#bp-clgrid .bp-gh{display:flex;align-items:center;gap:10px;padding:calc(var(--safe-top,0px) + 10px) 14px 10px;border-bottom:1px solid var(--border,#2a2a2a)}',
+    '#bp-clgrid .bp-gx{width:44px;height:44px;border-radius:50%;border:none;background:var(--card2,#2a2a2a);color:var(--text,#fff);font-size:24px;cursor:pointer;flex-shrink:0}',
+    '#bp-clgrid .bp-gt{flex:1;min-width:0;font-size:16px;font-weight:800;line-height:1.25;overflow-wrap:anywhere}',
+    '#bp-clgrid .bp-gs{font-size:13px;font-weight:600;color:var(--muted,#8e8e93);margin-top:2px}',
+    '#bp-clgrid .bp-gg{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-content:start}',
+    '#bp-clgrid .bp-gc{position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;border:1px solid var(--border,#2a2a2a);padding:0;background:#000;cursor:pointer}',
+    '#bp-clgrid .bp-gc img{width:100%;height:100%;object-fit:cover;display:block}',
+    '#bp-clgrid .bp-gc span{position:absolute;left:5px;bottom:5px;padding:2px 7px;border-radius:7px;background:rgba(0,0,0,.7);color:#fff;font-size:11px;font-weight:800}',
+    '#bp-clgrid .bp-gf{padding:10px 14px calc(14px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border,#2a2a2a)}',
+    '#bp-clgrid .bp-gf button{width:100%;height:54px;border-radius:14px;border:1.5px solid #0A84FF;background:rgba(10,132,255,.18);color:#4DA3FF;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit}'
+  ].join('\n');
+  document.head.appendChild(css);
+
+  /* ── photo stack button (used by Area rows AND the Punch list rows) ── */
+  window.bpClPhotoBtn = function(it, extra){
+    var list = photosOf(it), n = list.length;
+    var oc = 'event.stopPropagation();bpClPhotoSheet(\'' + it.id + '\')';
+    if (!n) return '<button class="bp-clphoto-btn" onclick="' + oc + '" title="Add photos" style="position:relative;flex-shrink:0;width:46px;height:46px;border-radius:9px;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;background:none;border:1.5px dashed var(--faint);' + (extra || '') + '"><span style="font-size:18px">📷</span></button>';
+    var top = list[list.length - 1].src;                   /* newest on top, like before */
+    var h = '<button class="bp-clphoto-btn bp-stack" onclick="' + oc + '" title="' + n + ' photo' + (n > 1 ? 's' : '') + '" aria-label="' + n + ' photos" style="' + (extra || '') + '">';
+    if (n > 2) h += '<span class="bp-sk bp-sk1" style="background-image:url(\'' + E(list[0].src) + '\')"></span>';
+    if (n > 1) h += '<span class="bp-sk bp-sk2" style="background-image:url(\'' + E(list[Math.min(1, n - 2)].src) + '\')"></span>';
+    h += '<span class="bp-sk bp-sk0" style="background-image:url(\'' + E(top) + '\')"></span>';
+    if (n > 1) h += '<span class="bp-sn">' + n + '</span>';
+    return h + '</button>';
+  };
+
+  /* ── grid of all pictures on one item ── */
+  window.bpClGridClose = function(){ var g = document.getElementById('bp-clgrid'); if (g) g.remove(); };
+  window.bpClGridOpen = function(id){
+    var it = item(id); if (!it) return false;
+    var list = photosOf(it); if (list.length < 2) return false;
+    window.bpClGridClose();
+    var g = document.createElement('div'); g.id = 'bp-clgrid';
+    g.innerHTML = '<div class="bp-gh"><button class="bp-gx" onclick="bpClGridClose()" aria-label="Close">×</button>'
+      + '<div class="bp-gt">' + E(it.text || '') + '<div class="bp-gs">' + list.length + ' photos</div></div></div>'
+      + '<div class="bp-gg">' + list.map(function(p, i){
+          return '<button class="bp-gc" onclick="bpClViewPhotos(\'' + it.id + '\',' + i + ')" aria-label="Photo ' + (i + 1) + '"><img src="' + E(p.src) + '" alt=""/><span>' + E(p.label) + '</span></button>';
+        }).join('') + '</div>'
+      + '<div class="bp-gf"><button onclick="bpClGridAdd(\'' + it.id + '\')">+ Add photos</button></div>';
+    document.body.appendChild(g);
+    return true;
+  };
+  window.bpClGridAdd = function(id){
+    window.bpClGridClose();
+    /* the viewer's own "+ Add photos" opens the Before/After picker */
+    if (window.bpClViewPhotos(id, 0) && typeof window.bpClViewAdd === 'function') window.bpClViewAdd();
+  };
+  var prevSheet = window.bpClPhotoSheet;
+  window.bpClPhotoSheet = function(id){
+    if (window.bpClGridOpen(id)) return;
+    return prevSheet.apply(this, arguments);
+  };
+  var prevRowTap = window.bpClRowTap;
+  window.bpClRowTap = function(id){
+    if (window.bpClGridOpen(id)) return;
+    if (typeof prevRowTap === 'function') return prevRowTap.apply(this, arguments);
+  };
+
+  /* ── the Area checklist row ── */
+  var origLine = window.buildChecklistLineItem;
+  window.buildChecklistLineItem = function(it){
+    if (window._expandedChecklistItems && window._expandedChecklistItems[it.id]) return origLine.apply(this, arguments);
+    var clipped = typeof bpClipHas === 'function' && bpClipHas(it.id);
+    var hasExtra = (it.tasks && it.tasks.length) || (it.photosBefore && it.photosBefore.length) || (it.photosAfter && it.photosAfter.length);
+    var h = '<div id="cli-' + it.id + '" class="bp-cl-row" data-cl-id="' + it.id + '" style="border:' + (clipped ? '1.5px dashed #FF9F0A' : '1px solid var(--border)') + '">';
+    h += '<div onclick="toggleChecklistItem(\'' + it.id + '\')" style="width:26px;height:26px;border-radius:8px;border:2px solid ' + (it.done ? '#0A84FF' : 'var(--faint)') + ';background:' + (it.done ? '#0A84FF' : 'transparent') + ';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
+      + (it.done ? '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#fff;fill:none;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>' : '') + '</div>';
+    h += '<div onclick="toggleChecklistExpand(\'' + it.id + '\')" style="flex:1;min-width:0;cursor:pointer">';
+    h += '<div class="bp-cl-name" style="text-decoration:' + (it.done ? 'line-through' : 'none') + ';color:' + (it.done ? 'var(--faint)' : 'var(--text)') + '">' + E(it.text);
+    if (it.value) h += ' <span style="font-size:12px;color:#FF9F0A;font-weight:700">$' + (+it.value).toLocaleString() + '</span>';
+    if (hasExtra) h += ' <span style="font-size:11px;color:var(--faint)">▾</span>';
+    h += '</div>';
+    if (typeof bpClDatesLine === 'function') h += bpClDatesLine(it);
+    h += '</div>';
+    h += window.bpClPhotoBtn(it);
+    return h + '</div>';
+  };
+
+  /* ── slide-to-reveal Cut / Delete ── */
+  var ICON_CUT = '<svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>';
+  var ICON_DEL = '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+  function zoom(){ return parseFloat(getComputedStyle(document.body).zoom) || 1; }
+  var open = null;                                    /* the row that is slid open */
+  function closeOpen(){
+    if (!open) return; var t = open; open = null;
+    t.style.transform = '';
+    var a = t.querySelector(':scope > .bp-cl-acts'); if (a) setTimeout(function(){ a.remove(); }, 200);
+  }
+  function openRow(t){
+    if (open && open !== t) closeOpen();
+    open = t; t.style.transform = 'translateX(' + (-REVEAL) + 'px)';
+    if (t.querySelector(':scope > .bp-cl-acts')) return;
+    var id = t.getAttribute('data-cl-id'), it = item(id), cut = typeof bpClipHas === 'function' && bpClipHas(id);
+    var a = document.createElement('div'); a.className = 'bp-cl-acts';
+    a.innerHTML = '<button type="button" class="bp-cl-cut" aria-label="Cut">' + ICON_CUT + (cut ? 'Undo cut' : 'Cut') + '</button>'
+      + '<button type="button" class="bp-cl-del" aria-label="Delete">' + ICON_DEL + 'Delete</button>';
+    a.querySelector('.bp-cl-cut').addEventListener('click', function(e){
+      e.stopPropagation(); e.preventDefault(); closeOpen();
+      if (typeof bpClipToggle === 'function') bpClipToggle(id, 'cut');
+    });
+    a.querySelector('.bp-cl-del').addEventListener('click', function(e){
+      e.stopPropagation(); e.preventDefault();
+      var r = { tile:t, label:(it && it.text) || '', run:function(){ window.deleteChecklistItem(id); } };
+      if (typeof window.bpSwipeAsk === 'function') {
+        window.bpSwipeAsk(r);
+        /* sheet closed with Cancel → slide the row shut again */
+        var mo = new MutationObserver(function(){
+          if (!document.getElementById('bp-sw-confirm')) { mo.disconnect(); if (document.body.contains(t)) closeOpen(); }
+        });
+        mo.observe(document.body, { childList:true });
+      } else { closeOpen(); }
+    });
+    t.appendChild(a);
+  }
+
+  var st = null, swallow = 0;
+  function rowAt(tg){
+    if (!tg || !tg.closest) return null;
+    if (tg.closest('#bp-dock, #bp-drawer, #bp-sw-confirm, .bp-cl-acts, .bp-stack, .bp-clphoto-btn')) return null;
+    return tg.closest('.bp-cl-row');
+  }
+  document.addEventListener('touchstart', function(e){
+    if (e.touches.length !== 1) { st = null; return; }
+    var tg = e.target, t = rowAt(tg), t0 = e.touches[0];
+    if (open && !(tg.closest && tg.closest('.bp-cl-acts')) && open !== (tg.closest && tg.closest('.bp-cl-row'))) closeOpen();
+    st = t ? { t:t, x:t0.clientX, y:t0.clientY, mode:null, base:(open === t) ? -REVEAL : 0, last:null } : null;
+  }, { passive:true });
+  document.addEventListener('touchmove', function(e){
+    if (!st) return; var t0 = e.touches[0], dx = t0.clientX - st.x, dy = t0.clientY - st.y;
+    if (!st.mode) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      st.mode = (Math.abs(dx) > Math.abs(dy) * 1.4) ? 'h' : 'v';
+      if (st.mode === 'h') st.t.classList.add('bp-cl-drag');
+    }
+    if (st.mode !== 'h') return;
+    if (e.cancelable) e.preventDefault();
+    var v = Math.max(-REVEAL - 14, Math.min(0, st.base + dx / zoom()));
+    st.t.style.transform = 'translateX(' + v + 'px)'; st.last = v;
+  }, { passive:false });
+  function end(){
+    if (!st) return; var s = st; st = null;
+    if (s.mode !== 'h') return;
+    swallow = Date.now();
+    s.t.classList.remove('bp-cl-drag');
+    if ((s.last || 0) < -REVEAL / 2) openRow(s.t);
+    else { if (open === s.t) open = null; s.t.style.transform = ''; var a = s.t.querySelector(':scope > .bp-cl-acts'); if (a) a.remove(); }
+  }
+  document.addEventListener('touchend', end, { passive:true });
+  document.addEventListener('touchcancel', end, { passive:true });
+  /* a swipe never counts as a tap; a tap on an opened row only closes it */
+  document.addEventListener('click', function(e){
+    var tg = e.target;
+    if (Date.now() - swallow < 350 && tg.closest && tg.closest('.bp-cl-row')) { e.stopPropagation(); e.preventDefault(); return; }
+    if (open && open.contains(tg) && !(tg.closest && tg.closest('.bp-cl-acts'))) { e.stopPropagation(); e.preventDefault(); closeOpen(); }
+  }, true);
+
+  /* the list was redrawn (check-off, cut, paste…) → forget a row that no longer exists */
+  new MutationObserver(function(){ if (open && !document.body.contains(open)) open = null; }).observe(document.body, { childList:true, subtree:true });
+
+  try { if (typeof currentRoomId !== 'undefined' && currentRoomId && typeof openRoomDetail === 'function') openRoomDetail(currentRoomId); } catch(e){}
+  console.log('[BP] v3.47 ready — slide a row for Cut / Delete; photo stack opens a grid');
 })();
 </script>
