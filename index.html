@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.54';
+var APP_VERSION = '3.55';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -22065,7 +22065,7 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     var s = active(); if (!s) return; var id = s.id;
     var back = document.getElementById('bp-dock-back'), add = document.getElementById('bp-dock-add');
     if (!back || !add) return;
-    var showBack = !MAIN[id] || (id === 's-photos' && !!window._bpPhotoArea);
+    var showBack = !MAIN[id] || (id === 's-photos' && !!window._bpPhotoArea) || id !== 's-home';   /* v3.55: Back on every main screen too (Home excepted) */
     var a = ADD[id]; var showAdd = !!a && !(a.skip && a.skip());
     back.hidden = !showBack; add.hidden = !showAdd;
     var sig = id + '|' + showBack + '|' + showAdd + '|' + (a && a.label) + '|' + (window._bpPhotoArea || '');
@@ -22074,10 +22074,10 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     var bb = s.querySelector('.back-btn');
     back.setAttribute('aria-label', bb ? 'Back to ' + String(bb.textContent || '').trim() : 'Back');
   }
-  var prevScreen = 's-home';
+  var prevScreen = 's-home', hist = [], goingBack = false;   /* v3.55: hist = screens visited, newest last */
   var _show = window.showScreen;
   if (typeof _show === 'function' && !_show.__v343) {
-    window.showScreen = function(id){ var s = active(); if (s && s.id !== id) prevScreen = s.id; var r = _show.apply(this, arguments); soon(); return r; };
+    window.showScreen = function(id){ var s = active(); if (s && s.id !== id) { prevScreen = s.id; if (!goingBack && hist[hist.length - 1] !== s.id) { hist.push(s.id); if (hist.length > 20) hist.shift(); } } var r = _show.apply(this, arguments); soon(); return r; };
     window.showScreen.__v343 = 1;
   }
   document.getElementById('bp-dock-menu').onclick = function(){ toggleNavDrawer(); };
@@ -22087,7 +22087,10 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     if (s.id === 's-photos' && window._bpPhotoArea && window.bpClosePhotoArea) { bpClosePhotoArea(); soon(); return; }
     var bb = s.querySelector('.back-btn');
     if (bb && bb.offsetParent !== null) { bb.click(); return; }
-    showScreen(prevScreen && prevScreen !== s.id && !/room-detail|job-detail/.test(prevScreen) ? prevScreen : 's-home');
+    /* v3.55: go to the last screen you were on (skipping detail pages and this one); nothing before it -> Home */
+    var to = 's-home';
+    while (hist.length) { var h = hist.pop(); if (h && h !== s.id && !/room-detail|job-detail/.test(h)) { to = h; break; } }
+    goingBack = true; try { showScreen(to); } finally { goingBack = false; }
   };
   var timer = 0;
   function soon(){ if (timer) return; timer = setTimeout(function(){ timer = 0; paint(); tap(); }, 60); }
