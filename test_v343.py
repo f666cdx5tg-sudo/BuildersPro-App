@@ -157,7 +157,8 @@ async def layout(pg, tag):
 async def features(pg, tag):
     # Areas has a way home
     await pg.evaluate("showScreen('s-rooms')")
-    ok(await pg.evaluate("!!document.querySelector('#s-rooms > .topbar .bp-burger')"), tag+' Areas has no menu button')
+    ok(await pg.evaluate("!!document.getElementById('bp-dock-menu') && getComputedStyle(document.getElementById('bp-dock-menu')).display!='none'"), tag+' Areas has no menu button')
+    ok(await pg.evaluate("[...document.querySelectorAll('.bp-burger')].every(b=>b.offsetParent===null)"), tag+' header hamburger still visible')
     # dock exists and is on the right half
     d = await pg.evaluate("(()=>{var e=document.getElementById('bp-dock'); if(!e) return null; var r=e.getBoundingClientRect(); return [r.left,r.right,innerWidth]})()")
     ok(d and d[0] > d[2]*0.3, tag+' dock missing or too far left')

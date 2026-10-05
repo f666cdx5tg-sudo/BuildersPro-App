@@ -1478,7 +1478,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.44';
+var APP_VERSION = '3.45';
 /* v3.40 — slide-out menu (hamburger in the header). The five old tab-bar buttons
    live in #bp-drawer; showScreen() still highlights them through the .nav-btn ids. */
 function bpDrawerSet(open){
@@ -21999,5 +21999,21 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   window.bpTapFix = tap;
   soon(); setTimeout(soon, 400); setTimeout(soon, 1500);
   console.log('[BP] v3.43 ready — thumb dock, Areas menu, Finance filter row, 44 px taps');
+})();
+</script>
+
+<script>
+/* v3.45 — the floating Menu button is the only menu button: header hamburgers are hidden (field app). */
+(function(){
+  var css=document.createElement('style'); css.id='bp-v345-css';
+  css.textContent='.bp-burger-group, .bp-burger{display:none !important} #bp-dock-menu{position:relative} #bp-dock-menu.bp-err::after{content:"";position:absolute;top:7px;right:9px;width:10px;height:10px;border-radius:50%;background:#FF453A}';
+  document.head.appendChild(css);
+  if (typeof window.errDot === 'function' || typeof errDot === 'function') {
+    var _e = (typeof errDot === 'function') ? errDot : window.errDot;
+    var wrap = function(on){ try{ _e(on); }catch(e){} var d=document.getElementById('bp-dock-menu'); if(d) d.classList.toggle('bp-err', !!on); };
+    try { errDot = wrap; } catch(e){}
+    window.errDot = wrap;
+  }
+  console.log('[BP] v3.45 ready — one floating Menu button');
 })();
 </script>
