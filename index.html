@@ -74,6 +74,7 @@ button,input,textarea,select{font-family:inherit}
 
 /* NAV */
 .nav{position:fixed;left:0;top:50px;width:260px;height:calc(100vh-50px);background:var(--card);display:flex;flex-direction:column;z-index:101;transform:translateX(-260px);transition:transform .3s ease;padding-bottom:0;border-top:1px solid var(--border)}.nav.active{transform:translateX(0)}
+.nav.active::before{content:"";position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:100;pointer-events:all;left:260px;width:calc(100vw-260px);top:50px;height:calc(100vh-50px)}
 .nav-btn{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:none;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:0;line-height:1.15;cursor:pointer;transition:color .15s;padding:7px 2px 6px}
 .nav-btn span{white-space:normal;word-break:break-word;text-align:center;max-width:100%}
 .nav-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
@@ -655,10 +656,11 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
     <!-- Row 2: all 5 controls in ONE row, glove-sized, always visible -->
     <div style="display:flex;gap:8px;margin-bottom:9px">
+      <button id="nav-toggle" onclick="toggleNavDrawer()" title="Menu" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700">☰</button>
       <button onclick="cycleFontSize()" title="Text &amp; button size" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;font-family:inherit">AA</button>
       <button onclick="toggleTheme()" title="Light / dark" aria-label="Switch light or dark" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="display:block"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg></button>
-      <button onclick="showScreen('s-search')" title="Search" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px">🔍</button>
-      <button onclick="showScreen('s-calendar')" title="Calendar" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px">📅</button>
+      <button onclick="showScreen('s-search');closeNavDrawer()" title="Search" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px">🔍</button>
+      <button onclick="showScreen('s-calendar');closeNavDrawer()" title="Calendar" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px">📅</button>
       <button onclick="openSync()" title="Sync" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">
         <svg viewBox="0 0 24 24" style="width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       </button>
@@ -693,21 +695,21 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <div id="home-attention" style="display:none;margin:10px 16px 0"></div>
   <div id="home-timeclock" style="margin:10px 16px 0"></div>
   <div class="kpi-row" style="padding-top:16px">
-    <div class="kpi" onclick="showScreen('s-jobs')">
+    <div class="kpi" onclick="showScreen('s-jobs');closeNavDrawer()">
       <div class="kpi-val" style="color:#FFAA33" id="kpi-jobs">0</div>
       <div class="kpi-lbl">Active Jobs</div>
     </div>
-    <div class="kpi" onclick="showScreen('s-jobs')">
+    <div class="kpi" onclick="showScreen('s-jobs');closeNavDrawer()">
       <div class="kpi-val" id="kpi-tasks">0</div>
       <div class="kpi-lbl">Open Punch Items</div>
     </div>
   </div>
   <div class="kpi-row">
-    <div class="kpi" onclick="showScreen('s-photos')">
+    <div class="kpi" onclick="showScreen('s-photos');closeNavDrawer()">
       <div class="kpi-val blue" id="kpi-photos">0</div>
       <div class="kpi-lbl">Photos Today</div>
     </div>
-    <div class="kpi" onclick="showScreen('s-rooms')">
+    <div class="kpi" onclick="showScreen('s-rooms');closeNavDrawer()">
       <div class="kpi-val" id="kpi-notes">0</div>
       <div class="kpi-lbl">Areas</div>
     </div>
@@ -774,7 +776,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <!-- CALENDAR -->
 <div class="screen" id="s-calendar">
   <div class="detail-header">
-    <button class="back-btn" onclick="showScreen('s-home')">
+    <button class="back-btn" onclick="showScreen('s-home');closeNavDrawer()">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
       Home
     </button>
@@ -807,7 +809,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <!-- SEARCH -->
 <div class="screen" id="s-search">
   <div class="detail-header">
-    <button class="back-btn" onclick="showScreen('s-home')">
+    <button class="back-btn" onclick="showScreen('s-home');closeNavDrawer()">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
       Home
     </button>
@@ -820,7 +822,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <!-- TIME CLOCK LOG -->
 <div class="screen" id="s-time">
   <div class="detail-header">
-    <button class="back-btn" onclick="showScreen('s-home')">
+    <button class="back-btn" onclick="showScreen('s-home');closeNavDrawer()">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
       Home
     </button>
@@ -831,7 +833,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <div class="screen" id="s-job-detail">
   <div class="detail-header">
-    <button class="back-btn" onclick="showScreen('s-jobs')">
+    <button class="back-btn" onclick="showScreen('s-jobs');closeNavDrawer()">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
       Jobs
     </button>
@@ -1016,23 +1018,23 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 </div>
 
 <nav class="nav">
-  <button class="nav-btn active" id="nav-home" onclick="showScreen('s-home')">
+  <button class="nav-btn active" id="nav-home" onclick="showScreen('s-home');closeNavDrawer()">
     <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
     <span>Home</span>
   </button>
-  <button class="nav-btn" id="nav-s-jobs" onclick="showScreen('s-jobs')">
+  <button class="nav-btn" id="nav-s-jobs" onclick="showScreen('s-jobs');closeNavDrawer()">
     <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
     <span>Jobs</span>
   </button>
-  <button class="nav-btn" id="nav-s-punch" onclick="showScreen('s-punch')">
+  <button class="nav-btn" id="nav-s-punch" onclick="showScreen('s-punch');closeNavDrawer()">
     <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
     <span>Punch</span>
   </button>
-  <button class="nav-btn" id="nav-s-photos" onclick="showScreen('s-photos')">
+  <button class="nav-btn" id="nav-s-photos" onclick="showScreen('s-photos');closeNavDrawer()">
     <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
     <span>Photos</span>
   </button>
-  <button class="nav-btn" id="nav-s-finance" onclick="showScreen('s-finance')">
+  <button class="nav-btn" id="nav-s-finance" onclick="showScreen('s-finance');closeNavDrawer()">
     <svg viewBox="0 0 24 24" style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
     <span>Money</span>
   </button>
@@ -1448,6 +1450,23 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
 var APP_VERSION = '3.39';  // Hamburger menu refactor - remove bottom ribbon;
+/* Hamburger menu toggle for drawer nav */
+function toggleNavDrawer(){
+  var nav = document.querySelector("nav.nav");
+  if (!nav) return;
+  nav.classList.toggle("active");
+  var toggle = document.getElementById("nav-toggle");
+  if (toggle) toggle.classList.toggle("active");
+}
+
+/* Close drawer when clicking overlay or a nav button */
+function closeNavDrawer(){
+  var nav = document.querySelector("nav.nav.active");
+  if (nav) nav.classList.remove("active");
+  var toggle = document.getElementById("nav-toggle");
+  if (toggle && toggle.classList.contains("active")) toggle.classList.remove("active");
+}
+
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -13527,6 +13546,13 @@ function bpCheckForUpdate(manual) {
     .then(function(r){ return r.text(); })
     .then(function(t){
       var m = t.match(/var APP_VERSION = '([0-9.]+)'/);
+/* Hamburger menu toggle for drawer nav */
+  var nav = document.querySelector("nav.nav.active");
+  if (nav) nav.classList.remove("active");
+  var toggle = document.getElementById("nav-toggle");
+  if (toggle && toggle.classList.contains("active")) toggle.classList.remove("active");
+}
+
       if (!m) { if (manual) toast('Could not read the published version'); return; }
       if (bpVersionGreater(m[1], APP_VERSION)) bpShowUpdateBanner(m[1]);
       else if (manual) toast('✅ You are on the latest version (v' + APP_VERSION + ')');
