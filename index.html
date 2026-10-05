@@ -1447,7 +1447,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.37';
+var APP_VERSION = '3.38';
 
 /* ── DB ── */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1615,7 +1615,7 @@ function bpPinNav(scale) {
        padding that was reserving room for that strip. Labels move down; the
        bar never leaves the page. */
     var navBottom = nav.getBoundingClientRect().bottom;
-    nav.style.removeProperty('padding-bottom');
+    nav.style.removeProperty('padding-bottom'); nav.style.removeProperty('min-height');
     /* v3.34 — Stan (Safari-tab screenshot, Oct 4): "move the footer to the
        bottom of the page." In a plain Safari tab (not the home-screen app) the
        browser's own toolbar sits over the home-indicator strip, so the page
@@ -1623,11 +1623,14 @@ function bpPinNav(scale) {
        4px under the buttons, and that dead strip is the gap he saw. v3.29/3.30
        only handled the installed app. In a browser tab, keep just a small
        breathing margin so the buttons sit right on the edge of the page. */
-    if (!standalone) nav.style.setProperty('padding-bottom', '6px', 'important');
+    if (!standalone) { nav.style.setProperty('padding-bottom', '6px', 'important'); nav.style.setProperty('min-height', '0', 'important'); }
     var floatGap = ref - navBottom;                 // ref includes the screen height when installed
     var layoutGap = Math.max(window.innerHeight, vh) - navBottom;
     if (floatGap > 20 && floatGap < 120 && layoutGap < 2) {
       nav.style.setProperty('padding-bottom', '6px', 'important');
+      /* v3.38 — Stan's iPhone screenshot: ~38pt of empty bar under the labels. It was the
+         bar's min-height (--nav-h), not padding. When the page ends short, drop it too. */
+      nav.style.setProperty('min-height', '0', 'important');
     }
     var gap = Math.max(window.innerHeight, vh) - nav.getBoundingClientRect().bottom;
     if (gap > 1 && gap < 200) nav.style.bottom = (-gap / (scale || 1)).toFixed(2) + 'px';
