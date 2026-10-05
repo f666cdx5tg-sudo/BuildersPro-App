@@ -80,14 +80,27 @@ button,input,textarea,select{font-family:inherit}
 .bp-burger:active{transform:scale(.95)}
 #bp-drawer-scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;opacity:0;pointer-events:none;transition:opacity .2s ease}
 body.bp-drawer-open #bp-drawer-scrim{opacity:1;pointer-events:auto}
-#bp-drawer{position:fixed;top:0;left:0;bottom:0;width:min(290px,calc(82vw / var(--bp-zoom,1)));background:var(--card);border-right:1px solid var(--border);z-index:1001;display:flex;flex-direction:column;gap:6px;padding:calc(var(--safe-top) + 4px) 12px calc(var(--safe-bottom,0px) + 18px);overflow-y:auto;-webkit-overflow-scrolling:touch;transform:translateX(-105%);visibility:hidden;transition:transform .25s ease,visibility 0s linear .25s;box-shadow:6px 0 28px rgba(0,0,0,.35)}
+#bp-drawer{position:fixed;top:0;left:0;bottom:0;width:min(290px,calc(82vw / var(--bp-zoom,1)));background:var(--card);border-right:1px solid var(--border);z-index:1001;display:flex;flex-direction:column;gap:4px;padding:calc(var(--safe-top) + 4px) 12px calc(var(--safe-bottom,0px) + 14px);overflow-y:auto;-webkit-overflow-scrolling:touch;transform:translateX(-105%);visibility:hidden;transition:transform .25s ease,visibility 0s linear .25s;box-shadow:6px 0 28px rgba(0,0,0,.35)}
 body.bp-drawer-open #bp-drawer{transform:none;visibility:visible;transition:transform .25s ease,visibility 0s}
 .bp-drawer-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 12px;margin-bottom:4px;border-bottom:1px solid var(--border);font-size:20px;font-weight:900;letter-spacing:-.3px}
 .bp-drawer-head button{width:42px;height:42px;border-radius:12px;background:var(--card2);border:none;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
 .bp-drawer-head button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
-#bp-drawer .nav-btn{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:16px;width:100%;min-height:60px;padding:0 16px;border-radius:14px;font-size:19px;font-weight:800;color:var(--text);text-align:left}
+#bp-drawer .nav-btn{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:16px;width:100%;min-height:56px;padding:0 16px;border-radius:14px;font-size:19px;font-weight:800;color:var(--text);text-align:left}
 #bp-drawer .nav-btn span{white-space:nowrap;text-align:left}
 #bp-drawer .nav-btn svg{width:26px!important;height:26px!important;flex:0 0 26px;stroke-width:2.2}
+.bp-drawer-sep{height:1px;background:var(--border);margin:4px 4px}
+#bp-drawer .nav-btn.bp-tool{min-height:52px;font-size:18px;position:relative}
+#bp-drawer .bp-lbl{display:flex;flex-direction:column;align-items:flex-start;line-height:1.2}
+#bp-drawer .bp-lbl small{font-size:13px;font-weight:700;color:var(--muted);margin-top:1px}
+#bp-drawer .bp-lbl small:empty{display:none}
+#bp-drawer .bp-aa{flex:0 0 26px;width:26px;text-align:center;font-size:19px;font-weight:900;letter-spacing:-1px}
+#bp-drawer #bp-sync-mini{display:none;margin:1px 0 0;padding:0}
+#bp-drawer #bp-sync-mini.on{display:block}
+#bp-drawer .nav-btn.bp-tool svg{fill:none}
+#bp-drawer #bp-d-theme svg path{fill:currentColor}
+.bp-burger{position:relative}
+.bp-burger.bp-err::after,#bp-drawer #bp-sync-btn.bp-err::after{content:"";position:absolute;top:6px;right:7px;width:10px;height:10px;border-radius:50%;background:#FF453A}
+#bp-drawer #bp-sync-btn.bp-err::after{top:50%;right:16px;margin-top:-5px}
 #bp-drawer .nav-btn.active{background:rgba(10,132,255,.16);color:#0A84FF}
 #bp-drawer .nav-btn.active svg{stroke:#0A84FF}
 [data-theme="light"] #bp-drawer .nav-btn.active{background:rgba(0,102,204,.12);color:#0066CC}
@@ -673,17 +686,6 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     <!-- v2.45: active job. Set it once on arrival; every new record inherits it. -->
     <div class="bp-activejob-wrap" style="margin-bottom:8px"></div>
 
-    <!-- Row 2: all 5 controls in ONE row, glove-sized, always visible -->
-    <div style="display:flex;gap:8px;margin-bottom:9px">
-      <button onclick="cycleFontSize()" title="Text &amp; button size" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;font-family:inherit">AA</button>
-      <button onclick="toggleTheme()" title="Light / dark" aria-label="Switch light or dark" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="display:block"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg></button>
-      <button onclick="showScreen('s-search')" title="Search" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px">🔍</button>
-      <button onclick="showScreen('s-calendar')" title="Calendar" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px">📅</button>
-      <button onclick="openSync()" title="Sync" style="flex:1;height:40px;border-radius:11px;background:var(--card2);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">
-        <svg viewBox="0 0 24 24" style="width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      </button>
-    </div>
-
     <!-- Row 3: location + time on one line (was two) -->
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
       <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:#0A84FF;fill:none;stroke-width:2.5;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -1058,6 +1060,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     <svg viewBox="0 0 24 24" style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
     <span>Money</span>
   </button>
+
+  <div class="bp-drawer-sep"></div>
+  <button type="button" class="nav-btn bp-tool" id="bp-d-text" onclick="bpDrawerText()"><span class="bp-aa">Aa</span><span class="bp-lbl">Text size<small id="bp-d-text-sub"></small></span></button>
+  <button type="button" class="nav-btn bp-tool" id="bp-d-theme" onclick="bpDrawerTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><span class="bp-lbl">Light / Dark<small id="bp-d-theme-sub"></small></span></button>
+  <button type="button" class="nav-btn bp-tool" id="nav-s-search" onclick="closeNavDrawer();showScreen('s-search')"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><span class="bp-lbl">Search</span></button>
+  <button type="button" class="nav-btn bp-tool" id="nav-s-calendar" onclick="closeNavDrawer();showScreen('s-calendar')"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg><span class="bp-lbl">Calendar</span></button>
+  <button type="button" class="nav-btn bp-tool" id="bp-sync-btn" data-bp-sync="1" title="Sync"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span class="bp-lbl">Sync<small id="bp-sync-mini"></small></span></button>
 </nav>
 
 <!-- ─── SHEETS ───────────────────────────────── -->
@@ -1469,16 +1478,28 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.41';
+var APP_VERSION = '3.42';
 /* v3.40 — slide-out menu (hamburger in the header). The five old tab-bar buttons
    live in #bp-drawer; showScreen() still highlights them through the .nav-btn ids. */
 function bpDrawerSet(open){
-  try {
+  try { if (open) bpDrawerRefresh();
     document.body.classList.toggle('bp-drawer-open', !!open);
     var d = document.getElementById('bp-drawer'); if (d) d.setAttribute('aria-hidden', open ? 'false' : 'true');
     document.querySelectorAll('.bp-burger').forEach(function(b){ b.setAttribute('aria-expanded', open ? 'true' : 'false'); });
   } catch(e){}
 }
+/* v3.42 — Text size, Light/Dark, Search, Calendar and Sync moved here from the Home header. */
+function bpDrawerRefresh(){
+  try {
+    var z = (typeof bpGetZoom === 'function') ? bpGetZoom() : 1.15;
+    var nm = { '1':'Normal', '1.15':'Large', '1.3':'XL', '1.45':'XXL' }[String(z)] || 'Large';
+    var a = document.getElementById('bp-d-text-sub'); if (a) a.textContent = nm + ' · tap to change';
+    var dark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+    var b = document.getElementById('bp-d-theme-sub'); if (b) b.textContent = dark ? 'Dark now · tap for Light' : 'Light now · tap for Dark';
+  } catch(e){}
+}
+function bpDrawerText(){ try { cycleFontSize(); } catch(e){} bpDrawerRefresh(); }
+function bpDrawerTheme(){ try { toggleTheme(); } catch(e){} bpDrawerRefresh(); }
 function toggleNavDrawer(){ bpDrawerSet(!document.body.classList.contains('bp-drawer-open')); }
 function closeNavDrawer(){ bpDrawerSet(false); }
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeNavDrawer(); });
@@ -18711,28 +18732,24 @@ function moveOnSite(){
 /* ── 2. Sync button + status under it ── */
 var SY = { hideT:0, pending:false, err:'' };
 function syncBtn(){
-  var b = document.getElementById('bp-sync-btn'); if (b) return b;
-  var home = document.getElementById('s-home'); if (!home) return null;
-  b = home.querySelector('button[title="Sync"]'); if (!b) return null;
-  b.id = 'bp-sync-btn'; b.removeAttribute('onclick');
+  var b = document.getElementById('bp-sync-btn'); if (!b) return null;
+  if (b.__bpWired) return b;
+  b.__bpWired = 1;
   var held = 0, t = 0;
-  b.addEventListener('pointerdown', function(){ held = 0; t = setTimeout(function(){ held = 1; if (typeof openSync === 'function') openSync(); }, 600); });
+  b.addEventListener('pointerdown', function(){ held = 0; t = setTimeout(function(){ held = 1; if (typeof closeNavDrawer === 'function') closeNavDrawer(); if (typeof openSync === 'function') openSync(); }, 600); });
   ['pointerup','pointerleave','pointercancel'].forEach(function(ev){ b.addEventListener(ev, function(){ clearTimeout(t); }); });
   b.addEventListener('click', function(e){ e.preventDefault(); if (held) { held = 0; return; } window.bpSyncNow(); });
-  var row = b.parentNode, mini = document.createElement('div'); mini.id = 'bp-sync-mini';
-  row.parentNode.insertBefore(mini, row.nextSibling);
   return b;
 }
 function mini(text, kind, keep){
   var m = document.getElementById('bp-sync-mini'); if (!m) return;
   var col = kind === 'err' ? '#FF453A' : kind === 'ok' ? '#30D158' : 'var(--muted)';
-  var bg = kind === 'err' ? 'rgba(255,69,58,.12)' : kind === 'ok' ? 'rgba(48,209,88,.12)' : 'var(--card2)';
-  m.innerHTML = '<span onclick="openSync()" style="color:' + col + ';background:' + bg + '">' + E(text) + ' ›</span>';
+  m.textContent = text; m.style.color = col;
   m.classList.add('on');
   clearTimeout(SY.hideT);
   if (!keep) SY.hideT = setTimeout(function(){ m.classList.remove('on'); }, kind === 'err' ? 9000 : 5000);
 }
-function errDot(on){ var b = syncBtn(); if (b) b.classList.toggle('bp-err', !!on); }
+function errDot(on){ var b = syncBtn(); if (b) b.classList.toggle('bp-err', !!on); document.querySelectorAll('.bp-burger').forEach(function(x){ x.classList.toggle('bp-err', !!on); }); }
 function hhmm(){ return new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }); }
 function ghOn(){ try { return !!_syncToken; } catch(e){ return false; } }
 function ckOn(){ try { return localStorage.getItem('bp_ck_on') === '1' && window.bpCk && bpCk.cfg && bpCk.cfg.container && typeof window.bpICloudSync === 'function'; } catch(e){ return false; } }
