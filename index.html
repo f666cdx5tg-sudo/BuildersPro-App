@@ -662,11 +662,12 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
            tightened. Same 5 functions, all visible, ~60% less header. -->
   <div style="position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--border);padding:var(--safe-top) 16px 10px">
 
-    <!-- Row 1: hamburger (v3.40) + compact logo + greeting -->
+    <!-- Row 1: compact logo + greeting + hamburger on the right (v3.41) -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <button type="button" class="bp-burger" onclick="toggleNavDrawer()" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
+      
       <div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0"><svg viewBox="0 0 100 100" width="42" height="42" style="color:var(--text);flex-shrink:0" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="4"/><text x="50" y="67" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-weight="700" font-size="54" fill="currentColor">B</text><rect x="27" y="76" width="46" height="6" rx="3" fill="#D4262C"/></svg><span id="home-version-badge" style="font-family:var(--font-condensed);font-size:9px;font-weight:800;color:var(--faint)">v?</span></div>
       <div id="home-greeting" style="font-size:23px;font-weight:900;line-height:1.1;flex:1;min-width:0;background:linear-gradient(135deg,#0A84FF,#FFAA33);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Good Morning</div>
+      <button type="button" class="bp-burger" onclick="toggleNavDrawer()" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
     </div>
 
     <!-- v2.45: active job. Set it once on arrival; every new record inherits it. -->
@@ -1468,7 +1469,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.40';
+var APP_VERSION = '3.41';
 /* v3.40 — slide-out menu (hamburger in the header). The five old tab-bar buttons
    live in #bp-drawer; showScreen() still highlights them through the .nav-btn ids. */
 function bpDrawerSet(open){
@@ -21770,21 +21771,21 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
 </script>
 
 <script>
-/* v3.40 — hamburger on the headers of the five main screens. Home's is in its markup;
-   Jobs, Photos and Punch get one at the left of the title; Money's title row too.
-   The title block and the burger share one flex group so the right-hand buttons stay put. */
+/* v3.41 — hamburger on the RIGHT of the headers (menu still opens from the left) of the five main screens. Home's is in its markup;
+   Jobs, Photos, Punch and Money get one at the far right, after any existing buttons. */
 (function(){
   var SVG = '<button type="button" class="bp-burger" onclick="toggleNavDrawer()" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>';
   function addBurger(host){
-    if (!host || host.querySelector(':scope > .bp-burger-group, :scope > .bp-burger')) return;
+    if (!host || host.querySelector(':scope > .bp-burger-group')) return;
     var first = host.firstElementChild; if (!first) return;
     var g = document.createElement('div');
     g.className = 'bp-burger-group';
-    g.style.cssText = 'display:flex;align-items:center;gap:12px;min-width:0;flex:1 1 auto';
-    host.insertBefore(g, first);
-    g.insertAdjacentHTML('beforeend', SVG);
+    g.style.cssText = 'display:flex;align-items:center;gap:10px;flex:0 0 auto;margin-left:auto';
     first.style.minWidth = '0';
-    g.appendChild(first);
+    var rest = []; for (var c = first.nextElementSibling; c; c = c.nextElementSibling) rest.push(c);
+    host.appendChild(g);
+    rest.forEach(function(c){ g.appendChild(c); });
+    g.insertAdjacentHTML('beforeend', SVG);
   }
   function run(){
     ['#s-jobs > .topbar', '#s-photos > .topbar', '#s-punch > .topbar'].forEach(function(s){ addBurger(document.querySelector(s)); });
