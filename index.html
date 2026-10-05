@@ -288,7 +288,7 @@ body.bp-drawer-open #bp-drawer{transform:none;visibility:visible;transition:tran
 .bp-hm-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
 .bp-hm-pop{display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:210px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:6px;z-index:300}
 .bp-hm.open .bp-hm-pop{display:block}
-#bp-fin-hm .bp-hm-pop,#bp-photo-header .bp-hm-pop{left:0;right:auto}
+#bp-photo-header .bp-hm-pop{left:0;right:auto}
 .detail-header:has(.bp-hm.open),#finance-sticky:has(.bp-hm.open),#bp-photo-header:has(.bp-hm.open){z-index:500 !important;position:relative}
 .detail-header:has(.bp-hm.open){position:sticky}
 .bp-hm-it{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:0 12px;border:none;background:transparent;color:var(--text);font-size:16px;font-weight:700;border-radius:10px;font-family:inherit;text-align:left;cursor:pointer;white-space:nowrap}
@@ -897,19 +897,16 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     </div>
   </div>
   <!-- Quick actions -->
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:14px 16px">
-    <button class="btn btn-ghost" onclick="openAddRoom(currentJobId)" style="flex-direction:column;gap:4px;padding:12px;font-size:11px">
-      <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-      Add Area
+  <div class="bp-act-row">
+    <button class="btn btn-ghost bp-act" title="Add Space" aria-label="Add Space" onclick="bpActTap(this);openAddRoom(currentJobId)">
+      <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><span class="bp-act-lb">Add Space</span>
     </button>
-    <label class="btn btn-ghost" style="flex-direction:column;gap:4px;padding:12px;font-size:12px;cursor:pointer">
-      <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-      Add Photo
+    <label class="btn btn-ghost bp-act" title="Add Photo" aria-label="Add Photo" onclick="bpActTap(this)">
+      <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="bp-act-lb">Add Photo</span>
       <input type="file" accept="image/*" multiple style="display:none" onchange="bpAddPhotoToJob(this,currentJobId)"/>
     </label>
-    <button class="btn btn-ghost" onclick="openAddNote(currentJobId)" style="flex-direction:column;gap:4px;padding:12px;font-size:12px">
-      <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      Add Item
+    <button class="btn btn-ghost bp-act" title="Add Item" aria-label="Add Item" onclick="bpActTap(this);openAddNote(currentJobId)">
+      <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span class="bp-act-lb">Add Item</span>
     </button>
   </div>
   <!-- Rooms & Areas section is injected dynamically right here by the Rooms engine -->
@@ -1502,7 +1499,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.50';
+var APP_VERSION = '3.51';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -12429,11 +12426,10 @@ window.renderRooms = function(){
   /* "+ Add" lives as the last tile in the grid rather than a full-width button
      in the header — Stan's complaint was vertical space, and the header was
      eating four rows of it before a single area box appeared. */
-  var addTile = '<div onclick="bpOpenSpacePicker()" style="border:1.5px dashed rgba(10,132,255,.45);'
+  var addTile = '<div role="button" aria-label="Add Spaces" title="Add Spaces" onclick="bpOpenSpacePicker()" style="border:1.5px dashed rgba(10,132,255,.45);'
     + 'border-radius:14px;min-height:118px;display:flex;flex-direction:column;align-items:center;'
     + 'justify-content:center;cursor:pointer;color:#0A84FF;gap:4px">'
-    + '<div style="font-size:26px;line-height:1;font-weight:300">+</div>'
-    + '<div style="font-size:12px;font-weight:800">Add Spaces</div></div>';
+    + '<div style="font-size:34px;line-height:1;font-weight:300">+</div></div>';
 
   el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 20px">'
     + shown.map(buildAreaBox).join('') + addTile + '</div>';
@@ -13075,11 +13071,10 @@ window.renderRooms = function(){
     });
   }).join('');
 
-  var addTile = '<div onclick="bpOpenSpacePicker()" style="border:1.5px dashed rgba(10,132,255,.45);'
+  var addTile = '<div role="button" aria-label="Add Spaces" title="Add Spaces" onclick="bpOpenSpacePicker()" style="border:1.5px dashed rgba(10,132,255,.45);'
     + 'border-radius:14px;min-height:126px;display:flex;flex-direction:column;align-items:center;'
     + 'justify-content:center;cursor:pointer;color:#0A84FF;gap:4px">'
-    + '<div style="font-size:26px;line-height:1;font-weight:300">+</div>'
-    + '<div style="font-size:12px;font-weight:800">Add Spaces</div></div>';
+    + '<div style="font-size:34px;line-height:1;font-weight:300">+</div></div>';
 
   el.innerHTML = BPX.grid(boxes + addTile);
 };
@@ -22541,9 +22536,9 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     var host = document.getElementById('bp-fin-hm');
     if (!host) {
       var sel = document.getElementById('finance-job-filter'); if (!sel) return;
-      host = document.createElement('span'); host.id = 'bp-fin-hm'; host.style.cssText = 'display:inline-flex;margin-right:8px;flex-shrink:0';
-      sel.parentNode.insertBefore(host, sel);
-      sel.parentNode.style.gap = '8px';
+      var row = document.getElementById('finance-title'); row = row && row.parentNode && row.parentNode.parentNode; if (!row) return;
+      host = document.createElement('span'); host.id = 'bp-fin-hm'; host.style.cssText = 'display:inline-flex;flex-shrink:0;margin-left:auto';
+      row.style.display = 'flex'; row.style.alignItems = 'center'; row.appendChild(host);
     }
     if (host.getAttribute('data-cur') === cur && host.firstChild) return;
     host.setAttribute('data-cur', cur);
