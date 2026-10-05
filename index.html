@@ -1497,7 +1497,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.61';
+var APP_VERSION = '3.62';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -18420,7 +18420,8 @@ function barHtml(job){
   if (job === undefined) {
     var IC = function(svg){ return svg.replace('margin-right:6px','margin-right:0').replace('width:20px;height:20px','width:28px;height:28px'); };
     return '<button data-bp-open="shop" aria-label="Shopping List" title="Shopping List" onclick="bpOpenShop()" style="' + B + ';padding:16px 8px;background:rgba(255,159,10,.13);color:#FF9F0A;border:1.5px solid rgba(255,159,10,.55)">' + IC(ICON.cart) + '</button>'
-      + '<button data-bp-open="log" aria-label="Daily Log" title="Daily Log" onclick="bpOpenDailyLog(\'\',\'' + today() + '\')" style="' + B + ';padding:16px 8px;background:rgba(10,132,255,.13);color:#0A84FF;border:1.5px solid rgba(10,132,255,.55)">' + IC(ICON.log) + '</button>';
+      + '<button data-bp-open="log" aria-label="Daily Log" title="Daily Log" onclick="bpOpenDailyLog(\'\',\'' + today() + '\')" style="' + B + ';padding:16px 8px;background:rgba(10,132,255,.13);color:#0A84FF;border:1.5px solid rgba(10,132,255,.55)">' + IC(ICON.log) + '</button>'
+      + '<button data-bp-open="notes" aria-label="Notes" title="Notes" onclick="bpOpenNotes()" style="' + B + ';padding:16px 8px;background:rgba(48,209,88,.13);color:#30D158;border:1.5px solid rgba(48,209,88,.55)">' + IC('<svg viewBox="0 0 24 24" style="width:20px;height:20px;margin-right:6px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>') + '</button>';
   }
   return '<button data-bp-open="shop" onclick="bpOpenShop(' + (job === undefined ? '' : '\'' + Q(job) + '\'') + ')" style="' + B + ';background:rgba(255,159,10,.13);color:#FF9F0A;border:1.5px solid rgba(255,159,10,.55)">' + ICON.cart
     + '<span>Shopping List' + (t.nOpen ? '<span style="display:block;font-size:12.5px;font-weight:700;opacity:.85">' + t.nOpen + ' to buy · ' + money(t.toBuyWithTax) + '</span>' : '') + '</span></button>'
@@ -22784,5 +22785,210 @@ window.bpClFilterBar = function(scope, id){
 window.bpClFilterBar.__v361 = 1;
 if (window.bpClFilterBar.__sel === undefined && _fb.__sel) window.bpClFilterBar.__sel = 1;
 console.log('[BP] v3.61 punch menus ready');
+})();
+</script>
+<script>
+/* ══ v3.62 — NOTES: home button, auto title, photos, recordings ════════════
+   - Home: a Notes icon beside Shopping List and Daily Log.
+   - New note starts BLANK. The title fills itself: today's date + the space.
+   - Add photos (camera / library) and record voice memos (kept as audio you
+     can play back). Works from the home Notes list and from a job's Project
+     Notes. Stored on the note (DB.jobNotes), so it syncs like before. */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function say(m){ try { toast(m); } catch(e){} }
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function iso(){ return new Date().toISOString(); }
+function nid(){ return (typeof uid === 'function') ? uid() : 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function mdy(d){ d = d ? new Date(d) : new Date(); if (isNaN(d)) d = new Date(); return ('0'+(d.getMonth()+1)).slice(-2) + '/' + ('0'+d.getDate()).slice(-2) + '/' + d.getFullYear(); }
+function activeJob(){ try { return (typeof bpActiveJob === 'function' && bpActiveJob()) || window.currentJobId || ''; } catch(e){ return ''; } }
+function roomsOf(j){ return (DB.rooms||[]).filter(function(r){ return r && r.jobId === j; }); }
+function roomName(id){ var r = (DB.rooms||[]).find(function(x){ return x.id === id; }); return r ? r.name : ''; }
+function jobName(id){ var j = (DB.jobs||[]).find(function(x){ return x.id === id; }); return j ? j.name : ''; }
+function autoTitle(n){ var sp = n.roomId ? roomName(n.roomId) : ''; return mdy(n.created) + (sp ? ' · ' + sp : ' · Whole job'); }
+function titleOf(n){ return n.title || autoTitle(n); }
+
+var st = document.createElement('style');
+st.textContent = '#bp-notes-ov{position:fixed;inset:0;z-index:9990;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:var(--safe-top) 16px 40px;box-sizing:border-box}'
+ + '#bp-notes-ov .nh{display:flex;align-items:center;gap:10px;padding:10px 0;position:sticky;top:0;background:var(--bg);z-index:2}'
+ + '#bp-notes-ov .nh h2{margin:0;font-size:22px;font-weight:900;flex:1}'
+ + '#bp-notes-ov .nb{min-width:44px;min-height:44px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:18px;font-weight:800;cursor:pointer;font-family:inherit;padding:0 14px}'
+ + '#bp-notes-ov .nb.pri{background:#0A84FF;border-color:#0A84FF;color:#fff}'
+ + '#bp-notes-ov .nin{width:100%;box-sizing:border-box;padding:13px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:17px;font-family:inherit}'
+ + '#bp-notes-ov .nl{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px}'
+ + '#bp-notes-ov .nc{padding:12px 14px;margin-bottom:8px;border-radius:12px;background:var(--card);border:1px solid var(--border);cursor:pointer}'
+ + '#bp-notes-ov .ng{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}'
+ + '#bp-notes-ov .nt{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--card2)}#bp-notes-ov .nt img{width:100%;height:100%;object-fit:cover}'
+ + '#bp-notes-ov .nx{position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:16px;cursor:pointer}'
+ + '#bp-notes-ov .na{display:flex;align-items:center;gap:8px;margin-bottom:8px}#bp-notes-ov .na audio{flex:1;min-width:0;height:40px}'
+ + '#bp-notes-ov .rec{background:#FF453A !important;border-color:#FF453A !important;color:#fff !important}';
+document.head.appendChild(st);
+
+var N = null;            /* editor state */
+var listJob = null;      /* job shown in the list ('' = general) */
+var R = { mr:null, stream:null, chunks:[], t0:0, tick:null };
+
+function ov(){ var o = document.getElementById('bp-notes-ov'); if (!o) { o = document.createElement('div'); o.id = 'bp-notes-ov'; o.setAttribute('role','dialog'); document.body.appendChild(o); } return o; }
+function closeOv(){ stopRec(true); var o = document.getElementById('bp-notes-ov'); if (o) o.remove(); N = null; try { if (window.bpRenderJobNotes) window.bpRenderJobNotes(); } catch(e){} try { if (typeof bpPaintDailyBars === 'function') bpPaintDailyBars(); } catch(e){} }
+window.bpNotesClose = closeOv;
+
+function cardHtml(n){
+  var np = (n.photos||[]).length, na = (n.audio||[]).length;
+  var prev = (n.text||'').trim();
+  return '<div class="nc" onclick="bpNoteEdit(\'' + E(n.id) + '\')">'
+    + '<div style="font-size:15px;font-weight:800">' + E(titleOf(n)) + '</div>'
+    + (prev ? '<div style="font-size:14px;line-height:1.35;margin-top:4px;white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + E(prev) + '</div>' : '')
+    + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
+}
+function notesFor(j){ return (DB.jobNotes||[]).filter(function(n){ return n && (n.jobId||'') === (j||''); }).sort(function(a,b){ return String(a.created||'') < String(b.created||'') ? 1 : -1; }); }
+
+/* ── list (home Notes button) ── */
+window.bpOpenNotes = function(jobId){
+  stopRec(true); N = null;
+  listJob = (jobId === undefined) ? (listJob === null ? activeJob() : listJob) : jobId;
+  var L = notesFor(listJob);
+  var jobs = (DB.jobs||[]).slice().reverse();
+  ov().innerHTML = '<div class="nh"><h2>Notes</h2><button class="nb pri" aria-label="New note" onclick="bpNoteEdit(\'\',bpNotesListJob())">＋</button><button class="nb" aria-label="Close" onclick="bpNotesClose()">✕</button></div>'
+    + '<select class="nin" aria-label="Job" onchange="bpOpenNotes(this.value)" style="font-weight:800;margin-bottom:12px"><option value="">General (no job)</option>'
+    + jobs.map(function(j){ return '<option value="' + E(j.id) + '"' + (j.id === listJob ? ' selected' : '') + '>' + E(j.name) + '</option>'; }).join('') + '</select>'
+    + (L.length ? L.map(cardHtml).join('') : '<div style="padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:12px">No notes yet — tap ＋</div>');
+};
+window.bpNotesListJob = function(){ return listJob || ''; };
+
+/* ── editor ── */
+function sync(){
+  if (!N) return;
+  var t = document.getElementById('bpn-title'), x = document.getElementById('bpn-text'), r = document.getElementById('bpn-room'), j = document.getElementById('bpn-job');
+  if (j) N.jobId = j.value;
+  if (r) N.roomId = r.value;
+  if (x) N.text = x.value;
+  if (t) { if (t.value !== N.autoShown) { N.title = t.value; N.titleEdited = true; } }
+}
+function draw(){
+  if (!N) return;
+  var rooms = roomsOf(N.jobId);
+  var auto = autoTitle({ created:N.created, roomId:N.roomId });
+  if (!N.titleEdited) N.title = auto;
+  N.autoShown = N.titleEdited ? N.autoShown : auto;
+  var jobs = (DB.jobs||[]).slice().reverse();
+  var rec = !!R.mr;
+  ov().innerHTML = '<div class="nh"><button class="nb" aria-label="Back" onclick="bpNoteBack()">‹</button><h2>' + (N.id ? 'Note' : 'New note') + '</h2><button class="nb pri" onclick="bpNoteSave2()">Save</button></div>'
+    + '<div class="nl" style="margin-top:6px">Title</div><input id="bpn-title" class="nin" value="' + E(N.title) + '" placeholder="Date + space"/>'
+    + '<div class="nl">Job</div><select id="bpn-job" class="nin" onchange="bpNoteJob()"><option value="">General (no job)</option>' + jobs.map(function(j){ return '<option value="' + E(j.id) + '"' + (j.id === N.jobId ? ' selected' : '') + '>' + E(j.name) + '</option>'; }).join('') + '</select>'
+    + '<div class="nl">Space</div><select id="bpn-room" class="nin" onchange="bpNoteSpace()"><option value="">Whole job</option>' + rooms.map(function(r){ return '<option value="' + E(r.id) + '"' + (r.id === N.roomId ? ' selected' : '') + '>' + E(r.name) + '</option>'; }).join('') + '</select>'
+    + '<div class="nl">Note</div><textarea id="bpn-text" class="nin" rows="6" placeholder="" style="resize:vertical;line-height:1.4">' + E(N.text) + '</textarea>'
+    + '<div style="display:flex;gap:8px;margin-top:14px">'
+    +   '<label class="nb" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer" aria-label="Add photos">📷 Photos<input id="bpn-file" type="file" accept="image/*" multiple style="display:none" onchange="bpNotePhotos(this)"/></label>'
+    +   '<button id="bpn-rec" class="nb' + (rec ? ' rec' : '') + '" style="flex:1" onclick="bpNoteRec()" aria-label="' + (rec ? 'Stop recording' : 'Record') + '">' + (rec ? '⏹ <span id="bpn-timer">0:00</span>' : '🎙 Record') + '</button></div>'
+    + (N.photos.length ? '<div class="nl">Photos (' + N.photos.length + ')</div><div class="ng">' + N.photos.map(function(p,i){ return '<div class="nt"><img src="' + p + '" alt=""/><button class="nx" aria-label="Remove photo" onclick="bpNoteDelPhoto(' + i + ')">✕</button></div>'; }).join('') + '</div>' : '')
+    + (N.audio.length ? '<div class="nl">Recordings (' + N.audio.length + ')</div>' + N.audio.map(function(a,i){ return '<div class="na"><audio controls preload="metadata" src="' + a.src + '"></audio><button class="nb" style="color:#FF453A" aria-label="Remove recording" onclick="bpNoteDelAudio(' + i + ')">🗑</button></div>'; }).join('') : '')
+    + (N.id ? '<button class="nb" style="width:100%;margin-top:22px;color:#FF453A;border-color:#FF453A" onclick="bpNoteDel2()">Delete note</button>' : '');
+}
+window.bpNoteEdit = function(id, jobId){
+  stopRec(true);
+  var n = id ? (DB.jobNotes||[]).find(function(x){ return x.id === id; }) : null;
+  if (jobId === undefined) jobId = n ? (n.jobId||'') : (window.currentJobId || activeJob());
+  N = n ? { id:n.id, jobId:n.jobId||'', roomId:n.roomId||'', title:n.title || autoTitle(n), titleEdited:!!n.title, created:n.created || iso(), text:n.text||'', photos:(n.photos||[]).slice(), audio:(n.audio||[]).slice(), from:ov().innerHTML && document.getElementById('bp-notes-ov') && document.getElementById('bp-notes-ov').dataset.list ? 1 : 0 }
+         : { id:'', jobId:jobId||'', roomId:'', title:'', titleEdited:false, created:iso(), text:'', photos:[], audio:[] };
+  var o = ov(); o.dataset.list = (document.querySelector('#bp-notes-ov .nc') || document.querySelector('#bp-notes-ov select[aria-label=Job]')) ? '1' : '';
+  draw();
+};
+window.bpNoteBack = function(){ stopRec(true); N = null; if (document.getElementById('bp-notes-ov').dataset.list) window.bpOpenNotes(listJob); else closeOv(); };
+window.bpNoteJob = function(){ sync(); N.roomId = ''; draw(); };
+window.bpNoteSpace = function(){ sync(); draw(); };
+window.bpNotePhotos = function(inp){
+  sync();
+  var files = Array.prototype.slice.call(inp.files || []).filter(function(f){ return /^image\//.test(f.type); });
+  var left = files.length; if (!left) return;
+  files.forEach(function(f){
+    var r = new FileReader();
+    r.onload = function(e){
+      var raw = e.target.result, done = function(src){ N && N.photos.push(src); if (--left === 0) draw(); };
+      try { if (typeof bpCompressFor === 'function') bpCompressFor('photo', raw, function(src){ done(src || raw); }); else done(raw); } catch(err){ done(raw); }
+    };
+    r.onerror = function(){ if (--left === 0) draw(); };
+    r.readAsDataURL(f);
+  });
+};
+window.bpNoteDelPhoto = function(i){ sync(); N.photos.splice(i,1); draw(); };
+window.bpNoteDelAudio = function(i){ sync(); N.audio.splice(i,1); draw(); };
+
+function stopRec(discard){
+  clearInterval(R.tick);
+  if (R.mr) { try { R.mr.__discard = !!discard; if (R.mr.state !== 'inactive') R.mr.stop(); } catch(e){} }
+  if (R.stream) { try { R.stream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){} }
+  R.mr = null; R.stream = null;
+}
+window.bpNoteRec = function(){
+  if (R.mr) { var mr = R.mr; clearInterval(R.tick); try { mr.stop(); } catch(e){} return; }
+  sync();
+  if (!navigator.mediaDevices || !window.MediaRecorder) { say('Recording is not available on this device'); return; }
+  navigator.mediaDevices.getUserMedia({ audio:true }).then(function(stream){
+    var type = ['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(function(t){ try { return MediaRecorder.isTypeSupported(t); } catch(e){ return false; } }) || '';
+    var mr;
+    try { mr = new MediaRecorder(stream, type ? { mimeType:type, audioBitsPerSecond:32000 } : { audioBitsPerSecond:32000 }); } catch(e){ mr = new MediaRecorder(stream); }
+    R.mr = mr; R.stream = stream; R.chunks = []; R.t0 = Date.now();
+    mr.ondataavailable = function(e){ if (e.data && e.data.size) R.chunks.push(e.data); };
+    mr.onstop = function(){
+      var discard = mr.__discard, dur = Math.round((Date.now() - R.t0)/1000), chunks = R.chunks.slice();
+      try { stream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
+      if (R.mr === mr) R.mr = null; R.stream = null; clearInterval(R.tick);
+      if (discard || !chunks.length || !N) return;
+      var blob = new Blob(chunks, { type: mr.mimeType || type || 'audio/webm' });
+      var fr = new FileReader();
+      fr.onload = function(){ if (!N) return; N.audio.push({ id:nid(), src:fr.result, dur:dur, date:iso() }); draw(); };
+      fr.readAsDataURL(blob);
+    };
+    mr.start(1000);
+    draw();
+    R.tick = setInterval(function(){
+      var s = Math.round((Date.now() - R.t0)/1000), el = document.getElementById('bpn-timer');
+      if (el) el.textContent = Math.floor(s/60) + ':' + ('0'+(s%60)).slice(-2);
+      if (s >= 180) window.bpNoteRec();   /* 3-minute cap keeps notes small enough to sync */
+    }, 500);
+  }).catch(function(){ say('Microphone blocked — allow it in Settings'); });
+};
+window.bpNoteSave2 = function(){
+  if (R.mr) { say('Stop the recording first'); return; }
+  sync();
+  if (!N.text.trim() && !N.photos.length && !N.audio.length) { say('Add a note, photo or recording first'); return; }
+  DB.jobNotes = DB.jobNotes || [];
+  var n = N.id ? DB.jobNotes.find(function(x){ return x.id === N.id; }) : null;
+  var title = N.titleEdited ? N.title.trim() : '';
+  if (n) { n.jobId = N.jobId; n.roomId = N.roomId; n.title = title; n.text = N.text; n.photos = N.photos; n.audio = N.audio; n.updatedAt = iso(); }
+  else DB.jobNotes.push({ id:nid(), jobId:N.jobId, roomId:N.roomId, title:title, text:N.text, photos:N.photos, audio:N.audio, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:N.created, updatedAt:iso() });
+  persist(); say('Note saved');
+  var fromList = document.getElementById('bp-notes-ov').dataset.list;
+  N = null;
+  if (fromList) window.bpOpenNotes(listJob); else closeOv();
+};
+window.bpNoteDel2 = function(){
+  if (!confirm('Delete this note?')) return;
+  var id = N.id;
+  if (typeof bpRemoveFrom === 'function') bpRemoveFrom('jobNotes', function(x){ return x.id !== id; });
+  else DB.jobNotes = (DB.jobNotes||[]).filter(function(x){ return x.id !== id; });
+  persist(); var fromList = document.getElementById('bp-notes-ov').dataset.list; N = null;
+  if (fromList) window.bpOpenNotes(listJob); else closeOv();
+};
+
+/* ── job page "Project Notes": same cards, same editor ── */
+window.bpRenderJobNotes = function(){
+  var el = document.getElementById('jd-notes'); if (!el) return;
+  var jobId = window.currentJobId; if (!jobId) { el.innerHTML = ''; return; }
+  var L = notesFor(jobId);
+  el.innerHTML = '<div class="section-header" style="display:flex;align-items:center">Project Notes (' + L.length + ')'
+    + '<button onclick="bpNoteEdit(\'\',\'' + E(jobId) + '\')" style="margin-left:auto;background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.4);border-radius:9px;color:#0A84FF;font-size:13px;font-weight:800;padding:8px 14px;cursor:pointer;font-family:inherit">+ Add Note</button></div>'
+    + '<div style="margin:0 16px 14px">' + (L.length ? L.map(function(n){
+      var np = (n.photos||[]).length, na = (n.audio||[]).length, prev = (n.text||'').trim();
+      return '<div onclick="bpNoteEdit(\'' + E(n.id) + '\',\'' + E(jobId) + '\')" style="padding:12px 14px;margin-bottom:8px;border-radius:12px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a);cursor:pointer">'
+        + '<div style="font-size:15px;font-weight:800">' + E(titleOf(n)) + '</div>'
+        + (prev ? '<div style="font-size:14px;line-height:1.35;margin-top:4px;white-space:pre-wrap;word-break:break-word">' + E(prev) + '</div>' : '')
+        + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
+    }).join('') : '<div style="padding:16px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:12px;font-size:14px">No notes yet — tap + Add Note</div>') + '</div>';
+};
+try { window.bpRenderJobNotes(); } catch(e){}
+console.log('[BP] v3.62 notes ready');
 })();
 </script>
