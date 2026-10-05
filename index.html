@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.55';
+var APP_VERSION = '3.56';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -22577,5 +22577,27 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   }
   setInterval(function(){ try { if (document.getElementById('s-finance').classList.contains('active')) paint(); } catch(e){} }, 1200);
   try { paint(); } catch(e){}
+})();
+
+/* ── v3.56: the thumb dock slides out of the way while you scroll, and comes back ~0.7 s after you stop ── */
+(function(){
+  if (window.__bpV356) return; window.__bpV356 = 1;
+  var css = document.createElement('style'); css.id = 'bp-v356-css';
+  css.textContent = '#bp-dock{transition:transform .18s ease,opacity .18s ease}#bp-dock.bp-dock-away{transform:translateY(90px);opacity:0 !important;pointer-events:none}';
+  document.head.appendChild(css);
+  var t = 0, last = {};
+  function away(on){ var d = document.getElementById('bp-dock'); if (d) d.classList.toggle('bp-dock-away', on); }
+  document.addEventListener('scroll', function(e){
+    var el = e.target === document ? document.scrollingElement : e.target;
+    if (!el || (el.closest && el.closest('#bp-dock'))) return;
+    var y = el.scrollTop || 0, key = el.id || el.className || 'doc';
+    var moved = Math.abs(y - (last[key] == null ? 0 : last[key])) > 2;   /* ignore tiny jitters and redraws */
+    last[key] = y;
+    if (!moved) return;
+    away(true); clearTimeout(t); t = setTimeout(function(){ away(false); }, 700);
+  }, true);
+  /* a tap anywhere brings it straight back */
+  document.addEventListener('touchstart', function(){ if (t) { clearTimeout(t); t = 0; } away(false); }, { passive:true, capture:true });
+  console.log('[BP] v3.56 ready — dock hides while scrolling');
 })();
 </script>

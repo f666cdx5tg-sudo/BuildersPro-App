@@ -16,7 +16,7 @@ async def main():
             hid = lambda: pg.evaluate("document.getElementById('bp-dock-back').hidden")
             go = lambda s: pg.evaluate(f"showScreen('{s}')")
             await pg.evaluate("(function(){var l=document.getElementById('bp-lock'); if(l) l.remove();})()")
-            ok(await pg.evaluate("APP_VERSION==='3.55'"), 'version not 3.55')
+            ok(await pg.evaluate("APP_VERSION==='3.56'"), 'version not 3.56')
             await go('s-home'); await pg.wait_for_timeout(300)
             ok(await scr() == 's-home' and await hid(), 'Back should be hidden on Home')
             await go('s-jobs'); await pg.wait_for_timeout(300)

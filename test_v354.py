@@ -14,8 +14,8 @@ async def run(page_name, w, h, body):
         await pg.goto('http://localhost:8798/' + page_name); await pg.wait_for_timeout(2500)
         await body(pg, errs); await b.close()
 async def desk(pg, errs):
-    ok(await pg.evaluate("APP_VERSION==='3.55'"), 'desktop version is not 3.55')
-    ok(await pg.evaluate("document.getElementById('app-version-display').textContent==='3.55'"), 'version label not showing 3.55')
+    ok(await pg.evaluate("APP_VERSION==='3.56'"), 'desktop version is not 3.56')
+    ok(await pg.evaluate("document.getElementById('app-version-display').textContent==='3.56'"), 'version label not showing 3.56')
     # wording
     t = await pg.evaluate("document.body.innerText")
     ok('New Space' in await pg.evaluate("document.getElementById('view-rooms').innerText"), 'Spaces view lacks + New Space')
@@ -63,7 +63,7 @@ async def desk(pg, errs):
     ok(await pg.evaluate("!!document.getElementById('bp-sa-text')"), 'Add + next should reopen the dialog')
     ok(len(errs) == 0, f'console errors: {errs[:3]}')
 async def field(pg, errs):
-    ok(await pg.evaluate("APP_VERSION==='3.55'"), 'field version is not 3.55')
+    ok(await pg.evaluate("APP_VERSION==='3.56'"), 'field version is not 3.56')
     ok(len(errs) == 0, f'field console errors: {errs[:3]}')
 async def main():
     srv = subprocess.Popen(['python3', '-m', 'http.server', '8798', '--directory', REPO], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
