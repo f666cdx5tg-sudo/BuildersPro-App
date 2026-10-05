@@ -1478,7 +1478,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.42';
+var APP_VERSION = '3.43';
 /* v3.40 — slide-out menu (hamburger in the header). The five old tab-bar buttons
    live in #bp-drawer; showScreen() still highlights them through the .nav-btn ids. */
 function bpDrawerSet(open){
@@ -7866,7 +7866,7 @@ function renderFinanceContent() {
           +'<div style="flex:1;min-width:0;overflow-wrap:anywhere">'
           +'<div style="font-size:16px;font-weight:800">'+esc(con.name)+'</div>'
           +(con.created?'<div style="font-size:11px;color:var(--faint);margin-top:1px">Added '+fmtDate(con.created)+' · '+fmtTime(con.created)+'</div>':'')
-          +'<div style="font-size:12px;color:var(--muted);margin-top:2px">🔧 '+esc(con.trade)+(job?' · 📋 '+esc(job.name):'')+'</div>'
+          +'<div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere">🔧 '+esc(con.trade)+(job?' · 📋 '+esc(job.name):'')+'</div>'
           +(con.phone?'<div style="font-size:12px;color:var(--muted)">📞 '+esc(bpPhone(con.phone))+'</div>':'')
           +'</div>'
           +'<div style="text-align:right;flex-shrink:0">'
@@ -10153,10 +10153,10 @@ renderJobDetail = function(jobId) {
               + '<div style="font-size:14px;font-weight:700">'+esc(inv.desc)+'</div>'
               + (inv.date?'<div style="font-size:12px;color:var(--faint);margin-top:2px">📅 '+fmtDatePlain(inv.date)+'</div>':'')
               + '</div>'
-              + '<div style="text-align:right;flex-shrink:0">'
+              + '<div style="text-align:right;flex-shrink:1;min-width:0;max-width:62%">'
               + '<div style="font-size:17px;font-weight:900;color:var(--accent)">$'+(+inv.amount||0).toLocaleString()+'</div>'
               + '<div style="font-size:11px;font-weight:700;color:'+(statusColor[inv.status]||'var(--muted)')+'">'+inv.status+'</div>'
-              + '<div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">'
+              + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;justify-content:flex-end">'
               + '<button onclick="cycleInvoiceStatus(\''+inv.id+'\')" style="background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:6px;color:#0A84FF;font-size:10px;font-weight:700;padding:3px 7px;cursor:pointer">Mark Paid</button>'
               + '<button onclick="openEditInvoice(\''+inv.id+'\')" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;font-weight:700;padding:3px 7px;cursor:pointer">✏️ Edit</button>'
               + '<button onclick="deleteFinItem(\'invoices\',\''+inv.id+'\')" style="background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer">×</button>'
@@ -20538,9 +20538,9 @@ console.log('[BP] v2.95 field-test fixes ready');
   var pending = [], timer = 0;
   function flush(){
     timer = 0; build(); var list = pending; pending = [];
-    list.forEach(function(r){ if (r.isConnected !== false) sweep(r); });
+    list.forEach(function(r){ if (r && r.isConnected !== false) sweep(r); });
   }
-  function queue(r){ if (pending.indexOf(r) < 0) pending.push(r); if (!timer) timer = setTimeout(flush, 80); }
+  function queue(r){ if (!r) return; if (pending.indexOf(r) < 0) pending.push(r); if (!timer) timer = setTimeout(flush, 80); }
   function start(){
     if (!document.body) return setTimeout(start, 100);
     new MutationObserver(function(ms){
@@ -21809,5 +21809,194 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     var fin = document.querySelector('#finance-sticky > div'); addBurger(fin);
   }
   run();
+})();
+</script>
+<script>
+/* ══ v3.43 — Calendar: every category has its OWN colour, and Job Start is GREEN (identical block in both apps) ══
+   Stan (Oct 5): "On calendar job start should be green. All the colors should have a different color for each category."
+   Before: Job Start was blue (#0A84FF) — nearly the Appointment blue — and Job Due (#FF9500) was nearly Delivery orange (#FF9F0A).
+   Now: 8 categories, 8 clearly different colours (colour distance checked in the test), one table: window.BP_CAL_CATS.
+   getCalendarEvents is wrapped so every event is recoloured by its kind; the legend is rebuilt from the same table. */
+(function(){
+  if (window.__bpCalColors) return; window.__bpCalColors = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  var CATS = [
+    { k:'appt',        label:'Appointment', color:'#42A5F5' },
+    { k:'due',         label:'Due Date',    color:'#FF3B30' },
+    { k:'delivery',    label:'Delivery',    color:'#FF9F0A' },
+    { k:'job-start',   label:'Job Start',   color:'#30D158' },
+    { k:'job-due',     label:'Job Due',     color:'#FFD60A' },
+    { k:'contractor',  label:'Contractor',  color:'#BF5AF2' },
+    { k:'permit',      label:'Permit',      color:'#A97C50' },
+    { k:'invoice-due', label:'Invoice',     color:'#00C7BE' }
+  ];
+  var BY = {}; CATS.forEach(function(c){ BY[c.k] = c.color; });
+  BY['con-start'] = BY['contractor']; BY['con-end'] = BY['contractor'];
+  window.BP_CAL_CATS = CATS; window.BP_CAL_COLORS = BY;
+  var prev = window.getCalendarEvents;
+  if (typeof prev === 'function' && !prev.__v343) {
+    window.getCalendarEvents = function(){
+      var ev = prev.apply(this, arguments) || [];
+      ev.forEach(function(e){ var c = BY[e.kind]; if (c) e.color = c; });
+      return ev;
+    };
+    window.getCalendarEvents.__v343 = 1;
+  }
+  function legend(){
+    var host = document.getElementById(IS_DESK ? 'view-calendar' : 's-calendar'); if (!host) return;
+    var box = host.querySelector(':scope > div[style*="flex-wrap"]'); if (!box || box.getAttribute('data-bp343')) return;
+    box.setAttribute('data-bp343', '1');
+    box.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 14px;' + (IS_DESK ? 'margin-bottom:14px;font-size:13px' : 'padding:12px 16px 0;font-size:13px') + ';color:var(--muted);font-weight:700';
+    box.innerHTML = CATS.map(function(c){
+      return '<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap"><span data-cal-dot="' + c.k + '" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:' + c.color + '"></span>' + c.label + '</span>';
+    }).join('');
+  }
+  function bigDots(){
+    if (IS_DESK) return;
+    document.querySelectorAll('#calendar-grid-wrap span[style*="border-radius:50%"]').forEach(function(d){ d.style.width = '8px'; d.style.height = '8px'; });
+  }
+  legend();
+  var rf = window.renderFieldCalendar;
+  if (!IS_DESK && typeof rf === 'function' && !rf.__v343) {
+    window.renderFieldCalendar = function(){ var r = rf.apply(this, arguments); try { bigDots(); } catch(e){} return r; };
+    window.renderFieldCalendar.__v343 = 1;
+  }
+  console.log('[BP] v3.43 ready — calendar colours');
+})();
+</script>
+
+<script>
+/* ══ v3.43 — Right-thumb reach + navigation fixes (field app only) ══════════════════════════════════════════
+   Stan (Oct 5): "Once on area tab unable to get back to home page." · "On the finance page jobs tab overlaps in header."
+                 "The app keys and buttons should be … for someone who is right handed and uses his thumb."
+   1  Areas screen gets the header menu button (it had none, so no way out).
+   2  Finance: the job filter moves to its own full-width row under the title (it was squeezed between the title and the menu button).
+   3  THUMB DOCK, bottom right, next to the mic:  ← Back · + Add · ☰ Menu  (Menu never moves; Back only on sub-screens;
+      Add does the screen's own "+": job, area, punch item, photo, money entry, appointment).
+   4  Every tappable thing on a screen is at least 44 px (back links, filter chips, Edit / ×, Mark Paid…).
+   5  A little more room under the last row so the dock never covers it.                                          */
+(function(){
+  if (window.__bpV343) return; window.__bpV343 = 1;
+  function $(s, r){ return (r || document).querySelector(s); }
+  function zoom(){ return parseFloat(getComputedStyle(document.body).zoom) || 1; }
+  var MAIN = { 's-home':1, 's-jobs':1, 's-punch':1, 's-photos':1, 's-finance':1 };
+
+  /* ── CSS ─────────────────────────────────────────────────────────────── */
+  var css = document.createElement('style'); css.id = 'bp-v343-css';
+  css.textContent = [
+    '.screen{padding-bottom:96px !important}',
+    '.back-btn{min-height:44px;padding-right:14px;margin-bottom:4px}',
+    '.topbar-btn{width:48px;height:48px}',
+    '#bp-fin-filter-row{padding:0 16px 10px}',
+    'body[data-zoom="xl"] #s-room-detail div[style*="grid-template-columns:1fr 1fr;gap:8px"], body[data-zoom="xxl"] #s-room-detail div[style*="grid-template-columns:1fr 1fr;gap:8px"]{grid-template-columns:1fr !important}',
+    '#bp-fin-filter-row select{width:100%;max-width:none !important;min-height:48px;font-size:16px !important;padding:10px 14px !important;border-radius:12px !important}',
+    '#bp-dock{position:fixed;z-index:96;right:64px;bottom:10px;display:flex;flex-direction:row-reverse;align-items:center;gap:calc(12px / var(--bp-zoom,1))}',
+    '#bp-dock button{width:calc(54px / var(--bp-zoom,1));height:calc(54px / var(--bp-zoom,1));min-width:0;min-height:0;padding:0;border-radius:50%;border:1.5px solid var(--border);background:var(--card);color:var(--text);box-shadow:0 4px 14px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}',
+    '#bp-dock button[hidden]{display:none}',
+    '#bp-dock button:active{transform:scale(.94)}',
+    '#bp-dock button svg{width:calc(26px / var(--bp-zoom,1));height:calc(26px / var(--bp-zoom,1));stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}',
+    '#bp-dock #bp-dock-add{background:linear-gradient(135deg,#0A84FF,#0066CC);border-color:transparent;color:#fff}',
+    'body.bp-drawer-open #bp-dock,body:has(.sheet-overlay.open) #bp-dock,body:has(#bp-lock) #bp-dock{display:none}'
+  ].join('\n');
+  document.head.appendChild(css);
+
+  /* ── 1. menu button on the Areas screen ─────────────────────────────── */
+  var BURGER = '<button type="button" class="bp-burger" onclick="toggleNavDrawer()" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>';
+  function addBurger(host){
+    if (!host || host.querySelector(':scope > .bp-burger-group')) return;
+    var first = host.firstElementChild; if (!first) return;
+    var g = document.createElement('div'); g.className = 'bp-burger-group';
+    g.style.cssText = 'display:flex;align-items:center;gap:10px;flex:0 0 auto;margin-left:auto';
+    first.style.minWidth = '0';
+    var rest = []; for (var c = first.nextElementSibling; c; c = c.nextElementSibling) rest.push(c);
+    host.appendChild(g); rest.forEach(function(c){ g.appendChild(c); });
+    g.insertAdjacentHTML('beforeend', BURGER);
+  }
+  addBurger($('#s-rooms > .topbar'));
+
+  /* ── 2. Finance: job filter on its own row ──────────────────────────── */
+  (function(){
+    var sel = document.getElementById('finance-job-filter'), sticky = document.getElementById('finance-sticky');
+    if (!sel || !sticky || document.getElementById('bp-fin-filter-row')) return;
+    var top = sticky.firstElementChild; if (!top) return;
+    var row = document.createElement('div'); row.id = 'bp-fin-filter-row';
+    row.appendChild(sel); top.parentNode.insertBefore(row, top.nextSibling);
+    sel.setAttribute('aria-label', 'Job');
+  })();
+
+  /* ── 3. thumb dock ──────────────────────────────────────────────────── */
+  var PLUS = '<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+  var CAM  = '<svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+  var BACK = '<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>';
+  var MENU = '<svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>';
+  var dock = document.createElement('div'); dock.id = 'bp-dock'; dock.setAttribute('role', 'toolbar'); dock.setAttribute('aria-label', 'Quick buttons');
+  dock.innerHTML = '<button type="button" id="bp-dock-menu" aria-label="Menu">' + MENU + '</button>'
+    + '<button type="button" id="bp-dock-add" aria-label="Add" hidden>' + PLUS + '</button>'
+    + '<button type="button" id="bp-dock-back" aria-label="Back" hidden>' + BACK + '</button>';
+  document.body.appendChild(dock);
+
+  function active(){ return document.querySelector('.screen.active'); }
+  function tabNoAdd(){ var t = window._financeTab; return t === 'overview' || t === 'spending'; }
+  var ADD = {
+    's-jobs':     { label:'Add job',         icon:PLUS, go:function(){ if (window._jobsTab === 'estimates' && window.openNewEstimate) return openNewEstimate(); openAddJob(); } },
+    's-rooms':    { label:'Add area',        icon:PLUS, go:function(){ if (window.bpOpenSpacePicker) bpOpenSpacePicker(); else openAddRoom(); } },
+    's-punch':    { label:'Add punch item',  icon:PLUS, go:function(){ var b = $('#punch-add-btn'); if (b) b.click(); } },
+    's-photos':   { label:'Add photo',       icon:CAM,  go:function(){ var i = $('#s-photos .topbar input[type=file]'); if (i) i.click(); } },
+    's-finance':  { label:'Add',             icon:PLUS, go:function(){ if (!tabNoAdd() && window.openFinanceAdd) openFinanceAdd(); }, skip:tabNoAdd },
+    's-calendar': { label:'Add appointment', icon:PLUS, go:function(){ openNewAppointment('', 'Appointment'); } }
+  };
+  var lastPaint = '';
+  function paint(){
+    var s = active(); if (!s) return; var id = s.id;
+    var back = document.getElementById('bp-dock-back'), add = document.getElementById('bp-dock-add');
+    if (!back || !add) return;
+    var showBack = !MAIN[id];
+    var a = ADD[id]; var showAdd = !!a && !(a.skip && a.skip());
+    back.hidden = !showBack; add.hidden = !showAdd;
+    var sig = id + '|' + showBack + '|' + showAdd + '|' + (a && a.label);
+    if (sig === lastPaint) return; lastPaint = sig;
+    if (a) { add.setAttribute('aria-label', a.label); add.innerHTML = a.icon; }
+    var bb = s.querySelector('.back-btn');
+    back.setAttribute('aria-label', bb ? 'Back to ' + String(bb.textContent || '').trim() : 'Back');
+  }
+  var prevScreen = 's-home';
+  var _show = window.showScreen;
+  if (typeof _show === 'function' && !_show.__v343) {
+    window.showScreen = function(id){ var s = active(); if (s && s.id !== id) prevScreen = s.id; var r = _show.apply(this, arguments); soon(); return r; };
+    window.showScreen.__v343 = 1;
+  }
+  document.getElementById('bp-dock-menu').onclick = function(){ toggleNavDrawer(); };
+  document.getElementById('bp-dock-add').onclick = function(){ var s = active(), a = s && ADD[s.id]; if (a) a.go(); };
+  document.getElementById('bp-dock-back').onclick = function(){
+    var s = active(); if (!s) return;
+    var bb = s.querySelector('.back-btn');
+    if (bb && bb.offsetParent !== null) { bb.click(); return; }
+    showScreen(prevScreen && prevScreen !== s.id && !/room-detail|job-detail/.test(prevScreen) ? prevScreen : 's-home');
+  };
+  var timer = 0;
+  function soon(){ if (timer) return; timer = setTimeout(function(){ timer = 0; paint(); tap(); }, 60); }
+  ['setFinanceTab', 'setJobsTab'].forEach(function(n){
+    var f = window[n]; if (typeof f !== 'function' || f.__v343) return;
+    window[n] = function(){ var r = f.apply(this, arguments); soon(); return r; }; window[n].__v343 = 1;
+  });
+  new MutationObserver(function(ms){
+    for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.classList && t.classList.contains('screen')) { soon(); break; } }
+  }).observe(document.body, { subtree:true, attributes:true, attributeFilter:['class'] });
+
+  /* ── 4. nothing tappable under 44 px ─────────────────────────────────── */
+  var TAPSEL = 'button, select, label.btn, a[onclick], input[type=button], input[type=submit]';
+  function tap(){
+    var s = active(); if (!s) return; var z = zoom(), px = 44 / z;
+    s.querySelectorAll(TAPSEL).forEach(function(e){
+      if (e.closest('#bp-dock,.fab,#ftab-grid') || e.id === 'bp-voice-fab') return;
+      var cs = getComputedStyle(e); if (cs.display === 'none' || cs.display === 'inline' || cs.visibility === 'hidden') return;
+      var r = e.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return;
+      if (r.height < 43.5) e.style.minHeight = px + 'px';
+      if (r.width < 43.5 && e.tagName !== 'SELECT') e.style.minWidth = px + 'px';
+    });
+  }
+  window.bpTapFix = tap;
+  soon(); setTimeout(soon, 400); setTimeout(soon, 1500);
+  console.log('[BP] v3.43 ready — thumb dock, Areas menu, Finance filter row, 44 px taps');
 })();
 </script>

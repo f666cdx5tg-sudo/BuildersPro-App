@@ -1610,7 +1610,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.42';
+var APP_VERSION = '3.43';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -17556,9 +17556,9 @@ console.log('[BP] v2.92–2.94 Voice everywhere ready (live voice ' + (liveOK() 
   var pending = [], timer = 0;
   function flush(){
     timer = 0; build(); var list = pending; pending = [];
-    list.forEach(function(r){ if (r.isConnected !== false) sweep(r); });
+    list.forEach(function(r){ if (r && r.isConnected !== false) sweep(r); });
   }
-  function queue(r){ if (pending.indexOf(r) < 0) pending.push(r); if (!timer) timer = setTimeout(flush, 80); }
+  function queue(r){ if (!r) return; if (pending.indexOf(r) < 0) pending.push(r); if (!timer) timer = setTimeout(flush, 80); }
   function start(){
     if (!document.body) return setTimeout(start, 100);
     new MutationObserver(function(ms){
@@ -18798,5 +18798,58 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   window.BP_LOC_SVG = window.BP_LOC_SVG || {};
   window.BP_LOC_SVG.driveway = DRIVE;
   console.log('[BP] v3.28 ready — driveway icon');
+})();
+</script>
+<script>
+/* ══ v3.43 — Calendar: every category has its OWN colour, and Job Start is GREEN (identical block in both apps) ══
+   Stan (Oct 5): "On calendar job start should be green. All the colors should have a different color for each category."
+   Before: Job Start was blue (#0A84FF) — nearly the Appointment blue — and Job Due (#FF9500) was nearly Delivery orange (#FF9F0A).
+   Now: 8 categories, 8 clearly different colours (colour distance checked in the test), one table: window.BP_CAL_CATS.
+   getCalendarEvents is wrapped so every event is recoloured by its kind; the legend is rebuilt from the same table. */
+(function(){
+  if (window.__bpCalColors) return; window.__bpCalColors = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  var CATS = [
+    { k:'appt',        label:'Appointment', color:'#42A5F5' },
+    { k:'due',         label:'Due Date',    color:'#FF3B30' },
+    { k:'delivery',    label:'Delivery',    color:'#FF9F0A' },
+    { k:'job-start',   label:'Job Start',   color:'#30D158' },
+    { k:'job-due',     label:'Job Due',     color:'#FFD60A' },
+    { k:'contractor',  label:'Contractor',  color:'#BF5AF2' },
+    { k:'permit',      label:'Permit',      color:'#A97C50' },
+    { k:'invoice-due', label:'Invoice',     color:'#00C7BE' }
+  ];
+  var BY = {}; CATS.forEach(function(c){ BY[c.k] = c.color; });
+  BY['con-start'] = BY['contractor']; BY['con-end'] = BY['contractor'];
+  window.BP_CAL_CATS = CATS; window.BP_CAL_COLORS = BY;
+  var prev = window.getCalendarEvents;
+  if (typeof prev === 'function' && !prev.__v343) {
+    window.getCalendarEvents = function(){
+      var ev = prev.apply(this, arguments) || [];
+      ev.forEach(function(e){ var c = BY[e.kind]; if (c) e.color = c; });
+      return ev;
+    };
+    window.getCalendarEvents.__v343 = 1;
+  }
+  function legend(){
+    var host = document.getElementById(IS_DESK ? 'view-calendar' : 's-calendar'); if (!host) return;
+    var box = host.querySelector(':scope > div[style*="flex-wrap"]'); if (!box || box.getAttribute('data-bp343')) return;
+    box.setAttribute('data-bp343', '1');
+    box.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 14px;' + (IS_DESK ? 'margin-bottom:14px;font-size:13px' : 'padding:12px 16px 0;font-size:13px') + ';color:var(--muted);font-weight:700';
+    box.innerHTML = CATS.map(function(c){
+      return '<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap"><span data-cal-dot="' + c.k + '" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:' + c.color + '"></span>' + c.label + '</span>';
+    }).join('');
+  }
+  function bigDots(){
+    if (IS_DESK) return;
+    document.querySelectorAll('#calendar-grid-wrap span[style*="border-radius:50%"]').forEach(function(d){ d.style.width = '8px'; d.style.height = '8px'; });
+  }
+  legend();
+  var rf = window.renderFieldCalendar;
+  if (!IS_DESK && typeof rf === 'function' && !rf.__v343) {
+    window.renderFieldCalendar = function(){ var r = rf.apply(this, arguments); try { bigDots(); } catch(e){} return r; };
+    window.renderFieldCalendar.__v343 = 1;
+  }
+  console.log('[BP] v3.43 ready — calendar colours');
 })();
 </script>
