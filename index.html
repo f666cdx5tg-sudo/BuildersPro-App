@@ -1501,7 +1501,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.65';
+var APP_VERSION = '3.66';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -23093,5 +23093,262 @@ window.bpSendFeedback = function(){
   setTimeout(function(){ window.open(go, '_blank', 'noopener'); }, 500);
 };
 console.log('[BP] v3.65 feedback ready');
+})();
+</script>
+<script>
+/* ══ v3.66 — SIMPLER "ADD PUNCH ITEMS" + DONE ITEMS HIDDEN ═════════════════
+   Stan (Oct 7, 2026): "Add punch list is too complicated. If I select an
+   area-category, the item description is not needed. I should be able to add
+   pictures when creating my punch list — up to 10 per item. When I work in an
+   area I should stay in that area until I finish adding. Allow me to switch.
+   Once an item is completed, hide it from open items."
+   - Add sheet is now: Area (stays put) → Category (big buttons) → Photos
+     (take / library, up to 10) → optional Note → Add. After Add the sheet
+     stays open on the same area, ready for the next item. Done closes it.
+   - Item name = the category ("Plumbing"); with a note it is
+     "Plumbing – note". Photos are saved as the item's BEFORE photos through
+     addChecklistPhoto, so compression, the date/address stamp, sync and the
+     photo viewers all work as before.
+   - The area you last worked in is remembered per job (this device).
+   - The old picked-from-a-list tasks are still there under "Common tasks".
+   - Completed items no longer show in the Punch tab / Area lists by default.
+     Filter → Status → All or Complete brings them back.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;           /* field app only */
+function $(id){ return document.getElementById(id); }
+function E(s){ return (typeof esc === 'function') ? esc(s) : String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+var MAXP = 10;
+
+/* ── A. completed items are hidden by default ─────────────────────────── */
+var F = window._bpClFilter = window._bpClFilter || { q:'', sort:'open', show:'all', dateField:'added', from:'', to:'', panel:false };
+if (!F.__v366) { F.show = 'open'; F.__v366 = 1; }
+var _rs = window.bpClReset;
+if (typeof _rs === 'function' && !_rs.__v366) {
+  window.bpClReset = function(scope, id){
+    var r = _rs.apply(this, arguments);
+    if (F.show !== 'open' && typeof window.bpClSet === 'function') window.bpClSet('show', 'open', scope, id);
+    return r;
+  };
+  window.bpClReset.__v366 = 1;
+}
+function allDoneNote(html){
+  /* every item is finished → say so, instead of "Nothing matches" */
+  if (F.show !== 'open' || F.q || F.space || F.from || F.to) return html;
+  if (String(html).indexOf('Nothing matches') < 0) return html;
+  return '<div class="card" style="padding:16px;text-align:center;color:var(--muted);font-size:14px;line-height:1.5"><b style="color:var(--green)">All done ✓</b><br>Finished items are hidden. Filter → Status → Complete shows them.</div>';
+}
+['bpRoomChecklistItemsHtml','bpJobPunchGroupsHtml'].forEach(function(fn){
+  var o = window[fn];
+  if (typeof o !== 'function' || o.__v366) return;
+  window[fn] = function(){ return allDoneNote(o.apply(this, arguments)); };
+  window[fn].__v366 = 1;
+});
+
+/* ── B. the new Add sheet ─────────────────────────────────────────────── */
+var S = { jobId:'', roomId:'', cat:'', files:[], urls:[], note:'', added:[], tpl:false };
+function lastKey(j){ return 'bp_punch_room_' + j; }
+function getLast(j){ try { return localStorage.getItem(lastKey(j)) || ''; } catch(e){ return ''; } }
+function setLast(j, r){ try { localStorage.setItem(lastKey(j), r || ''); } catch(e){} }
+function roomsFor(jobId){
+  var rs = (DB.rooms||[]).filter(function(r){ return r.jobId === jobId; });
+  if (typeof window.bpRoomCmp === 'function') { try { rs = rs.slice().sort(window.bpRoomCmp); } catch(e){} }
+  return rs;
+}
+function roomOf(id){ return id ? (DB.rooms||[]).find(function(r){ return r.id === id; }) : null; }
+function roomName(){ var r = roomOf(S.roomId); return r ? r.name : 'General'; }
+function revoke(){ S.urls.forEach(function(u){ try { URL.revokeObjectURL(u); } catch(e){} }); S.urls = []; }
+function resetDraft(){
+  revoke(); S.files = []; S.cat = ''; S.note = '';
+  var n = $('pa-note'); if (n) n.value = '';
+}
+function hasDraft(){ return !!(S.cat || S.files.length || (S.note||'').trim()); }
+
+function refreshViews(){
+  try { if (typeof refreshChecklistViews === 'function') refreshChecklistViews(); } catch(e){}
+  try { if (window.currentJobId && typeof renderJobDetail === 'function') renderJobDetail(window.currentJobId); } catch(e){}
+  try { if (typeof bpRefreshCurrentScreen === 'function') bpRefreshCurrentScreen(); } catch(e){}
+}
+
+function paintRoom(){
+  var sel = $('pa-room'); if (!sel) return;
+  sel.innerHTML = '<option value="">General (no area)</option>' + roomsFor(S.jobId).map(function(r){
+    return '<option value="' + r.id + '">' + E(r.name) + '</option>'; }).join('');
+  sel.value = S.roomId || '';
+  var st = $('pa-stay');
+  if (st) st.textContent = S.roomId
+    ? 'You stay on ' + roomName() + ' until you pick another area. Keep adding.'
+    : 'No area picked. Choose one above to keep all items together.';
+}
+function paintCats(){
+  var w = $('pa-cats'); if (!w) return;
+  w.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px';
+  w.innerHTML = TRADE_CATEGORY_ORDER.map(function(cat){
+    var on = cat === S.cat;
+    return '<button type="button" data-cat="' + cat + '" onclick="bpPunchCat(\'' + cat + '\')" style="min-height:54px;padding:8px 10px;border-radius:12px;border:2px solid ' + (on ? '#0A84FF' : 'var(--border)') + ';background:' + (on ? 'rgba(10,132,255,.2)' : 'var(--card2,#222)') + ';color:' + (on ? '#4DA3FF' : 'var(--text)') + ';font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">'
+      + '<span>' + (TRADE_CATEGORY_ICON[cat] || '') + '</span><span>' + E(cat) + '</span></button>';
+  }).join('');
+}
+function paintPhotoBtns(){
+  var w = $('pa-pbtns'); if (!w) return;
+  var full = S.files.length >= MAXP;
+  var L = 'display:flex;align-items:center;justify-content:center;gap:8px;flex:1;min-height:54px;border-radius:12px;border:1.5px solid #0A84FF;background:rgba(10,132,255,.14);color:#4DA3FF;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;' + (full ? 'opacity:.4;pointer-events:none;' : '');
+  w.innerHTML = '<div style="display:flex;gap:8px">'
+    + '<label style="' + L + '">📷 Take photo<input id="pa-cam" type="file" accept="image/*" capture="environment" style="display:none" onchange="bpPunchPick(this)"></label>'
+    + '<label style="' + L + '">🖼 Library<input id="pa-lib" type="file" accept="image/*" multiple style="display:none" onchange="bpPunchPick(this)"></label></div>';
+}
+function paintPhotos(){
+  var c = $('pa-pn'); if (c) c.textContent = S.files.length ? S.files.length + ' of ' + MAXP : 'up to ' + MAXP;
+  var w = $('pa-thumbs'); if (!w) return;
+  if (!S.urls.length) { w.innerHTML = ''; w.style.cssText = ''; return; }
+  w.style.cssText = 'display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:10px';
+  w.innerHTML = S.urls.map(function(u, i){
+    return '<div style="position:relative;aspect-ratio:1/1"><img src="' + u + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block"/>'
+      + '<button type="button" aria-label="Remove photo" onclick="bpPunchRmPhoto(' + i + ')" style="position:absolute;top:-7px;right:-7px;width:28px;height:28px;border-radius:50%;border:none;background:#FF453A;color:#fff;font-size:16px;font-weight:800;line-height:1;cursor:pointer;padding:0">×</button></div>';
+  }).join('');
+}
+function paintBtn(){
+  var b = $('pa-add'); if (!b) return;
+  var n = S.files.length;
+  b.textContent = S.cat ? ('Add ' + S.cat + ' to ' + roomName() + (n ? ' · ' + n + ' photo' + (n > 1 ? 's' : '') : '')) : 'Pick a category above';
+  b.style.opacity = S.cat ? '1' : '.45';
+  b.style.minHeight = '56px';
+  b.style.fontSize = '17px';
+}
+function paintAdded(){
+  var w = $('pa-added'); if (!w) return;
+  var items = S.added.map(function(id){ return (DB.punchlist||[]).find(function(x){ return x.id === id; }); })
+    .filter(function(it){ return it && (it.roomId || '') === (S.roomId || ''); });
+  if (!items.length) { w.innerHTML = ''; return; }
+  w.innerHTML = '<div style="margin-top:16px;font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin-bottom:6px">ADDED TO ' + E(roomName().toUpperCase()) + ' · ' + items.length + '</div>'
+    + items.map(function(it){
+      var np = (it.photosBefore || []).length;
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--card2,#222);margin-bottom:6px">'
+        + '<span style="color:var(--green);font-weight:800">✓</span>'
+        + '<span style="flex:1;min-width:0;font-size:15px;font-weight:600;overflow-wrap:anywhere">' + E(it.text) + '</span>'
+        + (np ? '<span style="font-size:13px;color:var(--muted);flex-shrink:0">📷 ' + np + '</span>' : '')
+        + '<button type="button" aria-label="Undo add" onclick="bpPunchUndo(\'' + it.id + '\')" style="width:40px;height:40px;border-radius:10px;border:none;background:none;color:var(--faint);font-size:20px;cursor:pointer;flex-shrink:0">×</button></div>';
+    }).join('');
+}
+function tplList(){ var r = roomOf(S.roomId); return (typeof getTradeTaskList === 'function') ? getTradeTaskList(r ? r.type : null, S.cat) : []; }
+function paintTpl(){
+  var w = $('pa-tpl'); if (!w) return;
+  if (!S.cat) { w.innerHTML = ''; return; }
+  var list = tplList();
+  if (!list.length) { w.innerHTML = ''; return; }
+  var h = '<button type="button" onclick="bpPunchTplToggle()" style="width:100%;margin-top:14px;min-height:46px;border-radius:12px;border:1px solid var(--border);background:none;color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Common ' + E(S.cat) + ' tasks ' + (S.tpl ? '▴' : '▾') + '</button>';
+  if (S.tpl) {
+    h += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">' + list.map(function(label, i){
+      var ex = (DB.punchlist||[]).find(function(p){ return p.jobId === S.jobId && (p.roomId||'') === (S.roomId||'') && p.trade === S.cat && p.text === label; });
+      return '<label style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2,#222);border:1px solid var(--border);border-radius:12px;cursor:pointer;min-height:48px">'
+        + '<input type="checkbox" ' + (ex ? 'checked' : '') + ' ' + (ex && ex.done ? 'disabled' : '') + ' onchange="bpPunchTpl(' + i + ')" style="width:22px;height:22px;accent-color:#0A84FF;flex-shrink:0"/>'
+        + '<span style="flex:1;font-size:15px">' + E(label) + (ex && ex.done ? ' · done' : '') + '</span></label>';
+    }).join('') + '</div>';
+  }
+  w.innerHTML = h;
+}
+function paintAll(){ paintRoom(); paintCats(); paintPhotoBtns(); paintPhotos(); paintBtn(); paintAdded(); paintTpl(); }
+
+function build(){
+  var ov = $('sheet-add-punch'); if (!ov) return;
+  var t = ov.querySelector('.sheet-title'); if (t) t.textContent = 'Add punch items';
+  var body = ov.querySelector('.sheet-body'); if (!body) return;
+  var fs = 'width:100%;box-sizing:border-box;padding:13px 12px;border-radius:12px;border:1.5px solid var(--border);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:17px;font-family:inherit;min-height:52px';
+  body.innerHTML =
+      '<div class="field"><div class="field-label">Area</div><select id="pa-room" onchange="bpPunchRoom(this.value)" style="' + fs + ';font-weight:800"></select>'
+    +   '<div id="pa-stay" style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4"></div></div>'
+    + '<div class="field"><div class="field-label">Category</div><div id="pa-cats"></div></div>'
+    + '<div class="field"><div class="field-label">Photos <span id="pa-pn" style="color:var(--muted);font-weight:700;text-transform:none;letter-spacing:0"></span></div><div id="pa-pbtns"></div><div id="pa-thumbs"></div></div>'
+    + '<div class="field"><div class="field-label">Note (optional)</div><input id="pa-note" type="text" maxlength="200" placeholder="Only if you want to say more" oninput="bpPunchNote(this.value)" style="' + fs + '"/></div>'
+    + '<button id="pa-add" type="button" class="btn btn-primary" onclick="bpPunchCommit()"></button>'
+    + '<div id="pa-added"></div>'
+    + '<div id="pa-tpl"></div>'
+    + '<button id="pa-done" type="button" onclick="bpPunchDone()" style="width:100%;margin-top:14px;min-height:54px;border-radius:14px;border:1.5px solid var(--border);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-weight:800;cursor:pointer;font-family:inherit">Done</button>'
+    + '<div style="height:10px"></div>';
+  paintAll();
+}
+
+window.openAddPunchItem = function(jobId, roomId){
+  jobId = jobId || window.currentJobId || '';
+  var r = roomId || getLast(jobId);
+  if (r && !roomsFor(jobId).some(function(x){ return x.id === r; })) r = '';
+  revoke();
+  S = { jobId: jobId, roomId: r, cat: '', files: [], urls: [], note: '', added: [], tpl: false };
+  build();
+  openSheet('sheet-add-punch');
+};
+window.openRoomTradePicker = function(jobId, roomId){ window.openAddPunchItem(jobId, roomId); };
+
+window.bpPunchRoom = function(v){
+  S.roomId = v || ''; setLast(S.jobId, S.roomId);
+  paintRoom(); paintBtn(); paintAdded(); paintTpl();
+};
+window.bpPunchCat = function(cat){
+  S.cat = (S.cat === cat) ? '' : cat; S.tpl = false;
+  paintCats(); paintBtn(); paintTpl();
+};
+window.bpPunchNote = function(v){ S.note = v || ''; };
+window.bpPunchPick = function(input){
+  var list = Array.prototype.slice.call(input.files || []).filter(function(f){ return /^image\//.test(f.type); });
+  try { input.value = ''; } catch(e){}
+  if (!list.length) return;
+  var room = MAXP - S.files.length;
+  if (list.length > room) { try { toast('Up to ' + MAXP + ' photos per item'); } catch(e){} list = list.slice(0, Math.max(room, 0)); }
+  list.forEach(function(f){ S.files.push(f); S.urls.push(URL.createObjectURL(f)); });
+  paintPhotoBtns(); paintPhotos(); paintBtn();
+};
+window.bpPunchRmPhoto = function(i){
+  if (i < 0 || i >= S.files.length) return;
+  try { URL.revokeObjectURL(S.urls[i]); } catch(e){}
+  S.files.splice(i, 1); S.urls.splice(i, 1);
+  paintPhotoBtns(); paintPhotos(); paintBtn();
+};
+window.bpPunchCommit = function(){
+  if (!S.cat) { try { toast('Pick a category first'); } catch(e){} return; }
+  var note = (S.note || '').trim();
+  var id = uid();
+  if (!DB.punchlist) DB.punchlist = [];
+  DB.punchlist.push({ id: id, jobId: S.jobId, roomId: S.roomId, text: note ? S.cat + ' – ' + note : S.cat, trade: S.cat,
+    done: false, completionPhoto: null, completionPhotoDate: null, created: now(), updatedAt: now() });
+  setLast(S.jobId, S.roomId);
+  var files = S.files.slice();
+  save();
+  if (files.length && typeof addChecklistPhoto === 'function') addChecklistPhoto({ files: files }, id, 'before');
+  S.added.push(id);
+  var nm = roomName();
+  resetDraft(); S.tpl = false;
+  paintCats(); paintPhotoBtns(); paintPhotos(); paintBtn(); paintAdded(); paintTpl();
+  var sh = document.querySelector('#sheet-add-punch .sheet'), bd = document.querySelector('#sheet-add-punch .sheet-body');
+  if (sh) sh.scrollTop = 0; if (bd) bd.scrollTop = 0;
+  try { toast('✅ Added to ' + nm); } catch(e){}
+  refreshViews();
+  if (files.length) setTimeout(function(){ paintAdded(); refreshViews(); }, 1500);
+};
+window.bpPunchUndo = function(id){
+  if (typeof deletePunchItem === 'function') deletePunchItem(id);
+  S.added = S.added.filter(function(x){ return x !== id; });
+  paintAdded(); paintTpl();
+};
+window.bpPunchTplToggle = function(){ S.tpl = !S.tpl; paintTpl(); };
+window.bpPunchTpl = function(i){
+  var label = tplList()[i]; if (label == null) return;
+  if (!DB.punchlist) DB.punchlist = [];
+  var ex = DB.punchlist.find(function(p){ return p.jobId === S.jobId && (p.roomId||'') === (S.roomId||'') && p.trade === S.cat && p.text === label; });
+  if (ex) {
+    if (ex.done) { try { toast('Already done — delete it from the list to remove'); } catch(e){} paintTpl(); return; }
+    if (typeof bpRemoveFrom === 'function') bpRemoveFrom('punchlist', function(x){ return x.id !== ex.id; });
+    else DB.punchlist.splice(DB.punchlist.indexOf(ex), 1);
+  } else {
+    DB.punchlist.push({ id: uid(), jobId: S.jobId, roomId: S.roomId, text: label, trade: S.cat, done: false, completionPhoto: null, completionPhotoDate: null, created: now(), updatedAt: now() });
+  }
+  save(); paintTpl(); refreshViews();
+};
+window.bpPunchDone = function(){
+  if (hasDraft() && !window.confirm('Discard what you picked? Tap the blue Add button first to keep it.')) return;
+  resetDraft(); closeSheet('sheet-add-punch');
+  refreshViews();
+};
+console.log('[BP] v3.66 punch add + done hidden ready');
 })();
 </script>
