@@ -1083,6 +1083,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <button type="button" class="nav-btn bp-tool" id="nav-s-search" onclick="closeNavDrawer();showScreen('s-search')"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><span class="bp-lbl">Search</span></button>
   <button type="button" class="nav-btn bp-tool" id="nav-s-calendar" onclick="closeNavDrawer();showScreen('s-calendar')"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg><span class="bp-lbl">Calendar</span></button>
   <button type="button" class="nav-btn bp-tool" id="bp-sync-btn" data-bp-sync="1" title="Sync"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span class="bp-lbl">Sync<small id="bp-sync-mini"></small></span></button>
+  <button class="nav-btn" id="nav-feedback" onclick="closeNavDrawer();bpSendFeedback()">
+    <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <span>Send feedback</span>
+  </button>
 </nav>
 
 <!-- ─── SHEETS ───────────────────────────────── -->
@@ -1497,7 +1501,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.64';
+var APP_VERSION = '3.65';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -23057,5 +23061,37 @@ var _ic = window.bpSaveToICloud;
 if (typeof _ic === 'function') window.bpSaveToICloud = function(){ var r = _ic.apply(this, arguments); Promise.resolve(r).then(function(){ setTimeout(window.bpPaintBackupNag, 300); }); return r; };
 setTimeout(window.bpPaintBackupNag, 1500);
 console.log('[BP] v3.64 storage guard + offline + backup reminder');
+})();
+</script>
+<script>
+/* ══ v3.65 — SEND FEEDBACK ═══════════════════════════════════════════════════
+   Menu → Send feedback opens the feedback form. The app version, phone and
+   screen are copied to the clipboard (and put in the link when the form link
+   has the word INFO in it — see bpFeedbackSetup below), so every report says
+   which build and which screen it is about. */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;
+/* >>> the form link goes here (Google Forms / Tally / etc.) <<< */
+window.BP_FEEDBACK_URL = '';
+function info(){
+  var scr = (document.querySelector('.screen.active') || {}).id || '';
+  var ua = navigator.userAgent || '';
+  var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : 'Other';
+  var os = (ua.match(/OS (\d+[_\d]*)/) || [])[1]; os = os ? os.replace(/_/g, '.') : '';
+  var beta = /\/beta\//.test(location.pathname) ? ' (beta)' : '';
+  return 'BuildersPro v' + APP_VERSION + beta + ' · ' + dev + (os ? ' iOS ' + os : '') + ' · screen ' + scr + ' · ' + new Date().toLocaleString('en-US') + ' · ' + (window.innerWidth + 'x' + window.innerHeight);
+}
+window.bpFeedbackInfo = info;
+window.bpSendFeedback = function(){
+  var url = window.BP_FEEDBACK_URL;
+  if (!url) { try { toast('Feedback form is not set up yet'); } catch(e){} return; }
+  var text = info();
+  try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function(){}); } catch(e){}
+  var go = url.indexOf('INFO') > -1 ? url.replace('INFO', encodeURIComponent(text)) : url;
+  try { toast('App details copied — paste them in the form'); } catch(e){}
+  setTimeout(function(){ window.open(go, '_blank', 'noopener'); }, 500);
+};
+console.log('[BP] v3.65 feedback ready');
 })();
 </script>
