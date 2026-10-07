@@ -1,0 +1,9 @@
+{
+  "name": "BuildersPro Beta",
+  "short_name": "BP Beta",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f0f5ff",
+  "theme_color": "#f0f5ff"
+}
