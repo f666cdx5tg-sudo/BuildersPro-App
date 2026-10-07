@@ -1,4 +1,4 @@
-"""BuildersPro v3.66: simpler Add Punch Items (category only, up to 10 photos, stays in the area) + completed items hidden.
+"""BuildersPro v3.67 (photo buttons icon-only; builds on v3.66): simpler Add Punch Items (category only, up to 10 photos, stays in the area) + completed items hidden.
 Run from the repo root: python3 test_v366.py  (needs playwright + chromium). Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os, zlib, struct
 from playwright.async_api import async_playwright
@@ -28,7 +28,7 @@ async def run(w, h, body):
         await body(pg, errs, w); await b.close()
 
 async def field(pg, errs, w):
-    ok(await pg.evaluate("APP_VERSION==='3.66'"), 'version is not 3.66')
+    ok(await pg.evaluate("APP_VERSION==='3.67'"), 'version is not 3.67')
     await pg.evaluate("document.getElementById('bp-lock')?.remove()"); await pg.evaluate(SEED)
     await pg.evaluate("openAddPunchItem('j1')"); await pg.wait_for_timeout(400)
     ok(await pg.evaluate("document.getElementById('sheet-add-punch').classList.contains('open')"), 'sheet did not open')
@@ -36,6 +36,9 @@ async def field(pg, errs, w):
     cats = await pg.evaluate("[...document.querySelectorAll('#pa-cats button')].map(b=>b.dataset.cat)")
     live = await pg.evaluate("TRADE_CATEGORY_ORDER.slice()")
     ok(cats == live and len(cats) >= 7 and 'Plumbing' in cats and 'Electrical' in cats and 'Painting' in cats, f'category buttons wrong: {cats}')
+    lab = await pg.evaluate("[...document.querySelectorAll('#pa-pbtns label')].map(l=>({t:l.innerText.trim(),svg:!!l.querySelector('svg'),a:l.getAttribute('aria-label'),h:l.getBoundingClientRect().height}))")
+    ok(len(lab)==2 and all(l['t']=='' and l['svg'] and l['h']>=56 for l in lab), f'photo buttons should be icon only: {lab}')
+    ok(await pg.evaluate("document.querySelector('#pa-pbtns label svg path') && document.querySelector('#pa-pbtns label:nth-child(2) svg rect')!==undefined"), 'icons missing')
     ok(await pg.evaluate("document.getElementById('pa-add').textContent.includes('Pick a category')"), 'Add button should ask for a category first')
     # add with no category does nothing
     n0 = await pg.evaluate("DB.punchlist.length"); await pg.evaluate("bpPunchCommit()")

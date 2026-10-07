@@ -1501,7 +1501,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.66';
+var APP_VERSION = '3.67';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -23193,10 +23193,10 @@ function paintCats(){
 function paintPhotoBtns(){
   var w = $('pa-pbtns'); if (!w) return;
   var full = S.files.length >= MAXP;
-  var L = 'display:flex;align-items:center;justify-content:center;gap:8px;flex:1;min-height:54px;border-radius:12px;border:1.5px solid #0A84FF;background:rgba(10,132,255,.14);color:#4DA3FF;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;' + (full ? 'opacity:.4;pointer-events:none;' : '');
+  var L = 'display:flex;align-items:center;justify-content:center;gap:8px;flex:1;min-height:60px;border-radius:12px;border:1.5px solid #0A84FF;background:rgba(10,132,255,.14);color:#4DA3FF;cursor:pointer;font-family:inherit;' + (full ? 'opacity:.4;pointer-events:none;' : '');
   w.innerHTML = '<div style="display:flex;gap:8px">'
-    + '<label style="' + L + '">📷 Take photo<input id="pa-cam" type="file" accept="image/*" capture="environment" style="display:none" onchange="bpPunchPick(this)"></label>'
-    + '<label style="' + L + '">🖼 Library<input id="pa-lib" type="file" accept="image/*" multiple style="display:none" onchange="bpPunchPick(this)"></label></div>';
+    + '<label aria-label="Take photo" title="Take photo" style="' + L + '">' + '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:32px;height:32px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M5 7h1a2 2 0 0 0 2-2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-14a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/></svg>' + '<input id="pa-cam" type="file" accept="image/*" capture="environment" style="display:none" onchange="bpPunchPick(this)"></label>'
+    + '<label aria-label="Choose from library" title="Choose from library" style="' + L + '">' + '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:32px;height:32px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="15.5" cy="8.5" r="1.2"/><path d="M3 16l5-5c.9-.9 2.1-.9 3 0l5 5"/><path d="M14 14l1-1c.9-.9 2.1-.9 3 0l3 3"/></svg>' + '<input id="pa-lib" type="file" accept="image/*" multiple style="display:none" onchange="bpPunchPick(this)"></label></div>';
 }
 function paintPhotos(){
   var c = $('pa-pn'); if (c) c.textContent = S.files.length ? S.files.length + ' of ' + MAXP : 'up to ' + MAXP;
