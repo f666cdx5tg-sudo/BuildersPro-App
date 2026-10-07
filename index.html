@@ -1497,7 +1497,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.63';
+var APP_VERSION = '3.64';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -22991,5 +22991,71 @@ window.bpRenderJobNotes = function(){
 };
 try { window.bpRenderJobNotes(); } catch(e){}
 console.log('[BP] v3.62 notes ready');
+})();
+</script>
+<script>
+/* ══ v3.64 — SAFER STORAGE, OFFLINE LAUNCH, BACKUP REMINDER ═════════════════
+   1. Asks the browser to keep this app's data (so iOS doesn't clear it when
+      space runs low) and warns when the device is nearly full.
+   2. Registers sw.js so the app opens with no signal (network first — updates
+      arrive exactly as before).
+   3. Home banner when nothing has been backed up or synced for 7+ days. */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;
+function say(m){ try { toast(m); } catch(e){} }
+/* 1 — persistent storage + space warning */
+try {
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persisted().then(function(p){ return p || navigator.storage.persist(); }).then(function(ok){ window.bpStoragePersisted = !!ok; }).catch(function(){});
+  }
+  if (navigator.storage && navigator.storage.estimate) {
+    navigator.storage.estimate().then(function(e){
+      if (!e || !e.quota) return;
+      var pct = Math.round(e.usage / e.quota * 100);
+      window.bpStorageInfo = { usage:e.usage, quota:e.quota, pct:pct };
+      if (pct >= 80) setTimeout(function(){ say('⚠️ Phone storage for this app is ' + pct + '% full — back up and clear old photos'); }, 4000);
+    }).catch(function(){});
+  }
+} catch(e){}
+/* 2 — offline launch */
+try {
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+  }
+} catch(e){}
+/* 3 — backup reminder */
+function ageDays(iso){ var t = Date.parse(iso || ''); return isNaN(t) ? Infinity : (Date.now() - t) / 86400000; }
+window.bpBackupDays = function(){
+  var a = Infinity, b = Infinity;
+  try { a = ageDays(localStorage.getItem('bp_icloud_last')); } catch(e){}
+  try { b = ageDays(typeof _lastSync !== 'undefined' ? _lastSync : ''); } catch(e){}
+  return Math.min(a, b);
+};
+window.bpPaintBackupNag = function(){
+  try {
+    var home = document.getElementById('home-attention'); if (!home) return;
+    var el = document.getElementById('bp-backup-nag');
+    var days = window.bpBackupDays();
+    var has = (DB.jobs||[]).length > 0;
+    var snooze = 0; try { snooze = +localStorage.getItem('bp_backup_snooze') || 0; } catch(e){}
+    if (!has || days < 7 || Date.now() < snooze) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'bp-backup-nag'; el.style.cssText = 'margin:10px 16px 0'; home.parentNode.insertBefore(el, home); }
+    var txt = days === Infinity ? 'Your data has never been backed up.' : 'Last backup was ' + Math.floor(days) + ' days ago.';
+    el.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:rgba(255,69,58,.12);border:1.5px solid rgba(255,69,58,.5)">'
+      + '<div style="flex:1;min-width:0;font-size:14px;font-weight:700;line-height:1.3">' + txt + '</div>'
+      + '<button onclick="bpSaveToICloud()" style="min-height:44px;padding:0 14px;border-radius:10px;border:none;background:#FF453A;color:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit">Back up</button>'
+      + '<button aria-label="Remind me tomorrow" onclick="localStorage.setItem(\'bp_backup_snooze\',Date.now()+86400000);bpPaintBackupNag()" style="min-width:44px;min-height:44px;border:none;background:transparent;color:var(--muted);font-size:20px;cursor:pointer">✕</button></div>';
+  } catch(e){}
+};
+['renderHome','renderAll'].forEach(function(n){
+  var o = window[n]; if (typeof o !== 'function' || o.__v364) return;
+  window[n] = function(){ var r = o.apply(this, arguments); window.bpPaintBackupNag(); return r; };
+  window[n].__v364 = 1;
+});
+var _ic = window.bpSaveToICloud;
+if (typeof _ic === 'function') window.bpSaveToICloud = function(){ var r = _ic.apply(this, arguments); Promise.resolve(r).then(function(){ setTimeout(window.bpPaintBackupNag, 300); }); return r; };
+setTimeout(window.bpPaintBackupNag, 1500);
+console.log('[BP] v3.64 storage guard + offline + backup reminder');
 })();
 </script>
