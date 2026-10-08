@@ -1352,15 +1352,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       </div>
       <div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px">
         <div class="field-label" style="margin-bottom:6px">Text &amp; Button Size</div>
-        <div style="font-size:11px;color:var(--faint);margin-bottom:10px;line-height:1.5">Bigger text AND bigger buttons everywhere — for direct sunlight and work gloves. This setting is per-device. On an iPad, each size goes further still, since the same text reads smaller on a bigger screen viewed from farther away.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="zoom-btn-row">
-          <button class="btn btn-ghost" data-z="1" onclick="bpSetZoom(1)">Normal</button>
-          <button class="btn btn-ghost" data-z="1.15" onclick="bpSetZoom(1.15)">Large</button>
-          <button class="btn btn-ghost" data-z="1.3" onclick="bpSetZoom(1.3)">XL 🧤</button>
-          <button class="btn btn-ghost" data-z="1.45" onclick="bpSetZoom(1.45)">XXL ☀️</button>
-        </div>
+        <div style="font-size:11px;color:var(--faint);margin-bottom:10px;line-height:1.5">Bigger text AND bigger buttons everywhere, from 85% to 180% in small steps. This setting is per-device. On an iPad each size goes further still, since the same text reads smaller on a bigger screen viewed from farther away.</div>
+        <div id="zoom-btn-row"></div>
       </div>
-      <div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px">
+<div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px">
         <div class="field" style="margin-bottom:8px"><div class="field-label">Your Name</div><input id="sync-username" type="text" placeholder="e.g. Mike - Foreman"/></div>
         <div style="font-size:11px;color:var(--faint);margin-bottom:8px;line-height:1.5">There's no login system — this just labels the EOD Reports, Photos, and Expenses YOU create on this device, so whoever pulls this data later can see who submitted what.</div>
         <div class="field" style="margin-bottom:8px"><div class="field-label">Hourly Rate (optional)</div><input id="sync-hourlyrate" type="number" inputmode="decimal" placeholder="e.g. 35"/></div>
@@ -1506,7 +1501,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.67';
+var APP_VERSION = '3.71';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -2752,10 +2747,12 @@ function openJobDetail(jobId) {
     var m = document.getElementById('jd-meta'); m.textContent = '';
     var sc = ({Active:'#30D158',Pending:'#FFD60A',Complete:'var(--blue)','On Hold':'var(--red)'})[job.status] || '';
     var parts = [job.client&&('👤 '+job.client), fmtJobAddress(job)&&('📍 '+fmtJobAddress(job))].filter(Boolean);
-    var d = document.createElement('div'); d.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-    d.appendChild(document.createTextNode(parts.join(' · ') + (parts.length && job.status ? ' · ' : '')));
-    if (job.status) { var st = document.createElement('b'); st.textContent = job.status; st.style.color = sc; d.appendChild(st); }
+    /* v3.70: the status sits beside the client/address line, not inside it, so a long address ends in "…" but "Active" is never cut off at big text sizes */
+    var d = document.createElement('div'); d.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0';
+    d.appendChild(document.createTextNode(parts.join(' · ')));
+    m.style.display = 'flex';
     m.appendChild(d);
+    if (job.status) { var st = document.createElement('b'); st.textContent = (parts.length ? ' · ' : '') + job.status; st.style.cssText = 'flex:none;white-space:pre;color:' + sc; m.appendChild(st); }
   })();
   var contractor = job.contractorId ? (DB.contractors||[]).find(function(c){return c.id===job.contractorId;}) : null;
   var infoParts = [contractor&&('👷 '+contractor.name), (job.startDate||job.completionDate)&&('📅 '+(job.startDate?fmtDatePlain(job.startDate):'—')+' → '+(job.completionDate?fmtDatePlain(job.completionDate):'—'))].filter(Boolean);
@@ -18089,8 +18086,8 @@ window.bpSetShopTax = function(v){ var n = window.bpCalcEval(v); if (isNaN(n) ||
 function lineTotal(x){ return (+x.qty || 0) * (+x.price || 0); }
 function shopItems(job){ return (DB.shopping||[]).filter(function(x){ return x && (job === '*' || (x.jobId||'') === job); }); }
 window.bpShopTotals = function(job){
-  var L = shopItems(job == null ? SH.job : job), t = { toBuy:0, bought:0, nOpen:0, nDone:0 };
-  L.forEach(function(x){ if (x.bought) { t.bought += lineTotal(x); t.nDone++; } else { t.toBuy += lineTotal(x); t.nOpen++; } });
+  var L = shopItems(job == null ? SH.job : job), t = { toBuy:0, bought:0, nOpen:0, nDone:0, ordered:0, nOrdered:0 };
+  L.forEach(function(x){ if (x.bought) { t.bought += lineTotal(x); t.nDone++; } else { t.toBuy += lineTotal(x); t.nOpen++; if (x.status === 'ordered') { t.ordered += lineTotal(x); t.nOrdered++; } } });
   t.all = t.toBuy + t.bought; t.rate = taxRate(); t.tax = Math.round(t.toBuy * t.rate) / 100; t.toBuyWithTax = t.toBuy + t.tax;
   return t;
 };
@@ -18098,6 +18095,26 @@ window.bpOpenShop = function(jobId){
   if (jobId !== undefined && jobId !== null) SH.job = jobId;
   else if (SH.job === null) SH.job = activeJob();
   drawShop();
+};
+function receiptOf(x){
+  if (x.receiptSrc) return x.receiptSrc;
+  var e = x.expenseId && (DB.expenses||[]).find(function(p){ return p && p.id === x.expenseId; });
+  return (e && e.receiptSrc) || '';
+}
+function shopBadge(x){
+  var P = 'display:inline-flex;align-items:center;min-height:30px;margin-top:6px;padding:0 12px;border-radius:99px;font-size:13px;font-weight:800;white-space:nowrap;cursor:pointer;font-family:inherit;';
+  if (x.bought) {
+    return receiptOf(x) ? '<span style="' + P + 'background:rgba(48,209,88,.16);color:#30D158">🧾 Receipt</span>'
+      : '<span style="' + P + 'background:rgba(255,159,10,.16);color:#FF9F0A">No receipt</span>';
+  }
+  var ord = x.status === 'ordered';
+  return '<button data-shop-status type="button" aria-label="' + (ord ? 'Ordered, tap to undo' : 'Mark ordered') + '" onclick="event.stopPropagation();bpShopOrder(\'' + Q(x.id) + '\')" style="' + P + 'border:none;'
+    + (ord ? 'background:rgba(10,132,255,.18);color:#0A84FF' : 'background:var(--card2,#222);color:var(--muted,#8e8e93)') + '">' + (ord ? '📦 Ordered' : 'Need · tap if ordered') + '</button>';
+}
+window.bpShopOrder = function(id){
+  var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x || x.bought) return;
+  if (x.status === 'ordered') { x.status = 'need'; x.orderedAt = ''; } else { x.status = 'ordered'; x.orderedAt = ts(); }
+  x.updatedAt = ts(); persist(); drawShop();
 };
 function shopRow(x){
   var lt = lineTotal(x);
@@ -18107,21 +18124,24 @@ function shopRow(x){
     + '<div onclick="bpShopEdit(\'' + Q(x.id) + '\')" style="flex:1;min-width:0;cursor:pointer">'
     + '<div style="font-size:17px;font-weight:800;line-height:1.25;' + (x.bought ? 'text-decoration:line-through' : '') + '">' + E(x.text) + '</div>'
     + '<div style="font-size:14px;color:var(--muted,#8e8e93);margin-top:3px">' + num(x.qty || 0) + (x.unit ? ' ' + E(x.unit) : '') + (x.price ? ' × ' + money(x.price) : '')
-    + (x.store ? ' · ' + E(x.store) : '') + (x.expenseId ? ' · in Money' : '') + '</div></div>'
+    + (x.store ? ' · ' + E(x.store) : '') + (x.expenseId ? ' · in Money' : '') + '</div>'
+    + shopBadge(x) + '</div>'
     + '<div style="font-size:18px;font-weight:900;flex-shrink:0;color:' + (x.bought ? 'var(--muted)' : 'var(--text)') + '">' + (lt ? money(lt) : '—') + '</div></div>';
 }
 function drawShop(){
   var L = shopItems(SH.job), t = window.bpShopTotals(SH.job);
-  var open = L.filter(function(x){ return !x.bought; }), done = L.filter(function(x){ return x.bought; });
+  var open = L.filter(function(x){ return !x.bought && x.status !== 'ordered'; }), ordd = L.filter(function(x){ return !x.bought && x.status === 'ordered'; }), done = L.filter(function(x){ return x.bought; });
   var byNew = function(a, b){ return (a.created||'') < (b.created||'') ? -1 : 1; };
-  open.sort(byNew); done.sort(function(a, b){ return (a.boughtAt||'') < (b.boughtAt||'') ? 1 : -1; });
+  open.sort(byNew); ordd.sort(byNew); done.sort(function(a, b){ return (a.boughtAt||'') < (b.boughtAt||'') ? 1 : -1; });
   var body = '<div style="margin-top:4px">' + jobSelect('bp-shop-job', SH.job, 'bpShopJob(this.value)', true) + '</div>'
     + '<button id="bp-shop-scan" onclick="bpShopScan()" style="' + BTN + ';width:100%;margin-top:10px;background:rgba(10,132,255,.14);color:#0A84FF;border:1.5px solid #0A84FF">📷 Scan a receipt</button>'
     + '<div style="display:flex;align-items:center;gap:12px;margin:14px 0 4px"><button id="bp-shop-add" onclick="bpShopOpenAdd()" aria-label="Add item" style="width:60px;height:60px;border-radius:50%;border:none;background:#30D158;color:#000;font-size:36px;font-weight:900;line-height:1;cursor:pointer;flex-shrink:0;box-shadow:0 4px 14px rgba(48,209,88,.4)">+</button>'
     + '<div style="font-size:15px;font-weight:800;color:var(--muted)">Add item</div></div>'
+    + shopStrip()
     + '<div style="' + LBL + '">To buy (' + open.length + ')</div>'
     + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Add items above.</div>')
-    + (done.length ? '<div style="' + LBL + ';margin-top:18px">Bought (' + done.length + ')</div>' + done.map(shopRow).join('') : '')
+    + (ordd.length ? '<div id="bp-shop-ordered" style="' + LBL + ';margin-top:18px">Ordered — waiting on delivery (' + ordd.length + ')</div>' + ordd.map(shopRow).join('') : '')
+    + (done.length ? '<div style="' + LBL + ';margin-top:18px">Arrived / bought (' + done.length + ')</div>' + done.map(shopRow).join('') : '')
     + '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
     + '<button onclick="bpShopShare()" style="' + BTN + ';flex:1;min-width:140px;background:var(--card2,#222);color:var(--text)">' + ICON.share + 'Share list</button>'
     + (done.some(function(x){ return !x.expenseId; }) ? '<button id="bp-shop-to-money" onclick="bpShopToMoney()" style="' + BTN + ';flex:1;min-width:140px;background:rgba(48,209,88,.14);color:#30D158;border:1.5px solid #30D158">Add bought to Money</button>' : '')
@@ -18197,10 +18217,98 @@ window.bpShopAdd = function(){
 };
 window.bpShopToggle = function(id){
   var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
+  if (!x.bought && x.status === 'ordered' && (+x.qty || 0) > 1) {
+    var a = prompt('How many arrived? (of ' + num(x.qty) + ')', String(x.qty)); if (a === null) return;
+    a = window.bpCalcEval(a);
+    if (isNaN(a) || a <= 0) { say('Type a number'); return; }
+    if (a < x.qty) {   /* partial: the arrived part becomes its own row, the rest stays Ordered */
+      var rest = Math.round((x.qty - a) * 10000) / 10000;
+      var part = JSON.parse(JSON.stringify(x)); part.id = newId(); part.qty = a; part.created = ts();
+      x.qty = rest; x.updatedAt = ts(); DB.shopping.push(part); x = part; id = part.id;
+    }
+  }
   x.bought = !x.bought; x.boughtAt = x.bought ? ts() : ''; x.updatedAt = ts();
+  x.status = x.bought ? 'arrived' : (x.orderedAt ? 'ordered' : 'need');
   persist(); drawShop();
   if (x.bought) window.bpShopEdit(id);   /* v3.49: checking an item off opens its edit page */
 };
+function rcpHtml(x){
+  var id = Q(x.id), r = receiptOf(x);
+  var B = 'flex:1;min-width:120px;min-height:48px;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;border:1.5px solid var(--border,#333);background:var(--card2,#222);color:var(--text)';
+  var inp = function(cap, i){ return '<input type="file" accept="image/*"' + (cap ? ' capture="environment"' : '') + ' id="bp-se-file' + i + '" style="display:none" onchange="bpShopRcpPick(\'' + id + '\',this)"/>'; };
+  if (r) return '<div style="display:flex;gap:10px;align-items:center"><img id="bp-se-thumb" alt="Receipt" onclick="bpShopRcpView(\'' + id + '\')" src="' + E(r) + '" style="width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border,#333);cursor:pointer;flex-shrink:0"/>'
+    + '<div style="flex:1;min-width:0;display:flex;gap:8px;flex-wrap:wrap"><button type="button" onclick="bpShopRcpView(\'' + id + '\')" style="' + B + '">View</button>'
+    + '<button type="button" onclick="document.getElementById(\'bp-se-file1\').click()" style="' + B + '">Replace</button>'
+    + '<button type="button" onclick="bpShopRcpRemove(\'' + id + '\')" style="' + B + ';color:#FF453A">Remove</button></div></div>' + inp(true, 1);
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="bp-se-rcp-cam" onclick="document.getElementById(\'bp-se-file1\').click()" style="' + B + ';background:rgba(10,132,255,.14);color:#0A84FF;border-color:#0A84FF">📷 Take photo</button>'
+    + '<button type="button" onclick="document.getElementById(\'bp-se-file2\').click()" style="' + B + '">🖼 Choose</button></div>' + inp(true, 1) + inp(false, 2);
+}
+function rcpRepaint(id){ var x = (DB.shopping||[]).find(function(s){ return s.id === id; }), h = document.getElementById('bp-se-rcp'); if (x && h) h.innerHTML = rcpHtml(x); }
+window.bpShopRcpPick = function(id, input){
+  var f = input.files && input.files[0]; if (!f) return;
+  var fr = new FileReader();
+  fr.onload = function(){
+    bpCompressFor('doc', fr.result, function(out){
+      var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
+      x.receiptSrc = out || fr.result; x.updatedAt = ts();
+      var e = x.expenseId && (DB.expenses||[]).find(function(p){ return p && p.id === x.expenseId; });
+      if (e && !e.receiptSrc) { e.receiptSrc = x.receiptSrc; e.updatedAt = ts(); }
+      persist(); rcpRepaint(id); drawShopBehind(); say('Receipt saved');
+    });
+  };
+  fr.readAsDataURL(f);
+};
+window.bpShopRcpRemove = function(id){
+  var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
+  if (!confirm('Remove this receipt photo?')) return;
+  x.receiptSrc = ''; x.updatedAt = ts();
+  var e = x.expenseId && (DB.expenses||[]).find(function(p){ return p && p.id === x.expenseId; });
+  if (e && e.fromShopping) { e.receiptSrc = null; e.updatedAt = ts(); }
+  persist(); rcpRepaint(id); drawShopBehind();
+};
+window.bpShopRcpView = function(id){
+  var x = (DB.shopping||[]).find(function(s){ return s.id === id; }), r = x && receiptOf(x); if (!r) return;
+  overlay('bp-shop-rcp', 'Receipt', '<img alt="Receipt" src="' + E(r) + '" style="width:100%;border-radius:12px;display:block"/>', '');
+  var o = document.getElementById('bp-shop-rcp'); if (o) o.style.zIndex = 10003;
+};
+/* refresh the list underneath the edit page without closing it */
+function drawShopBehind(){
+  var ed = document.getElementById('bp-shop-edit'), keep = ed && ed.parentNode ? ed : null;
+  if (!document.getElementById('bp-shop')) return;
+  var sc = document.querySelector('#bp-shop .bp-sheet-body'), top = sc ? sc.scrollTop : 0;
+  drawShop();
+  if (keep) document.body.appendChild(keep);
+  sc = document.querySelector('#bp-shop .bp-sheet-body'); if (sc) sc.scrollTop = top;
+}
+/* job cost strip: budget vs spent vs still coming */
+function shopStrip(){
+  var job = SH.job; if (!job || !(DB.jobs||[]).some(function(j){ return j.id === job; })) return '';
+  var t = window.bpShopTotals(job), rate = taxRate();
+  var spent = 0; (DB.expenses||[]).forEach(function(e){ if (e && e.jobId === job && (e.category || 'Materials') === 'Materials') spent += +e.amount || 0; });
+  shopItems(job).forEach(function(x){ if (x.bought && !x.expenseId) spent += Math.round(lineTotal(x) * (100 + rate)) / 100; });
+  var bud = +((DB.budgets||{})[job] || {}).Materials || 0, coming = t.toBuyWithTax;
+  var cell = function(l, v, c, id){ return '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + l + '</div>'
+    + '<div' + (id ? ' id="' + id + '"' : '') + ' style="font-size:18px;font-weight:900;color:' + c + ';white-space:nowrap;overflow:hidden">' + money(v) + '</div></div>'; };
+  var left = bud - spent - coming, h = '<div id="bp-shop-strip" style="margin-top:12px;padding:12px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)">'
+    + '<div style="font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Materials · this job</div><div style="display:flex;gap:10px">';
+  if (bud) h += cell('Budget', bud, 'var(--text)', 'bp-ss-bud');
+  h += cell('Spent', spent, '#30D158', 'bp-ss-spent') + cell('Coming', coming, '#FF9F0A', 'bp-ss-coming');
+  if (bud) h += cell(left < 0 ? 'Over' : 'Left', Math.abs(left), left < 0 ? '#FF453A' : '#0A84FF', 'bp-ss-left');
+  h += '</div>';
+  if (bud) h += '<div style="height:6px;border-radius:99px;background:var(--card2,#222);margin-top:10px;overflow:hidden"><div style="height:100%;width:' + Math.min(100, Math.round((spent + coming) / bud * 100)) + '%;background:' + (left < 0 ? '#FF453A' : '#30D158') + '"></div></div>';
+  else h += '<button id="bp-ss-set" type="button" onclick="bpShopSetBudget()" style="margin-top:10px;min-height:44px;width:100%;border-radius:12px;border:1.5px dashed var(--border,#444);background:transparent;color:#0A84FF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Set a materials budget</button>';
+  return h + '</div>';
+}
+window.bpShopSetBudget = function(){
+  if (typeof window.openJobBudget !== 'function') return;
+  window.openJobBudget(SH.job);
+  var m = document.getElementById('budget-modal'); if (m) m.style.zIndex = 10004;
+};
+if (typeof window.saveJobBudget === 'function' && !window.saveJobBudget.__shop) {
+  var _sjb = window.saveJobBudget;
+  window.saveJobBudget = function(){ var r = _sjb.apply(this, arguments); try { if (document.getElementById('bp-shop')) drawShop(); } catch(e){} return r; };
+  window.saveJobBudget.__shop = 1;
+}
 window.bpShopEdit = function(id){
   var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
   var stores = {}; (DB.shopping||[]).forEach(function(s){ if (s.store) stores[s.store] = 1; });
@@ -18213,7 +18321,8 @@ window.bpShopEdit = function(id){
     + '<div style="' + LBL + '">Store</div>' + (window.bpVendorField ? window.bpVendorField('bp-se-store', x.store||'') : '<input id="bp-se-store" list="bp-se-stores" value="' + E(x.store||'') + '" style="' + INP + '"/>')
     + '<datalist id="bp-se-stores">' + Object.keys(stores).map(function(s){ return '<option>' + E(s) + '</option>'; }).join('') + '</datalist>'
     + '<div style="' + LBL + '">Job</div>' + jobSelect('bp-se-job', x.jobId || '', '', true)
-    + '<div style="' + LBL + '">Note</div><input id="bp-se-note" value="' + E(x.note||'') + '" placeholder="Brand, size, color…" style="' + INP + '"/>';
+    + '<div style="' + LBL + '">Note</div><input id="bp-se-note" value="' + E(x.note||'') + '" placeholder="Brand, size, color…" style="' + INP + '"/>'
+    + (x.bought ? '<div style="' + LBL + '">Receipt</div><div id="bp-se-rcp">' + rcpHtml(x) + '</div>' : '');
   var foot = '<div style="display:flex;gap:8px"><button onclick="bpShopDelete(\'' + Q(id) + '\')" style="' + BTN + ';background:transparent;color:#FF453A;border:1.5px solid #FF453A">Delete</button>'
     + '<button id="bp-se-save" onclick="bpShopSaveEdit(\'' + Q(id) + '\')" style="' + BTN + ';flex:1;background:#0A84FF;color:#fff">Save</button></div>';
   overlay('bp-shop-edit', 'Edit item', body, foot);
@@ -18277,7 +18386,7 @@ window.bpShopToMoney = function(){
     var store = g[0].store || '';
     var day = dk(g[0].boughtAt) || today();
     var exp = { id:newId(), desc:'Materials' + (store ? ' — ' + store : '') + ' (' + g.length + ' item' + (g.length > 1 ? 's' : '') + ')', jobId:g[0].jobId || '', amount:amt,
-      date:day, category:'Materials', vendor:store, receiptSrc:null, items:g.map(function(x){ return { name:x.text, qty:+x.qty||0, price:+x.price||0 }; }),
+      date:day, category:'Materials', vendor:store, receiptSrc:((g.find(function(x){ return x.receiptSrc; }) || {}).receiptSrc) || null, items:g.map(function(x){ return { name:x.text, qty:+x.qty||0, price:+x.price||0 }; }),
       fromShopping:true, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:ts(), updatedAt:ts() };
     DB.expenses.push(exp); made++; total += amt;
     g.forEach(function(x){ x.expenseId = exp.id; x.updatedAt = ts(); });
@@ -23355,5 +23464,471 @@ window.bpPunchDone = function(){
   refreshViews();
 };
 console.log('[BP] v3.66 punch add + done hidden ready');
+})();
+</script>
+<script>
+/* ══ v3.68 — OFFLINE QUEUE: "WAITING TO SYNC" ═══════════════════════════════
+   What already worked: every change saves to the phone first (IndexedDB), and the
+   app launches with no signal (service worker). What was missing: nothing REMEMBERED
+   what the cloud had not received yet, nothing retried by itself when signal came
+   back, and you could not see what was waiting.
+   This adds, on the phone/iPad app only:
+   1. A list of what is waiting. After every successful backup the app notes a tiny
+      fingerprint of each record (never the photo data itself). Anything that differs
+      from that note is "waiting". The note is kept on the device, so the list
+      survives closing the app, a reboot, or a day in a basement.
+   2. Automatic retry. Signal returns, the app comes back to the front, or 45 seconds
+      pass while something waits, and it backs up by itself (slower after each failure).
+   3. A small chip, bottom-left, only when something is waiting or you are offline.
+      Tap it to see exactly what is waiting.
+   Honesty rule: a record only leaves the list after a backup that finished, and if
+   you made a change WHILE a backup was running, that change stays on the list. ══ */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;   /* phone/iPad only */
+var COLS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','payments','appointments','reports','changeOrders','punchlist','walkthroughs','documents','estimates','timeEntries','contacts','permits','shopping'];
+var KIND = { jobs:['job','jobs'], rooms:['room','rooms'], tasks:['task','tasks'], photos:['photo','photos'], notes:['note','notes'], invoices:['invoice','invoices'], expenses:['expense','expenses'], contractors:['contractor','contractors'], payments:['payment','payments'], appointments:['appointment','appointments'], reports:['report','reports'], changeOrders:['change order','change orders'], punchlist:['punch item','punch items'], walkthroughs:['walkthrough','walkthroughs'], documents:['document','documents'], estimates:['estimate','estimates'], timeEntries:['time entry','time entries'], contacts:['contact','contacts'], permits:['permit','permits'], shopping:['material','materials'] };
+var KEY = 'bp_pend_base';
+var BASE = null;            /* null = never backed up on this device yet, so "waiting" is unknown */
+var savedDuring = false, failStreak = 0, lastKick = 0, startedAt = Date.now(), firstKickDone = false, sheetOpen = false;
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+/* ── fingerprints ── */
+function hstr(s){ var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+function sig(rec){
+  try { return hstr(JSON.stringify(rec, function(k, v){ return (typeof v === 'string' && v.length > 300) ? (v.length + ':' + v.slice(0, 40) + v.slice(-40)) : v; })); }
+  catch(e){ return 'x'; }
+}
+function snapshot(){
+  var out = {};
+  COLS.forEach(function(c){
+    var m = {}, arr = (typeof DB !== 'undefined' && DB && DB[c]) || [];
+    for (var i = 0; i < arr.length; i++) { var r = arr[i]; if (r && r.id != null) m[String(r.id)] = sig(r); }
+    out[c] = m;
+  });
+  return out;
+}
+function loadBase(){ try { var s = localStorage.getItem(KEY); BASE = s ? JSON.parse(s) : null; } catch(e){ BASE = null; } }
+function saveBase(){ try { localStorage.setItem(KEY, JSON.stringify(BASE)); } catch(e){} }
+function rebase(snap){ BASE = snap; saveBase(); }
+
+/* ── what is waiting ── */
+function diff(){
+  var snap = snapshot(), items = [];
+  if (!BASE) return { unknown: true, items: items, total: 0, snap: snap };
+  COLS.forEach(function(c){
+    var cur = snap[c] || {}, b = BASE[c] || {};
+    Object.keys(cur).forEach(function(id){ if (!(id in b)) items.push({ c: c, id: id, a: 'new' }); else if (b[id] !== cur[id]) items.push({ c: c, id: id, a: 'edit' }); });
+    Object.keys(b).forEach(function(id){ if (!(id in cur)) items.push({ c: c, id: id, a: 'deleted' }); });
+  });
+  return { unknown: false, items: items, total: items.length, snap: snap };
+}
+function jobName(id){ var j = (DB.jobs || []).find(function(x){ return x && x.id === id; }); return j ? j.name : ''; }
+function labelOf(it){
+  if (it.a === 'deleted') return 'Removed ' + KIND[it.c][0];
+  var r = (DB[it.c] || []).find(function(x){ return x && String(x.id) === it.id; }) || {};
+  var t = r.name || r.title || r.text || r.desc || r.description || r.item || r.vendor || r.caption || r.note || r.type || '';
+  if (!t && it.c === 'photos') t = 'Photo';
+  t = String(t).replace(/\s+/g, ' ').trim();
+  if (t.length > 44) t = t.slice(0, 43) + '…';
+  var jn = it.c === 'jobs' ? '' : jobName(r.jobId);
+  return (t || KIND[it.c][0]) + (jn ? ' · ' + jn : '');
+}
+function groupLine(items){
+  var n = {}; items.forEach(function(i){ n[i.c] = (n[i.c] || 0) + 1; });
+  return COLS.filter(function(c){ return n[c]; }).map(function(c){ return n[c] + ' ' + KIND[c][n[c] === 1 ? 0 : 1]; }).join(' · ');
+}
+function online(){ return !(typeof navigator !== 'undefined' && navigator.onLine === false); }
+function haveToken(){ try { return !!_syncToken; } catch(e){ return false; } }
+function ckOnly(){ try { return !haveToken() && localStorage.getItem('bp_ck_on') === '1' && typeof window.bpICloudSync === 'function'; } catch(e){ return false; } }
+function canSync(){ return haveToken() || ckOnly(); }
+
+/* ── chip + sheet ── */
+var st = document.createElement('style');
+st.textContent = '#bp-q-chip{position:fixed;left:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);z-index:99990;display:none;align-items:center;gap:6px;max-width:calc(100vw - 24px);padding:9px 14px;border-radius:99px;font:800 14px -apple-system,system-ui,sans-serif;white-space:nowrap;color:#fff;border:0;box-shadow:0 3px 14px rgba(0,0,0,.35);cursor:pointer}'
+  + '#bp-q-chip.on{display:flex}'
+  + '#bp-q-wrap{position:fixed;inset:0;z-index:99995;display:none;background:rgba(0,0,0,.55);align-items:flex-end;justify-content:center}'
+  + '#bp-q-wrap.open{display:flex}'
+  + '#bp-q-sheet{background:var(--card,#1c1c1e);color:var(--text,#fff);width:100%;max-width:520px;max-height:82vh;overflow:auto;border-radius:20px 20px 0 0;padding:18px 16px calc(env(safe-area-inset-bottom,0px) + 18px)}'
+  + '#bp-q-sheet .qr{display:flex;gap:8px;padding:9px 0;border-top:1px solid var(--border,#38383a);font-size:15px;font-weight:600}'
+  + '#bp-q-sheet .qr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}'
+  + '#bp-q-sheet .qa{flex:none;font-size:11.5px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border-radius:7px;background:var(--card2,#2c2c2e);color:var(--muted,#98989d)}';
+document.head.appendChild(st);
+var chip = document.createElement('button'); chip.id = 'bp-q-chip'; chip.type = 'button';
+chip.addEventListener('click', function(){ openSheet(); });
+document.body.appendChild(chip);
+var wrap = document.createElement('div'); wrap.id = 'bp-q-wrap';
+wrap.innerHTML = '<div id="bp-q-sheet"></div>';
+wrap.addEventListener('click', function(e){ if (e.target === wrap) closeSheet(); });
+document.body.appendChild(wrap);
+
+function state(){
+  var d = diff(), syncing = false; try { syncing = !!_isSyncing; } catch(e){}
+  var err = ''; try { err = _lastSyncError || ''; } catch(e){}
+  return { d: d, syncing: syncing, err: err, on: online() };
+}
+function render(){
+  if (!canSync()) { chip.classList.remove('on'); return; }
+  var s = state(), n = s.d.total, txt = '', bg = '';
+  if (!s.on) { txt = n ? '📴 Offline · ' + n + ' waiting' : '📴 Offline · saved on this device'; bg = '#FF9F0A'; }
+  else if (s.syncing && n) { txt = '↻ Syncing ' + n + '…'; bg = '#0A84FF'; }
+  else if (n && s.err) { txt = '⚠️ ' + n + ' waiting · sync failed'; bg = '#FF453A'; }
+  else if (n) { txt = '⏳ ' + n + ' waiting to sync'; bg = '#0A84FF'; }
+  else if (s.err && !s.d.unknown) { txt = '⚠️ Sync failed'; bg = '#FF453A'; }
+  if (!txt) { chip.classList.remove('on'); } else { chip.textContent = txt; chip.style.background = bg; chip.classList.add('on'); }
+  if (sheetOpen) renderSheet();
+}
+function renderSheet(){
+  var s = state(), d = s.d, el = document.getElementById('bp-q-sheet'); if (!el) return;
+  var last = ''; try { last = _lastSync ? new Date(_lastSync).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : 'never'; } catch(e){}
+  var head = d.unknown ? 'Not backed up yet' : d.total ? (d.total + ' waiting to sync') : 'Everything is synced';
+  var sub = !s.on ? 'No signal. Everything is saved on this phone and uploads by itself when service returns.'
+    : d.unknown ? 'This phone has not finished a backup yet. It will start one now.'
+    : s.err ? 'The last attempt failed. It keeps retrying. ' + E(s.err.slice(0, 160))
+    : d.total ? 'Saved on this phone. Uploads automatically.' : 'Nothing is waiting.';
+  var rows = d.items.slice(0, 40).map(function(it){
+    return '<div class="qr"><span class="qa">' + (it.a === 'new' ? 'New' : it.a === 'edit' ? 'Edited' : 'Removed') + '</span><span style="flex:1">' + E(labelOf(it)) + '</span></div>';
+  }).join('') + (d.items.length > 40 ? '<div class="qr"><span style="color:var(--muted,#98989d)">+ ' + (d.items.length - 40) + ' more</span></div>' : '');
+  el.innerHTML = '<div style="font-size:21px;font-weight:900">' + head + '</div>'
+    + '<div style="font-size:14px;color:var(--muted,#98989d);margin:4px 0 10px;line-height:1.35">' + sub + '</div>'
+    + (d.total ? '<div style="font-size:14px;font-weight:800;margin-bottom:8px">' + E(groupLine(d.items)) + '</div>' + rows : '')
+    + '<div style="font-size:12.5px;color:var(--muted,#98989d);margin:12px 0">Last backup: ' + E(last) + '</div>'
+    + '<div style="display:flex;gap:10px"><button type="button" id="bp-q-now" style="flex:1;padding:14px;border-radius:12px;border:0;background:#0A84FF;color:#fff;font-size:16px;font-weight:800">' + (s.syncing ? 'Syncing…' : 'Sync now') + '</button>'
+    + '<button type="button" id="bp-q-close" style="padding:14px 20px;border-radius:12px;border:0;background:var(--card2,#2c2c2e);color:var(--text,#fff);font-size:16px;font-weight:800">Close</button></div>';
+  document.getElementById('bp-q-close').onclick = closeSheet;
+  document.getElementById('bp-q-now').onclick = function(){ failStreak = 0; kick(true); };
+}
+function openSheet(){ sheetOpen = true; wrap.classList.add('open'); renderSheet(); }
+function closeSheet(){ sheetOpen = false; wrap.classList.remove('open'); }
+window.bpQueueOpen = openSheet;
+window.bpPending = function(){ var d = diff(); return { unknown: d.unknown, total: d.total, items: d.items.map(function(i){ return { col: i.c, id: i.id, action: i.a, label: labelOf(i) }; }) }; };
+window.bpQueueRender = render;
+
+/* ── retry ── */
+function kick(force){
+  if (!haveToken() && !ckOnly()) return;
+  if (!online()) { if (force && typeof toast === 'function') toast('📴 No signal. Saved on this phone, it uploads by itself when service returns.'); render(); return; }
+  var busy = false; try { busy = !!_isSyncing; } catch(e){}
+  if (busy) { render(); return; }
+  var wait = 45000 * Math.min(Math.max(failStreak, 1), 6);
+  if (!force && Date.now() - lastKick < wait) return;
+  var d = diff(), err = ''; try { err = _lastSyncError || ''; } catch(e){}
+  if (!force && !d.unknown && !d.total && !err) return;
+  if (!force && d.unknown && firstKickDone && !err) return;
+  lastKick = Date.now(); firstKickDone = true;
+  try {
+    var p = haveToken() ? window.doPush() : window.bpICloudSync('both');
+    if (p && p.then) p.then(render, render);
+  } catch(e){}
+  render();
+}
+
+/* ── hooks: a push only clears the list when it really finished ── */
+function hook(){
+  if (typeof window.doPush === 'function' && !window.doPush.__q368) {
+    var origPush = window.doPush;
+    var wp = async function(){
+      /* no signal: a timer that was already waiting must not fire a doomed upload (it only
+         produced a red "failed" dot). A deliberate tap still gets a plain-words answer. */
+      if (!online()) {
+        try { if (navigator.userActivation && navigator.userActivation.isActive && typeof toast === 'function') toast('📴 No signal. Everything is saved on this phone and uploads by itself when service returns.'); } catch(e){}
+        render(); return;
+      }
+      var before = snapshot(), prevSync = _lastSync; savedDuring = false;
+      var r = await origPush.apply(this, arguments);
+      try {
+        var ok = (_lastSync !== prevSync) && !_lastSyncError;
+        if (ok) { failStreak = 0; if (savedDuring) { rebase(before); setTimeout(function(){ kick(true); }, 1200); } else rebase(snapshot()); }
+        else if (_lastSyncError) failStreak++;
+      } catch(e){}
+      render(); return r;
+    };
+    wp.__q368 = 1; window.doPush = wp; try { doPush = wp; } catch(e){}
+  }
+  if (typeof window.doPull === 'function' && !window.doPull.__q368) {
+    var origPull = window.doPull;
+    var wl = async function(){
+      var before = snapshot(), prevSync = _lastSync; savedDuring = false;
+      var r = await origPull.apply(this, arguments);
+      try {
+        if (_lastSync !== prevSync && !_lastSyncError && !savedDuring && BASE) {
+          /* whatever the pull merged in came FROM the cloud, so it is not waiting to go there */
+          var after = snapshot();
+          COLS.forEach(function(c){
+            var b = before[c] || {}, a = after[c] || {}; BASE[c] = BASE[c] || {};
+            Object.keys(a).forEach(function(id){ if (b[id] !== a[id]) BASE[c][id] = a[id]; });
+            Object.keys(b).forEach(function(id){ if (!(id in a)) delete BASE[c][id]; });
+          });
+          saveBase();
+        }
+      } catch(e){}
+      render(); return r;
+    };
+    wl.__q368 = 1; window.doPull = wl; try { doPull = wl; } catch(e){}
+  }
+  if (typeof window.bpICloudSync === 'function' && !window.bpICloudSync.__q368) {
+    var origCk = window.bpICloudSync;
+    var wc = async function(){
+      var before = snapshot();
+      var r = await origCk.apply(this, arguments);
+      try { var ce = window.bpCk && bpCk.state && bpCk.state.lastErr; if (!haveToken() && !ce) rebase(before); } catch(e){}
+      render(); return r;
+    };
+    wc.__q368 = 1; window.bpICloudSync = wc;
+  }
+  if (typeof window.scheduleAutoPush === 'function' && !window.scheduleAutoPush.__q368) {
+    var origSched = window.scheduleAutoPush;
+    var ws = function(){
+      try { if (_isSyncing && !_suppressNextAutoPush) savedDuring = true; } catch(e){}
+      if (!online()) { try { _suppressNextAutoPush = false; } catch(e){} clearTimeout(ws._t); ws._t = setTimeout(render, 900); return; }
+      var r = origSched.apply(this, arguments);
+      clearTimeout(ws._t); ws._t = setTimeout(render, 900);
+      return r;
+    };
+    ws.__q368 = 1; window.scheduleAutoPush = ws; try { scheduleAutoPush = ws; } catch(e){}
+  }
+}
+
+loadBase(); hook();
+window.addEventListener('online', function(){ failStreak = 0; render(); setTimeout(function(){ kick(true); }, 1500); });
+window.addEventListener('offline', function(){ render(); });
+document.addEventListener('visibilitychange', function(){ if (!document.hidden) { render(); setTimeout(function(){ kick(false); }, 2000); } });
+setInterval(function(){ render(); kick(false); }, 15000);
+setTimeout(function(){ render(); kick(false); }, 4000);
+console.log('[BP] v3.68 offline queue ready');
+})();
+</script>
+<script>
+/* ══ v3.69 — TEXT & BUTTON SIZE: 4 steps -> a smooth 85–180% range, in "glass" ═════
+   Stan (Oct 8, 2026): "The font size option is far too limited. Need to expand the
+   size options. Use Apple glass technology."
+   · Any size from 85% up to 180% on a phone (250% on an iPad, where the old iPad
+     boost still applies), in 5% steps: a slider, big A− / A+ buttons, and six
+     one-tap presets (Normal 100, Large 115, XL 130, XXL 145, Jumbo 160, Max 180).
+     Old saved sizes (100/115/130/145) land exactly on the matching preset.
+   · Drag the slider and the whole app resizes live behind it. The control itself
+     is counter-zoomed so it never grows or shrinks under your thumb.
+   · "Glass" = what a web page can honestly do of Apple's Liquid Glass look: a
+     translucent frosted material (backdrop blur + colour boost), a bright top
+     edge highlight and soft depth shadow. It does NOT do true lens refraction;
+     that needs a native app. Falls back to a solid panel where the phone has
+     "Reduce Transparency" on or cannot blur.
+   · Every Text size entry point (menu, header icon, Sync screen) uses it. ══════ */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;   /* phone/iPad only */
+var PRESETS = [[100,'Normal'],[115,'Large'],[130,'XL'],[145,'XXL'],[160,'Jumbo'],[180,'Max']];
+var MIN = 85, STEP = 5;
+function maxPct(){ try { return bpZoomBoost() > 1 ? 250 : 180; } catch(e){ return 180; } }
+function clampPct(p){ p = Math.round((+p || 115) / STEP) * STEP; return Math.max(MIN, Math.min(maxPct(), p)); }
+function curPct(){ var z = 1.15; try { z = bpGetZoom(); } catch(e){} return Math.round(z * 100); }
+function nameOf(p){ for (var i = 0; i < PRESETS.length; i++) if (Math.abs(PRESETS[i][0] - p) < 2.5) return PRESETS[i][1]; return 'Custom'; }
+window.bpZoomName = function(z){ var p = Math.round(z * 100); return nameOf(p) + ' · ' + p + '%'; };
+
+/* ── CSS ── */
+var st = document.createElement('style'); st.id = 'bp-v369-css';
+st.textContent = ''
++ '.bp-g-stage{position:relative;border-radius:30px;padding:14px;background:radial-gradient(120% 90% at 8% 0%,rgba(10,132,255,.45),transparent 58%),radial-gradient(110% 90% at 100% 100%,rgba(191,90,242,.36),transparent 55%),radial-gradient(90% 70% at 60% 40%,rgba(48,209,88,.14),transparent 60%)}'
++ '.bp-glass{position:relative;border-radius:26px;color:#fff;background:linear-gradient(145deg,rgba(255,255,255,.28),rgba(255,255,255,.08) 55%,rgba(255,255,255,.16));-webkit-backdrop-filter:blur(26px) saturate(185%) brightness(1.06);backdrop-filter:blur(26px) saturate(185%) brightness(1.06);border:1px solid rgba(255,255,255,.32);box-shadow:inset 0 1.5px 0 rgba(255,255,255,.6),inset 0 -1px 0 rgba(255,255,255,.12),inset 0 0 24px rgba(255,255,255,.07),0 18px 42px rgba(0,0,0,.4)}'
++ '.bp-glass::before{content:"";position:absolute;left:14px;right:14px;top:2px;height:38%;border-radius:22px 22px 60% 60%/22px 22px 18px 18px;background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,0));pointer-events:none}'
++ '[data-theme="light"] .bp-glass{color:#0b1b33;background:linear-gradient(145deg,rgba(255,255,255,.78),rgba(255,255,255,.4) 55%,rgba(255,255,255,.62));border-color:rgba(255,255,255,.9);box-shadow:inset 0 1.5px 0 #fff,inset 0 -1px 0 rgba(255,255,255,.5),0 14px 34px rgba(20,60,120,.22)}'
++ '.bp-gc{padding:16px 16px 14px;position:relative}'
++ '.bp-g-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px}'
++ '.bp-g-title{font:800 15px -apple-system,system-ui,sans-serif;letter-spacing:.01em;white-space:nowrap}'
++ '.bp-g-val{font:900 34px -apple-system,system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}'
++ '.bp-g-val small{font-size:17px;font-weight:800;opacity:.75;margin-left:1px}'
++ '.bp-g-row{display:flex;align-items:center;gap:12px}'
++ '.bp-gb{flex:none;width:54px;height:54px;border-radius:50%;border:1px solid rgba(255,255,255,.4);color:inherit;font:900 22px -apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;cursor:pointer;background:linear-gradient(145deg,rgba(255,255,255,.34),rgba(255,255,255,.1));-webkit-backdrop-filter:blur(14px) saturate(170%);backdrop-filter:blur(14px) saturate(170%);box-shadow:inset 0 1.5px 0 rgba(255,255,255,.65),0 6px 14px rgba(0,0,0,.28);-webkit-tap-highlight-color:transparent;padding:0}'
++ '.bp-gb small{font-size:15px;margin-left:1px;font-weight:900}'
++ '.bp-gb:active{transform:scale(.93)}'
++ '.bp-gr{flex:1;min-width:0;height:54px;margin:0;background:transparent;-webkit-appearance:none;appearance:none;touch-action:pan-y}'
++ '.bp-gr::-webkit-slider-runnable-track{height:12px;border-radius:99px;background:linear-gradient(90deg,rgba(10,132,255,.9) 0 var(--p,50%),rgba(255,255,255,.28) var(--p,50%) 100%);box-shadow:inset 0 1px 2px rgba(0,0,0,.35),0 1px 0 rgba(255,255,255,.35)}'
++ '.bp-gr::-moz-range-track{height:12px;border-radius:99px;background:rgba(255,255,255,.28)}'
++ '.bp-gr::-moz-range-progress{height:12px;border-radius:99px;background:rgba(10,132,255,.9)}'
++ '.bp-gr::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:46px;height:46px;margin-top:-17px;border-radius:50%;border:1px solid rgba(255,255,255,.85);background:radial-gradient(circle at 35% 28%,rgba(255,255,255,.95),rgba(255,255,255,.55) 55%,rgba(255,255,255,.35));-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:inset 0 2px 3px rgba(255,255,255,.9),0 5px 14px rgba(0,0,0,.4)}'
++ '.bp-gr::-moz-range-thumb{width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.85);background:rgba(255,255,255,.8);box-shadow:0 5px 14px rgba(0,0,0,.4)}'
++ '.bp-g-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}'
++ '.bp-gp{flex:1 1 30%;min-width:0;padding:12px 6px;border-radius:99px;border:1px solid rgba(255,255,255,.34);color:inherit;font:800 15px -apple-system,system-ui,sans-serif;white-space:nowrap;cursor:pointer;background:linear-gradient(145deg,rgba(255,255,255,.26),rgba(255,255,255,.07));-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:inset 0 1px 0 rgba(255,255,255,.55);-webkit-tap-highlight-color:transparent}'
++ '.bp-gp small{display:block;font-size:11.5px;font-weight:700;opacity:.7;margin-top:1px}'
++ '.bp-gp.on{background:linear-gradient(145deg,rgba(10,132,255,.95),rgba(64,156,255,.7));border-color:rgba(255,255,255,.7);color:#fff;box-shadow:inset 0 1.5px 0 rgba(255,255,255,.7),0 6px 16px rgba(10,132,255,.5)}'
++ '.bp-g-note{font:600 12.5px/1.4 -apple-system,system-ui,sans-serif;margin-top:12px;opacity:.82;min-height:1px}'
++ '#bp-gs-wrap{position:fixed;inset:0;z-index:99996;display:none;background:rgba(0,0,0,.14)}'
++ '#bp-gs-wrap.open{display:block}'
++ '#bp-gs{position:fixed;left:10px;right:10px;margin:0 auto;max-width:480px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:99997}'
++ '#bp-gs .bp-g-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 10px}'
++ '#bp-gs .bp-g-done{padding:11px 22px;border-radius:99px;border:1px solid rgba(255,255,255,.7);background:linear-gradient(145deg,rgba(10,132,255,.95),rgba(64,156,255,.7));color:#fff;font:800 16px -apple-system,system-ui,sans-serif;box-shadow:inset 0 1.5px 0 rgba(255,255,255,.7),0 6px 16px rgba(10,132,255,.45);cursor:pointer}'
++ '@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.bp-glass{background:rgba(44,44,48,.96)}[data-theme="light"] .bp-glass{background:rgba(255,255,255,.97)}}'
++ '@media (prefers-reduced-transparency:reduce){.bp-glass,.bp-gb,.bp-gp{-webkit-backdrop-filter:none;backdrop-filter:none}.bp-glass{background:rgba(44,44,48,.97)}[data-theme="light"] .bp-glass{background:rgba(255,255,255,.98)}}';
+document.head.appendChild(st);
+
+/* ── the control ── */
+function pillsHtml(){ return PRESETS.map(function(p){ return '<button type="button" class="bp-gp" data-pct="' + p[0] + '">' + p[1] + '<small>' + p[0] + '%</small></button>'; }).join(''); }
+function controlHtml(){
+  return '<div class="bp-glass bp-gc" role="group" aria-label="Text and button size">'
+    + '<div class="bp-g-top"><div class="bp-g-title">Text &amp; button size</div><div class="bp-g-val" aria-live="polite"><span data-gv>115</span><small>%</small></div></div>'
+    + '<div class="bp-g-row"><button type="button" class="bp-gb" data-gd="-1" aria-label="Smaller">A<small>−</small></button>'
+    + '<input class="bp-gr" type="range" min="' + MIN + '" max="' + maxPct() + '" step="' + STEP + '" aria-label="Text and button size">'
+    + '<button type="button" class="bp-gb" data-gd="1" aria-label="Bigger">A<small>+</small></button></div>'
+    + '<div class="bp-g-pills">' + pillsHtml() + '</div>'
+    + '<div class="bp-g-note" data-gn></div></div>';
+}
+function syncControls(livePct){
+  var p = livePct != null ? livePct : curPct();
+  document.querySelectorAll('.bp-gc').forEach(function(c){
+    var r = c.querySelector('.bp-gr'), v = c.querySelector('[data-gv]'), n = c.querySelector('[data-gn]');
+    if (r) { r.max = maxPct(); r.value = p; r.style.setProperty('--p', Math.max(0, Math.min(100, (p - MIN) / (maxPct() - MIN) * 100)) + '%'); }
+    if (v) v.textContent = p;
+    c.querySelectorAll('.bp-gp').forEach(function(b){ b.classList.toggle('on', Math.abs(+b.getAttribute('data-pct') - p) < 2.5); });
+    if (n) n.textContent = p > 145 ? 'Very large: some long names and dollar amounts may get cut off. Normal to XXL fits every screen.' : p < 100 ? 'Smaller than Normal: more on screen, harder to read in sunlight.' : '';
+  });
+  try { if (typeof bpDrawerRefresh === 'function') bpDrawerRefresh(); } catch(e){}
+}
+function build(host){
+  if (!host || host.getAttribute('data-gbuilt')) return;
+  host.setAttribute('data-gbuilt', '1');
+  host.innerHTML = '<div class="bp-g-stage">' + controlHtml() + '</div>';
+  host.removeAttribute('style');
+  host.setAttribute('data-bp-nozoom', '1');
+}
+function unzoom(){
+  var eff = 1; try { eff = parseFloat(document.body.style.zoom) || 1; } catch(e){}
+  document.querySelectorAll('[data-bp-nozoom]').forEach(function(e){ e.style.zoom = String(1 / eff); });
+}
+
+/* wrap the single funnel so the control stays one fixed size while the app resizes behind it */
+if (typeof window.bpSetBodyZoom === 'function' && !window.bpSetBodyZoom.__g369) {
+  var origBody = window.bpSetBodyZoom;
+  var wb = function(){ var r = origBody.apply(this, arguments); try { unzoom(); } catch(e){} return r; };
+  wb.__g369 = 1; window.bpSetBodyZoom = wb; try { bpSetBodyZoom = wb; } catch(e){}
+}
+if (typeof window.bpSetZoom === 'function' && !window.bpSetZoom.__g369) {
+  var origSet = window.bpSetZoom;
+  var ws = function(z){ var p = clampPct(Math.round((+z || 1.15) * 100)); var r = origSet.call(this, p / 100); syncControls(p); return r; };
+  ws.__g369 = 1; window.bpSetZoom = ws; try { bpSetZoom = ws; } catch(e){}
+}
+window.bpRenderZoomButtons = function(){ build(document.getElementById('zoom-btn-row')); unzoom(); syncControls(); };
+try { bpRenderZoomButtons = window.bpRenderZoomButtons; } catch(e){}
+
+/* ── events (delegated, so the Sync screen copy and the sheet copy both work) ── */
+document.addEventListener('input', function(e){
+  var r = e.target; if (!r || !r.classList || !r.classList.contains('bp-gr')) return;
+  var p = clampPct(r.value);
+  try { window.bpSetBodyZoom(p / 100); } catch(err){}   /* live preview, saved on release */
+  syncControls(p);
+});
+document.addEventListener('change', function(e){
+  var r = e.target; if (!r || !r.classList || !r.classList.contains('bp-gr')) return;
+  window.bpSetZoom(clampPct(r.value) / 100);
+});
+document.addEventListener('click', function(e){
+  var t = e.target && e.target.closest ? e.target.closest('.bp-gp,.bp-gb') : null; if (!t) return;
+  if (t.classList.contains('bp-gp')) window.bpSetZoom(+t.getAttribute('data-pct') / 100);
+  else window.bpSetZoom((curPct() + (+t.getAttribute('data-gd')) * STEP) / 100);
+});
+
+/* ── the sheet (menu "Text size", header Aa icon) ── */
+var wrap = document.createElement('div'); wrap.id = 'bp-gs-wrap';
+wrap.innerHTML = '<div id="bp-gs" data-bp-nozoom="1"><div class="bp-g-stage" style="padding:12px"><div class="bp-g-head"><div class="bp-g-title" style="font-size:13px;opacity:.95;color:var(--text)">Drag and watch the app change</div><button type="button" class="bp-g-done" id="bp-gs-done">Done</button></div>' + controlHtml() + '</div></div>';
+document.body.appendChild(wrap);
+wrap.addEventListener('click', function(e){ if (e.target === wrap) closeGlass(); });
+document.getElementById('bp-gs-done').addEventListener('click', closeGlass);
+function openGlass(){ try { if (typeof closeNavDrawer === 'function') closeNavDrawer(); } catch(e){} wrap.classList.add('open'); unzoom(); syncControls(); }
+function closeGlass(){ wrap.classList.remove('open'); }
+window.bpGlassOpen = openGlass; window.bpGlassClose = closeGlass;
+window.cycleFontSize = openGlass; try { cycleFontSize = openGlass; } catch(e){}
+window.bpDrawerText = openGlass; try { bpDrawerText = openGlass; } catch(e){}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeGlass(); });
+
+/* menu subtitle shows the real value */
+if (typeof window.bpDrawerRefresh === 'function' && !window.bpDrawerRefresh.__g369) {
+  var origDr = window.bpDrawerRefresh;
+  var wd = function(){ var r = origDr.apply(this, arguments); try { var a = document.getElementById('bp-d-text-sub'); if (a) a.textContent = window.bpZoomName(bpGetZoom()) + ' · tap to change'; } catch(e){} return r; };
+  wd.__g369 = 1; window.bpDrawerRefresh = wd; try { bpDrawerRefresh = wd; } catch(e){}
+}
+
+/* a size saved earlier that is too big for this screen is pulled back inside the limit */
+try { var cp = curPct(), ok = clampPct(cp); if (ok !== cp && Math.abs(ok - cp) > 2) { localStorage.setItem('bp_zoom', String(ok / 100)); bpApplyZoom(); } } catch(e){}
+build(document.getElementById('zoom-btn-row')); unzoom(); syncControls();
+console.log('[BP] v3.69 glass size control ready');
+})();
+</script>
+<script>
+/* ══ v3.70 — BIG TEXT, NO CLIPPED DOLLAR AMOUNTS ═════════════════════════════════
+   Stan (Oct 8, 2026): "Fix the clipped dollar amounts and big sizes."
+   Cause: many money figures sit in fixed-width tiles or one-line rows that cannot
+   wrap. At 145%+ (or with a six/seven-figure job) the number ran past its box and
+   was cut ($48,000 showed as $48,00).
+   1. Job summary rows (Received / Balance owed): the label and amount now wrap
+      onto two lines instead of pushing the amount off screen, and at XXL and up
+      they stack one per row.
+   2. A fit rule for every dollar amount in the app: if a figure does not fit its
+      box it shrinks, just enough, down to 55% of its size, and grows back to full
+      size when there is room (move the slider and it re-fits live). Names and
+      addresses are NOT touched: they keep ending in "…" by design. ═══════════════ */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;   /* phone/iPad only */
+var st = document.createElement('style'); st.id = 'bp-v370-css';
+st.textContent = '.bp-jc-lines{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}'
+  + '.bp-jc-line{flex-wrap:wrap;row-gap:0}'
+  + '.bp-jc-line > span{min-width:0}'
+  + '.bp-jc-line b{margin-left:auto;max-width:100%}'
+  + 'body[data-zoom="xxl"] .bp-jc-lines{grid-template-columns:minmax(0,1fr)!important}'
+  + '#bp-backup-nag > div{flex-wrap:wrap}'
+  + '#bp-backup-nag > div > div{flex:1 1 150px!important}'
+  + '.section-header{flex-wrap:wrap;row-gap:6px}'
+  + '.section-header button{white-space:nowrap}';
+document.head.appendChild(st);
+
+var MONEY = /^[\s\-−+(]*\$\s?[\d,]+(\.\d+)?[\s)]*$/;
+var FLOOR = 0.55, marked = [], timer = 0, lastRun = 0;
+function clipped(el){
+  if (el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX !== 'visible') return true;
+  var r = el.getBoundingClientRect(), vw = window.innerWidth;
+  if (r.right > vw + 1) return true;
+  var a = el.parentElement;
+  while (a && a !== document.body) {
+    var ac = getComputedStyle(a);
+    if (ac.overflowX !== 'visible') { var ar = a.getBoundingClientRect(); if (r.right > ar.right + 1 || r.left < ar.left - 1) return true; }
+    a = a.parentElement;
+  }
+  return false;
+}
+function fit(el){
+  if (!el.isConnected) return;
+  if (el.__bpBase == null) { el.__bpBase = parseFloat(getComputedStyle(el).fontSize) || 16; el.__bpOrig = el.style.fontSize; marked.push(el); }
+  var base = el.__bpBase, fs = base;
+  el.style.fontSize = el.__bpOrig;
+  if (!el.getBoundingClientRect().width) return;
+  var n = 0;
+  while (clipped(el) && fs > base * FLOOR && n < 16) { fs = Math.max(base * FLOOR, fs - Math.max(0.75, base * 0.05)); el.style.fontSize = fs + 'px'; n++; }
+}
+function scan(){
+  lastRun = Date.now(); timer = 0;
+  try {
+    marked = marked.filter(function(e){ return e.isConnected; });
+    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), n, seen = [];
+    while ((n = w.nextNode())) {
+      var t = n.nodeValue; if (!t || t.length > 24 || t.indexOf('$') < 0 || !MONEY.test(t)) continue;
+      var p = n.parentElement; if (!p || /^(SCRIPT|STYLE|TEXTAREA|INPUT|OPTION)$/.test(p.tagName)) continue;
+      if (p.closest('#bp-gs-wrap,#bp-q-wrap')) continue;
+      if (p.childNodes.length !== 1) continue;   /* only an element that holds just the amount */
+      seen.push(p);
+    }
+    seen.forEach(fit);
+    marked.forEach(function(e){ if (seen.indexOf(e) < 0) fit(e); });   /* re-fit earlier ones after a size change */
+  } catch(e){}
+}
+function soon(){ if (timer || document.hidden) return; timer = setTimeout(scan, Math.max(80, 350 - (Date.now() - lastRun))); }
+window.bpFitMoney = scan;
+try { new MutationObserver(soon).observe(document.body, { childList: true, subtree: true }); } catch(e){}
+if (typeof window.bpSetBodyZoom === 'function' && !window.bpSetBodyZoom.__f370) {
+  var ob = window.bpSetBodyZoom;
+  var wf = function(){ var r = ob.apply(this, arguments); try { requestAnimationFrame(function(){ requestAnimationFrame(soon); }); } catch(e){} return r; };
+  wf.__f370 = 1; window.bpSetBodyZoom = wf; try { bpSetBodyZoom = wf; } catch(e){}
+}
+window.addEventListener('resize', soon); window.addEventListener('orientationchange', function(){ setTimeout(soon, 300); });
+setTimeout(scan, 1200);
+console.log('[BP] v3.70 money fit ready');
 })();
 </script>
