@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.74';
+var APP_VERSION = '3.75';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -19008,5 +19008,144 @@ function scan(){ try { [].forEach.call(document.querySelectorAll('input[id$="-wi
 try { new MutationObserver(function(){ scan(); }).observe(document.body, { childList:true, subtree:true }); } catch(e){}
 scan();
 console.log('[BP] v3.72 sliders ready — room Width / Length / Height');
+})();
+</script>
+<script>
+/* ══ v3.75 — LEVELS & ROOMS WHEN YOU CREATE A JOB ═════════════════════════════════════════
+   Stan (Oct 8, 2026): "I like to create levels and rooms when I create a job."
+   New "Levels & Rooms" section on the New Job form (above Notes), both apps. Tabs for Basement,
+   Level 1…N (+ Level adds more), Roof and Outside; tap room chips for the active level, or type
+   your own. When you tap Create Job the job AND those rooms are made together, already on the
+   right levels and in the order you tapped them. The same room on a second level is named
+   "Bathroom – Level 2", same as the Add Locations picker. Leave it empty and nothing changes.
+   Wraps the existing save function, so nothing about how a job is saved is rewritten.
+   ══════════════════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (window.__bp375) return; window.__bp375 = 1;
+var DESK = !!document.getElementById('nj-name');
+var C = DESK ? {notes:'nj-notes', open:'openNewJob', save:'saveNewJob'} : {notes:'aj-notes', open:'openAddJob', save:'saveJob'};
+var notesEl = document.getElementById(C.notes);
+if (!notesEl || typeof window[C.save] !== 'function') return;
+var ROOF_RX = /\b(roof|gutter|downspout|leader|chimney|skylight|shingle)/i;
+var plan;
+function fresh(){ plan = { max: 3, active: 'Level 1', picks: {} }; }
+fresh();
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function levels(){ var o = ['Basement']; for (var i = 1; i <= plan.max; i++) o.push('Level ' + i); return o.concat(['Roof', 'Outside']); }
+function color(l){ return l === 'Basement' ? '#A2845E' : l === 'Roof' ? '#FF453A' : l === 'Outside' ? '#FF9F0A' : '#0A84FF'; }
+function presets(l){
+  var P = window.BP_SPACE_PRESETS || {Interior:[], Exterior:[]};
+  if (l === 'Roof') return (P.Exterior || []).filter(function(p){ return ROOF_RX.test(p.n); });
+  if (l === 'Outside') return (P.Exterior || []).filter(function(p){ return !ROOF_RX.test(p.n); });
+  return P.Interior || [];
+}
+function picksOf(l){ return plan.picks[l] || (plan.picks[l] = []); }
+function idx(l, n){ var a = picksOf(l), k = String(n).toLowerCase(); for (var i = 0; i < a.length; i++) if (a[i].n.toLowerCase() === k) return i; return -1; }
+function toggle(l, n, type){ var i = idx(l, n); if (i >= 0) picksOf(l).splice(i, 1); else picksOf(l).push({n: n, type: type}); }
+function total(){ var t = 0, ls = 0; levels().forEach(function(l){ var c = picksOf(l).length; t += c; if (c) ls++; }); return [t, ls]; }
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function rerenderAll(){
+  ['renderAll', 'renderDesktopJobs', 'renderDesktopRooms', 'renderDashboard'].forEach(function(n){ try { if (typeof window[n] === 'function') window[n](); } catch(e){} });
+}
+
+var host = document.createElement('div');
+host.id = 'bp-jobplan';
+var anchor = notesEl.closest('.field') || notesEl.parentNode;
+anchor.parentNode.insertBefore(host, anchor);
+
+var chipCss = 'padding:11px 14px;border-radius:99px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;min-height:44px;';
+function draw(){
+  var cv = '', old = host.querySelector('[data-jp-in]'); if (old) cv = old.value;
+  var act = plan.active, col = color(act), tabs = '', chips = '';
+  levels().forEach(function(l){
+    var on = l === act, c = color(l), n = picksOf(l).length;
+    tabs += '<button type="button" data-jp-tab="' + esc(l) + '" style="padding:10px 14px;border-radius:10px;border:2px solid ' + (on ? c : 'var(--border,#2a2a2a)') + ';'
+      + 'background:' + (on ? c + '26' : 'transparent') + ';color:' + (on ? c : 'var(--muted)') + ';font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;min-height:44px">'
+      + esc(l) + (n ? ' <span style="opacity:.9">· ' + n + '</span>' : '') + '</button>';
+  });
+  tabs += '<button type="button" data-jp-lvl="1" style="padding:10px 14px;border-radius:10px;border:2px dashed rgba(10,132,255,.5);background:transparent;color:#0A84FF;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;min-height:44px">+ Level</button>';
+  var ps = presets(act);
+  ps.forEach(function(p, i){
+    var on = idx(act, p.n) >= 0;
+    chips += '<button type="button" data-jp-pre="' + i + '" style="' + chipCss + 'border:1.5px solid ' + (on ? col : 'var(--border,#2a2a2a)') + ';background:' + (on ? col + '22' : 'transparent') + ';color:' + (on ? col : 'var(--muted)') + '">'
+      + (on ? '✓ ' : '+ ') + esc(p.n) + '</button>';
+  });
+  picksOf(act).forEach(function(p, i){
+    if (ps.some(function(x){ return x.n.toLowerCase() === p.n.toLowerCase(); })) return;
+    chips += '<button type="button" data-jp-cus="' + i + '" style="' + chipCss + 'border:1.5px solid ' + col + ';background:' + col + '22;color:' + col + '">✓ ' + esc(p.n) + '</button>';
+  });
+  var t = total();
+  host.innerHTML =
+    '<div style="margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--border)">'
+    + '<div style="font-size:13px;font-weight:800;letter-spacing:.03em">&#127959;&#65039; Levels &amp; Rooms</div>'
+    + '<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5">Optional. Pick a level, then tap its rooms. They are made with the job, in the order you tap.</div></div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">' + tabs + '</div>'
+    + '<div style="font-size:12px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:' + col + ';margin:2px 0 8px">' + esc(act) + '</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px">' + chips + '</div>'
+    + '<div style="display:flex;gap:8px;margin-top:12px"><input data-jp-in="1" type="text" placeholder="Type your own on ' + esc(act) + '…" spellcheck="true" autocapitalize="words" style="flex:1;min-width:0"/>'
+    + '<button type="button" data-jp-add="1" style="padding:0 18px;border-radius:12px;border:none;background:#0A84FF;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;min-height:44px">Add</button></div>'
+    + '<div style="font-size:12px;color:var(--muted);margin:10px 0 14px">' + (t[0] ? ('Will create <b>' + t[0] + '</b> room' + (t[0] === 1 ? '' : 's') + ' on <b>' + t[1] + '</b> level' + (t[1] === 1 ? '' : 's') + '.') : 'Nothing picked yet. You can always add rooms later.') + '</div>';
+  var inp = host.querySelector('[data-jp-in]'); if (inp && cv) inp.value = cv;
+}
+function addCustom(){
+  var inp = host.querySelector('[data-jp-in]'); if (!inp) return;
+  var v = inp.value.trim(); if (!v) return;
+  var l = plan.active;
+  if (idx(l, v) < 0) picksOf(l).push({n: v.replace(/\b[a-z]/g, function(c){ return c.toUpperCase(); }), type: l === 'Roof' ? 'Roof' : l === 'Outside' ? 'Exterior' : 'Other'});
+  inp.value = ''; draw();
+}
+host.addEventListener('click', function(e){
+  var b = e.target.closest && e.target.closest('button'); if (!b || !host.contains(b)) return;
+  e.preventDefault();
+  var l = plan.active;
+  if (b.hasAttribute('data-jp-tab')) { plan.active = b.getAttribute('data-jp-tab'); draw(); }
+  else if (b.hasAttribute('data-jp-lvl')) { plan.max++; plan.active = 'Level ' + plan.max; draw(); }
+  else if (b.hasAttribute('data-jp-pre')) { var p = presets(l)[+b.getAttribute('data-jp-pre')]; if (p) { toggle(l, p.n, p.type); draw(); } }
+  else if (b.hasAttribute('data-jp-cus')) { picksOf(l).splice(+b.getAttribute('data-jp-cus'), 1); draw(); }
+  else if (b.hasAttribute('data-jp-add')) addCustom();
+});
+host.addEventListener('keydown', function(e){ if (e.key === 'Enter' && e.target && e.target.hasAttribute && e.target.hasAttribute('data-jp-in')) { e.preventDefault(); addCustom(); } });
+
+function build(job){
+  var ls = levels().filter(function(l){ return picksOf(l).length; });
+  if (!ls.length) return 0;
+  DB.rooms = DB.rooms || [];
+  var ts = now(), made = 0, maxLvl = 0, used = {};
+  DB.rooms.forEach(function(r){ if (r.jobId === job.id) used[String(r.name).toLowerCase()] = 1; });
+  ls.forEach(function(l){
+    picksOf(l).forEach(function(p, k){
+      var name = used[p.n.toLowerCase()] ? (p.n + ' – ' + l) : p.n;
+      used[name.toLowerCase()] = 1;
+      DB.rooms.push({ id: uid(), name: name, baseName: p.n, type: p.type || 'Other', level: l,
+        space: (l === 'Outside' || l === 'Roof') ? 'Exterior' : 'Interior', jobId: job.id, notes: '', created: ts, updatedAt: ts, order: k });
+      made++;
+    });
+    var m = /^Level (\d+)$/.exec(l); if (m) maxLvl = Math.max(maxLvl, +m[1]);
+  });
+  var want = Math.max(maxLvl, plan.max);
+  if (want > 3) job.levelsMax = want;
+  return made;
+}
+
+var origSave = window[C.save];
+window[C.save] = function(){
+  var before = (DB.jobs || []).length;
+  var r = origSave.apply(this, arguments);
+  try {
+    if ((DB.jobs || []).length > before) {
+      var job = DB.jobs[DB.jobs.length - 1], n = build(job);
+      if (n) { persist(); rerenderAll(); try { toast('✅ Job created with ' + n + ' room' + (n === 1 ? '' : 's')); } catch(e){} }
+      fresh(); draw();
+    }
+  } catch(e){ console.error('[BP] v3.75', e); }
+  return r;
+};
+if (typeof window[C.open] === 'function') {
+  var origOpen = window[C.open];
+  window[C.open] = function(){ fresh(); draw(); return origOpen.apply(this, arguments); };
+}
+draw();
+console.log('[BP] v3.75 levels & rooms on New Job ready');
 })();
 </script>
