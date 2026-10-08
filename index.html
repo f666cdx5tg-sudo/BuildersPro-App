@@ -1347,15 +1347,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       </div>
       <div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px">
         <div class="field-label" style="margin-bottom:6px">Text &amp; Button Size</div>
-        <div style="font-size:11px;color:var(--faint);margin-bottom:10px;line-height:1.5">Bigger text AND bigger buttons everywhere — for direct sunlight and work gloves. This setting is per-device. On an iPad, each size goes further still, since the same text reads smaller on a bigger screen viewed from farther away.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="zoom-btn-row">
-          <button class="btn btn-ghost" data-z="1" onclick="bpSetZoom(1)">Normal</button>
-          <button class="btn btn-ghost" data-z="1.15" onclick="bpSetZoom(1.15)">Large</button>
-          <button class="btn btn-ghost" data-z="1.3" onclick="bpSetZoom(1.3)">XL 🧤</button>
-          <button class="btn btn-ghost" data-z="1.45" onclick="bpSetZoom(1.45)">XXL ☀️</button>
-        </div>
+        <div style="font-size:11px;color:var(--faint);margin-bottom:10px;line-height:1.5">Bigger text AND bigger buttons everywhere, from 85% to 180% in small steps. This setting is per-device. On an iPad each size goes further still, since the same text reads smaller on a bigger screen viewed from farther away.</div>
+        <div id="zoom-btn-row"></div>
       </div>
-      <div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px">
+<div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px">
         <div class="field" style="margin-bottom:8px"><div class="field-label">Your Name</div><input id="sync-username" type="text" placeholder="e.g. Mike - Foreman"/></div>
         <div style="font-size:11px;color:var(--faint);margin-bottom:8px;line-height:1.5">There's no login system — this just labels the EOD Reports, Photos, and Expenses YOU create on this device, so whoever pulls this data later can see who submitted what.</div>
         <div class="field" style="margin-bottom:8px"><div class="field-label">Hourly Rate (optional)</div><input id="sync-hourlyrate" type="number" inputmode="decimal" placeholder="e.g. 35"/></div>
@@ -1501,7 +1496,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.68';
+var APP_VERSION = '3.69';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -23582,5 +23577,159 @@ document.addEventListener('visibilitychange', function(){ if (!document.hidden) 
 setInterval(function(){ render(); kick(false); }, 15000);
 setTimeout(function(){ render(); kick(false); }, 4000);
 console.log('[BP] v3.68 offline queue ready');
+})();
+</script>
+<script>
+/* ══ v3.69 — TEXT & BUTTON SIZE: 4 steps -> a smooth 85–180% range, in "glass" ═════
+   Stan (Oct 8, 2026): "The font size option is far too limited. Need to expand the
+   size options. Use Apple glass technology."
+   · Any size from 85% up to 180% on a phone (250% on an iPad, where the old iPad
+     boost still applies), in 5% steps: a slider, big A− / A+ buttons, and six
+     one-tap presets (Normal 100, Large 115, XL 130, XXL 145, Jumbo 160, Max 180).
+     Old saved sizes (100/115/130/145) land exactly on the matching preset.
+   · Drag the slider and the whole app resizes live behind it. The control itself
+     is counter-zoomed so it never grows or shrinks under your thumb.
+   · "Glass" = what a web page can honestly do of Apple's Liquid Glass look: a
+     translucent frosted material (backdrop blur + colour boost), a bright top
+     edge highlight and soft depth shadow. It does NOT do true lens refraction;
+     that needs a native app. Falls back to a solid panel where the phone has
+     "Reduce Transparency" on or cannot blur.
+   · Every Text size entry point (menu, header icon, Sync screen) uses it. ══════ */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;   /* phone/iPad only */
+var PRESETS = [[100,'Normal'],[115,'Large'],[130,'XL'],[145,'XXL'],[160,'Jumbo'],[180,'Max']];
+var MIN = 85, STEP = 5;
+function maxPct(){ try { return bpZoomBoost() > 1 ? 250 : 180; } catch(e){ return 180; } }
+function clampPct(p){ p = Math.round((+p || 115) / STEP) * STEP; return Math.max(MIN, Math.min(maxPct(), p)); }
+function curPct(){ var z = 1.15; try { z = bpGetZoom(); } catch(e){} return Math.round(z * 100); }
+function nameOf(p){ for (var i = 0; i < PRESETS.length; i++) if (Math.abs(PRESETS[i][0] - p) < 2.5) return PRESETS[i][1]; return 'Custom'; }
+window.bpZoomName = function(z){ var p = Math.round(z * 100); return nameOf(p) + ' · ' + p + '%'; };
+
+/* ── CSS ── */
+var st = document.createElement('style'); st.id = 'bp-v369-css';
+st.textContent = ''
++ '.bp-g-stage{position:relative;border-radius:30px;padding:14px;background:radial-gradient(120% 90% at 8% 0%,rgba(10,132,255,.45),transparent 58%),radial-gradient(110% 90% at 100% 100%,rgba(191,90,242,.36),transparent 55%),radial-gradient(90% 70% at 60% 40%,rgba(48,209,88,.14),transparent 60%)}'
++ '.bp-glass{position:relative;border-radius:26px;color:#fff;background:linear-gradient(145deg,rgba(255,255,255,.28),rgba(255,255,255,.08) 55%,rgba(255,255,255,.16));-webkit-backdrop-filter:blur(26px) saturate(185%) brightness(1.06);backdrop-filter:blur(26px) saturate(185%) brightness(1.06);border:1px solid rgba(255,255,255,.32);box-shadow:inset 0 1.5px 0 rgba(255,255,255,.6),inset 0 -1px 0 rgba(255,255,255,.12),inset 0 0 24px rgba(255,255,255,.07),0 18px 42px rgba(0,0,0,.4)}'
++ '.bp-glass::before{content:"";position:absolute;left:14px;right:14px;top:2px;height:38%;border-radius:22px 22px 60% 60%/22px 22px 18px 18px;background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,0));pointer-events:none}'
++ '[data-theme="light"] .bp-glass{color:#0b1b33;background:linear-gradient(145deg,rgba(255,255,255,.78),rgba(255,255,255,.4) 55%,rgba(255,255,255,.62));border-color:rgba(255,255,255,.9);box-shadow:inset 0 1.5px 0 #fff,inset 0 -1px 0 rgba(255,255,255,.5),0 14px 34px rgba(20,60,120,.22)}'
++ '.bp-gc{padding:16px 16px 14px;position:relative}'
++ '.bp-g-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px}'
++ '.bp-g-title{font:800 15px -apple-system,system-ui,sans-serif;letter-spacing:.01em;white-space:nowrap}'
++ '.bp-g-val{font:900 34px -apple-system,system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}'
++ '.bp-g-val small{font-size:17px;font-weight:800;opacity:.75;margin-left:1px}'
++ '.bp-g-row{display:flex;align-items:center;gap:12px}'
++ '.bp-gb{flex:none;width:54px;height:54px;border-radius:50%;border:1px solid rgba(255,255,255,.4);color:inherit;font:900 22px -apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;cursor:pointer;background:linear-gradient(145deg,rgba(255,255,255,.34),rgba(255,255,255,.1));-webkit-backdrop-filter:blur(14px) saturate(170%);backdrop-filter:blur(14px) saturate(170%);box-shadow:inset 0 1.5px 0 rgba(255,255,255,.65),0 6px 14px rgba(0,0,0,.28);-webkit-tap-highlight-color:transparent;padding:0}'
++ '.bp-gb small{font-size:15px;margin-left:1px;font-weight:900}'
++ '.bp-gb:active{transform:scale(.93)}'
++ '.bp-gr{flex:1;min-width:0;height:54px;margin:0;background:transparent;-webkit-appearance:none;appearance:none;touch-action:pan-y}'
++ '.bp-gr::-webkit-slider-runnable-track{height:12px;border-radius:99px;background:linear-gradient(90deg,rgba(10,132,255,.9) 0 var(--p,50%),rgba(255,255,255,.28) var(--p,50%) 100%);box-shadow:inset 0 1px 2px rgba(0,0,0,.35),0 1px 0 rgba(255,255,255,.35)}'
++ '.bp-gr::-moz-range-track{height:12px;border-radius:99px;background:rgba(255,255,255,.28)}'
++ '.bp-gr::-moz-range-progress{height:12px;border-radius:99px;background:rgba(10,132,255,.9)}'
++ '.bp-gr::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:46px;height:46px;margin-top:-17px;border-radius:50%;border:1px solid rgba(255,255,255,.85);background:radial-gradient(circle at 35% 28%,rgba(255,255,255,.95),rgba(255,255,255,.55) 55%,rgba(255,255,255,.35));-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:inset 0 2px 3px rgba(255,255,255,.9),0 5px 14px rgba(0,0,0,.4)}'
++ '.bp-gr::-moz-range-thumb{width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.85);background:rgba(255,255,255,.8);box-shadow:0 5px 14px rgba(0,0,0,.4)}'
++ '.bp-g-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}'
++ '.bp-gp{flex:1 1 30%;min-width:0;padding:12px 6px;border-radius:99px;border:1px solid rgba(255,255,255,.34);color:inherit;font:800 15px -apple-system,system-ui,sans-serif;white-space:nowrap;cursor:pointer;background:linear-gradient(145deg,rgba(255,255,255,.26),rgba(255,255,255,.07));-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:inset 0 1px 0 rgba(255,255,255,.55);-webkit-tap-highlight-color:transparent}'
++ '.bp-gp small{display:block;font-size:11.5px;font-weight:700;opacity:.7;margin-top:1px}'
++ '.bp-gp.on{background:linear-gradient(145deg,rgba(10,132,255,.95),rgba(64,156,255,.7));border-color:rgba(255,255,255,.7);color:#fff;box-shadow:inset 0 1.5px 0 rgba(255,255,255,.7),0 6px 16px rgba(10,132,255,.5)}'
++ '.bp-g-note{font:600 12.5px/1.4 -apple-system,system-ui,sans-serif;margin-top:12px;opacity:.82;min-height:1px}'
++ '#bp-gs-wrap{position:fixed;inset:0;z-index:99996;display:none;background:rgba(0,0,0,.14)}'
++ '#bp-gs-wrap.open{display:block}'
++ '#bp-gs{position:fixed;left:10px;right:10px;margin:0 auto;max-width:480px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:99997}'
++ '#bp-gs .bp-g-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 10px}'
++ '#bp-gs .bp-g-done{padding:11px 22px;border-radius:99px;border:1px solid rgba(255,255,255,.7);background:linear-gradient(145deg,rgba(10,132,255,.95),rgba(64,156,255,.7));color:#fff;font:800 16px -apple-system,system-ui,sans-serif;box-shadow:inset 0 1.5px 0 rgba(255,255,255,.7),0 6px 16px rgba(10,132,255,.45);cursor:pointer}'
++ '@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.bp-glass{background:rgba(44,44,48,.96)}[data-theme="light"] .bp-glass{background:rgba(255,255,255,.97)}}'
++ '@media (prefers-reduced-transparency:reduce){.bp-glass,.bp-gb,.bp-gp{-webkit-backdrop-filter:none;backdrop-filter:none}.bp-glass{background:rgba(44,44,48,.97)}[data-theme="light"] .bp-glass{background:rgba(255,255,255,.98)}}';
+document.head.appendChild(st);
+
+/* ── the control ── */
+function pillsHtml(){ return PRESETS.map(function(p){ return '<button type="button" class="bp-gp" data-pct="' + p[0] + '">' + p[1] + '<small>' + p[0] + '%</small></button>'; }).join(''); }
+function controlHtml(){
+  return '<div class="bp-glass bp-gc" role="group" aria-label="Text and button size">'
+    + '<div class="bp-g-top"><div class="bp-g-title">Text &amp; button size</div><div class="bp-g-val" aria-live="polite"><span data-gv>115</span><small>%</small></div></div>'
+    + '<div class="bp-g-row"><button type="button" class="bp-gb" data-gd="-1" aria-label="Smaller">A<small>−</small></button>'
+    + '<input class="bp-gr" type="range" min="' + MIN + '" max="' + maxPct() + '" step="' + STEP + '" aria-label="Text and button size">'
+    + '<button type="button" class="bp-gb" data-gd="1" aria-label="Bigger">A<small>+</small></button></div>'
+    + '<div class="bp-g-pills">' + pillsHtml() + '</div>'
+    + '<div class="bp-g-note" data-gn></div></div>';
+}
+function syncControls(livePct){
+  var p = livePct != null ? livePct : curPct();
+  document.querySelectorAll('.bp-gc').forEach(function(c){
+    var r = c.querySelector('.bp-gr'), v = c.querySelector('[data-gv]'), n = c.querySelector('[data-gn]');
+    if (r) { r.max = maxPct(); r.value = p; r.style.setProperty('--p', Math.max(0, Math.min(100, (p - MIN) / (maxPct() - MIN) * 100)) + '%'); }
+    if (v) v.textContent = p;
+    c.querySelectorAll('.bp-gp').forEach(function(b){ b.classList.toggle('on', Math.abs(+b.getAttribute('data-pct') - p) < 2.5); });
+    if (n) n.textContent = p > 145 ? 'Very large: some long names and dollar amounts may get cut off. Normal to XXL fits every screen.' : p < 100 ? 'Smaller than Normal: more on screen, harder to read in sunlight.' : '';
+  });
+  try { if (typeof bpDrawerRefresh === 'function') bpDrawerRefresh(); } catch(e){}
+}
+function build(host){
+  if (!host || host.getAttribute('data-gbuilt')) return;
+  host.setAttribute('data-gbuilt', '1');
+  host.innerHTML = '<div class="bp-g-stage">' + controlHtml() + '</div>';
+  host.removeAttribute('style');
+  host.setAttribute('data-bp-nozoom', '1');
+}
+function unzoom(){
+  var eff = 1; try { eff = parseFloat(document.body.style.zoom) || 1; } catch(e){}
+  document.querySelectorAll('[data-bp-nozoom]').forEach(function(e){ e.style.zoom = String(1 / eff); });
+}
+
+/* wrap the single funnel so the control stays one fixed size while the app resizes behind it */
+if (typeof window.bpSetBodyZoom === 'function' && !window.bpSetBodyZoom.__g369) {
+  var origBody = window.bpSetBodyZoom;
+  var wb = function(){ var r = origBody.apply(this, arguments); try { unzoom(); } catch(e){} return r; };
+  wb.__g369 = 1; window.bpSetBodyZoom = wb; try { bpSetBodyZoom = wb; } catch(e){}
+}
+if (typeof window.bpSetZoom === 'function' && !window.bpSetZoom.__g369) {
+  var origSet = window.bpSetZoom;
+  var ws = function(z){ var p = clampPct(Math.round((+z || 1.15) * 100)); var r = origSet.call(this, p / 100); syncControls(p); return r; };
+  ws.__g369 = 1; window.bpSetZoom = ws; try { bpSetZoom = ws; } catch(e){}
+}
+window.bpRenderZoomButtons = function(){ build(document.getElementById('zoom-btn-row')); unzoom(); syncControls(); };
+try { bpRenderZoomButtons = window.bpRenderZoomButtons; } catch(e){}
+
+/* ── events (delegated, so the Sync screen copy and the sheet copy both work) ── */
+document.addEventListener('input', function(e){
+  var r = e.target; if (!r || !r.classList || !r.classList.contains('bp-gr')) return;
+  var p = clampPct(r.value);
+  try { window.bpSetBodyZoom(p / 100); } catch(err){}   /* live preview, saved on release */
+  syncControls(p);
+});
+document.addEventListener('change', function(e){
+  var r = e.target; if (!r || !r.classList || !r.classList.contains('bp-gr')) return;
+  window.bpSetZoom(clampPct(r.value) / 100);
+});
+document.addEventListener('click', function(e){
+  var t = e.target && e.target.closest ? e.target.closest('.bp-gp,.bp-gb') : null; if (!t) return;
+  if (t.classList.contains('bp-gp')) window.bpSetZoom(+t.getAttribute('data-pct') / 100);
+  else window.bpSetZoom((curPct() + (+t.getAttribute('data-gd')) * STEP) / 100);
+});
+
+/* ── the sheet (menu "Text size", header Aa icon) ── */
+var wrap = document.createElement('div'); wrap.id = 'bp-gs-wrap';
+wrap.innerHTML = '<div id="bp-gs" data-bp-nozoom="1"><div class="bp-g-stage" style="padding:12px"><div class="bp-g-head"><div class="bp-g-title" style="font-size:13px;opacity:.95;color:var(--text)">Drag and watch the app change</div><button type="button" class="bp-g-done" id="bp-gs-done">Done</button></div>' + controlHtml() + '</div></div>';
+document.body.appendChild(wrap);
+wrap.addEventListener('click', function(e){ if (e.target === wrap) closeGlass(); });
+document.getElementById('bp-gs-done').addEventListener('click', closeGlass);
+function openGlass(){ try { if (typeof closeNavDrawer === 'function') closeNavDrawer(); } catch(e){} wrap.classList.add('open'); unzoom(); syncControls(); }
+function closeGlass(){ wrap.classList.remove('open'); }
+window.bpGlassOpen = openGlass; window.bpGlassClose = closeGlass;
+window.cycleFontSize = openGlass; try { cycleFontSize = openGlass; } catch(e){}
+window.bpDrawerText = openGlass; try { bpDrawerText = openGlass; } catch(e){}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeGlass(); });
+
+/* menu subtitle shows the real value */
+if (typeof window.bpDrawerRefresh === 'function' && !window.bpDrawerRefresh.__g369) {
+  var origDr = window.bpDrawerRefresh;
+  var wd = function(){ var r = origDr.apply(this, arguments); try { var a = document.getElementById('bp-d-text-sub'); if (a) a.textContent = window.bpZoomName(bpGetZoom()) + ' · tap to change'; } catch(e){} return r; };
+  wd.__g369 = 1; window.bpDrawerRefresh = wd; try { bpDrawerRefresh = wd; } catch(e){}
+}
+
+/* a size saved earlier that is too big for this screen is pulled back inside the limit */
+try { var cp = curPct(), ok = clampPct(cp); if (ok !== cp && Math.abs(ok - cp) > 2) { localStorage.setItem('bp_zoom', String(ok / 100)); bpApplyZoom(); } } catch(e){}
+build(document.getElementById('zoom-btn-row')); unzoom(); syncControls();
+console.log('[BP] v3.69 glass size control ready');
 })();
 </script>
