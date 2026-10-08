@@ -1496,7 +1496,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.71';
+var APP_VERSION = '3.72';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -23925,5 +23925,48 @@ if (typeof window.bpSetBodyZoom === 'function' && !window.bpSetBodyZoom.__f370) 
 window.addEventListener('resize', soon); window.addEventListener('orientationchange', function(){ setTimeout(soon, 300); });
 setTimeout(scan, 1200);
 console.log('[BP] v3.70 money fit ready');
+})();
+</script>
+<script>
+/* ══ v3.72 — SLIDERS instead of up/down arrows on room Width / Length / Ceiling Height ══
+   Stan (Oct 8, 2026): "Remove the up and down arrows, put slider instead." The number boxes
+   (Add / Edit location: ar-/er-/nr- width, length, height) lose their spinner arrows and get a
+   big slider under them. The box still takes typed values (3.5, 11.25), the slider moves in
+   half-foot steps, and the two stay in sync. Works for sheets built later (Edit location).
+   ══════════════════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (window.__bp372) return; window.__bp372 = 1;
+var RX = /^(ar|er|nr)-(width|length|height)$/;
+var RANGE = { width:[0,40], length:[0,60], height:[6,20] };
+var st = document.createElement('style');
+st.textContent = 'input.bp-nospin::-webkit-outer-spin-button,input.bp-nospin::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}'
+  + 'input.bp-nospin{-moz-appearance:textfield;appearance:textfield}'
+  + '.bp-slide{width:100%;margin:10px 0 2px;height:34px;accent-color:#0A84FF;touch-action:pan-y}'
+  + '.bp-slide-wrap{display:flex;align-items:center;gap:10px}'
+  + '.bp-slide-wrap .bp-slide{flex:1;min-width:0}';
+document.head.appendChild(st);
+function build(inp){
+  if (!inp || inp.__bp372 || !RX.test(inp.id || '')) return;
+  inp.__bp372 = 1;
+  var kind = RX.exec(inp.id)[2], r = RANGE[kind];
+  inp.classList.add('bp-nospin');
+  var s = document.createElement('input');
+  s.type = 'range'; s.className = 'bp-slide'; s.min = r[0]; s.max = r[1]; s.step = 0.5;
+  s.setAttribute('aria-label', kind + ' in feet');
+  function toSlider(){ var v = parseFloat(inp.value); s.value = isNaN(v) ? r[0] : Math.min(r[1], Math.max(r[0], v)); }
+  toSlider();
+  s.addEventListener('input', function(){
+    inp.value = (+s.value === r[0] && kind !== 'height') ? '' : String(s.value);
+    inp.dispatchEvent(new Event('input', {bubbles:true}));
+  });
+  inp.addEventListener('input', toSlider);
+  inp.addEventListener('change', toSlider);
+  inp.insertAdjacentElement('afterend', s);
+}
+function scan(){ try { [].forEach.call(document.querySelectorAll('input[id$="-width"],input[id$="-length"],input[id$="-height"]'), build); } catch(e){} }
+try { new MutationObserver(function(){ scan(); }).observe(document.body, { childList:true, subtree:true }); } catch(e){}
+scan();
+console.log('[BP] v3.72 sliders ready — room Width / Length / Height');
 })();
 </script>
