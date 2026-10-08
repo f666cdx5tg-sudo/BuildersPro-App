@@ -1496,7 +1496,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.70';
+var APP_VERSION = '3.71';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -18081,8 +18081,8 @@ window.bpSetShopTax = function(v){ var n = window.bpCalcEval(v); if (isNaN(n) ||
 function lineTotal(x){ return (+x.qty || 0) * (+x.price || 0); }
 function shopItems(job){ return (DB.shopping||[]).filter(function(x){ return x && (job === '*' || (x.jobId||'') === job); }); }
 window.bpShopTotals = function(job){
-  var L = shopItems(job == null ? SH.job : job), t = { toBuy:0, bought:0, nOpen:0, nDone:0 };
-  L.forEach(function(x){ if (x.bought) { t.bought += lineTotal(x); t.nDone++; } else { t.toBuy += lineTotal(x); t.nOpen++; } });
+  var L = shopItems(job == null ? SH.job : job), t = { toBuy:0, bought:0, nOpen:0, nDone:0, ordered:0, nOrdered:0 };
+  L.forEach(function(x){ if (x.bought) { t.bought += lineTotal(x); t.nDone++; } else { t.toBuy += lineTotal(x); t.nOpen++; if (x.status === 'ordered') { t.ordered += lineTotal(x); t.nOrdered++; } } });
   t.all = t.toBuy + t.bought; t.rate = taxRate(); t.tax = Math.round(t.toBuy * t.rate) / 100; t.toBuyWithTax = t.toBuy + t.tax;
   return t;
 };
@@ -18090,6 +18090,26 @@ window.bpOpenShop = function(jobId){
   if (jobId !== undefined && jobId !== null) SH.job = jobId;
   else if (SH.job === null) SH.job = activeJob();
   drawShop();
+};
+function receiptOf(x){
+  if (x.receiptSrc) return x.receiptSrc;
+  var e = x.expenseId && (DB.expenses||[]).find(function(p){ return p && p.id === x.expenseId; });
+  return (e && e.receiptSrc) || '';
+}
+function shopBadge(x){
+  var P = 'display:inline-flex;align-items:center;min-height:30px;margin-top:6px;padding:0 12px;border-radius:99px;font-size:13px;font-weight:800;white-space:nowrap;cursor:pointer;font-family:inherit;';
+  if (x.bought) {
+    return receiptOf(x) ? '<span style="' + P + 'background:rgba(48,209,88,.16);color:#30D158">🧾 Receipt</span>'
+      : '<span style="' + P + 'background:rgba(255,159,10,.16);color:#FF9F0A">No receipt</span>';
+  }
+  var ord = x.status === 'ordered';
+  return '<button data-shop-status type="button" aria-label="' + (ord ? 'Ordered, tap to undo' : 'Mark ordered') + '" onclick="event.stopPropagation();bpShopOrder(\'' + Q(x.id) + '\')" style="' + P + 'border:none;'
+    + (ord ? 'background:rgba(10,132,255,.18);color:#0A84FF' : 'background:var(--card2,#222);color:var(--muted,#8e8e93)') + '">' + (ord ? '📦 Ordered' : 'Need · tap if ordered') + '</button>';
+}
+window.bpShopOrder = function(id){
+  var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x || x.bought) return;
+  if (x.status === 'ordered') { x.status = 'need'; x.orderedAt = ''; } else { x.status = 'ordered'; x.orderedAt = ts(); }
+  x.updatedAt = ts(); persist(); drawShop();
 };
 function shopRow(x){
   var lt = lineTotal(x);
@@ -18099,21 +18119,24 @@ function shopRow(x){
     + '<div onclick="bpShopEdit(\'' + Q(x.id) + '\')" style="flex:1;min-width:0;cursor:pointer">'
     + '<div style="font-size:17px;font-weight:800;line-height:1.25;' + (x.bought ? 'text-decoration:line-through' : '') + '">' + E(x.text) + '</div>'
     + '<div style="font-size:14px;color:var(--muted,#8e8e93);margin-top:3px">' + num(x.qty || 0) + (x.unit ? ' ' + E(x.unit) : '') + (x.price ? ' × ' + money(x.price) : '')
-    + (x.store ? ' · ' + E(x.store) : '') + (x.expenseId ? ' · in Money' : '') + '</div></div>'
+    + (x.store ? ' · ' + E(x.store) : '') + (x.expenseId ? ' · in Money' : '') + '</div>'
+    + shopBadge(x) + '</div>'
     + '<div style="font-size:18px;font-weight:900;flex-shrink:0;color:' + (x.bought ? 'var(--muted)' : 'var(--text)') + '">' + (lt ? money(lt) : '—') + '</div></div>';
 }
 function drawShop(){
   var L = shopItems(SH.job), t = window.bpShopTotals(SH.job);
-  var open = L.filter(function(x){ return !x.bought; }), done = L.filter(function(x){ return x.bought; });
+  var open = L.filter(function(x){ return !x.bought && x.status !== 'ordered'; }), ordd = L.filter(function(x){ return !x.bought && x.status === 'ordered'; }), done = L.filter(function(x){ return x.bought; });
   var byNew = function(a, b){ return (a.created||'') < (b.created||'') ? -1 : 1; };
-  open.sort(byNew); done.sort(function(a, b){ return (a.boughtAt||'') < (b.boughtAt||'') ? 1 : -1; });
+  open.sort(byNew); ordd.sort(byNew); done.sort(function(a, b){ return (a.boughtAt||'') < (b.boughtAt||'') ? 1 : -1; });
   var body = '<div style="margin-top:4px">' + jobSelect('bp-shop-job', SH.job, 'bpShopJob(this.value)', true) + '</div>'
     + '<button id="bp-shop-scan" onclick="bpShopScan()" style="' + BTN + ';width:100%;margin-top:10px;background:rgba(10,132,255,.14);color:#0A84FF;border:1.5px solid #0A84FF">📷 Scan a receipt</button>'
     + '<div style="display:flex;align-items:center;gap:12px;margin:14px 0 4px"><button id="bp-shop-add" onclick="bpShopOpenAdd()" aria-label="Add item" style="width:60px;height:60px;border-radius:50%;border:none;background:#30D158;color:#000;font-size:36px;font-weight:900;line-height:1;cursor:pointer;flex-shrink:0;box-shadow:0 4px 14px rgba(48,209,88,.4)">+</button>'
     + '<div style="font-size:15px;font-weight:800;color:var(--muted)">Add item</div></div>'
+    + shopStrip()
     + '<div style="' + LBL + '">To buy (' + open.length + ')</div>'
     + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Add items above.</div>')
-    + (done.length ? '<div style="' + LBL + ';margin-top:18px">Bought (' + done.length + ')</div>' + done.map(shopRow).join('') : '')
+    + (ordd.length ? '<div id="bp-shop-ordered" style="' + LBL + ';margin-top:18px">Ordered — waiting on delivery (' + ordd.length + ')</div>' + ordd.map(shopRow).join('') : '')
+    + (done.length ? '<div style="' + LBL + ';margin-top:18px">Arrived / bought (' + done.length + ')</div>' + done.map(shopRow).join('') : '')
     + '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
     + '<button onclick="bpShopShare()" style="' + BTN + ';flex:1;min-width:140px;background:var(--card2,#222);color:var(--text)">' + ICON.share + 'Share list</button>'
     + (done.some(function(x){ return !x.expenseId; }) ? '<button id="bp-shop-to-money" onclick="bpShopToMoney()" style="' + BTN + ';flex:1;min-width:140px;background:rgba(48,209,88,.14);color:#30D158;border:1.5px solid #30D158">Add bought to Money</button>' : '')
@@ -18189,10 +18212,98 @@ window.bpShopAdd = function(){
 };
 window.bpShopToggle = function(id){
   var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
+  if (!x.bought && x.status === 'ordered' && (+x.qty || 0) > 1) {
+    var a = prompt('How many arrived? (of ' + num(x.qty) + ')', String(x.qty)); if (a === null) return;
+    a = window.bpCalcEval(a);
+    if (isNaN(a) || a <= 0) { say('Type a number'); return; }
+    if (a < x.qty) {   /* partial: the arrived part becomes its own row, the rest stays Ordered */
+      var rest = Math.round((x.qty - a) * 10000) / 10000;
+      var part = JSON.parse(JSON.stringify(x)); part.id = newId(); part.qty = a; part.created = ts();
+      x.qty = rest; x.updatedAt = ts(); DB.shopping.push(part); x = part; id = part.id;
+    }
+  }
   x.bought = !x.bought; x.boughtAt = x.bought ? ts() : ''; x.updatedAt = ts();
+  x.status = x.bought ? 'arrived' : (x.orderedAt ? 'ordered' : 'need');
   persist(); drawShop();
   if (x.bought) window.bpShopEdit(id);   /* v3.49: checking an item off opens its edit page */
 };
+function rcpHtml(x){
+  var id = Q(x.id), r = receiptOf(x);
+  var B = 'flex:1;min-width:120px;min-height:48px;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;border:1.5px solid var(--border,#333);background:var(--card2,#222);color:var(--text)';
+  var inp = function(cap, i){ return '<input type="file" accept="image/*"' + (cap ? ' capture="environment"' : '') + ' id="bp-se-file' + i + '" style="display:none" onchange="bpShopRcpPick(\'' + id + '\',this)"/>'; };
+  if (r) return '<div style="display:flex;gap:10px;align-items:center"><img id="bp-se-thumb" alt="Receipt" onclick="bpShopRcpView(\'' + id + '\')" src="' + E(r) + '" style="width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border,#333);cursor:pointer;flex-shrink:0"/>'
+    + '<div style="flex:1;min-width:0;display:flex;gap:8px;flex-wrap:wrap"><button type="button" onclick="bpShopRcpView(\'' + id + '\')" style="' + B + '">View</button>'
+    + '<button type="button" onclick="document.getElementById(\'bp-se-file1\').click()" style="' + B + '">Replace</button>'
+    + '<button type="button" onclick="bpShopRcpRemove(\'' + id + '\')" style="' + B + ';color:#FF453A">Remove</button></div></div>' + inp(true, 1);
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="bp-se-rcp-cam" onclick="document.getElementById(\'bp-se-file1\').click()" style="' + B + ';background:rgba(10,132,255,.14);color:#0A84FF;border-color:#0A84FF">📷 Take photo</button>'
+    + '<button type="button" onclick="document.getElementById(\'bp-se-file2\').click()" style="' + B + '">🖼 Choose</button></div>' + inp(true, 1) + inp(false, 2);
+}
+function rcpRepaint(id){ var x = (DB.shopping||[]).find(function(s){ return s.id === id; }), h = document.getElementById('bp-se-rcp'); if (x && h) h.innerHTML = rcpHtml(x); }
+window.bpShopRcpPick = function(id, input){
+  var f = input.files && input.files[0]; if (!f) return;
+  var fr = new FileReader();
+  fr.onload = function(){
+    bpCompressFor('doc', fr.result, function(out){
+      var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
+      x.receiptSrc = out || fr.result; x.updatedAt = ts();
+      var e = x.expenseId && (DB.expenses||[]).find(function(p){ return p && p.id === x.expenseId; });
+      if (e && !e.receiptSrc) { e.receiptSrc = x.receiptSrc; e.updatedAt = ts(); }
+      persist(); rcpRepaint(id); drawShopBehind(); say('Receipt saved');
+    });
+  };
+  fr.readAsDataURL(f);
+};
+window.bpShopRcpRemove = function(id){
+  var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
+  if (!confirm('Remove this receipt photo?')) return;
+  x.receiptSrc = ''; x.updatedAt = ts();
+  var e = x.expenseId && (DB.expenses||[]).find(function(p){ return p && p.id === x.expenseId; });
+  if (e && e.fromShopping) { e.receiptSrc = null; e.updatedAt = ts(); }
+  persist(); rcpRepaint(id); drawShopBehind();
+};
+window.bpShopRcpView = function(id){
+  var x = (DB.shopping||[]).find(function(s){ return s.id === id; }), r = x && receiptOf(x); if (!r) return;
+  overlay('bp-shop-rcp', 'Receipt', '<img alt="Receipt" src="' + E(r) + '" style="width:100%;border-radius:12px;display:block"/>', '');
+  var o = document.getElementById('bp-shop-rcp'); if (o) o.style.zIndex = 10003;
+};
+/* refresh the list underneath the edit page without closing it */
+function drawShopBehind(){
+  var ed = document.getElementById('bp-shop-edit'), keep = ed && ed.parentNode ? ed : null;
+  if (!document.getElementById('bp-shop')) return;
+  var sc = document.querySelector('#bp-shop .bp-sheet-body'), top = sc ? sc.scrollTop : 0;
+  drawShop();
+  if (keep) document.body.appendChild(keep);
+  sc = document.querySelector('#bp-shop .bp-sheet-body'); if (sc) sc.scrollTop = top;
+}
+/* job cost strip: budget vs spent vs still coming */
+function shopStrip(){
+  var job = SH.job; if (!job || !(DB.jobs||[]).some(function(j){ return j.id === job; })) return '';
+  var t = window.bpShopTotals(job), rate = taxRate();
+  var spent = 0; (DB.expenses||[]).forEach(function(e){ if (e && e.jobId === job && (e.category || 'Materials') === 'Materials') spent += +e.amount || 0; });
+  shopItems(job).forEach(function(x){ if (x.bought && !x.expenseId) spent += Math.round(lineTotal(x) * (100 + rate)) / 100; });
+  var bud = +((DB.budgets||{})[job] || {}).Materials || 0, coming = t.toBuyWithTax;
+  var cell = function(l, v, c, id){ return '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + l + '</div>'
+    + '<div' + (id ? ' id="' + id + '"' : '') + ' style="font-size:18px;font-weight:900;color:' + c + ';white-space:nowrap;overflow:hidden">' + money(v) + '</div></div>'; };
+  var left = bud - spent - coming, h = '<div id="bp-shop-strip" style="margin-top:12px;padding:12px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a)">'
+    + '<div style="font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Materials · this job</div><div style="display:flex;gap:10px">';
+  if (bud) h += cell('Budget', bud, 'var(--text)', 'bp-ss-bud');
+  h += cell('Spent', spent, '#30D158', 'bp-ss-spent') + cell('Coming', coming, '#FF9F0A', 'bp-ss-coming');
+  if (bud) h += cell(left < 0 ? 'Over' : 'Left', Math.abs(left), left < 0 ? '#FF453A' : '#0A84FF', 'bp-ss-left');
+  h += '</div>';
+  if (bud) h += '<div style="height:6px;border-radius:99px;background:var(--card2,#222);margin-top:10px;overflow:hidden"><div style="height:100%;width:' + Math.min(100, Math.round((spent + coming) / bud * 100)) + '%;background:' + (left < 0 ? '#FF453A' : '#30D158') + '"></div></div>';
+  else h += '<button id="bp-ss-set" type="button" onclick="bpShopSetBudget()" style="margin-top:10px;min-height:44px;width:100%;border-radius:12px;border:1.5px dashed var(--border,#444);background:transparent;color:#0A84FF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Set a materials budget</button>';
+  return h + '</div>';
+}
+window.bpShopSetBudget = function(){
+  if (typeof window.openJobBudget !== 'function') return;
+  window.openJobBudget(SH.job);
+  var m = document.getElementById('budget-modal'); if (m) m.style.zIndex = 10004;
+};
+if (typeof window.saveJobBudget === 'function' && !window.saveJobBudget.__shop) {
+  var _sjb = window.saveJobBudget;
+  window.saveJobBudget = function(){ var r = _sjb.apply(this, arguments); try { if (document.getElementById('bp-shop')) drawShop(); } catch(e){} return r; };
+  window.saveJobBudget.__shop = 1;
+}
 window.bpShopEdit = function(id){
   var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x) return;
   var stores = {}; (DB.shopping||[]).forEach(function(s){ if (s.store) stores[s.store] = 1; });
@@ -18205,7 +18316,8 @@ window.bpShopEdit = function(id){
     + '<div style="' + LBL + '">Store</div>' + (window.bpVendorField ? window.bpVendorField('bp-se-store', x.store||'') : '<input id="bp-se-store" list="bp-se-stores" value="' + E(x.store||'') + '" style="' + INP + '"/>')
     + '<datalist id="bp-se-stores">' + Object.keys(stores).map(function(s){ return '<option>' + E(s) + '</option>'; }).join('') + '</datalist>'
     + '<div style="' + LBL + '">Job</div>' + jobSelect('bp-se-job', x.jobId || '', '', true)
-    + '<div style="' + LBL + '">Note</div><input id="bp-se-note" value="' + E(x.note||'') + '" placeholder="Brand, size, color…" style="' + INP + '"/>';
+    + '<div style="' + LBL + '">Note</div><input id="bp-se-note" value="' + E(x.note||'') + '" placeholder="Brand, size, color…" style="' + INP + '"/>'
+    + (x.bought ? '<div style="' + LBL + '">Receipt</div><div id="bp-se-rcp">' + rcpHtml(x) + '</div>' : '');
   var foot = '<div style="display:flex;gap:8px"><button onclick="bpShopDelete(\'' + Q(id) + '\')" style="' + BTN + ';background:transparent;color:#FF453A;border:1.5px solid #FF453A">Delete</button>'
     + '<button id="bp-se-save" onclick="bpShopSaveEdit(\'' + Q(id) + '\')" style="' + BTN + ';flex:1;background:#0A84FF;color:#fff">Save</button></div>';
   overlay('bp-shop-edit', 'Edit item', body, foot);
@@ -18269,7 +18381,7 @@ window.bpShopToMoney = function(){
     var store = g[0].store || '';
     var day = dk(g[0].boughtAt) || today();
     var exp = { id:newId(), desc:'Materials' + (store ? ' — ' + store : '') + ' (' + g.length + ' item' + (g.length > 1 ? 's' : '') + ')', jobId:g[0].jobId || '', amount:amt,
-      date:day, category:'Materials', vendor:store, receiptSrc:null, items:g.map(function(x){ return { name:x.text, qty:+x.qty||0, price:+x.price||0 }; }),
+      date:day, category:'Materials', vendor:store, receiptSrc:((g.find(function(x){ return x.receiptSrc; }) || {}).receiptSrc) || null, items:g.map(function(x){ return { name:x.text, qty:+x.qty||0, price:+x.price||0 }; }),
       fromShopping:true, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:ts(), updatedAt:ts() };
     DB.expenses.push(exp); made++; total += amt;
     g.forEach(function(x){ x.expenseId = exp.id; x.updatedAt = ts(); });
@@ -23369,8 +23481,8 @@ console.log('[BP] v3.66 punch add + done hidden ready');
 (function(){
 'use strict';
 if (document.getElementById('modal-new-room')) return;   /* phone/iPad only */
-var COLS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','payments','appointments','reports','changeOrders','punchlist','walkthroughs','documents','estimates','timeEntries','contacts','permits'];
-var KIND = { jobs:['job','jobs'], rooms:['room','rooms'], tasks:['task','tasks'], photos:['photo','photos'], notes:['note','notes'], invoices:['invoice','invoices'], expenses:['expense','expenses'], contractors:['contractor','contractors'], payments:['payment','payments'], appointments:['appointment','appointments'], reports:['report','reports'], changeOrders:['change order','change orders'], punchlist:['punch item','punch items'], walkthroughs:['walkthrough','walkthroughs'], documents:['document','documents'], estimates:['estimate','estimates'], timeEntries:['time entry','time entries'], contacts:['contact','contacts'], permits:['permit','permits'] };
+var COLS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','payments','appointments','reports','changeOrders','punchlist','walkthroughs','documents','estimates','timeEntries','contacts','permits','shopping'];
+var KIND = { jobs:['job','jobs'], rooms:['room','rooms'], tasks:['task','tasks'], photos:['photo','photos'], notes:['note','notes'], invoices:['invoice','invoices'], expenses:['expense','expenses'], contractors:['contractor','contractors'], payments:['payment','payments'], appointments:['appointment','appointments'], reports:['report','reports'], changeOrders:['change order','change orders'], punchlist:['punch item','punch items'], walkthroughs:['walkthrough','walkthroughs'], documents:['document','documents'], estimates:['estimate','estimates'], timeEntries:['time entry','time entries'], contacts:['contact','contacts'], permits:['permit','permits'], shopping:['material','materials'] };
 var KEY = 'bp_pend_base';
 var BASE = null;            /* null = never backed up on this device yet, so "waiting" is unknown */
 var savedDuring = false, failStreak = 0, lastKick = 0, startedAt = Date.now(), firstKickDone = false, sheetOpen = false;
