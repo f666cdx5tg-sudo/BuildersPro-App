@@ -1501,7 +1501,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.67';
+var APP_VERSION = '3.68';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -23350,5 +23350,237 @@ window.bpPunchDone = function(){
   refreshViews();
 };
 console.log('[BP] v3.66 punch add + done hidden ready');
+})();
+</script>
+<script>
+/* ══ v3.68 — OFFLINE QUEUE: "WAITING TO SYNC" ═══════════════════════════════
+   What already worked: every change saves to the phone first (IndexedDB), and the
+   app launches with no signal (service worker). What was missing: nothing REMEMBERED
+   what the cloud had not received yet, nothing retried by itself when signal came
+   back, and you could not see what was waiting.
+   This adds, on the phone/iPad app only:
+   1. A list of what is waiting. After every successful backup the app notes a tiny
+      fingerprint of each record (never the photo data itself). Anything that differs
+      from that note is "waiting". The note is kept on the device, so the list
+      survives closing the app, a reboot, or a day in a basement.
+   2. Automatic retry. Signal returns, the app comes back to the front, or 45 seconds
+      pass while something waits, and it backs up by itself (slower after each failure).
+   3. A small chip, bottom-left, only when something is waiting or you are offline.
+      Tap it to see exactly what is waiting.
+   Honesty rule: a record only leaves the list after a backup that finished, and if
+   you made a change WHILE a backup was running, that change stays on the list. ══ */
+(function(){
+'use strict';
+if (document.getElementById('modal-new-room')) return;   /* phone/iPad only */
+var COLS = ['jobs','rooms','tasks','photos','notes','invoices','expenses','contractors','payments','appointments','reports','changeOrders','punchlist','walkthroughs','documents','estimates','timeEntries','contacts','permits'];
+var KIND = { jobs:['job','jobs'], rooms:['room','rooms'], tasks:['task','tasks'], photos:['photo','photos'], notes:['note','notes'], invoices:['invoice','invoices'], expenses:['expense','expenses'], contractors:['contractor','contractors'], payments:['payment','payments'], appointments:['appointment','appointments'], reports:['report','reports'], changeOrders:['change order','change orders'], punchlist:['punch item','punch items'], walkthroughs:['walkthrough','walkthroughs'], documents:['document','documents'], estimates:['estimate','estimates'], timeEntries:['time entry','time entries'], contacts:['contact','contacts'], permits:['permit','permits'] };
+var KEY = 'bp_pend_base';
+var BASE = null;            /* null = never backed up on this device yet, so "waiting" is unknown */
+var savedDuring = false, failStreak = 0, lastKick = 0, startedAt = Date.now(), firstKickDone = false, sheetOpen = false;
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+/* ── fingerprints ── */
+function hstr(s){ var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+function sig(rec){
+  try { return hstr(JSON.stringify(rec, function(k, v){ return (typeof v === 'string' && v.length > 300) ? (v.length + ':' + v.slice(0, 40) + v.slice(-40)) : v; })); }
+  catch(e){ return 'x'; }
+}
+function snapshot(){
+  var out = {};
+  COLS.forEach(function(c){
+    var m = {}, arr = (typeof DB !== 'undefined' && DB && DB[c]) || [];
+    for (var i = 0; i < arr.length; i++) { var r = arr[i]; if (r && r.id != null) m[String(r.id)] = sig(r); }
+    out[c] = m;
+  });
+  return out;
+}
+function loadBase(){ try { var s = localStorage.getItem(KEY); BASE = s ? JSON.parse(s) : null; } catch(e){ BASE = null; } }
+function saveBase(){ try { localStorage.setItem(KEY, JSON.stringify(BASE)); } catch(e){} }
+function rebase(snap){ BASE = snap; saveBase(); }
+
+/* ── what is waiting ── */
+function diff(){
+  var snap = snapshot(), items = [];
+  if (!BASE) return { unknown: true, items: items, total: 0, snap: snap };
+  COLS.forEach(function(c){
+    var cur = snap[c] || {}, b = BASE[c] || {};
+    Object.keys(cur).forEach(function(id){ if (!(id in b)) items.push({ c: c, id: id, a: 'new' }); else if (b[id] !== cur[id]) items.push({ c: c, id: id, a: 'edit' }); });
+    Object.keys(b).forEach(function(id){ if (!(id in cur)) items.push({ c: c, id: id, a: 'deleted' }); });
+  });
+  return { unknown: false, items: items, total: items.length, snap: snap };
+}
+function jobName(id){ var j = (DB.jobs || []).find(function(x){ return x && x.id === id; }); return j ? j.name : ''; }
+function labelOf(it){
+  if (it.a === 'deleted') return 'Removed ' + KIND[it.c][0];
+  var r = (DB[it.c] || []).find(function(x){ return x && String(x.id) === it.id; }) || {};
+  var t = r.name || r.title || r.text || r.desc || r.description || r.item || r.vendor || r.caption || r.note || r.type || '';
+  if (!t && it.c === 'photos') t = 'Photo';
+  t = String(t).replace(/\s+/g, ' ').trim();
+  if (t.length > 44) t = t.slice(0, 43) + '…';
+  var jn = it.c === 'jobs' ? '' : jobName(r.jobId);
+  return (t || KIND[it.c][0]) + (jn ? ' · ' + jn : '');
+}
+function groupLine(items){
+  var n = {}; items.forEach(function(i){ n[i.c] = (n[i.c] || 0) + 1; });
+  return COLS.filter(function(c){ return n[c]; }).map(function(c){ return n[c] + ' ' + KIND[c][n[c] === 1 ? 0 : 1]; }).join(' · ');
+}
+function online(){ return !(typeof navigator !== 'undefined' && navigator.onLine === false); }
+function haveToken(){ try { return !!_syncToken; } catch(e){ return false; } }
+function ckOnly(){ try { return !haveToken() && localStorage.getItem('bp_ck_on') === '1' && typeof window.bpICloudSync === 'function'; } catch(e){ return false; } }
+function canSync(){ return haveToken() || ckOnly(); }
+
+/* ── chip + sheet ── */
+var st = document.createElement('style');
+st.textContent = '#bp-q-chip{position:fixed;left:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);z-index:99990;display:none;align-items:center;gap:6px;max-width:calc(100vw - 24px);padding:9px 14px;border-radius:99px;font:800 14px -apple-system,system-ui,sans-serif;white-space:nowrap;color:#fff;border:0;box-shadow:0 3px 14px rgba(0,0,0,.35);cursor:pointer}'
+  + '#bp-q-chip.on{display:flex}'
+  + '#bp-q-wrap{position:fixed;inset:0;z-index:99995;display:none;background:rgba(0,0,0,.55);align-items:flex-end;justify-content:center}'
+  + '#bp-q-wrap.open{display:flex}'
+  + '#bp-q-sheet{background:var(--card,#1c1c1e);color:var(--text,#fff);width:100%;max-width:520px;max-height:82vh;overflow:auto;border-radius:20px 20px 0 0;padding:18px 16px calc(env(safe-area-inset-bottom,0px) + 18px)}'
+  + '#bp-q-sheet .qr{display:flex;gap:8px;padding:9px 0;border-top:1px solid var(--border,#38383a);font-size:15px;font-weight:600}'
+  + '#bp-q-sheet .qr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}'
+  + '#bp-q-sheet .qa{flex:none;font-size:11.5px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border-radius:7px;background:var(--card2,#2c2c2e);color:var(--muted,#98989d)}';
+document.head.appendChild(st);
+var chip = document.createElement('button'); chip.id = 'bp-q-chip'; chip.type = 'button';
+chip.addEventListener('click', function(){ openSheet(); });
+document.body.appendChild(chip);
+var wrap = document.createElement('div'); wrap.id = 'bp-q-wrap';
+wrap.innerHTML = '<div id="bp-q-sheet"></div>';
+wrap.addEventListener('click', function(e){ if (e.target === wrap) closeSheet(); });
+document.body.appendChild(wrap);
+
+function state(){
+  var d = diff(), syncing = false; try { syncing = !!_isSyncing; } catch(e){}
+  var err = ''; try { err = _lastSyncError || ''; } catch(e){}
+  return { d: d, syncing: syncing, err: err, on: online() };
+}
+function render(){
+  if (!canSync()) { chip.classList.remove('on'); return; }
+  var s = state(), n = s.d.total, txt = '', bg = '';
+  if (!s.on) { txt = n ? '📴 Offline · ' + n + ' waiting' : '📴 Offline · saved on this device'; bg = '#FF9F0A'; }
+  else if (s.syncing && n) { txt = '↻ Syncing ' + n + '…'; bg = '#0A84FF'; }
+  else if (n && s.err) { txt = '⚠️ ' + n + ' waiting · sync failed'; bg = '#FF453A'; }
+  else if (n) { txt = '⏳ ' + n + ' waiting to sync'; bg = '#0A84FF'; }
+  else if (s.err && !s.d.unknown) { txt = '⚠️ Sync failed'; bg = '#FF453A'; }
+  if (!txt) { chip.classList.remove('on'); } else { chip.textContent = txt; chip.style.background = bg; chip.classList.add('on'); }
+  if (sheetOpen) renderSheet();
+}
+function renderSheet(){
+  var s = state(), d = s.d, el = document.getElementById('bp-q-sheet'); if (!el) return;
+  var last = ''; try { last = _lastSync ? new Date(_lastSync).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : 'never'; } catch(e){}
+  var head = d.unknown ? 'Not backed up yet' : d.total ? (d.total + ' waiting to sync') : 'Everything is synced';
+  var sub = !s.on ? 'No signal. Everything is saved on this phone and uploads by itself when service returns.'
+    : d.unknown ? 'This phone has not finished a backup yet. It will start one now.'
+    : s.err ? 'The last attempt failed. It keeps retrying. ' + E(s.err.slice(0, 160))
+    : d.total ? 'Saved on this phone. Uploads automatically.' : 'Nothing is waiting.';
+  var rows = d.items.slice(0, 40).map(function(it){
+    return '<div class="qr"><span class="qa">' + (it.a === 'new' ? 'New' : it.a === 'edit' ? 'Edited' : 'Removed') + '</span><span style="flex:1">' + E(labelOf(it)) + '</span></div>';
+  }).join('') + (d.items.length > 40 ? '<div class="qr"><span style="color:var(--muted,#98989d)">+ ' + (d.items.length - 40) + ' more</span></div>' : '');
+  el.innerHTML = '<div style="font-size:21px;font-weight:900">' + head + '</div>'
+    + '<div style="font-size:14px;color:var(--muted,#98989d);margin:4px 0 10px;line-height:1.35">' + sub + '</div>'
+    + (d.total ? '<div style="font-size:14px;font-weight:800;margin-bottom:8px">' + E(groupLine(d.items)) + '</div>' + rows : '')
+    + '<div style="font-size:12.5px;color:var(--muted,#98989d);margin:12px 0">Last backup: ' + E(last) + '</div>'
+    + '<div style="display:flex;gap:10px"><button type="button" id="bp-q-now" style="flex:1;padding:14px;border-radius:12px;border:0;background:#0A84FF;color:#fff;font-size:16px;font-weight:800">' + (s.syncing ? 'Syncing…' : 'Sync now') + '</button>'
+    + '<button type="button" id="bp-q-close" style="padding:14px 20px;border-radius:12px;border:0;background:var(--card2,#2c2c2e);color:var(--text,#fff);font-size:16px;font-weight:800">Close</button></div>';
+  document.getElementById('bp-q-close').onclick = closeSheet;
+  document.getElementById('bp-q-now').onclick = function(){ failStreak = 0; kick(true); };
+}
+function openSheet(){ sheetOpen = true; wrap.classList.add('open'); renderSheet(); }
+function closeSheet(){ sheetOpen = false; wrap.classList.remove('open'); }
+window.bpQueueOpen = openSheet;
+window.bpPending = function(){ var d = diff(); return { unknown: d.unknown, total: d.total, items: d.items.map(function(i){ return { col: i.c, id: i.id, action: i.a, label: labelOf(i) }; }) }; };
+window.bpQueueRender = render;
+
+/* ── retry ── */
+function kick(force){
+  if (!haveToken() && !ckOnly()) return;
+  if (!online()) { if (force && typeof toast === 'function') toast('📴 No signal. Saved on this phone, it uploads by itself when service returns.'); render(); return; }
+  var busy = false; try { busy = !!_isSyncing; } catch(e){}
+  if (busy) { render(); return; }
+  var wait = 45000 * Math.min(Math.max(failStreak, 1), 6);
+  if (!force && Date.now() - lastKick < wait) return;
+  var d = diff(), err = ''; try { err = _lastSyncError || ''; } catch(e){}
+  if (!force && !d.unknown && !d.total && !err) return;
+  if (!force && d.unknown && firstKickDone && !err) return;
+  lastKick = Date.now(); firstKickDone = true;
+  try {
+    var p = haveToken() ? window.doPush() : window.bpICloudSync('both');
+    if (p && p.then) p.then(render, render);
+  } catch(e){}
+  render();
+}
+
+/* ── hooks: a push only clears the list when it really finished ── */
+function hook(){
+  if (typeof window.doPush === 'function' && !window.doPush.__q368) {
+    var origPush = window.doPush;
+    var wp = async function(){
+      /* no signal: a timer that was already waiting must not fire a doomed upload (it only
+         produced a red "failed" dot). A deliberate tap still gets a plain-words answer. */
+      if (!online()) {
+        try { if (navigator.userActivation && navigator.userActivation.isActive && typeof toast === 'function') toast('📴 No signal. Everything is saved on this phone and uploads by itself when service returns.'); } catch(e){}
+        render(); return;
+      }
+      var before = snapshot(), prevSync = _lastSync; savedDuring = false;
+      var r = await origPush.apply(this, arguments);
+      try {
+        var ok = (_lastSync !== prevSync) && !_lastSyncError;
+        if (ok) { failStreak = 0; if (savedDuring) { rebase(before); setTimeout(function(){ kick(true); }, 1200); } else rebase(snapshot()); }
+        else if (_lastSyncError) failStreak++;
+      } catch(e){}
+      render(); return r;
+    };
+    wp.__q368 = 1; window.doPush = wp; try { doPush = wp; } catch(e){}
+  }
+  if (typeof window.doPull === 'function' && !window.doPull.__q368) {
+    var origPull = window.doPull;
+    var wl = async function(){
+      var before = snapshot(), prevSync = _lastSync; savedDuring = false;
+      var r = await origPull.apply(this, arguments);
+      try {
+        if (_lastSync !== prevSync && !_lastSyncError && !savedDuring && BASE) {
+          /* whatever the pull merged in came FROM the cloud, so it is not waiting to go there */
+          var after = snapshot();
+          COLS.forEach(function(c){
+            var b = before[c] || {}, a = after[c] || {}; BASE[c] = BASE[c] || {};
+            Object.keys(a).forEach(function(id){ if (b[id] !== a[id]) BASE[c][id] = a[id]; });
+            Object.keys(b).forEach(function(id){ if (!(id in a)) delete BASE[c][id]; });
+          });
+          saveBase();
+        }
+      } catch(e){}
+      render(); return r;
+    };
+    wl.__q368 = 1; window.doPull = wl; try { doPull = wl; } catch(e){}
+  }
+  if (typeof window.bpICloudSync === 'function' && !window.bpICloudSync.__q368) {
+    var origCk = window.bpICloudSync;
+    var wc = async function(){
+      var before = snapshot();
+      var r = await origCk.apply(this, arguments);
+      try { var ce = window.bpCk && bpCk.state && bpCk.state.lastErr; if (!haveToken() && !ce) rebase(before); } catch(e){}
+      render(); return r;
+    };
+    wc.__q368 = 1; window.bpICloudSync = wc;
+  }
+  if (typeof window.scheduleAutoPush === 'function' && !window.scheduleAutoPush.__q368) {
+    var origSched = window.scheduleAutoPush;
+    var ws = function(){
+      try { if (_isSyncing && !_suppressNextAutoPush) savedDuring = true; } catch(e){}
+      if (!online()) { try { _suppressNextAutoPush = false; } catch(e){} clearTimeout(ws._t); ws._t = setTimeout(render, 900); return; }
+      var r = origSched.apply(this, arguments);
+      clearTimeout(ws._t); ws._t = setTimeout(render, 900);
+      return r;
+    };
+    ws.__q368 = 1; window.scheduleAutoPush = ws; try { scheduleAutoPush = ws; } catch(e){}
+  }
+}
+
+loadBase(); hook();
+window.addEventListener('online', function(){ failStreak = 0; render(); setTimeout(function(){ kick(true); }, 1500); });
+window.addEventListener('offline', function(){ render(); });
+document.addEventListener('visibilitychange', function(){ if (!document.hidden) { render(); setTimeout(function(){ kick(false); }, 2000); } });
+setInterval(function(){ render(); kick(false); }, 15000);
+setTimeout(function(){ render(); kick(false); }, 4000);
+console.log('[BP] v3.68 offline queue ready');
 })();
 </script>
