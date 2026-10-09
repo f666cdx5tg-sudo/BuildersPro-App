@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.91';
+var APP_VERSION = '3.92';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -17771,6 +17771,7 @@ var ICONS = {
   calendar:'<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
   file:'<path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5M9 13h6M9 17h4"/>',
   door:'<path d="M6 21V4.5A1.5 1.5 0 017.5 3h9A1.5 1.5 0 0118 4.5V21M4 21h16"/><circle class="f" cx="14.6" cy="12.5" r=".9"/>',
+  foyer:'<path d="M7 18V4.5A1.5 1.5 0 018.5 3h7A1.5 1.5 0 0117 4.5V18"/><circle class="f" cx="14" cy="11" r=".9"/><path d="M4 21h16M5.5 18h13l1.5 3H4z"/>',
   mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v3M9 21h6"/>',
   bricks:'<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M9 14.3V19"/>',
   upload:'<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M4 14v5a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 19v-5"/>',
@@ -19343,6 +19344,7 @@ console.log('[BP] v3.88 ready — Mac text & button size matches the field app')
     '🧱':'bricks','🪵':'log','🌿':'leaf','🪜':'ladder','🚧':'barrier','🚰':'faucet','🕳':'hole','🔌':'plug','❓':'help' };
   var prev = window.bpRoomIconHtml, busy = false;
   window.bpRoomIconHtml = function(name, type){
+    if (/foyer|entry|vestibule/i.test(String(name||'')) && typeof window.bpIcon==='function' && window.BP_ICONS && window.BP_ICONS.foyer) return window.bpIcon('foyer');
     var h = prev.apply(this, arguments);
     if (h || busy) return h;
     busy = true;                                   /* BPX.icon calls back into this function */
