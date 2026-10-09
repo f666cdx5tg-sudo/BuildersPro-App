@@ -1496,7 +1496,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.75';
+var APP_VERSION = '3.76';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -1944,9 +1944,10 @@ function permitExpiryInfo(p) {
   if (days <= 30) return { label:'Expires in ' + days + 'd', color:'#FF9500', daysLeft:days, urgent:true };
   return { label:'Expires ' + fmtDate(p.expirationDate), color:'#0A84FF', daysLeft:days, urgent:false };
 }
-function permitAlertCounts() {
+function permitAlertCounts(onlyJobId) {
   var expired = 0, soon = 0;
   (DB.permits||[]).forEach(function(p){
+    if (onlyJobId && p.jobId !== onlyJobId) return;   /* v3.76: optional per-job scope */
     if (!p.expirationDate) return;
     var info = permitExpiryInfo(p);
     if (info.daysLeft < 0) expired++;
@@ -19153,11 +19154,13 @@ var IC = {
 
 /* ── numbers ── */
 function owed(){
-  var L = (DB.invoices||[]).filter(function(i){ return i && (i.status === 'Sent' || i.status === 'Overdue'); });
+  var sj = onSite();
+  var L = (DB.invoices||[]).filter(function(i){ return i && (i.status === 'Sent' || i.status === 'Overdue') && (!sj || i.jobId === sj.id); });
   return { n:L.length, total:L.reduce(function(s, i){ return s + (+i.amount||0); }, 0), list:L };
 }
 function moneyLeft(){
-  return active().filter(function(j){ return j.contract || (typeof bpCOApproved === 'function' && bpCOApproved(j.id)); }).reduce(function(s, j){
+  var sj = onSite();
+  return (sj ? [sj] : active()).filter(function(j){ return j.contract || (typeof bpCOApproved === 'function' && bpCOApproved(j.id)); }).reduce(function(s, j){
     var c = (typeof bpRevisedContract === 'function') ? bpRevisedContract(j.id) : +j.contract || 0;
     var sp = (typeof jobActualSpend === 'function') ? jobActualSpend(j.id).total : 0;
     return s + c - sp;
@@ -19167,17 +19170,19 @@ function todays(){
   var d = new Date(), t = today(), ev = [];
   try { ev = getCalendarEvents(d.getFullYear(), d.getMonth()).filter(function(e){ return e.date === t; }); }
   catch(e){ ev = (DB.appointments||[]).filter(function(a){ return a.date === t; }); }
+  var sj = onSite(); if (sj) ev = ev.filter(function(e){ return e.jobId === sj.id; });
   ev.sort(function(a, b){ return (a.time||'99') < (b.time||'99') ? -1 : 1; });
   return ev;
 }
 function openPunch(){
-  var ids = {}; active().forEach(function(j){ ids[j.id] = 1; });
+  var ids = {}, sj = onSite(); (sj ? [sj] : active()).forEach(function(j){ ids[j.id] = 1; });
   var L = (DB.punchlist||[]).filter(function(p){ return p && !p.done && ids[p.jobId]; });
   var jobs = {}; L.forEach(function(p){ jobs[p.jobId] = 1; });
   return { n:L.length, jobs:Object.keys(jobs).length };
 }
 function pendingCOs(){
-  var L = (DB.changeOrders||[]).filter(function(c){ return c && (c.status === 'Draft' || c.status === 'Submitted' || !c.status); });
+  var sj = onSite();
+  var L = (DB.changeOrders||[]).filter(function(c){ return c && (c.status === 'Draft' || c.status === 'Submitted' || !c.status) && (!sj || c.jobId === sj.id); });
   return { n:L.length, total:L.reduce(function(s, c){ return s + (+c.amount||0); }, 0) };
 }
 function lastWorkday(){ var d = new Date(); do { d.setDate(d.getDate() - 1); } while (d.getDay() === 0 || d.getDay() === 6); return dk(d); }
@@ -19185,13 +19190,15 @@ function lastWorkday(){ var d = new Date(); do { d.setDate(d.getDate() - 1); } w
 /* ── attention list ── */
 window.bpAttentionItems = function(){
   var items = [], RED = 'red', AMB = 'amber', BLUE = 'blue';
-  active().forEach(function(j){
+  var sel = onSite();   /* v3.76: a selected job is its own world — nothing from other jobs */
+  (sel ? [sel] : active()).forEach(function(j){
     if (!j.contract || typeof jobActualSpend !== 'function') return;
     var over = jobActualSpend(j.id).total - (typeof bpRevisedContract === 'function' ? bpRevisedContract(j.id) : +j.contract);
     if (over > 0) items.push({ k:'over', tone:RED, icon:IC.over, text:E(j.name) + ' is ' + money(over) + ' over budget', action:"openJobDetail('" + j.id + "')" });
   });
   var cut = new Date(); cut.setDate(cut.getDate() - 30); cut = dk(cut);
   var late = owed().list.filter(function(i){ return i.status === 'Overdue' || (i.date && i.date <= cut); });
+  if (sel) late = late.filter(function(i){ return i.jobId === sel.id; });
   if (late.length) {
     var tot = late.reduce(function(s, i){ return s + (+i.amount||0); }, 0);
     var oldest = late.slice().sort(function(a, b){ return (a.date||'') < (b.date||'') ? -1 : 1; })[0];
@@ -19200,7 +19207,7 @@ window.bpAttentionItems = function(){
       : late.length + ' invoices unpaid 30+ days — ' + money(tot), action:"_financeTab='invoices';showScreen('s-finance')" });
   }
   try {
-    var pc = permitAlertCounts();
+    var pc = permitAlertCounts(sel ? sel.id : null);
     if (pc.expired) items.push({ k:'permit', tone:RED, icon:IC.permit, text:pc.expired + ' permit' + (pc.expired > 1 ? 's' : '') + ' expired', action:"_financeTab='permits';showScreen('s-finance')" });
     if (pc.soon) items.push({ k:'permit', tone:AMB, icon:IC.permit, text:pc.soon + ' permit' + (pc.soon > 1 ? 's' : '') + ' expire within 30 days', action:"_financeTab='permits';showScreen('s-finance')" });
   } catch(e){}
