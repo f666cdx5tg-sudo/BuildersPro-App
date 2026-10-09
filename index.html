@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.83';
+var APP_VERSION = '3.84';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24378,12 +24378,21 @@ console.log('[BP] v3.77 job Security section ready');
    bpHMenu() component). Each menu item shows the section's existing count
    (read straight off the already-rendered accordion header, nothing
    recomputed/duplicated) and opens straight to that section.
+   v3.84 fix — Stan: "I should not see all those pages name when job
+   sections is closed." The original version gated visibility on a single
+   per-job REVEALED flag, so picking ANY one section from the menu un-hid
+   ALL 9 cards at once. Now each row's visibility is tied to its OWN
+   open/closed state instead of one job-wide flag: .bp-acc rows use their
+   existing .open class (already toggled live by bpJobAccToggle — pure
+   CSS, no JS needed), and the Security card — which has no existing
+   state-reflecting class — gets a MutationObserver-synced .sec-open class
+   so it still hides/shows correctly no matter which code path repaints it
+   (menu tap, header tap, or a save/delete inside it).
    Field app only — desktop.html's job screen is a different, table-based
    layout with no equivalent list to collapse (CURRENT_STATE.md rule: a
    phone-only UX fix stays in index.html). Purely additive: the v3.59
    accordion stack and the v3.77 Security card are untouched — this just
-   hides them behind a class on the (stable, never-recreated) #s-job-detail
-   screen element until a menu item asks for one by name, so it keeps
+   hides each row via CSS until IT is individually opened, so it keeps
    working no matter how many times those two rebuild their own DOM nodes
    on toggle. */
 (function(){
@@ -24393,15 +24402,33 @@ console.log('[BP] v3.77 job Security section ready');
   if (typeof window.bpHMenu !== 'function') return;
 
   var css = document.createElement('style');
-  css.textContent = '#s-job-detail.bp-sec-collapsed #jd-security-section,'
-    + '#s-job-detail.bp-sec-collapsed #jd-stack{display:none!important}'
+  css.textContent = '#jd-stack .bp-acc{display:none!important}'
+    + '#jd-stack .bp-acc.open{display:block!important}'
+    + '#jd-security-section{display:none!important}'
+    + '#jd-security-section.sec-open{display:block!important}'
     + '#jd-sections-trigger{margin:10px 16px 0;display:flex;align-items:center;gap:10px;min-height:52px;'
     + 'padding:0 14px;background:var(--card);border:1px solid var(--border);border-radius:14px;font-size:15px;font-weight:800}'
     + '#jd-sections-trigger>span:first-child{flex:1;min-width:0}'
     + '#jd-sections-trigger .bp-hm-pop{max-height:min(60vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch}';
   document.head.appendChild(css);
 
-  var REVEALED = {}; /* jobId -> true once the person has opened the menu and picked something */
+  /* Security section repaints via paint() removing + re-inserting a fresh
+     node (see v3.77) with no class reflecting open/closed — only inferable
+     from whether it got a body (children.length>1). A MutationObserver on
+     the screen keeps a real .sec-open class in sync with that regardless
+     of which code path triggered the repaint. */
+  var secMo = null;
+  function syncSecClass(){
+    var sec = document.getElementById('jd-security-section');
+    if (sec) sec.classList.toggle('sec-open', sec.children.length > 1);
+  }
+  function ensureSecObserver(){
+    var scr = document.getElementById('s-job-detail');
+    if (!scr || secMo) return;
+    secMo = new MutationObserver(syncSecClass);
+    secMo.observe(scr, { childList: true, subtree: true });
+    syncSecClass();
+  }
 
   function reposTrigger(){
     var trig = document.getElementById('jd-sections-trigger');
@@ -24439,9 +24466,6 @@ console.log('[BP] v3.77 job Security section ready');
   }
 
   window.bpOpenJobSection = function(key, jobId){
-    var scr = document.getElementById('s-job-detail');
-    if (scr) scr.classList.remove('bp-sec-collapsed');
-    REVEALED[jobId] = true;
     if (key === 'security') {
       var sec = document.getElementById('jd-security-section');
       if (sec && sec.children.length < 2 && typeof window.bpSecToggle === 'function') window.bpSecToggle(jobId);
@@ -24450,6 +24474,7 @@ console.log('[BP] v3.77 job Security section ready');
       if (acc && !acc.classList.contains('open') && typeof window.bpJobAccToggle === 'function') window.bpJobAccToggle(key);
     }
     setTimeout(function(){
+      syncSecClass();
       reposTrigger();
       var target = (key === 'security') ? document.getElementById('jd-security-section')
                                          : document.querySelector('#jd-stack .bp-acc[data-k="' + key + '"]');
@@ -24461,8 +24486,8 @@ console.log('[BP] v3.77 job Security section ready');
   renderJobDetail = function(jobId){
     var r = _prevRJD.apply(this, arguments);
     try {
-      var scr = document.getElementById('s-job-detail');
-      if (scr) scr.classList.toggle('bp-sec-collapsed', !REVEALED[jobId]);
+      ensureSecObserver();
+      syncSecClass();
       buildTrigger(jobId);
     } catch(e){ console.warn('[BP] v3.82 sections menu', e); }
     return r;
