@@ -574,7 +574,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       Sync
     </button>
-    <button class="tb-btn" onclick="toggleTheme()" style="display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>Theme</button><div style="display:flex;align-items:center;gap:6px;padding:0 6px"><span style="font-size:11px;font-weight:700;color:var(--muted)">A</span><input type="range" id="font-slider" min="14" max="22" value="16" step="1" oninput="setDesktopFont(this.value)" style="width:70px;accent-color:#0A84FF;cursor:pointer"/><span style="font-size:14px;font-weight:700;color:var(--muted)">A</span></div>
+    <button class="tb-btn" onclick="toggleTheme()" style="display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>Theme</button><button class="tb-btn" id="bp-size-btn" onclick="bpGlassOpen()" aria-label="Text and button size" style="display:inline-flex;align-items:center;gap:6px"><span style="font-size:11px;font-weight:800">A</span><span style="font-size:17px;font-weight:800;margin-left:-3px">A</span><span id="bp-size-lbl" style="font-variant-numeric:tabular-nums">100%</span></button>
     <button class="tb-btn btn-pink" onclick="openNewEOD()" style="color:#fff;background:#FFAA33;border-color:#FFAA33">
       <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
       New EOD Report
@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.87';
+var APP_VERSION = '3.88';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -19194,5 +19194,130 @@ console.log('[BP] v3.75 levels & rooms on New Job ready');
   };
   window.bpRoomIconHtml.__v386 = 1;
   console.log('[BP] v3.86 ready — boiler flame + utility wrench-in-room icons');
+})();
+</script>
+
+<script>
+/* ══ v3.88 — Mac Command Center: text & button size matches the field app ═══════
+   Stan (Oct 9, 2026): "Match font size enlargement option like the field app."
+   Before: a tiny 14–22px slider that only changed the page's base font, so most
+   of the Mac app (fixed-px text and buttons) barely moved. Now the same control
+   the field app has (v3.69): any size 85–180% in 5% steps — slider, A− / A+ and
+   six presets (Normal 100 … Max 180) — in the same frosted-glass panel, resizing
+   the WHOLE screen (text, buttons, spacing) live behind it via body zoom, exactly
+   as the field app does. Saved per device. An older saved slider value (px)
+   is converted once (16px = 100%). ══════════════════════════════════════════ */
+(function(){
+'use strict';
+if (window.__bpDeskSize) return; window.__bpDeskSize = 1;
+var PRESETS = [[100,'Normal'],[115,'Large'],[130,'XL'],[145,'XXL'],[160,'Jumbo'],[180,'Max']];
+var MIN = 85, MAX = 180, STEP = 5, KEY = 'bp_zoom_d';
+function clampPct(p){ p = Math.round((+p || 100) / STEP) * STEP; return Math.max(MIN, Math.min(MAX, p)); }
+function nameOf(p){ for (var i = 0; i < PRESETS.length; i++) if (Math.abs(PRESETS[i][0] - p) < 2.5) return PRESETS[i][1]; return 'Custom'; }
+var cur = 100;
+function load(){
+  var v = null; try { v = localStorage.getItem(KEY); } catch(e){}
+  if (v == null) {
+    var old = null; try { old = parseFloat(localStorage.getItem('pb2d_font')); } catch(e){}
+    v = old ? Math.round(old / 16 * 100) : 100;
+    try { localStorage.setItem(KEY, String(clampPct(v))); localStorage.setItem('pb2d_font', '16'); } catch(e){}
+  }
+  return clampPct(v);
+}
+function applyPct(p){
+  cur = p; var z = p / 100, b = document.body;
+  try { document.documentElement.style.setProperty('--font-base', '16px'); } catch(e){}
+  b.style.zoom = String(z);
+  document.querySelectorAll('[data-bp-nozoom]').forEach(function(e){ e.style.zoom = String(1 / z); });
+  var lab = document.getElementById('bp-size-lbl'); if (lab) lab.textContent = p + '%';
+}
+function save(p){ try { localStorage.setItem(KEY, String(p)); } catch(e){} }
+
+/* ── CSS (the field app's glass styles, verbatim, + a bottom-right panel) ── */
+var st = document.createElement('style'); st.id = 'bp-v388-css';
+st.textContent = ''
++ '.bp-g-stage{position:relative;border-radius:30px;padding:14px;background:radial-gradient(120% 90% at 8% 0%,rgba(10,132,255,.45),transparent 58%),radial-gradient(110% 90% at 100% 100%,rgba(191,90,242,.36),transparent 55%),radial-gradient(90% 70% at 60% 40%,rgba(48,209,88,.14),transparent 60%)}'
++ '.bp-glass{position:relative;border-radius:26px;color:#fff;background:linear-gradient(145deg,rgba(255,255,255,.28),rgba(255,255,255,.08) 55%,rgba(255,255,255,.16));-webkit-backdrop-filter:blur(26px) saturate(185%) brightness(1.06);backdrop-filter:blur(26px) saturate(185%) brightness(1.06);border:1px solid rgba(255,255,255,.32);box-shadow:inset 0 1.5px 0 rgba(255,255,255,.6),inset 0 -1px 0 rgba(255,255,255,.12),inset 0 0 24px rgba(255,255,255,.07),0 18px 42px rgba(0,0,0,.4)}'
++ '.bp-glass::before{content:"";position:absolute;left:14px;right:14px;top:2px;height:38%;border-radius:22px 22px 60% 60%/22px 22px 18px 18px;background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,0));pointer-events:none}'
++ '[data-theme="light"] .bp-glass{color:#0b1b33;background:linear-gradient(145deg,rgba(255,255,255,.78),rgba(255,255,255,.4) 55%,rgba(255,255,255,.62));border-color:rgba(255,255,255,.9);box-shadow:inset 0 1.5px 0 #fff,inset 0 -1px 0 rgba(255,255,255,.5),0 14px 34px rgba(20,60,120,.22)}'
++ '.bp-gc{padding:16px 16px 14px;position:relative}'
++ '.bp-g-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px}'
++ '.bp-g-title{font:800 15px -apple-system,system-ui,sans-serif;letter-spacing:.01em;white-space:nowrap}'
++ '.bp-g-val{font:900 34px -apple-system,system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}'
++ '.bp-g-val small{font-size:17px;font-weight:800;opacity:.75;margin-left:1px}'
++ '.bp-g-row{display:flex;align-items:center;gap:12px}'
++ '.bp-gb{flex:none;width:54px;height:54px;border-radius:50%;border:1px solid rgba(255,255,255,.4);color:inherit;font:900 22px -apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;cursor:pointer;background:linear-gradient(145deg,rgba(255,255,255,.34),rgba(255,255,255,.1));-webkit-backdrop-filter:blur(14px) saturate(170%);backdrop-filter:blur(14px) saturate(170%);box-shadow:inset 0 1.5px 0 rgba(255,255,255,.65),0 6px 14px rgba(0,0,0,.28);-webkit-tap-highlight-color:transparent;padding:0}'
++ '.bp-gb small{font-size:15px;margin-left:1px;font-weight:900}'
++ '.bp-gb:active{transform:scale(.93)}'
++ '.bp-gr{flex:1;min-width:0;height:54px;margin:0;background:transparent;-webkit-appearance:none;appearance:none;touch-action:pan-y}'
++ '.bp-gr::-webkit-slider-runnable-track{height:12px;border-radius:99px;background:linear-gradient(90deg,rgba(10,132,255,.9) 0 var(--p,50%),rgba(255,255,255,.28) var(--p,50%) 100%);box-shadow:inset 0 1px 2px rgba(0,0,0,.35),0 1px 0 rgba(255,255,255,.35)}'
++ '.bp-gr::-moz-range-track{height:12px;border-radius:99px;background:rgba(255,255,255,.28)}'
++ '.bp-gr::-moz-range-progress{height:12px;border-radius:99px;background:rgba(10,132,255,.9)}'
++ '.bp-gr::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:46px;height:46px;margin-top:-17px;border-radius:50%;border:1px solid rgba(255,255,255,.85);background:radial-gradient(circle at 35% 28%,rgba(255,255,255,.95),rgba(255,255,255,.55) 55%,rgba(255,255,255,.35));-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:inset 0 2px 3px rgba(255,255,255,.9),0 5px 14px rgba(0,0,0,.4)}'
++ '.bp-gr::-moz-range-thumb{width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.85);background:rgba(255,255,255,.8);box-shadow:0 5px 14px rgba(0,0,0,.4)}'
++ '.bp-g-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}'
++ '.bp-gp{flex:1 1 30%;min-width:0;padding:12px 6px;border-radius:99px;border:1px solid rgba(255,255,255,.34);color:inherit;font:800 15px -apple-system,system-ui,sans-serif;white-space:nowrap;cursor:pointer;background:linear-gradient(145deg,rgba(255,255,255,.26),rgba(255,255,255,.07));-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:inset 0 1px 0 rgba(255,255,255,.55);-webkit-tap-highlight-color:transparent}'
++ '.bp-gp small{display:block;font-size:11.5px;font-weight:700;opacity:.7;margin-top:1px}'
++ '.bp-gp.on{background:linear-gradient(145deg,rgba(10,132,255,.95),rgba(64,156,255,.7));border-color:rgba(255,255,255,.7);color:#fff;box-shadow:inset 0 1.5px 0 rgba(255,255,255,.7),0 6px 16px rgba(10,132,255,.5)}'
++ '.bp-g-note{font:600 12.5px/1.4 -apple-system,system-ui,sans-serif;margin-top:12px;opacity:.82;min-height:1px}'
++ '#bp-gs-wrap{position:fixed;inset:0;z-index:99996;display:none;background:rgba(0,0,0,.14)}'
++ '#bp-gs-wrap.open{display:block}'
++ '#bp-gs{position:fixed;right:20px;bottom:20px;width:min(480px,calc(100vw - 40px));z-index:99997}'
++ '#bp-gs .bp-g-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 10px}'
++ '#bp-gs .bp-g-done{padding:11px 22px;border-radius:99px;border:1px solid rgba(255,255,255,.7);background:linear-gradient(145deg,rgba(10,132,255,.95),rgba(64,156,255,.7));color:#fff;font:800 16px -apple-system,system-ui,sans-serif;box-shadow:inset 0 1.5px 0 rgba(255,255,255,.7),0 6px 16px rgba(10,132,255,.45);cursor:pointer}'
++ '@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.bp-glass{background:rgba(44,44,48,.96)}[data-theme="light"] .bp-glass{background:rgba(255,255,255,.97)}}'
++ '@media (prefers-reduced-transparency:reduce){.bp-glass,.bp-gb,.bp-gp{-webkit-backdrop-filter:none;backdrop-filter:none}.bp-glass{background:rgba(44,44,48,.97)}[data-theme="light"] .bp-glass{background:rgba(255,255,255,.98)}}';
+document.head.appendChild(st);
+
+function pillsHtml(){ return PRESETS.map(function(p){ return '<button type="button" class="bp-gp" data-pct="' + p[0] + '">' + p[1] + '<small>' + p[0] + '%</small></button>'; }).join(''); }
+function controlHtml(){
+  return '<div class="bp-glass bp-gc" role="group" aria-label="Text and button size">'
+    + '<div class="bp-g-top"><div class="bp-g-title">Text &amp; button size</div><div class="bp-g-val" aria-live="polite"><span data-gv>100</span><small>%</small></div></div>'
+    + '<div class="bp-g-row"><button type="button" class="bp-gb" data-gd="-1" aria-label="Smaller">A<small>−</small></button>'
+    + '<input class="bp-gr" type="range" min="' + MIN + '" max="' + MAX + '" step="' + STEP + '" aria-label="Text and button size">'
+    + '<button type="button" class="bp-gb" data-gd="1" aria-label="Bigger">A<small>+</small></button></div>'
+    + '<div class="bp-g-pills">' + pillsHtml() + '</div>'
+    + '<div class="bp-g-note" data-gn></div></div>';
+}
+function syncControls(p){
+  p = p != null ? p : cur;
+  document.querySelectorAll('.bp-gc').forEach(function(c){
+    var r = c.querySelector('.bp-gr'), v = c.querySelector('[data-gv]'), n = c.querySelector('[data-gn]');
+    if (r) { r.value = p; r.style.setProperty('--p', Math.max(0, Math.min(100, (p - MIN) / (MAX - MIN) * 100)) + '%'); }
+    if (v) v.textContent = p;
+    c.querySelectorAll('.bp-gp').forEach(function(b){ b.classList.toggle('on', Math.abs(+b.getAttribute('data-pct') - p) < 2.5); });
+    if (n) n.textContent = p > 145 ? 'Very large: some long names and dollar amounts may get cut off. Normal to XXL fits every screen.' : p < 100 ? 'Smaller than Normal: more on screen, harder to read.' : '';
+  });
+}
+window.bpSetDeskZoom = function(p){ p = clampPct(p); applyPct(p); save(p); syncControls(p); };
+window.bpDeskZoomName = function(){ return nameOf(cur) + ' · ' + cur + '%'; };
+
+document.addEventListener('input', function(e){
+  var r = e.target; if (!r || !r.classList || !r.classList.contains('bp-gr')) return;
+  var p = clampPct(r.value); applyPct(p); syncControls(p);          /* live preview, saved on release */
+});
+document.addEventListener('change', function(e){
+  var r = e.target; if (!r || !r.classList || !r.classList.contains('bp-gr')) return;
+  window.bpSetDeskZoom(r.value);
+});
+document.addEventListener('click', function(e){
+  var t = e.target && e.target.closest ? e.target.closest('.bp-gp,.bp-gb') : null; if (!t) return;
+  if (t.classList.contains('bp-gp')) window.bpSetDeskZoom(+t.getAttribute('data-pct'));
+  else window.bpSetDeskZoom(cur + (+t.getAttribute('data-gd')) * STEP);
+});
+
+var wrap = document.createElement('div'); wrap.id = 'bp-gs-wrap';
+wrap.innerHTML = '<div id="bp-gs" data-bp-nozoom="1"><div class="bp-g-stage" style="padding:12px"><div class="bp-g-head"><div class="bp-g-title" style="font-size:13px;opacity:.95;color:var(--text)">Drag and watch the app change</div><button type="button" class="bp-g-done" id="bp-gs-done">Done</button></div>' + controlHtml() + '</div></div>';
+document.body.appendChild(wrap);
+function openGlass(){ wrap.classList.add('open'); applyPct(cur); syncControls(); }
+function closeGlass(){ wrap.classList.remove('open'); }
+wrap.addEventListener('click', function(e){ if (e.target === wrap) closeGlass(); });
+document.getElementById('bp-gs-done').addEventListener('click', closeGlass);
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeGlass(); });
+window.bpGlassOpen = openGlass; window.bpGlassClose = closeGlass;
+window.setDesktopFont = function(){ openGlass(); };   /* old slider entry point */
+
+applyPct(load()); syncControls();
+console.log('[BP] v3.88 ready — Mac text & button size matches the field app');
 })();
 </script>
