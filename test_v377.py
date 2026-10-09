@@ -13,7 +13,7 @@ async def run(w, h):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('dialog', lambda d: asyncio.ensure_future(d.accept()))
         await pg.goto('http://localhost:8799/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h}'
-        ok(await pg.evaluate("APP_VERSION==='3.77'"), f'{t}: version')
+        ok(await pg.evaluate("parseFloat(APP_VERSION)>=3.77"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()")
         await pg.evaluate("(()=>{DB.jobs=[{id:'j1',name:'Shedwick',status:'Active'},{id:'j2',name:'Peach',status:'Active'}];save();renderAll();})()")
         await pg.evaluate("openJobDetail('j1')"); await pg.wait_for_timeout(400)

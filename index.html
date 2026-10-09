@@ -1496,7 +1496,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.77';
+var APP_VERSION = '3.78';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24155,14 +24155,22 @@ console.log('[BP] v3.75 levels & rooms on New Job ready');
 (function(){
 'use strict';
 if (window.__bpSec377) return; window.__bpSec377 = 1;
+var IC = window.BP_ICONS || {};
+IC.wifi   = IC.wifi   || '<path d="M12 18l.01 0"/><path d="M9.172 15.172a4 4 0 0 1 5.656 0"/><path d="M6.343 12.343a8 8 0 0 1 11.314 0"/><path d="M3.515 9.515c4.686 -4.687 12.284 -4.687 17 0"/>';
+IC.bell   = IC.bell   || '<path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>';
+IC.copy   = IC.copy   || '<path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/>';
+IC.shield = IC.shield || '<path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"/><path d="M12 11m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12l0 2.5"/>';
+IC.plus   = IC.plus   || '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>';
+IC.chev   = IC.chev   || '<path d="M9 6l6 6l-6 6"/>';
+function ic(n, px){ return '<span class="bp-ic" aria-hidden="true" style="width:' + (px||20) + 'px;height:' + (px||20) + 'px;flex:none"><svg viewBox="0 0 24 24">' + (IC[n]||'') + '</svg></span>'; }
 function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 var KINDS = [
-  { k:'door',    icon:'🚪', label:'Door / gate code', user:'',                      secret:'Code' },
-  { k:'wifi',    icon:'📶', label:'Wi-Fi',            user:'Network name',          secret:'Password' },
-  { k:'camera',  icon:'📹', label:'Camera / DVR',     user:'Username / app / link', secret:'Password' },
-  { k:'alarm',   icon:'🚨', label:'Alarm',            user:'',                      secret:'Code' },
-  { k:'lockbox', icon:'🔑', label:'Lockbox / key',    user:'',                      secret:'Code' },
-  { k:'other',   icon:'🔐', label:'Other',            user:'Username',              secret:'Password / code' }
+  { k:'door',    icon:'door', label:'Door / gate code', user:'',                      secret:'Code' },
+  { k:'wifi',    icon:'wifi', label:'Wi-Fi',            user:'Network name',          secret:'Password' },
+  { k:'camera',  icon:'camera', label:'Camera / DVR',     user:'Username / app / link', secret:'Password' },
+  { k:'alarm',   icon:'bell', label:'Alarm',            user:'',                      secret:'Code' },
+  { k:'lockbox', icon:'key', label:'Lockbox / key',    user:'',                      secret:'Code' },
+  { k:'other',   icon:'lock', label:'Other',            user:'Username',              secret:'Password / code' }
 ];
 function kind(k){ return KINDS.find(function(x){ return x.k === k; }) || KINDS[KINDS.length-1]; }
 function job(id){ return (DB.jobs||[]).find(function(j){ return j.id === id; }); }
@@ -24176,25 +24184,25 @@ function paint(jobId){
   var L = j.security || [], isOpen = !!openFor[jobId];
   var s = document.createElement('div'); s.id = 'jd-security-section'; s.style.cssText = 'margin:10px 16px 0';
   var head = '<div onclick="bpSecToggle(\'' + jobId + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;min-height:52px;padding:0 14px;background:var(--card);border:1px solid var(--border);border-radius:14px;font-size:15px;font-weight:800">'
-    + '<span style="font-size:20px">🔐</span><span style="flex:1;min-width:0">Security' + (L.length ? ' <span style="color:var(--muted);font-weight:700">(' + L.length + ')</span>' : '') + '</span>'
-    + '<span style="color:var(--muted);font-size:18px;transform:rotate(' + (isOpen ? '90' : '0') + 'deg);transition:transform .15s">›</span></div>';
+    + ic('shield',22) + '<span style="flex:1;min-width:0">Security' + (L.length ? ' <span style="color:var(--muted);font-weight:700">(' + L.length + ')</span>' : '') + '</span>'
+    + '<span style="color:var(--muted);display:flex;transform:rotate(' + (isOpen ? '90' : '0') + 'deg);transition:transform .15s">' + ic('chev',20) + '</span></div>';
   var body = '';
   if (isOpen) {
     body = '<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">'
       + (L.length ? L.map(function(it){
           var K = kind(it.kind);
           return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px">'
-            + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">' + K.icon + '</span>'
+            + '<div style="display:flex;align-items:center;gap:8px">' + ic(K.icon,22) + ''
             + '<div style="flex:1;min-width:0;font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(it.label || K.label) + '</div>'
-            + '<button onclick="bpSecEdit(\'' + jobId + '\',\'' + it.id + '\')" aria-label="Edit" style="min-width:44px;min-height:44px;background:none;border:none;color:var(--muted);font-size:17px;cursor:pointer">✏️</button></div>'
+            + '<button onclick="bpSecEdit(\'' + jobId + '\',\'' + it.id + '\')" aria-label="Edit" style="min-width:44px;min-height:44px;background:none;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center">' + ic('pencil',20) + '</button></div>'
             + (it.user ? '<div style="font-size:13px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(K.user || 'Username') + ': <b style="color:var(--text)">' + E(it.user) + '</b></div>' : '')
             + '<div style="display:flex;gap:8px;margin-top:8px">'
             + '<div data-sec-val="' + it.id + '" onclick="bpSecReveal(this,\'' + jobId + '\',\'' + it.id + '\')" style="flex:1;min-width:0;cursor:pointer;display:flex;align-items:center;min-height:44px;padding:0 12px;border-radius:10px;background:var(--card2,#222);border:1px solid var(--border);font-family:ui-monospace,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:.08em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (it.secret ? '••••••••' : '<span style="color:var(--faint);font-family:inherit;letter-spacing:0;font-size:14px">— none —</span>') + '</div>'
-            + '<button onclick="bpSecCopy(\'' + jobId + '\',\'' + it.id + '\')" style="min-width:76px;min-height:44px;border-radius:10px;border:1px solid var(--border);background:var(--card2,#222);color:var(--accent,#0A84FF);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">Copy</button></div>'
+            + '<button onclick="bpSecCopy(\'' + jobId + '\',\'' + it.id + '\')" style="min-width:76px;min-height:44px;border-radius:10px;border:1px solid var(--border);background:var(--card2,#222);color:var(--accent,#0A84FF);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' + ic('copy',18) + 'Copy</button></div>'
             + (it.notes ? '<div style="font-size:13px;color:var(--muted);margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere">' + E(it.notes) + '</div>' : '')
             + '</div>';
-        }).join('') : '<div style="padding:14px;text-align:center;color:var(--faint);font-size:14px;background:var(--card);border:1px solid var(--border);border-radius:14px">No codes yet — tap + Add</div>')
-      + '<button onclick="bpSecAdd(\'' + jobId + '\')" style="min-height:48px;border-radius:12px;border:1px solid rgba(10,132,255,.4);background:rgba(10,132,255,.1);color:#409CFF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">+ Add</button>'
+        }).join('') : '<div style="padding:14px;text-align:center;color:var(--faint);font-size:14px;background:var(--card);border:1px solid var(--border);border-radius:14px">No codes yet — tap Add</div>')
+      + '<button onclick="bpSecAdd(\'' + jobId + '\')" style="min-height:48px;border-radius:12px;border:1px solid rgba(10,132,255,.4);background:rgba(10,132,255,.1);color:#409CFF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' + ic('plus',18) + 'Add</button>'
       + '<div style="font-size:11.5px;color:var(--faint);line-height:1.35;padding:0 4px 2px">Tap a code to show it for 8 seconds. Saved in this app and in your private sync — not encrypted, so keep banking-level secrets out.</div>'
       + '</div>';
   }
@@ -24210,7 +24218,7 @@ window.bpSecReveal = function(el, jobId, id){
 };
 window.bpSecCopy = function(jobId, id){
   var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !it.secret) { toast('Nothing to copy'); return; }
-  try { navigator.clipboard.writeText(it.secret).then(function(){ toast('📋 Copied'); }, function(){ toast('Tap the code to read it'); }); }
+  try { navigator.clipboard.writeText(it.secret).then(function(){ toast('Copied'); }, function(){ toast('Tap the code to read it'); }); }
   catch(e){ toast('Tap the code to read it'); }
 };
 
@@ -24226,7 +24234,7 @@ function modal(){
     + '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid var(--border,#2a2a2a)"><div style="font-size:17px;font-weight:700">' + (it ? 'Edit' : 'Add') + ' security info</div>'
     + '<button onclick="bpSecClose()" style="width:36px;height:36px;border-radius:50%;background:var(--card2);border:none;color:var(--muted);font-size:18px;cursor:pointer">x</button></div>'
     + '<div style="padding:4px 18px 18px">'
-    + '<div style="' + lb + '">Type</div><select id="bpsec-kind" onchange="bpSecKindChange()" style="' + inp + '">' + KINDS.map(function(k){ return '<option value="' + k.k + '"' + (k.k === cur.k ? ' selected' : '') + '>' + k.icon + ' ' + k.label + '</option>'; }).join('') + '</select>'
+    + '<div style="' + lb + '">Type</div><select id="bpsec-kind" onchange="bpSecKindChange()" style="' + inp + '">' + KINDS.map(function(k){ return '<option value="' + k.k + '"' + (k.k === cur.k ? ' selected' : '') + '>' + k.label + '</option>'; }).join('') + '</select>'
     + '<div style="' + lb + '">Label</div><input id="bpsec-label" type="text" placeholder="e.g. Front door, Basement router" value="' + E(it ? it.label : '') + '" style="' + inp + '"/>'
     + '<div id="bpsec-user-wrap"><div id="bpsec-user-lb" style="' + lb + '"></div><input id="bpsec-user" type="text" autocapitalize="off" autocorrect="off" value="' + E(it ? it.user : '') + '" style="' + inp + '"/></div>'
     + '<div id="bpsec-secret-lb" style="' + lb + '"></div><input id="bpsec-secret" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + E(it ? it.secret : '') + '" style="' + inp + ';font-family:ui-monospace,Menlo,monospace"/>'
@@ -24256,7 +24264,7 @@ window.bpSecSave = function(){
   var it = editing ? j.security.find(function(x){ return x.id === editing; }) : null;
   if (it) Object.assign(it, d); else j.security.push(Object.assign({ id:uid(), created:now() }, d));
   j.updatedAt = now(); openFor[editJob] = true;
-  save(); bpSecClose(); paint(editJob); toast('🔐 Saved');
+  save(); bpSecClose(); paint(editJob); toast('Saved');
 };
 window.bpSecDelete = function(){
   var j = job(editJob); if (!j || !editing) return;
