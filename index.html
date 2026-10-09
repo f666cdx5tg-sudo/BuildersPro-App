@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.81';
+var APP_VERSION = '3.82';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24366,5 +24366,108 @@ console.log('[BP] v3.77 job Security section ready');
   window.BP_LOC_SVG = window.BP_LOC_SVG || {};
   window.BP_LOC_SVG.yard = YARD;
   console.log('[BP] v3.80 ready — yard/grading icon');
+})();
+</script>
+
+<script>
+/* ══ v3.82 — job screen's section list (Security/Spaces/Finance/Expenses/
+   Contractors/Invoices/Permits/Daily Reports/Photos) collapses into one
+   "Job Sections ☰" hamburger row. Stan (screenshot of the job screen, Oct 9):
+   "put all of these into a hamburger" — same ☰ dropdown pattern already used
+   on the Punch page's Status/Space filters (v3.61, built on the v3.49
+   bpHMenu() component). Each menu item shows the section's existing count
+   (read straight off the already-rendered accordion header, nothing
+   recomputed/duplicated) and opens straight to that section.
+   Field app only — desktop.html's job screen is a different, table-based
+   layout with no equivalent list to collapse (CURRENT_STATE.md rule: a
+   phone-only UX fix stays in index.html). Purely additive: the v3.59
+   accordion stack and the v3.77 Security card are untouched — this just
+   hides them behind a class on the (stable, never-recreated) #s-job-detail
+   screen element until a menu item asks for one by name, so it keeps
+   working no matter how many times those two rebuild their own DOM nodes
+   on toggle. */
+(function(){
+  'use strict';
+  if (window.IS_DESK || document.getElementById('modal-new-room')) return;
+  if (typeof renderJobDetail !== 'function' || renderJobDetail.__v382) return;
+  if (typeof window.bpHMenu !== 'function') return;
+
+  var css = document.createElement('style');
+  css.textContent = '#s-job-detail.bp-sec-collapsed #jd-security-section,'
+    + '#s-job-detail.bp-sec-collapsed #jd-stack{display:none!important}'
+    + '#jd-sections-trigger{margin:10px 16px 0;display:flex;align-items:center;gap:10px;min-height:52px;'
+    + 'padding:0 14px;background:var(--card);border:1px solid var(--border);border-radius:14px;font-size:15px;font-weight:800}'
+    + '#jd-sections-trigger>span:first-child{flex:1;min-width:0}'
+    + '#jd-sections-trigger .bp-hm-pop{max-height:min(60vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch}';
+  document.head.appendChild(css);
+
+  var REVEALED = {}; /* jobId -> true once the person has opened the menu and picked something */
+
+  function reposTrigger(){
+    var trig = document.getElementById('jd-sections-trigger');
+    var row = document.querySelector('#s-job-detail .bp-act-row');
+    if (trig && row && row.nextSibling !== trig) row.parentNode.insertBefore(trig, row.nextSibling);
+  }
+
+  /* Hardcoded rather than scraped off the rendered header: the app's own
+     emoji→SVG icon converter (BPI_MAP, elsewhere in the file) silently
+     swaps several of these same characters out of any text node it finds
+     them in — including ones we'd be reading from — so scraping would
+     leave some menu rows iconless depending on render order. */
+  var SEC_ICON = { spaces:'🚪', finance:'💰', expenses:'🧾', contractors:'👷', invoices:'📄', permits:'📋', reports:'📝', photos:'📷', notes:'🗒️' };
+
+  function buildTrigger(jobId){
+    var old = document.getElementById('jd-sections-trigger'); if (old) old.remove();
+    var row = document.querySelector('#s-job-detail .bp-act-row'); if (!row) return;
+    var stack = document.getElementById('jd-stack');
+    var items = [];
+    var j = (DB.jobs || []).find(function(x){ return x.id === jobId; });
+    var secCt = (j && j.security) ? j.security.length : 0;
+    items.push({ icon: '🛡️', label: 'Security' + (secCt ? ' (' + secCt + ')' : ''), js: "bpOpenJobSection('security','" + jobId + "')" });
+    if (stack) {
+      [].forEach.call(stack.querySelectorAll('.bp-acc'), function(acc){
+        var key = acc.getAttribute('data-k');
+        var h = acc.querySelector('.bp-acc-h'); if (!h || !key) return;
+        var label = h.children[1] ? h.children[1].textContent : key;
+        var ct = h.children[2] ? h.children[2].textContent : '';
+        items.push({ icon: SEC_ICON[key] || '', label: label + (ct ? ' (' + ct + ')' : ''), js: "bpOpenJobSection('" + key + "','" + jobId + "')" });
+      });
+    }
+    var trig = document.createElement('div'); trig.id = 'jd-sections-trigger';
+    trig.innerHTML = '<span>Job Sections</span>' + window.bpHMenu('Job sections', items);
+    row.parentNode.insertBefore(trig, row.nextSibling);
+  }
+
+  window.bpOpenJobSection = function(key, jobId){
+    var scr = document.getElementById('s-job-detail');
+    if (scr) scr.classList.remove('bp-sec-collapsed');
+    REVEALED[jobId] = true;
+    if (key === 'security') {
+      var sec = document.getElementById('jd-security-section');
+      if (sec && sec.children.length < 2 && typeof window.bpSecToggle === 'function') window.bpSecToggle(jobId);
+    } else {
+      var acc = document.querySelector('#jd-stack .bp-acc[data-k="' + key + '"]');
+      if (acc && !acc.classList.contains('open') && typeof window.bpJobAccToggle === 'function') window.bpJobAccToggle(key);
+    }
+    setTimeout(function(){
+      reposTrigger();
+      var target = (key === 'security') ? document.getElementById('jd-security-section')
+                                         : document.querySelector('#jd-stack .bp-acc[data-k="' + key + '"]');
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
+
+  var _prevRJD = renderJobDetail;
+  renderJobDetail = function(jobId){
+    var r = _prevRJD.apply(this, arguments);
+    try {
+      var scr = document.getElementById('s-job-detail');
+      if (scr) scr.classList.toggle('bp-sec-collapsed', !REVEALED[jobId]);
+      buildTrigger(jobId);
+    } catch(e){ console.warn('[BP] v3.82 sections menu', e); }
+    return r;
+  };
+  renderJobDetail.__v382 = 1;
+  console.log('[BP] v3.82 ready — Job Sections hamburger');
 })();
 </script>
