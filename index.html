@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.82';
+var APP_VERSION = '3.83';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24469,5 +24469,34 @@ console.log('[BP] v3.77 job Security section ready');
   };
   renderJobDetail.__v382 = 1;
   console.log('[BP] v3.82 ready — Job Sections hamburger');
+})();
+</script>
+
+<script>
+/* ══ v3.83 — hamburger (☰) morphs into an X while its menu is open ══════════
+   Stan sent a screen recording of a site where tapping ☰ animates it into ✕;
+   asked for that style. Applied to the ☰ buttons that stay on screen while
+   their menu is open — the Job Sections / Punch-filter popovers (.bp-hm,
+   v3.49/v3.61/v3.82). Pure CSS: .bp-hm already gets an "open" class today,
+   so the three <line> elements in its inline SVG just get transformed into
+   an X while that class is set — no JS changes, nothing to wire up.
+   NOT applied to the bottom dock's ☰ (#bp-dock-menu, opens the left-side
+   nav drawer): that button hides itself the instant the drawer opens
+   (body.bp-drawer-open #bp-dock{display:none}, v3.43/v3.57's dock
+   show/hide logic) so it's never actually on screen at the same time as an
+   "open" state — a morph there would be invisible, not broken-looking, just
+   pointless. The drawer already closes via its own ✕ in its header. Field
+   app only — desktop.html has no hamburger/drawer pattern at all. */
+(function(){
+  'use strict';
+  if (window.IS_DESK || document.getElementById('modal-new-room')) return;
+  var css = document.createElement('style');
+  css.textContent =
+      '.bp-hm-btn svg line{transition:transform .2s ease,opacity .2s ease;transform-box:fill-box;transform-origin:50% 50%}'
+    + '.bp-hm.open .bp-hm-btn svg line:nth-child(1){transform:translateY(5px) rotate(45deg)}'
+    + '.bp-hm.open .bp-hm-btn svg line:nth-child(2){opacity:0}'
+    + '.bp-hm.open .bp-hm-btn svg line:nth-child(3){transform:translateY(-5px) rotate(-45deg)}';
+  document.head.appendChild(css);
+  console.log('[BP] v3.83 ready — hamburger-to-X');
 })();
 </script>
