@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.90';
+var APP_VERSION = '3.91';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24746,5 +24746,44 @@ console.log('[BP] v3.77 job Security section ready');
   };
   window.bpRoomIconHtml.__v386 = 1;
   console.log('[BP] v3.86 ready — boiler flame + utility wrench-in-room icons');
+})();
+</script>
+
+<script>
+/* ══ v3.91 — every space icon is a line icon, never an emoji ═══════════════════
+   Stan (Oct 9, 2026), after several rounds of "icon X hasn't changed":
+   "I keep asking for icons to be updated, do a unit test for icons in command
+   center." Cause of the leftovers: bpRoomIconHtml() only knew a list of name
+   patterns; any space it didn't recognise (Foyer, Basement/mechanical, Family
+   Room, Garage, ...) came back empty and the tile fell back to a plain emoji,
+   which only turned into a line icon IF a separate converter happened to run
+   on that part of the page (it doesn't on every screen/device). Now, when the
+   normal lookup finds nothing, the emoji it WOULD have used is looked up
+   against the app's line-icon set (bpIcon) right here, so the answer is
+   always an SVG. test_command_center_icons.py asserts it for every space
+   name x every space type, and scans every Mac screen for raw emoji. ═════ */
+(function(){
+  'use strict';
+  if (typeof window.bpRoomIconHtml !== 'function' || window.bpRoomIconHtml.__v391) return;
+  var E2N = { '🍳':'pan','🚿':'shower','🛏':'bed','🛋':'sofa','🏚':'basement','🏗':'crane','🏠':'home','🚗':'car','💼':'briefcase',
+    '🚪':'door','🧺':'basket','❄':'snow','⚡':'bolt','🔧':'wrench','📦':'box','🔥':'flame','🛣':'road','🪟':'window','🔺':'triangle',
+    '🧱':'bricks','🪵':'log','🌿':'leaf','🪜':'ladder','🚧':'barrier','🚰':'faucet','🕳':'hole','🔌':'plug','❓':'help' };
+  var prev = window.bpRoomIconHtml, busy = false;
+  window.bpRoomIconHtml = function(name, type){
+    var h = prev.apply(this, arguments);
+    if (h || busy) return h;
+    busy = true;                                   /* BPX.icon calls back into this function */
+    try {
+      var e = (window.BPX && typeof BPX.icon === 'function') ? BPX.icon({ name: name, type: type }) : '';
+      if (!e) return '';
+      if (String(e).indexOf('<') >= 0) return e;   /* already markup */
+      var nm = E2N[String(e).replace(/️/g, '')];
+      return (nm && typeof window.bpIcon === 'function') ? window.bpIcon(nm) : '';
+    } catch(err){ return ''; }
+    finally { busy = false; }
+  };
+  window.bpRoomIconHtml.__v391 = 1;
+  try { bpRoomIconHtml = window.bpRoomIconHtml; } catch(e){}
+  console.log('[BP] v3.91 ready — every space icon is a line icon');
 })();
 </script>

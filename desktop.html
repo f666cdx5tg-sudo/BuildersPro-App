@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.90';
+var APP_VERSION = '3.91';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -4571,7 +4571,7 @@ function renderDesktopFinance() {
         +'<div style="text-align:right"><div style="font-size:16px;font-weight:900;color:#42A5F5">'+fmt$(p.cost)+'</div>'
         +'<button onclick="deletePermit(\''+p.id+'\')" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer">×</button></div>'
         +'</div>'
-        +'<div style="font-size:12px;font-weight:700;color:'+info.color+'">⏰ '+info.label+'</div>'
+        +'<div style="font-size:12px;font-weight:700;color:'+info.color+'"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> '+info.label+'</div>'
         +'<div style="margin-top:8px;display:flex;align-items:center;gap:8px">'+buildPermitDocCell(p)+(p.docSrc?'<span style="font-size:11px;color:var(--muted)">'+esc(p.docName||'Scan attached')+'</span>':'')+'</div>'
         +'</div>';}).join('');
 }
@@ -9278,7 +9278,7 @@ function renderDesktopJobDetail(jobId) {
     + (permits.length ? permits.slice().reverse().map(function(p){
         var info = permitExpiryInfo(p);
         return '<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-          + '<div><div style="font-size:13px;font-weight:700">'+esc(p.trade||'Permit')+(p.permitNumber?' · #'+esc(p.permitNumber):'')+'</div><div style="font-size:12px;font-weight:700;color:'+info.color+'">⏰ '+info.label+'</div></div>'
+          + '<div><div style="font-size:13px;font-weight:700">'+esc(p.trade||'Permit')+(p.permitNumber?' · #'+esc(p.permitNumber):'')+'</div><div style="font-size:12px;font-weight:700;color:'+info.color+'"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> '+info.label+'</div></div>'
           + '<div style="text-align:right"><div style="font-size:16px;font-weight:900;color:#42A5F5">'+fmt$(p.cost)+'</div><button class="btn btn-danger" style="font-size:11px;padding:4px 8px" onclick="deletePermit(\''+p.id+'\')">🗑</button></div>'
           + '</div><div style="display:flex;align-items:center;gap:8px">'+buildPermitDocCell(p)+(p.docSrc?'<span style="font-size:11px;color:var(--muted)">'+esc(p.docName||'Scan attached')+'</span>':'')+'</div></div>';
       }).join('') : '<div class="card" style="text-align:center;color:var(--muted);padding:20px">No permits yet</div>')
@@ -19319,5 +19319,44 @@ window.setDesktopFont = function(){ openGlass(); };   /* old slider entry point 
 
 applyPct(load()); syncControls();
 console.log('[BP] v3.88 ready — Mac text & button size matches the field app');
+})();
+</script>
+
+<script>
+/* ══ v3.91 — every space icon is a line icon, never an emoji ═══════════════════
+   Stan (Oct 9, 2026), after several rounds of "icon X hasn't changed":
+   "I keep asking for icons to be updated, do a unit test for icons in command
+   center." Cause of the leftovers: bpRoomIconHtml() only knew a list of name
+   patterns; any space it didn't recognise (Foyer, Basement/mechanical, Family
+   Room, Garage, ...) came back empty and the tile fell back to a plain emoji,
+   which only turned into a line icon IF a separate converter happened to run
+   on that part of the page (it doesn't on every screen/device). Now, when the
+   normal lookup finds nothing, the emoji it WOULD have used is looked up
+   against the app's line-icon set (bpIcon) right here, so the answer is
+   always an SVG. test_command_center_icons.py asserts it for every space
+   name x every space type, and scans every Mac screen for raw emoji. ═════ */
+(function(){
+  'use strict';
+  if (typeof window.bpRoomIconHtml !== 'function' || window.bpRoomIconHtml.__v391) return;
+  var E2N = { '🍳':'pan','🚿':'shower','🛏':'bed','🛋':'sofa','🏚':'basement','🏗':'crane','🏠':'home','🚗':'car','💼':'briefcase',
+    '🚪':'door','🧺':'basket','❄':'snow','⚡':'bolt','🔧':'wrench','📦':'box','🔥':'flame','🛣':'road','🪟':'window','🔺':'triangle',
+    '🧱':'bricks','🪵':'log','🌿':'leaf','🪜':'ladder','🚧':'barrier','🚰':'faucet','🕳':'hole','🔌':'plug','❓':'help' };
+  var prev = window.bpRoomIconHtml, busy = false;
+  window.bpRoomIconHtml = function(name, type){
+    var h = prev.apply(this, arguments);
+    if (h || busy) return h;
+    busy = true;                                   /* BPX.icon calls back into this function */
+    try {
+      var e = (window.BPX && typeof BPX.icon === 'function') ? BPX.icon({ name: name, type: type }) : '';
+      if (!e) return '';
+      if (String(e).indexOf('<') >= 0) return e;   /* already markup */
+      var nm = E2N[String(e).replace(/️/g, '')];
+      return (nm && typeof window.bpIcon === 'function') ? window.bpIcon(nm) : '';
+    } catch(err){ return ''; }
+    finally { busy = false; }
+  };
+  window.bpRoomIconHtml.__v391 = 1;
+  try { bpRoomIconHtml = window.bpRoomIconHtml; } catch(e){}
+  console.log('[BP] v3.91 ready — every space icon is a line icon');
 })();
 </script>
