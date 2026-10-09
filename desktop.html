@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.98';
+var APP_VERSION = '3.99';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -18376,10 +18376,30 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
     saveNow(); paintHome();
   };
   window.bpSetLaundry = function(jobId, val){ window.bpSetHome(jobId, 'laundry', val); };
+  window.__bpHomeOpen = window.__bpHomeOpen || {};
+  window.bpToggleHome = function(jobId){
+    var cur = homeIsOpen(jobId); window.__bpHomeOpen[jobId] = !cur;
+    try { sessionStorage.setItem('bp_home_open_' + jobId, cur ? '0' : '1'); } catch(e){}
+    paintHome();
+  };
+  function homeComplete(job){ var i = job.homeInfo || {}; return HOME_Q.every(function(q){ return !!i[q[0]]; }); }
+  /* once the home is filled in, the card collapses to one line behind a hamburger (v3.99) */
+  function homeIsOpen(jobId){
+    var v = window.__bpHomeOpen[jobId];
+    if (v === undefined) { try { var m = sessionStorage.getItem('bp_home_open_' + jobId); if (m === '1') v = true; else if (m === '0') v = false; } catch(e){} }
+    if (v === undefined) { var job = (DB.jobs || []).find(function(j){ return j.id === jobId; }); v = job ? !homeComplete(job) : true; }
+    return v;
+  }
   function homeHtml(job){
-    var info = job.homeInfo || {}, c = '#0A84FF';
-    var h = '<div style="font-size:15px;font-weight:800;margin-bottom:2px">🏠 Home details</div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5">Tap one in each row (tap again to clear).</div>';
+    var info = job.homeInfo || {}, c = '#0A84FF', open = homeIsOpen(job.id);
+    var ham = '<button onclick="bpToggleHome(\'' + job.id + '\')" aria-label="' + (open ? 'Hide' : 'Show') + ' home details" aria-expanded="' + (open ? 'true' : 'false') + '" style="background:transparent;border:none;color:var(--muted);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex-shrink:0;margin:-6px -8px -6px 0"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>';
+    var ico = (typeof window.bpIcon === 'function' && window.bpIcon('home')) || '🏠';
+    var h = '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px;min-width:0">' + ico + ' Home details</div>' + ham + '</div>';
+    if (!open) {
+      var sum = HOME_Q.map(function(q){ return info[q[0]] ? (q[0] === 'laundry' ? 'Laundry: ' : q[0] === 'attic' ? 'Attic: ' : 'Chimneys: ') + info[q[0]] : ''; }).filter(Boolean).join(' · ');
+      return h + (sum ? '<div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5">' + sum.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>' : '');
+    }
+    h += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5">Tap one in each row (tap again to clear).</div>';
     HOME_Q.forEach(function(q){
       var cur = info[q[0]] || '';
       h += '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 0 7px">' + q[1]
