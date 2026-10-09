@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.84';
+var APP_VERSION = '3.85';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24523,5 +24523,157 @@ console.log('[BP] v3.77 job Security section ready');
     + '.bp-hm.open .bp-hm-btn svg line:nth-child(3){transform:translateY(-5px) rotate(-45deg)}';
   document.head.appendChild(css);
   console.log('[BP] v3.83 ready — hamburger-to-X');
+})();
+</script>
+
+<script>
+/* ══ v3.85 — Job Sections: blend-in ☰ + open-as-full-page ═══════════════
+   Stan, looking at the Job Sections row: "Why do I see the hamburger box,
+   it should blend in. Move it to the end of the tab. When I select a
+   section from the hamburger it should open full page."
+
+   1) Blend-in ☰: the Job Sections trigger's hamburger button was using
+      the default boxed .bp-hm-btn look (card background + border) — the
+      same look the app already strips off in the Punch-filter menus
+      (.bp-pm .bp-hm-btn{border:none;background:transparent}, ~L22922).
+      Scoped the same treatment to #jd-sections-trigger so it reads as a
+      plain icon sitting in the row, not a separate button-on-a-button.
+
+   2) Open full page: previously picking a section from the menu just
+      expanded its existing inline accordion card and scrolled to it —
+      every other section (and the job header/stats/action row) stayed in
+      the DOM, so it didn't read as "its own page." Now the chosen section
+      visually takes over the whole screen: its container goes
+      position:fixed/inset:0 (CSS only — it is NOT moved in the DOM, so
+      nothing about how v3.59/v3.77/v3.84 render or re-render it changes),
+      every other direct child of #s-job-detail is hidden, and a sticky
+      "‹ <Section Name>" back bar is added up top. Tapping it restores the
+      normal job-detail view exactly as it was.
+   Field app only — desktop.html's job screen has no equivalent list. */
+(function(){
+  'use strict';
+  if (window.IS_DESK || document.getElementById('modal-new-room')) return;
+  if (typeof window.bpOpenJobSection !== 'function') return;
+  if (window.bpOpenJobSection.__v385) return;
+
+  var css = document.createElement('style');
+  css.textContent =
+      '#jd-sections-trigger .bp-hm-btn{background:transparent;border:none;width:36px;height:36px}'
+    + '#jd-sections-trigger{padding-right:8px}'
+    + '#s-job-detail.bp-sec-full #jd-stack,#s-job-detail.bp-sec-full #jd-security-section{'
+    + 'position:fixed;inset:0;z-index:960;background:var(--bg);overflow-y:auto;'
+    + '-webkit-overflow-scrolling:touch;padding:calc(var(--safe-top) + 56px) 0 24px;margin:0!important}'
+    + '#jd-focus-bar{display:none;position:fixed;top:0;left:0;right:0;z-index:970;background:var(--bg);'
+    + 'padding:var(--safe-top) 16px 10px;border-bottom:1px solid var(--border);align-items:center}'
+    + '#jd-focus-bar .back-btn{margin-bottom:0;font-size:16px;font-weight:800}';
+  document.head.appendChild(css);
+
+  var FOCUS = { jobId: null, key: null };
+  var focusMo = null;
+
+  function focusLabel(){
+    if (FOCUS.key === 'security') return 'Security';
+    var h = document.querySelector('#jd-stack .bp-acc[data-k="' + FOCUS.key + '"] .bp-acc-h');
+    return (h && h.children[1]) ? h.children[1].textContent : 'Back';
+  }
+
+  function ensureFocusBar(){
+    var bar = document.getElementById('jd-focus-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'jd-focus-bar';
+      bar.innerHTML = '<button type="button" class="back-btn" onclick="bpCloseSectionFocus()">'
+        + '<svg viewBox="0 0 24 24" style="width:20px;height:20px"><polyline points="15 18 9 12 15 6"></polyline></svg>'
+        + '<span id="jd-focus-label">Back</span></button>';
+      var scr = document.getElementById('s-job-detail');
+      if (scr) scr.insertBefore(bar, scr.firstChild);
+    }
+    return bar;
+  }
+
+  function applyFocus(resetScroll){
+    var scr = document.getElementById('s-job-detail');
+    if (!scr || !FOCUS.key) return;
+    var keepEl = (FOCUS.key === 'security') ? document.getElementById('jd-security-section')
+                                             : document.getElementById('jd-stack');
+    if (!keepEl) return;
+    var bar = ensureFocusBar();
+    [].forEach.call(scr.children, function(c){
+      if (c === keepEl || c === bar) c.style.removeProperty('display');
+      else c.style.display = 'none';
+    });
+    bar.style.display = 'flex';
+    var lbl = document.getElementById('jd-focus-label');
+    if (lbl) lbl.textContent = focusLabel();
+    scr.classList.add('bp-sec-full');
+    if (resetScroll) keepEl.scrollTop = 0;
+  }
+
+  window.bpCloseSectionFocus = function(){
+    var scr = document.getElementById('s-job-detail');
+    FOCUS.key = null; FOCUS.jobId = null;
+    if (!scr) return;
+    scr.classList.remove('bp-sec-full');
+    [].forEach.call(scr.children, function(c){ c.style.removeProperty('display'); });
+    var bar = document.getElementById('jd-focus-bar');
+    if (bar) bar.style.display = 'none';
+  };
+
+  var focusRaf = null;
+  function ensureFocusObserver(){
+    var scr = document.getElementById('s-job-detail');
+    if (!scr || focusMo) return;
+    focusMo = new MutationObserver(function(){
+      if (!FOCUS.key || focusRaf) return;
+      focusRaf = requestAnimationFrame(function(){ focusRaf = null; if (FOCUS.key) applyFocus(false); });
+    });
+    /* Direct children only — catches #jd-stack / #jd-security-section
+       being wholesale removed+recreated on re-render (v3.59/v3.77), which
+       is the only case that needs a re-sync. subtree:true would also
+       fire on every incidental change deep inside the open section
+       (thumbnails loading, live voice text, etc.) and churn needlessly. */
+    focusMo.observe(scr, { childList: true });
+  }
+
+  /* A "full page" should show ONLY the section just picked — not it plus
+     whatever else happened to already be open (Spaces defaults open per
+     v3.59). So close every other open row first; the target then opens
+     clean via the existing _prevOpen logic below. */
+  function closeOthers(key, jobId){
+    [].forEach.call(document.querySelectorAll('#jd-stack .bp-acc.open'), function(acc){
+      var k = acc.getAttribute('data-k');
+      if (k && k !== key && typeof window.bpJobAccToggle === 'function') window.bpJobAccToggle(k);
+    });
+    var sec = document.getElementById('jd-security-section');
+    if (key !== 'security' && sec && sec.children.length > 1 && typeof window.bpSecToggle === 'function') {
+      window.bpSecToggle(jobId);
+    }
+  }
+
+  var _prevOpen = window.bpOpenJobSection;
+  window.bpOpenJobSection = function(key, jobId){
+    closeOthers(key, jobId);
+    _prevOpen(key, jobId);
+    FOCUS.key = key; FOCUS.jobId = jobId;
+    ensureFocusObserver();
+    setTimeout(function(){ applyFocus(true); }, 90);
+  };
+  window.bpOpenJobSection.__v385 = 1;
+
+  if (typeof renderJobDetail === 'function' && !renderJobDetail.__v385) {
+    var _prevRJD2 = renderJobDetail;
+    renderJobDetail = function(jobId){
+      var r = _prevRJD2.apply(this, arguments);
+      try {
+        ensureFocusObserver();
+        if (FOCUS.key && FOCUS.jobId === jobId) applyFocus(false);
+        else window.bpCloseSectionFocus();
+      } catch(e){ console.warn('[BP] v3.85 section focus', e); }
+      return r;
+    };
+    renderJobDetail.__v385 = 1;
+  }
+
+  console.log('[BP] v3.85 ready — Job Sections blend-in ☰ + full-page open');
 })();
 </script>
