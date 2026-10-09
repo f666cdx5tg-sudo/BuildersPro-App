@@ -1227,25 +1227,27 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       <button class="sheet-close" onclick="closeSheet('sheet-add-note')">✕</button>
     </div>
     <div class="sheet-body">
+      <!-- v3.81: job (and area, when it's already fixed) is known at every
+           place this sheet opens from — no reason to ask again. This line
+           shows where the item is going; the Job/Area pickers below it are
+           hidden whenever that context is already settled (see
+           openAddNote). -->
+      <div id="an-context" style="font-size:13px;color:var(--muted);font-weight:700;margin:-2px 0 10px"></div>
       <div class="field"><div class="field-label">Item Description *</div>
         <input id="an-text" type="text" placeholder="What needs to be checked or done?"/>
       </div>
       <div class="field-row">
-        <div class="field"><div class="field-label">Job</div>
-          <select id="an-job"><option value="">No job</option></select>
-        </div>
         <div class="field"><div class="field-label">Priority</div>
           <select id="an-priority"><option>Normal</option><option>High</option><option>Critical</option></select>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field"><div class="field-label">Area</div>
-          <select id="an-room"><option value="">No space</option></select>
         </div>
         <div class="field"><div class="field-label">Value ($)</div>
           <input id="an-value" type="number" inputmode="decimal" placeholder="0.00" step="0.01"/>
         </div>
       </div>
+      <div class="field" id="an-room-wrap"><div class="field-label">Area</div>
+        <select id="an-room"><option value="">No space</option></select>
+      </div>
+      <select id="an-job" style="display:none"><option value="">No job</option></select>
       <div class="field"><div class="field-label">Notes (optional)</div>
         <textarea id="an-notes" rows="2" placeholder="Additional details..."></textarea>
       </div>
@@ -1496,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.80';
+var APP_VERSION = '3.81';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -3598,6 +3600,20 @@ function openAddNote(jobId, roomId) {
   if (jobId) document.getElementById('an-job').value = jobId;
   var anRoom = document.getElementById('an-room');
   if (anRoom) anRoom.value = roomId || '';
+  /* v3.81: Stan — "why is job there, we are already in a job... why is job
+     name next to area, not needed." Job is always known by the time this
+     sheet opens (it's passed in from every call site), so show it as plain
+     text instead of a picker. When the area is ALSO already fixed (the "+
+     Item" button on a room/space screen passes roomId), skip asking for
+     that too — collapse straight to just the description. The job-level
+     "Add Item" button (no roomId yet) still shows the Area picker, since
+     that's a real choice at that point. */
+  var jobName = (DB.jobs.find(function(j){ return j.id === jobId; }) || {}).name || '';
+  var roomName = roomId ? ((DB.rooms || []).find(function(r){ return r.id === roomId; }) || {}).name || '' : '';
+  var anCtx = document.getElementById('an-context');
+  if (anCtx) anCtx.textContent = jobName + (roomName ? ' · ' + roomName : '');
+  var anRoomWrap = document.getElementById('an-room-wrap');
+  if (anRoomWrap) anRoomWrap.style.display = roomId ? 'none' : '';
   openSheet('sheet-add-note');
 }
 
