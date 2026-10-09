@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.86';
+var APP_VERSION = '3.87';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -3148,7 +3148,7 @@ function renderDesktopRooms() {
       var contractVal=+(r.contractValue||0);
       var remaining=contractVal-itemsTotal;
       var conLines=cons.map(function(c){return '👷 '+esc(c.trade||'General')+': '+esc(c.name);}).join('<br/>');
-      return '<tr><td style="cursor:pointer;user-select:none" onclick="openRoomDetail(\''+r.id+'\')" onmouseover="this.style.background=\'var(--card2)\'" onmouseout="this.style.background=\'\'" title="Click for full area details"><span style="margin-right:6px">'+((window.bpRoomIconHtml&&window.bpRoomIconHtml(r.name,r.type))||icons[r.type]||'🏠')+'</span><strong>'+esc(r.name)+'</strong>'+(r.drawing?' <span title="Has a sketch">📐</span>':'')+addedOrUpdatedLine(r.created,r.updatedAt)+'</td>'
+      return '<tr><td style="cursor:pointer;user-select:none" onclick="openRoomDetail(\''+r.id+'\')" onmouseover="this.style.background=\'var(--card2)\'" onmouseout="this.style.background=\'\'" title="Click for full area details"><span style="margin-right:6px">'+((window.bpRoomIconHtml&&window.bpRoomIconHtml(r.name,r.type))||(window.BPX&&BPX.icon&&BPX.icon(r))||icons[r.type]||'🏠')+'</span><strong>'+esc(r.name)+'</strong>'+(r.drawing?' <span title="Has a sketch">📐</span>':'')+addedOrUpdatedLine(r.created,r.updatedAt)+'</td>'
         +'<td>'+esc(r.type)+'</td>'
         +'<td>'+(job?esc(job.name):'—')+'</td>'
         +'<td style="font-size:12px;color:var(--muted)">'+(conLines?conLines+'<br/>':'')+((r.startDate||r.completionDate)?'📅 '+(r.startDate?fmtDatePlain(r.startDate):'—')+' → '+(r.completionDate?fmtDatePlain(r.completionDate):'—'):(conLines?'':'—'))+'</td>'
@@ -9205,7 +9205,7 @@ function renderDesktopJobDetail(jobId) {
         var contractV = +(r.contractValue||0);
         var conCount = roomContractorList(r).length;
         return '<div class="card" style="cursor:pointer" onclick="openRoomDetail(\''+r.id+'\')">'
-          + '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px"><span style="font-size:20px;flex-shrink:0;line-height:1.3">'+((window.bpRoomIconHtml&&window.bpRoomIconHtml(r.name,r.type))||icons[r.type]||'🏠')+'</span><div style="font-size:14px;font-weight:700;flex:1;min-width:0;overflow-wrap:break-word">'+esc(r.name)+'</div></div>'
+          + '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px"><span style="font-size:20px;flex-shrink:0;line-height:1.3">'+((window.bpRoomIconHtml&&window.bpRoomIconHtml(r.name,r.type))||(window.BPX&&BPX.icon&&BPX.icon(r))||icons[r.type]||'🏠')+'</span><div style="font-size:14px;font-weight:700;flex:1;min-width:0;overflow-wrap:break-word">'+esc(r.name)+'</div></div>'
           + '<div style="font-size:12px;color:var(--muted)">'+done+'/'+items.length+' items · '+pct+'%'+(contractV?' · '+fmt$(contractV)+' contract':'')+(conCount?' · '+conCount+' contractor'+(conCount!==1?'s':''):'')+'</div>'
           + (items.length ? '<div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:'+pct+'%"></div></div>' : '')
           + '</div>';
