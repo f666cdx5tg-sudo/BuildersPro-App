@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.96';
+var APP_VERSION = '3.97';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24843,6 +24843,7 @@ console.log('[BP] v3.77 job Security section ready');
       } else apply();
     };
   };
+  var TRASH = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>';
   var PEN = '<button class="bp-doc-edit-btn" title="Edit" style="background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.4);border-radius:10px;color:#0A84FF;cursor:pointer;flex-shrink:0;width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;padding:0;margin-right:6px;vertical-align:middle"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 000-3l-1-1a2.1 2.1 0 00-3 0L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>';
   function decorate(){
     document.querySelectorAll('button[onclick^="deleteDocument("]').forEach(function(b){
@@ -24851,6 +24852,9 @@ console.log('[BP] v3.77 job Security section ready');
       var t=document.createElement('span'); t.innerHTML=PEN; var e=t.firstChild;
       e.setAttribute('onclick',"bpEditDoc('"+m[1]+"')"); e.setAttribute('aria-label','Edit document');
       b.parentNode.insertBefore(e,b);
+      b.className = 'bp-doc-del-btn'; b.title='Delete'; b.setAttribute('aria-label','Delete document');
+      b.style.cssText='background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.4);border-radius:10px;color:#FF453A;cursor:pointer;flex-shrink:0;width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;padding:0;vertical-align:middle';
+      b.innerHTML=TRASH;
     });
   }
   ['renderDesktopDocuments','renderDesktopJobDetail','renderJobDetail'].forEach(function(n){
@@ -24911,6 +24915,12 @@ console.log('[BP] v3.77 job Security section ready');
     var ids = allIds();
     // drop selections that no longer exist
     Object.keys(SEL).forEach(function(k){ if (ids.indexOf(k)<0) delete SEL[k]; });
+    wrap.querySelectorAll('button[onclick^="bpRestore(\'"],button[onclick^="bpRecyclePurge("]').forEach(function(bt){
+      var del = /bpRecyclePurge/.test(bt.getAttribute('onclick')||'');
+      bt.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:112px;height:44px;padding:0 14px;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;box-sizing:border-box;'
+        + (del ? 'background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.45);color:#FF453A' : 'background:rgba(48,209,88,.12);border:1px solid rgba(48,209,88,.45);color:#30D158');
+      bt.innerHTML = del ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg> Delete' : '&#8629; Restore';
+    });
     var restoreBtns = wrap.querySelectorAll('button[onclick^="bpRestore(\'"]');
     if (restoreBtns.length) {
       restoreBtns.forEach(function(b){
@@ -24925,7 +24935,7 @@ console.log('[BP] v3.77 job Security section ready');
       if (anchor && !document.getElementById('bp-rec-bar')) {
         var bar=document.createElement('div'); bar.id='bp-rec-bar';
         bar.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card2,var(--card));border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px';
-        var bs='border-radius:8px;font-size:13px;font-weight:800;padding:9px 14px;cursor:pointer;font-family:inherit;';
+        var bs='border-radius:10px;font-size:14px;font-weight:800;flex:1 1 130px;height:44px;padding:0 10px;cursor:pointer;font-family:inherit;box-sizing:border-box;';
         bar.innerHTML='<label style="display:flex;align-items:center;gap:10px;flex:1;min-width:140px;font-size:14px;font-weight:800;cursor:pointer"><input type="checkbox" id="bp-rec-all" style="width:26px;height:26px;accent-color:#0A84FF;margin:0" onchange="bpRecSelAll(this.checked)"><span id="bp-rec-n"></span></label>'
           +'<button class="bp-rec-act" onclick="bpRecBulkRestore()" style="'+bs+'background:rgba(48,209,88,.12);border:1px solid rgba(48,209,88,.45);color:#30D158">↩ Restore selected</button>'
           +'<button class="bp-rec-act" onclick="bpRecBulkPurge()" style="'+bs+'background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.45);color:#FF453A">Delete selected</button>';
@@ -24948,5 +24958,50 @@ console.log('[BP] v3.77 job Security section ready');
     try { decorate(); } catch(e){}
   }
   console.log('[BP] v3.96 ready — recently deleted select all');
+})();
+</script>
+<script>
+/* v3.97 — BALANCE: buttons that sit side by side in a row are the same height, and icon-only buttons the same width. */
+(function(){
+  'use strict';
+  if (window.__bpBalance) return; window.__bpBalance = 1;
+  var timer = 0, busy = false;
+  function vis(e){ var r=e.getBoundingClientRect(); return r.width>4 && r.height>4 && e.offsetParent!==null; }
+  function isBtn(e){ return e.tagName==='BUTTON' || (e.getAttribute && e.getAttribute('role')==='button') || (e.classList && e.classList.contains('btn')); }
+  function iconOnly(e){ return (e.textContent||'').replace(/\s+/g,'').length<=2; }
+  function skip(p){ return p.closest('[data-bp-nozoom],[role=tablist],.tabs,nav,select,#bp-glass,.bp-g-stage'); }
+  function run(){
+    busy = true;
+    try {
+      var Z = parseFloat(document.body.style.zoom) || 1;
+      var seen = new Set();
+      document.querySelectorAll('button, [role=button], .btn').forEach(function(b){
+        var p = b.parentElement; if (!p || seen.has(p)) return; seen.add(p);
+        if (skip(p)) return;
+        var kids = Array.prototype.filter.call(p.children, function(c){ return isBtn(c) && vis(c); });
+        if (kids.length < 2) return;
+        var rows = {};
+        kids.forEach(function(k){ var r=k.getBoundingClientRect(); (rows[Math.round((r.top+r.height/2)/10)] = rows[Math.round((r.top+r.height/2)/10)] || []).push(k); });
+        Object.keys(rows).forEach(function(key){
+          var g = rows[key]; if (g.length < 2) return;
+          var hs = g.map(function(k){ return k.getBoundingClientRect().height; });
+          var mx = Math.max.apply(0,hs);
+          if (mx - Math.min.apply(0,hs) > 2) g.forEach(function(k){ k.style.minHeight = (mx/ Z) + 'px'; k.style.boxSizing='border-box'; });
+          var io = g.filter(iconOnly);
+          if (io.length > 1) {
+            var ws = io.map(function(k){ return k.getBoundingClientRect().width; }), mw = Math.max.apply(0,ws);
+            if (mw - Math.min.apply(0,ws) > 2) io.forEach(function(k){ k.style.minWidth = (mw/Z) + 'px'; k.style.boxSizing='border-box'; });
+          }
+        });
+      });
+    } catch(e) { console.warn('[BP] balance', e); }
+    busy = false;
+  }
+  function later(){ if (busy) return; clearTimeout(timer); timer = setTimeout(run, 180); }
+  window.bpBalance = run;
+  try { new MutationObserver(later).observe(document.body, {childList:true, subtree:true}); } catch(e){}
+  window.addEventListener('resize', later);
+  later();
+  console.log('[BP] v3.97 ready — balanced buttons');
 })();
 </script>
