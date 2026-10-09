@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.95';
+var APP_VERSION = '3.96';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24860,5 +24860,93 @@ console.log('[BP] v3.77 job Security section ready');
   });
   try{ decorate(); }catch(e){}
   console.log('[BP] v3.94 ready — documents editable');
+})();
+</script>
+<script>
+/* v3.96 — Recently Deleted: select all / bulk Restore / bulk Delete forever / clear all markers. Shared (field + Mac). */
+(function(){
+  'use strict';
+  if (window.__bpRecSel) return; window.__bpRecSel = 1;
+  var SEL = {};   // entry id -> true
+  function allIds(){ return (typeof bpRecycleList==='function' ? bpRecycleList() : (DB.recycle||[])).map(function(e){return e.id;}); }
+  function count(){ return Object.keys(SEL).filter(function(k){return SEL[k];}).length; }
+  function rerender(){ try{ bpRenderRecycle(); }catch(e){} }
+  function persist(){ try{ bpSave(); }catch(e){ try{ save(); }catch(e2){ try{ saveDB(); }catch(e3){} } } }
+  function t(m){ try{ toast(m); }catch(e){} }
+  window.bpRecSelToggle = function(id, on){ if(on) SEL[id]=true; else delete SEL[id]; paintBar(); };
+  window.bpRecSelAll = function(on){
+    SEL = {}; if (on) allIds().forEach(function(id){ SEL[id]=true; });
+    document.querySelectorAll('#recycle-wrap .bp-rec-cb').forEach(function(cb){ cb.checked = !!on; });
+    paintBar();
+  };
+  window.bpRecBulkRestore = function(){
+    var ids = Object.keys(SEL); if(!ids.length) return;
+    var n=0; ids.forEach(function(id){ try{ if (bpRestore(id,true)) n++; }catch(e){} });
+    SEL={}; rerender(); t(n ? '↩️ Restored '+n+' item'+(n>1?'s':'') : 'Nothing restored');
+  };
+  window.bpRecBulkPurge = function(){
+    var ids = Object.keys(SEL); if(!ids.length) return;
+    if (!confirm('Permanently delete '+ids.length+' item'+(ids.length>1?'s':'')+'?\n\nThis cannot be undone.')) return;
+    var set = {}; ids.forEach(function(i){set[i]=1;});
+    DB.recycle = (DB.recycle||[]).filter(function(x){ return !set[x.id]; });
+    SEL={}; persist(); rerender(); t('Permanently deleted '+ids.length);
+  };
+  window.bpRecClearAllMarkers = function(){
+    var keys = Object.keys(DB.tombstones||{});
+    var ghosts = (typeof bpTombstoneList==='function') ? bpTombstoneList() : [];
+    if(!ghosts.length) return;
+    if (!confirm('Clear all '+ghosts.length+' old delete markers?\n\nThis restores nothing by itself. It lets those records come back on the next Pull if your cloud copy still has them.')) return;
+    ghosts.forEach(function(g){ try{ delete DB.tombstones[g.key]; }catch(e){} });
+    persist(); rerender(); t('Cleared '+ghosts.length+' markers — now tap Pull');
+  };
+  function paintBar(){
+    var bar = document.getElementById('bp-rec-bar'); if(!bar) return;
+    var n = count(), total = allIds().length;
+    var all = bar.querySelector('#bp-rec-all'); if(all){ all.checked = n>0 && n===total; all.indeterminate = n>0 && n<total; }
+    bar.querySelector('#bp-rec-n').textContent = n ? (n+' selected') : 'Select all ('+total+')';
+    bar.querySelectorAll('.bp-rec-act').forEach(function(b){ b.disabled = !n; b.style.opacity = n?1:.4; });
+  }
+  function decorate(){
+    var wrap = document.getElementById('recycle-wrap'); if(!wrap) return;
+    var ids = allIds();
+    // drop selections that no longer exist
+    Object.keys(SEL).forEach(function(k){ if (ids.indexOf(k)<0) delete SEL[k]; });
+    var restoreBtns = wrap.querySelectorAll('button[onclick^="bpRestore(\'"]');
+    if (restoreBtns.length) {
+      restoreBtns.forEach(function(b){
+        var m=/bpRestore\('([^']+)'\)/.exec(b.getAttribute('onclick')||''); if(!m) return;
+        var card=b.closest('div[style*="border-radius:10px"]'); if(!card||card.querySelector('.bp-rec-cb')) return;
+        var cb=document.createElement('input'); cb.type='checkbox'; cb.className='bp-rec-cb'; cb.checked=!!SEL[m[1]];
+        cb.style.cssText='width:26px;height:26px;flex-shrink:0;accent-color:#0A84FF;margin:0 10px 0 0;cursor:pointer';
+        cb.onchange=function(){ bpRecSelToggle(m[1], cb.checked); };
+        var row=card.firstElementChild; row.style.alignItems='center'; row.insertBefore(cb,row.firstChild);
+      });
+      var first = wrap.querySelector('.bp-rec-cb'); var anchor = first && first.closest('div[style*="border-radius:10px"]');
+      if (anchor && !document.getElementById('bp-rec-bar')) {
+        var bar=document.createElement('div'); bar.id='bp-rec-bar';
+        bar.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card2,var(--card));border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px';
+        var bs='border-radius:8px;font-size:13px;font-weight:800;padding:9px 14px;cursor:pointer;font-family:inherit;';
+        bar.innerHTML='<label style="display:flex;align-items:center;gap:10px;flex:1;min-width:140px;font-size:14px;font-weight:800;cursor:pointer"><input type="checkbox" id="bp-rec-all" style="width:26px;height:26px;accent-color:#0A84FF;margin:0" onchange="bpRecSelAll(this.checked)"><span id="bp-rec-n"></span></label>'
+          +'<button class="bp-rec-act" onclick="bpRecBulkRestore()" style="'+bs+'background:rgba(48,209,88,.12);border:1px solid rgba(48,209,88,.45);color:#30D158">↩ Restore selected</button>'
+          +'<button class="bp-rec-act" onclick="bpRecBulkPurge()" style="'+bs+'background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.45);color:#FF453A">Delete selected</button>';
+        anchor.parentNode.insertBefore(bar, anchor);
+      }
+      paintBar();
+    }
+    var clr = wrap.querySelectorAll('button[onclick^="bpClearTombstone("]');
+    if (clr.length > 1 && !document.getElementById('bp-rec-clrall')) {
+      var first2=clr[0].closest('div[style*="border-radius:10px"]');
+      var b=document.createElement('button'); b.id='bp-rec-clrall'; b.textContent='Clear all '+clr.length+' markers';
+      b.style.cssText='background:rgba(255,159,10,.12);border:1px solid rgba(255,159,10,.4);border-radius:8px;color:#FF9F0A;font-size:13px;font-weight:800;padding:9px 14px;cursor:pointer;font-family:inherit;margin-bottom:10px';
+      b.onclick=bpRecClearAllMarkers; first2.parentNode.insertBefore(b, first2);
+    }
+  }
+  var prev = window.bpRenderRecycle;
+  if (typeof prev === 'function') {
+    window.bpRenderRecycle = function(){ var r = prev.apply(this, arguments); try{ decorate(); }catch(e){ console.warn('[BP] rec decorate', e); } return r; };
+    try { bpRenderRecycle = window.bpRenderRecycle; } catch(e){}
+    try { decorate(); } catch(e){}
+  }
+  console.log('[BP] v3.96 ready — recently deleted select all');
 })();
 </script>
