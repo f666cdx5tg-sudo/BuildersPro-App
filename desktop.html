@@ -934,7 +934,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <div class="view-header">
     <div><div class="view-title">Archived Jobs</div><div class="view-sub">Completed jobs moved out of active sync, safely stored in the cloud</div></div>
   </div>
-  <div id="archive-list-wrap"><div class="empty"><div class="empty-icon">📦</div><div class="empty-text">Loading...</div></div></div>
+  <div id="archive-list-wrap"><div class="empty"><div class="empty-icon"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg></div><div class="empty-text">Loading...</div></div></div>
 </div>
 
 <div class="view" id="view-sync">
@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.88';
+var APP_VERSION = '3.89';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -2630,7 +2630,7 @@ function renderDesktopJobs() {
           +'<button class="btn btn-ghost" style="'+ib+'" title="Duplicate" onclick="duplicateJobDesktop(\''+j.id+'\')">📋 Duplicate</button>'
           +'<button class="btn btn-ghost" style="'+ib+'" title="Client Update" onclick="exportClientUpdate(\''+j.id+'\')">📤 Client Update</button>'
           +'<button class="btn btn-ghost" style="'+ib+'" title="Email client update" onclick="emailClientUpdate(\''+j.id+'\')">📧 Email Update</button>'
-          +'<button class="btn btn-ghost" style="'+ib+'" title="Archive: move to cloud archive, out of active sync" onclick="archiveJob(\''+j.id+'\')">📦 Archive</button>'
+          +'<button class="btn btn-ghost" style="'+ib+'" title="Archive: move to cloud archive, out of active sync" onclick="archiveJob(\''+j.id+'\')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg> Archive</button>'
           +'<button class="btn btn-danger" style="'+ib+'" title="Delete" onclick="deleteJob(\''+j.id+'\')">🗑 Delete</button>'
           +'</div></td></tr>';
       }).join('')
@@ -8387,10 +8387,10 @@ async function restoreArchivedJob(jobId) {
 async function renderArchivePage() {
   var el = document.getElementById('archive-list-wrap');
   if (!el) return;
-  el.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><div class="empty-text">Loading archive...</div></div>';
-  if (!_syncToken) { el.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><div class="empty-text">Set up your GitHub token first</div><div class="empty-sub">Archive Settings → Sync Settings, then come back here</div></div>'; return; }
+  el.innerHTML = '<div class="empty"><div class="empty-icon"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg></div><div class="empty-text">Loading archive...</div></div>';
+  if (!_syncToken) { el.innerHTML = '<div class="empty"><div class="empty-icon"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg></div><div class="empty-text">Set up your GitHub token first</div><div class="empty-sub">Archive Settings → Sync Settings, then come back here</div></div>'; return; }
   var manifest = await archiveFetchManifest();
-  if (!manifest.jobs.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><div class="empty-text">No archived jobs yet</div><div class="empty-sub">Archive a completed job from the Jobs list to move it here</div></div>'; return; }
+  if (!manifest.jobs.length) { el.innerHTML = '<div class="empty"><div class="empty-icon"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg></div><div class="empty-text">No archived jobs yet</div><div class="empty-sub">Archive a completed job from the Jobs list to move it here</div></div>'; return; }
   el.innerHTML = '<div class="card" style="overflow-x:auto;padding:0"><table class="tbl">'
     + '<thead><tr><th>Job</th><th>Client</th><th>Archived</th><th>Contents</th><th>Actions</th></tr></thead><tbody>'
     + manifest.jobs.slice().sort(function(a,b){ return new Date(b.archivedAt)-new Date(a.archivedAt); }).map(function(e){
@@ -9149,7 +9149,7 @@ function renderDesktopJobDetail(jobId) {
     + '<button class="btn btn-ghost" onclick="duplicateJobDesktop(\''+job.id+'\')">📋 Duplicate</button>'
     + '<button class="btn btn-ghost" onclick="exportClientUpdate(\''+job.id+'\')">📤 Client Update</button>'
     + '<button class="btn btn-ghost" onclick="emailClientUpdate(\''+job.id+'\')">📧 Email</button>'
-    + '<button class="btn btn-ghost" onclick="archiveJob(\''+job.id+'\')" title="Move to cloud archive, out of active sync">📦 Archive</button>'
+    + '<button class="btn btn-ghost" onclick="archiveJob(\''+job.id+'\')" title="Move to cloud archive, out of active sync"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg> Archive</button>'
     + '<button class="btn btn-danger" onclick="deleteJob(\''+job.id+'\')">🗑 Delete</button>';
 
   var rooms = (DB.rooms||[]).filter(function(r){ return r.jobId===jobId; });
