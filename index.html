@@ -1496,7 +1496,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.76';
+var APP_VERSION = '3.77';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -11856,6 +11856,7 @@ window.duplicateJob = function(jobId) {
     completionDate: '',
     created: now()
   });
+  delete newJob.security;   /* v3.77: door codes / Wi-Fi / cameras belong to the original job only */
   DB.jobs.push(newJob);
 
   var roomIdMap = {};
@@ -24140,5 +24141,133 @@ if (typeof window[C.open] === 'function') {
 }
 draw();
 console.log('[BP] v3.75 levels & rooms on New Job ready');
+})();
+</script>
+<script>
+/* ══ v3.77 — SECURITY section on every job ═══════════════════════════════════════
+   Stan (Oct 8, 2026): "Add a security section to each job to store door codes, wifi
+   passwords, camera access."
+   Saved on the job record itself (job.security = [{id,kind,label,user,secret,notes}]) so it
+   rides the normal job sync and stays strictly inside that job. Values are masked until
+   tapped (so nothing shows over a shoulder), with one-tap Copy. Duplicate Job does NOT carry
+   a job's codes to the copy, and Client Update / Email Update never read this field.
+   Field app only. */
+(function(){
+'use strict';
+if (window.__bpSec377) return; window.__bpSec377 = 1;
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+var KINDS = [
+  { k:'door',    icon:'🚪', label:'Door / gate code', user:'',                      secret:'Code' },
+  { k:'wifi',    icon:'📶', label:'Wi-Fi',            user:'Network name',          secret:'Password' },
+  { k:'camera',  icon:'📹', label:'Camera / DVR',     user:'Username / app / link', secret:'Password' },
+  { k:'alarm',   icon:'🚨', label:'Alarm',            user:'',                      secret:'Code' },
+  { k:'lockbox', icon:'🔑', label:'Lockbox / key',    user:'',                      secret:'Code' },
+  { k:'other',   icon:'🔐', label:'Other',            user:'Username',              secret:'Password / code' }
+];
+function kind(k){ return KINDS.find(function(x){ return x.k === k; }) || KINDS[KINDS.length-1]; }
+function job(id){ return (DB.jobs||[]).find(function(j){ return j.id === id; }); }
+var openFor = {}, timers = {}, editing = null, editJob = '';
+
+function paint(jobId){
+  var old = document.getElementById('jd-security-section'); if (old) old.remove();
+  var scr = document.getElementById('s-job-detail'); if (!scr) return;
+  var anchor = scr.querySelector('.bp-act-row'); if (!anchor) return;
+  var j = job(jobId); if (!j) return;
+  var L = j.security || [], isOpen = !!openFor[jobId];
+  var s = document.createElement('div'); s.id = 'jd-security-section'; s.style.cssText = 'margin:10px 16px 0';
+  var head = '<div onclick="bpSecToggle(\'' + jobId + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;min-height:52px;padding:0 14px;background:var(--card);border:1px solid var(--border);border-radius:14px;font-size:15px;font-weight:800">'
+    + '<span style="font-size:20px">🔐</span><span style="flex:1;min-width:0">Security' + (L.length ? ' <span style="color:var(--muted);font-weight:700">(' + L.length + ')</span>' : '') + '</span>'
+    + '<span style="color:var(--muted);font-size:18px;transform:rotate(' + (isOpen ? '90' : '0') + 'deg);transition:transform .15s">›</span></div>';
+  var body = '';
+  if (isOpen) {
+    body = '<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">'
+      + (L.length ? L.map(function(it){
+          var K = kind(it.kind);
+          return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px">'
+            + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">' + K.icon + '</span>'
+            + '<div style="flex:1;min-width:0;font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(it.label || K.label) + '</div>'
+            + '<button onclick="bpSecEdit(\'' + jobId + '\',\'' + it.id + '\')" aria-label="Edit" style="min-width:44px;min-height:44px;background:none;border:none;color:var(--muted);font-size:17px;cursor:pointer">✏️</button></div>'
+            + (it.user ? '<div style="font-size:13px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(K.user || 'Username') + ': <b style="color:var(--text)">' + E(it.user) + '</b></div>' : '')
+            + '<div style="display:flex;gap:8px;margin-top:8px">'
+            + '<div data-sec-val="' + it.id + '" onclick="bpSecReveal(this,\'' + jobId + '\',\'' + it.id + '\')" style="flex:1;min-width:0;cursor:pointer;display:flex;align-items:center;min-height:44px;padding:0 12px;border-radius:10px;background:var(--card2,#222);border:1px solid var(--border);font-family:ui-monospace,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:.08em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (it.secret ? '••••••••' : '<span style="color:var(--faint);font-family:inherit;letter-spacing:0;font-size:14px">— none —</span>') + '</div>'
+            + '<button onclick="bpSecCopy(\'' + jobId + '\',\'' + it.id + '\')" style="min-width:76px;min-height:44px;border-radius:10px;border:1px solid var(--border);background:var(--card2,#222);color:var(--accent,#0A84FF);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">Copy</button></div>'
+            + (it.notes ? '<div style="font-size:13px;color:var(--muted);margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere">' + E(it.notes) + '</div>' : '')
+            + '</div>';
+        }).join('') : '<div style="padding:14px;text-align:center;color:var(--faint);font-size:14px;background:var(--card);border:1px solid var(--border);border-radius:14px">No codes yet — tap + Add</div>')
+      + '<button onclick="bpSecAdd(\'' + jobId + '\')" style="min-height:48px;border-radius:12px;border:1px solid rgba(10,132,255,.4);background:rgba(10,132,255,.1);color:#409CFF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">+ Add</button>'
+      + '<div style="font-size:11.5px;color:var(--faint);line-height:1.35;padding:0 4px 2px">Tap a code to show it for 8 seconds. Saved in this app and in your private sync — not encrypted, so keep banking-level secrets out.</div>'
+      + '</div>';
+  }
+  s.innerHTML = head + body;
+  anchor.parentNode.insertBefore(s, anchor.nextSibling);
+}
+window.bpSecToggle = function(jobId){ openFor[jobId] = !openFor[jobId]; paint(jobId); };
+window.bpSecReveal = function(el, jobId, id){
+  var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !it.secret) return;
+  clearTimeout(timers[id]);
+  el.textContent = it.secret;
+  timers[id] = setTimeout(function(){ if (el.isConnected) el.textContent = '••••••••'; }, 8000);
+};
+window.bpSecCopy = function(jobId, id){
+  var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !it.secret) { toast('Nothing to copy'); return; }
+  try { navigator.clipboard.writeText(it.secret).then(function(){ toast('📋 Copied'); }, function(){ toast('Tap the code to read it'); }); }
+  catch(e){ toast('Tap the code to read it'); }
+};
+
+function modal(){
+  var it = editing ? ((job(editJob)||{}).security||[]).find(function(x){ return x.id === editing; }) : null;
+  var m0 = document.getElementById('bp-sec-modal'); if (m0) m0.remove();
+  var inp = 'width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit';
+  var lb = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px';
+  var cur = it ? kind(it.kind) : KINDS[0];
+  var mo = document.createElement('div'); mo.id = 'bp-sec-modal';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  mo.innerHTML = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid var(--border,#2a2a2a)"><div style="font-size:17px;font-weight:700">' + (it ? 'Edit' : 'Add') + ' security info</div>'
+    + '<button onclick="bpSecClose()" style="width:36px;height:36px;border-radius:50%;background:var(--card2);border:none;color:var(--muted);font-size:18px;cursor:pointer">x</button></div>'
+    + '<div style="padding:4px 18px 18px">'
+    + '<div style="' + lb + '">Type</div><select id="bpsec-kind" onchange="bpSecKindChange()" style="' + inp + '">' + KINDS.map(function(k){ return '<option value="' + k.k + '"' + (k.k === cur.k ? ' selected' : '') + '>' + k.icon + ' ' + k.label + '</option>'; }).join('') + '</select>'
+    + '<div style="' + lb + '">Label</div><input id="bpsec-label" type="text" placeholder="e.g. Front door, Basement router" value="' + E(it ? it.label : '') + '" style="' + inp + '"/>'
+    + '<div id="bpsec-user-wrap"><div id="bpsec-user-lb" style="' + lb + '"></div><input id="bpsec-user" type="text" autocapitalize="off" autocorrect="off" value="' + E(it ? it.user : '') + '" style="' + inp + '"/></div>'
+    + '<div id="bpsec-secret-lb" style="' + lb + '"></div><input id="bpsec-secret" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + E(it ? it.secret : '') + '" style="' + inp + ';font-family:ui-monospace,Menlo,monospace"/>'
+    + '<div style="' + lb + '">Notes</div><textarea id="bpsec-notes" rows="2" placeholder="e.g. code changes after punch-out, app is Reolink" style="' + inp + ';resize:vertical">' + E(it ? it.notes : '') + '</textarea>'
+    + '<button onclick="bpSecSave()" style="width:100%;margin-top:18px;padding:14px;border-radius:12px;border:none;background:#0A84FF;color:#000;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Save</button>'
+    + (it ? '<button onclick="bpSecDelete()" style="width:100%;margin-top:10px;padding:13px;border-radius:12px;border:1px solid rgba(255,69,58,.4);background:none;color:#FF6961;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Delete</button>' : '')
+    + '</div></div>';
+  document.body.appendChild(mo);
+  window.bpSecKindChange();
+}
+window.bpSecKindChange = function(){
+  var K = kind(document.getElementById('bpsec-kind').value);
+  var w = document.getElementById('bpsec-user-wrap'); if (w) w.style.display = K.user ? '' : 'none';
+  var ul = document.getElementById('bpsec-user-lb'); if (ul) ul.textContent = K.user;
+  var sl = document.getElementById('bpsec-secret-lb'); if (sl) sl.textContent = K.secret;
+};
+window.bpSecAdd  = function(jobId){ editing = null; editJob = jobId; modal(); };
+window.bpSecEdit = function(jobId, id){ editing = id; editJob = jobId; modal(); };
+window.bpSecClose = function(){ var m = document.getElementById('bp-sec-modal'); if (m) m.remove(); };
+window.bpSecSave = function(){
+  var j = job(editJob); if (!j) return;
+  var k = document.getElementById('bpsec-kind').value, K = kind(k);
+  var d = { kind:k, label:(document.getElementById('bpsec-label').value||'').trim(), user:K.user ? (document.getElementById('bpsec-user').value||'').trim() : '',
+            secret:(document.getElementById('bpsec-secret').value||'').trim(), notes:(document.getElementById('bpsec-notes').value||'').trim() };
+  if (!d.label && !d.secret && !d.user) { toast('Enter a label or a code'); return; }
+  j.security = j.security || [];
+  var it = editing ? j.security.find(function(x){ return x.id === editing; }) : null;
+  if (it) Object.assign(it, d); else j.security.push(Object.assign({ id:uid(), created:now() }, d));
+  j.updatedAt = now(); openFor[editJob] = true;
+  save(); bpSecClose(); paint(editJob); toast('🔐 Saved');
+};
+window.bpSecDelete = function(){
+  var j = job(editJob); if (!j || !editing) return;
+  if (!confirm('Delete this entry?')) return;
+  j.security = (j.security||[]).filter(function(x){ return x.id !== editing; });
+  j.updatedAt = now(); save(); bpSecClose(); paint(editJob);
+};
+
+var orig = renderJobDetail;
+renderJobDetail = function(jobId){ var r = orig.apply(this, arguments); try { paint(jobId); } catch(e){ console.warn('[BP] v3.77 security', e); } return r; };
+window.renderJobDetail = renderJobDetail;
+console.log('[BP] v3.77 job Security section ready');
 })();
 </script>

@@ -19,7 +19,7 @@ async def run():
         b = await p.chromium.launch(); pg = await (await b.new_context(viewport={'width':390,'height':844})).new_page()
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8799/index.html'); await pg.wait_for_timeout(2500)
-        ok(await pg.evaluate("APP_VERSION==='3.76'"), 'version')
+        ok(await pg.evaluate("parseFloat(APP_VERSION)>=3.76"), 'version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()"); await pg.evaluate(SEED)
         # no job selected -> portfolio view still warns about Peach
         await pg.evaluate("localStorage.removeItem('bp_active_job')")
