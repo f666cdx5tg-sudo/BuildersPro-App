@@ -1496,7 +1496,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.79';
+var APP_VERSION = '3.80';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24329,5 +24329,26 @@ var orig = renderJobDetail;
 renderJobDetail = function(jobId){ var r = orig.apply(this, arguments); try { paint(jobId); } catch(e){ console.warn('[BP] v3.77 security', e); } return r; };
 window.renderJobDetail = renderJobDetail;
 console.log('[BP] v3.77 job Security section ready');
+})();
+</script>
+
+<script>
+/* ══ v3.80 — Yard / Grading icon: small tree over grass blades, replacing the generic door/crane icon it was
+   falling back to (Stan: circled "Yard / Grading" on the Shedwick job, asked for a better match). Covers the
+   named preset plus Front/Rear/Side Yard and anything with "lawn"/"grading"/"landscap(e/ing)" in the name.
+   Both apps — identical block, appended at the end of the file per the house rule. ══ */
+(function(){
+  'use strict';
+  var prev = window.bpRoomIconHtml;
+  if (typeof prev !== 'function' || prev.__v380) return;
+  var YARD = '<span class="bp-ic" data-v380="1" role="img" aria-label="yard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 21.5h21"/><circle cx="12" cy="9" r="5"/><path d="M12 14v7.5"/><path d="M4 21.5c.8-1.8.8-3.6 0-5.4M7.5 21.5c.6-1.8.6-3.6 0-5.4M16.5 21.5c-.6-1.8-.6-3.6 0-5.4M20 21.5c-.8-1.8-.8-3.6 0-5.4"/></svg></span>';
+  window.bpRoomIconHtml = function(name, type){
+    if (/\b(yard|lawn|grading|landscap)/i.test(String(name || ''))) return YARD;
+    return prev.apply(this, arguments);
+  };
+  window.bpRoomIconHtml.__v380 = 1;
+  window.BP_LOC_SVG = window.BP_LOC_SVG || {};
+  window.BP_LOC_SVG.yard = YARD;
+  console.log('[BP] v3.80 ready — yard/grading icon');
 })();
 </script>
