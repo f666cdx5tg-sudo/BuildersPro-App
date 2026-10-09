@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.85';
+var APP_VERSION = '3.86';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -22987,8 +22987,20 @@ st.textContent = '#bp-notes-ov{position:fixed;inset:0;z-index:9990;background:va
  + '#bp-notes-ov .nt{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--card2)}#bp-notes-ov .nt img{width:100%;height:100%;object-fit:cover}'
  + '#bp-notes-ov .nx{position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:16px;cursor:pointer}'
  + '#bp-notes-ov .na{display:flex;align-items:center;gap:8px;margin-bottom:8px}#bp-notes-ov .na audio{flex:1;min-width:0;height:40px}'
- + '#bp-notes-ov .rec{background:#FF453A !important;border-color:#FF453A !important;color:#fff !important}';
+ + '#bp-notes-ov .rec{background:#FF453A !important;border-color:#FF453A !important;color:#fff !important}'
+ + '#bp-notes-ov .nrow{display:flex;gap:8px;margin-top:14px}#bp-notes-ov .nrow .nb{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;font-size:15px;padding:0 6px;white-space:nowrap}'
+ + '#bp-notes-ov .nfr{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--border)}'
+ + '#bp-notes-ov .nfr .nfi{font-size:24px;color:#0A84FF;flex:none}'
+ + '#bp-notes-ov .nfr .nfn{flex:1;min-width:0;cursor:pointer}'
+ + '#bp-notes-ov .nfr .nfn b{display:block;font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+ + '#bp-notes-ov .nfr .nfn span{font-size:12px;color:var(--muted)}';
 document.head.appendChild(st);
+
+/* v3.86: files on a note. Line icons (no emoji) — paperclip for the button/count, document for each file row. */
+var IC_CLIP = '<span class="bp-ic" role="img" aria-label="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l-6.5 6.5a1.5 1.5 0 003 3l6.5-6.5a3 3 0 00-6-6l-6.5 6.5a4.5 4.5 0 009 9l6.5-6.5"/></svg></span>';
+var IC_DOC  = '<span class="bp-ic" role="img" aria-label="file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3v4a1 1 0 001 1h4M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z"/></svg></span>';
+var MAX_FILE = 15 * 1024 * 1024;   /* 15 MB per file keeps a note small enough to sync */
+function fmtSize(b){ b = +b || 0; return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' B'; }
 
 var N = null;            /* editor state */
 var listJob = null;      /* job shown in the list ('' = general) */
@@ -22999,12 +23011,12 @@ function closeOv(){ stopRec(true); var o = document.getElementById('bp-notes-ov'
 window.bpNotesClose = closeOv;
 
 function cardHtml(n){
-  var np = (n.photos||[]).length, na = (n.audio||[]).length;
+  var np = (n.photos||[]).length, na = (n.audio||[]).length, nf = (n.files||[]).length;
   var prev = (n.text||'').trim();
   return '<div class="nc" onclick="bpNoteEdit(\'' + E(n.id) + '\')">'
     + '<div style="font-size:15px;font-weight:800">' + E(titleOf(n)) + '</div>'
     + (prev ? '<div style="font-size:14px;line-height:1.35;margin-top:4px;white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + E(prev) + '</div>' : '')
-    + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
+    + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (nf ? IC_CLIP + ' ' + nf + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
 }
 function notesFor(j){ return (DB.jobNotes||[]).filter(function(n){ return n && (n.jobId||'') === (j||''); }).sort(function(a,b){ return String(a.created||'') < String(b.created||'') ? 1 : -1; }); }
 
@@ -23043,19 +23055,21 @@ function draw(){
     + '<div class="nl">Job</div><select id="bpn-job" class="nin" onchange="bpNoteJob()"><option value="">General (no job)</option>' + jobs.map(function(j){ return '<option value="' + E(j.id) + '"' + (j.id === N.jobId ? ' selected' : '') + '>' + E(j.name) + '</option>'; }).join('') + '</select>'
     + '<div class="nl">Space</div><select id="bpn-room" class="nin" onchange="bpNoteSpace()"><option value="">Whole job</option>' + rooms.map(function(r){ return '<option value="' + E(r.id) + '"' + (r.id === N.roomId ? ' selected' : '') + '>' + E(r.name) + '</option>'; }).join('') + '</select>'
     + '<div class="nl">Note</div><textarea id="bpn-text" class="nin" rows="6" placeholder="" style="resize:vertical;line-height:1.4">' + E(N.text) + '</textarea>'
-    + '<div style="display:flex;gap:8px;margin-top:14px">'
-    +   '<label class="nb" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer" aria-label="Add photos">📷 Photos<input id="bpn-file" type="file" accept="image/*" multiple style="display:none" onchange="bpNotePhotos(this)"/></label>'
-    +   '<button id="bpn-rec" class="nb' + (rec ? ' rec' : '') + '" style="flex:1" onclick="bpNoteRec()" aria-label="' + (rec ? 'Stop recording' : 'Record') + '">' + (rec ? '⏹ <span id="bpn-timer">0:00</span>' : '🎙 Record') + '</button></div>'
+    + '<div class="nrow">'
+    +   '<label class="nb" style="cursor:pointer" aria-label="Add photos">📷 Photos<input id="bpn-file" type="file" accept="image/*" multiple style="display:none" onchange="bpNotePhotos(this)"/></label>'
+    +   '<label class="nb" style="cursor:pointer" aria-label="Add files">' + IC_CLIP + ' Files<input id="bpn-files" type="file" multiple style="display:none" onchange="bpNoteFiles(this)"/></label>'
+    +   '<button id="bpn-rec" class="nb' + (rec ? ' rec' : '') + '" onclick="bpNoteRec()" aria-label="' + (rec ? 'Stop recording' : 'Record') + '">' + (rec ? '⏹ <span id="bpn-timer">0:00</span>' : '🎙 Record') + '</button></div>'
     + (N.photos.length ? '<div class="nl">Photos (' + N.photos.length + ')</div><div class="ng">' + N.photos.map(function(p,i){ return '<div class="nt"><img src="' + p + '" alt=""/><button class="nx" aria-label="Remove photo" onclick="bpNoteDelPhoto(' + i + ')">✕</button></div>'; }).join('') + '</div>' : '')
     + (N.audio.length ? '<div class="nl">Recordings (' + N.audio.length + ')</div>' + N.audio.map(function(a,i){ return '<div class="na"><audio controls preload="metadata" src="' + a.src + '"></audio><button class="nb" style="color:#FF453A" aria-label="Remove recording" onclick="bpNoteDelAudio(' + i + ')">🗑</button></div>'; }).join('') : '')
+    + (N.files.length ? '<div class="nl">Files (' + N.files.length + ')</div>' + N.files.map(function(f,i){ return '<div class="nfr"><span class="nfi">' + IC_DOC + '</span><div class="nfn" onclick="bpNoteOpenFile(' + i + ')"><b>' + E(f.name) + '</b><span>' + E(fmtSize(f.size)) + ' · tap to open</span></div><button class="nb" style="color:#FF453A" aria-label="Remove file" onclick="bpNoteDelFile(' + i + ')">✕</button></div>'; }).join('') : '')
     + (N.id ? '<button class="nb" style="width:100%;margin-top:22px;color:#FF453A;border-color:#FF453A" onclick="bpNoteDel2()">Delete note</button>' : '');
 }
 window.bpNoteEdit = function(id, jobId){
   stopRec(true);
   var n = id ? (DB.jobNotes||[]).find(function(x){ return x.id === id; }) : null;
   if (jobId === undefined) jobId = n ? (n.jobId||'') : (window.currentJobId || activeJob());
-  N = n ? { id:n.id, jobId:n.jobId||'', roomId:n.roomId||'', title:n.title || autoTitle(n), titleEdited:!!n.title, created:n.created || iso(), text:n.text||'', photos:(n.photos||[]).slice(), audio:(n.audio||[]).slice(), from:ov().innerHTML && document.getElementById('bp-notes-ov') && document.getElementById('bp-notes-ov').dataset.list ? 1 : 0 }
-         : { id:'', jobId:jobId||'', roomId:'', title:'', titleEdited:false, created:iso(), text:'', photos:[], audio:[] };
+  N = n ? { id:n.id, jobId:n.jobId||'', roomId:n.roomId||'', title:n.title || autoTitle(n), titleEdited:!!n.title, created:n.created || iso(), text:n.text||'', photos:(n.photos||[]).slice(), audio:(n.audio||[]).slice(), files:(n.files||[]).slice(), from:ov().innerHTML && document.getElementById('bp-notes-ov') && document.getElementById('bp-notes-ov').dataset.list ? 1 : 0 }
+         : { id:'', jobId:jobId||'', roomId:'', title:'', titleEdited:false, created:iso(), text:'', photos:[], audio:[], files:[] };
   var o = ov(); o.dataset.list = (document.querySelector('#bp-notes-ov .nc') || document.querySelector('#bp-notes-ov select[aria-label=Job]')) ? '1' : '';
   draw();
 };
@@ -23078,6 +23092,37 @@ window.bpNotePhotos = function(inp){
 };
 window.bpNoteDelPhoto = function(i){ sync(); N.photos.splice(i,1); draw(); };
 window.bpNoteDelAudio = function(i){ sync(); N.audio.splice(i,1); draw(); };
+window.bpNoteDelFile = function(i){ sync(); N.files.splice(i,1); draw(); };
+window.bpNoteFiles = function(inp){
+  sync();
+  var picked = Array.prototype.slice.call(inp.files || []);
+  try { inp.value = ''; } catch(e){}
+  if (!picked.length || !N) return;
+  var left = picked.length, skipped = [];
+  function fin(){ draw(); if (skipped.length) say(skipped.length === 1 ? skipped[0] + ' is over 15 MB — too big to sync' : skipped.length + ' files over 15 MB were skipped'); }
+  picked.forEach(function(f){
+    if (f.size > MAX_FILE) { skipped.push(f.name || 'File'); if (--left === 0) fin(); return; }
+    var r = new FileReader();
+    r.onload = function(e){
+      if (N) N.files.push({ id:nid(), name:f.name || 'File', type:f.type || '', size:f.size || 0, src:e.target.result, date:iso() });
+      if (--left === 0) fin();
+    };
+    r.onerror = function(){ skipped.push(f.name || 'File'); if (--left === 0) fin(); };
+    r.readAsDataURL(f);
+  });
+};
+window.bpNoteOpenFile = function(i){
+  sync();
+  var f = N && N.files[i]; if (!f) return;
+  if (!/^data:/.test(String(f.src || ''))) { say('File is still loading — try again in a moment'); return; }
+  fetch(f.src).then(function(r){ return r.blob(); }).then(function(b){
+    var url = URL.createObjectURL(new Blob([b], { type: f.type || b.type || 'application/octet-stream' }));
+    var a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(e){} }, 120000);
+  }).catch(function(){ say('Could not open that file'); });
+};
 
 function stopRec(discard){
   clearInterval(R.tick);
@@ -23117,12 +23162,12 @@ window.bpNoteRec = function(){
 window.bpNoteSave2 = function(){
   if (R.mr) { say('Stop the recording first'); return; }
   sync();
-  if (!N.text.trim() && !N.photos.length && !N.audio.length) { say('Add a note, photo or recording first'); return; }
+  if (!N.text.trim() && !N.photos.length && !N.audio.length && !N.files.length) { say('Add a note, photo, file or recording first'); return; }
   DB.jobNotes = DB.jobNotes || [];
   var n = N.id ? DB.jobNotes.find(function(x){ return x.id === N.id; }) : null;
   var title = N.titleEdited ? N.title.trim() : '';
-  if (n) { n.jobId = N.jobId; n.roomId = N.roomId; n.title = title; n.text = N.text; n.photos = N.photos; n.audio = N.audio; n.updatedAt = iso(); }
-  else DB.jobNotes.push({ id:nid(), jobId:N.jobId, roomId:N.roomId, title:title, text:N.text, photos:N.photos, audio:N.audio, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:N.created, updatedAt:iso() });
+  if (n) { n.jobId = N.jobId; n.roomId = N.roomId; n.title = title; n.text = N.text; n.photos = N.photos; n.audio = N.audio; n.files = N.files; n.updatedAt = iso(); }
+  else DB.jobNotes.push({ id:nid(), jobId:N.jobId, roomId:N.roomId, title:title, text:N.text, photos:N.photos, audio:N.audio, files:N.files, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:N.created, updatedAt:iso() });
   persist(); say('Note saved');
   var fromList = document.getElementById('bp-notes-ov').dataset.list;
   N = null;
@@ -23145,11 +23190,11 @@ window.bpRenderJobNotes = function(){
   el.innerHTML = '<div class="section-header" style="display:flex;align-items:center">Project Notes (' + L.length + ')'
     + '<button onclick="bpNoteEdit(\'\',\'' + E(jobId) + '\')" style="margin-left:auto;background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.4);border-radius:9px;color:#0A84FF;font-size:13px;font-weight:800;padding:8px 14px;cursor:pointer;font-family:inherit">+ Add Note</button></div>'
     + '<div style="margin:0 16px 14px">' + (L.length ? L.map(function(n){
-      var np = (n.photos||[]).length, na = (n.audio||[]).length, prev = (n.text||'').trim();
+      var np = (n.photos||[]).length, na = (n.audio||[]).length, nf = (n.files||[]).length, prev = (n.text||'').trim();
       return '<div onclick="bpNoteEdit(\'' + E(n.id) + '\',\'' + E(jobId) + '\')" style="padding:12px 14px;margin-bottom:8px;border-radius:12px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a);cursor:pointer">'
         + '<div style="font-size:15px;font-weight:800">' + E(titleOf(n)) + '</div>'
         + (prev ? '<div style="font-size:14px;line-height:1.35;margin-top:4px;white-space:pre-wrap;word-break:break-word">' + E(prev) + '</div>' : '')
-        + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
+        + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (nf ? IC_CLIP + ' ' + nf + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
     }).join('') : '<div style="padding:16px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:12px;font-size:14px">No notes yet — tap + Add Note</div>') + '</div>';
 };
 try { window.bpRenderJobNotes(); } catch(e){}
@@ -24675,5 +24720,31 @@ console.log('[BP] v3.77 job Security section ready');
   }
 
   console.log('[BP] v3.85 ready — Job Sections blend-in ☰ + full-page open');
+})();
+</script>
+
+<script>
+/* ══ v3.86 — Boiler room = flame, Utility room = wrench in a room. Stan (Oct 9): picked the flame for the Boiler Room,
+   asked for "a wrench in a room" for the Utility Room (they were sharing one emoji fire before — no emoji, line icons
+   only). Same 24px stroke style as the rest (.bp-ic). Boiler/Furnace -> flame; Utility -> room box with a wrench inside.
+   Both apps — identical block, appended at the end of the file per the house rule. ══ */
+(function(){
+  'use strict';
+  var prev = window.bpRoomIconHtml;
+  if (typeof prev !== 'function' || prev.__v386) return;
+  var FLAME = '<span class="bp-ic" data-v386="1" role="img" aria-label="boiler room"><svg viewBox="0 0 24 24" aria-hidden="true">'
+    + '<path d="M12 2.8c.6 3.1 5.7 5.2 5.7 10.4a5.7 5.7 0 01-11.4 0c0-2.4 1.1-4 2.4-5.2.1 1.7.9 2.7 1.9 3.2C10.3 8.3 10.7 5.1 12 2.8z"/>'
+    + '<path d="M12 20.4a2.5 2.5 0 01-2.5-2.5c0-1.5 1.2-2.2 2.5-3.9 1.3 1.7 2.5 2.4 2.5 3.9a2.5 2.5 0 01-2.5 2.5z"/></svg></span>';
+  var UTIL = '<span class="bp-ic" data-v386="1" role="img" aria-label="utility room"><svg viewBox="0 0 24 24" aria-hidden="true">'
+    + '<rect x="3" y="3" width="18" height="18" rx="3.5"/>'
+    + '<g transform="translate(5.1 5.1) scale(.6)" stroke-width="3"><path d="M7 10h3v-3l-3.5-3.5a6 6 0 018 8l6 6a2 2 0 01-3 3l-6-6a6 6 0 01-8-8l3.5 3.5"/></g></svg></span>';
+  window.bpRoomIconHtml = function(name, type){
+    var n = String(name || '');
+    if (/\b(boiler|furnace)/i.test(n)) return FLAME;
+    if (/\butility/i.test(n)) return UTIL;
+    return prev.apply(this, arguments);
+  };
+  window.bpRoomIconHtml.__v386 = 1;
+  console.log('[BP] v3.86 ready — boiler flame + utility wrench-in-room icons');
 })();
 </script>
