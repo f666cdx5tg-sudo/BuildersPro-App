@@ -1496,7 +1496,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.78';
+var APP_VERSION = '3.79';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -24151,6 +24151,8 @@ console.log('[BP] v3.75 levels & rooms on New Job ready');
    rides the normal job sync and stays strictly inside that job. Values are masked until
    tapped (so nothing shows over a shoulder), with one-tap Copy. Duplicate Job does NOT carry
    a job's codes to the copy, and Client Update / Email Update never read this field.
+   v3.79: each entry can carry photos of its QR code / barcode (stored on the entry — never in the
+   Photos gallery or in client updates). Tap a photo to enlarge it on a white screen so it can be scanned.
    Field app only. */
 (function(){
 'use strict';
@@ -24174,7 +24176,8 @@ var KINDS = [
 ];
 function kind(k){ return KINDS.find(function(x){ return x.k === k; }) || KINDS[KINDS.length-1]; }
 function job(id){ return (DB.jobs||[]).find(function(j){ return j.id === id; }); }
-var openFor = {}, timers = {}, editing = null, editJob = '';
+var openFor = {}, timers = {}, editing = null, editJob = '', draft = [];
+var MAXPH = 6;
 
 function paint(jobId){
   var old = document.getElementById('jd-security-section'); if (old) old.remove();
@@ -24196,9 +24199,10 @@ function paint(jobId){
             + '<div style="flex:1;min-width:0;font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(it.label || K.label) + '</div>'
             + '<button onclick="bpSecEdit(\'' + jobId + '\',\'' + it.id + '\')" aria-label="Edit" style="min-width:44px;min-height:44px;background:none;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center">' + ic('pencil',20) + '</button></div>'
             + (it.user ? '<div style="font-size:13px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(K.user || 'Username') + ': <b style="color:var(--text)">' + E(it.user) + '</b></div>' : '')
-            + '<div style="display:flex;gap:8px;margin-top:8px">'
+            + ((it.secret || !(it.photos||[]).length) ? '<div style="display:flex;gap:8px;margin-top:8px">'
             + '<div data-sec-val="' + it.id + '" onclick="bpSecReveal(this,\'' + jobId + '\',\'' + it.id + '\')" style="flex:1;min-width:0;cursor:pointer;display:flex;align-items:center;min-height:44px;padding:0 12px;border-radius:10px;background:var(--card2,#222);border:1px solid var(--border);font-family:ui-monospace,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:.08em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (it.secret ? '••••••••' : '<span style="color:var(--faint);font-family:inherit;letter-spacing:0;font-size:14px">— none —</span>') + '</div>'
-            + '<button onclick="bpSecCopy(\'' + jobId + '\',\'' + it.id + '\')" style="min-width:76px;min-height:44px;border-radius:10px;border:1px solid var(--border);background:var(--card2,#222);color:var(--accent,#0A84FF);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' + ic('copy',18) + 'Copy</button></div>'
+            + '<button onclick="bpSecCopy(\'' + jobId + '\',\'' + it.id + '\')" style="min-width:76px;min-height:44px;border-radius:10px;border:1px solid var(--border);background:var(--card2,#222);color:var(--accent,#0A84FF);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' + ic('copy',18) + 'Copy</button></div>' : '')
+            + ((it.photos||[]).length ? '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' + it.photos.map(function(src, n){ return '<img src="' + src + '" alt="Code photo ' + (n+1) + '" onclick="bpSecView(\'' + jobId + '\',\'' + it.id + '\',' + n + ')" style="width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer"/>'; }).join('') + '</div><div style="font-size:11.5px;color:var(--faint);margin-top:4px">Tap a photo to enlarge it for scanning</div>' : '')
             + (it.notes ? '<div style="font-size:13px;color:var(--muted);margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere">' + E(it.notes) + '</div>' : '')
             + '</div>';
         }).join('') : '<div style="padding:14px;text-align:center;color:var(--faint);font-size:14px;background:var(--card);border:1px solid var(--border);border-radius:14px">No codes yet — tap Add</div>')
@@ -24239,27 +24243,75 @@ function modal(){
     + '<div id="bpsec-user-wrap"><div id="bpsec-user-lb" style="' + lb + '"></div><input id="bpsec-user" type="text" autocapitalize="off" autocorrect="off" value="' + E(it ? it.user : '') + '" style="' + inp + '"/></div>'
     + '<div id="bpsec-secret-lb" style="' + lb + '"></div><input id="bpsec-secret" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + E(it ? it.secret : '') + '" style="' + inp + ';font-family:ui-monospace,Menlo,monospace"/>'
     + '<div style="' + lb + '">Notes</div><textarea id="bpsec-notes" rows="2" placeholder="e.g. code changes after punch-out, app is Reolink" style="' + inp + ';resize:vertical">' + E(it ? it.notes : '') + '</textarea>'
+    + '<div style="' + lb + '">Photos of QR code / barcode</div><div id="bpsec-ph" style="display:flex;flex-wrap:wrap;gap:8px"></div>'
+    + '<label style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;min-height:48px;border-radius:12px;border:1px solid rgba(10,132,255,.4);background:rgba(10,132,255,.1);color:#409CFF;font-size:15px;font-weight:800;cursor:pointer">' + ic('camera',20) + 'Add photo<input type="file" accept="image/*" multiple style="display:none" onchange="bpSecPick(this)"/></label>'
     + '<button onclick="bpSecSave()" style="width:100%;margin-top:18px;padding:14px;border-radius:12px;border:none;background:#0A84FF;color:#000;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Save</button>'
     + (it ? '<button onclick="bpSecDelete()" style="width:100%;margin-top:10px;padding:13px;border-radius:12px;border:1px solid rgba(255,69,58,.4);background:none;color:#FF6961;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Delete</button>' : '')
     + '</div></div>';
   document.body.appendChild(mo);
   window.bpSecKindChange();
+  drawDraft();
 }
+function drawDraft(){
+  var el = document.getElementById('bpsec-ph'); if (!el) return;
+  el.innerHTML = draft.map(function(src, n){
+    return '<div style="position:relative;width:76px;height:76px"><img src="' + src + '" style="width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);background:#fff"/>'
+      + '<button onclick="bpSecDropPhoto(' + n + ')" aria-label="Remove photo" style="position:absolute;top:-8px;right:-8px;width:28px;height:28px;border-radius:50%;border:none;background:#FF453A;color:#fff;font-size:15px;font-weight:800;cursor:pointer;line-height:1">×</button></div>';
+  }).join('');
+}
+window.bpSecDropPhoto = function(n){ draft.splice(n, 1); drawDraft(); };
+window.bpSecPick = function(input){
+  if (!input.files) return;
+  Array.from(input.files).forEach(function(f){
+    if (!f.type || f.type.indexOf('image/') !== 0) return;
+    if (draft.length >= MAXPH) { toast('Up to ' + MAXPH + ' photos per entry'); return; }
+    var r = new FileReader();
+    r.onload = function(e){
+      var raw = e.target.result; if (!raw) return;
+      var put = function(src){ if (draft.length < MAXPH) { draft.push(src); drawDraft(); } };
+      try { bpCompressFor('doc', raw, put); } catch(err){ put(raw); }   /* "doc" preset: 1800px — keeps a QR / barcode scannable */
+    };
+    r.readAsDataURL(f);
+  });
+  input.value = '';
+};
+var viewState = null;
+window.bpSecView = function(jobId, id, n){
+  var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !(it.photos||[]).length) return;
+  viewState = { jobId:jobId, id:id, n:n };
+  var v = document.getElementById('bp-sec-view'); if (v) v.remove();
+  v = document.createElement('div'); v.id = 'bp-sec-view';
+  v.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#fff;color:#000;display:flex;flex-direction:column;font-family:inherit;padding-top:max(env(safe-area-inset-top),14px);padding-bottom:env(safe-area-inset-bottom);box-sizing:border-box';
+  document.body.appendChild(v); viewDraw();
+};
+function viewDraw(){
+  var v = document.getElementById('bp-sec-view'); if (!v || !viewState) return;
+  var it = ((job(viewState.jobId)||{}).security||[]).find(function(x){ return x.id === viewState.id; }); if (!it) { v.remove(); return; }
+  var P = it.photos, n = Math.max(0, Math.min(viewState.n, P.length - 1)); viewState.n = n;
+  v.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px 8px">'
+    + '<div style="flex:1;min-width:0;font-size:17px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(it.label || kind(it.kind).label) + '</div>'
+    + (P.length > 1 ? '<span style="flex:none;color:#666;font-size:15px;font-weight:700">' + (n+1) + '/' + P.length + '</span>' : '')
+    + (P.length > 1 ? '<button onclick="bpSecViewStep(-1)" aria-label="Previous" style="min-width:48px;min-height:48px;border:none;background:#eee;border-radius:12px;color:#000;display:flex;align-items:center;justify-content:center;transform:rotate(180deg)">' + ic('chev',22) + '</button><button onclick="bpSecViewStep(1)" aria-label="Next" style="min-width:48px;min-height:48px;border:none;background:#eee;border-radius:12px;color:#000;display:flex;align-items:center;justify-content:center">' + ic('chev',22) + '</button>' : '')
+    + '<button onclick="bpSecViewClose()" style="min-width:72px;min-height:48px;border:none;background:#0A84FF;color:#fff;border-radius:12px;font-size:16px;font-weight:800;font-family:inherit">Done</button></div>'
+    + '<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px"><img src="' + P[n] + '" style="max-width:100%;max-height:100%;object-fit:contain"/></div>';
+}
+window.bpSecViewStep = function(d){ var it = ((job(viewState.jobId)||{}).security||[]).find(function(x){ return x.id === viewState.id; }); if (!it) return; viewState.n = (viewState.n + d + it.photos.length) % it.photos.length; viewDraw(); };
+window.bpSecViewClose = function(){ var v = document.getElementById('bp-sec-view'); if (v) v.remove(); viewState = null; };
 window.bpSecKindChange = function(){
   var K = kind(document.getElementById('bpsec-kind').value);
   var w = document.getElementById('bpsec-user-wrap'); if (w) w.style.display = K.user ? '' : 'none';
   var ul = document.getElementById('bpsec-user-lb'); if (ul) ul.textContent = K.user;
   var sl = document.getElementById('bpsec-secret-lb'); if (sl) sl.textContent = K.secret;
 };
-window.bpSecAdd  = function(jobId){ editing = null; editJob = jobId; modal(); };
-window.bpSecEdit = function(jobId, id){ editing = id; editJob = jobId; modal(); };
+window.bpSecAdd  = function(jobId){ editing = null; editJob = jobId; draft = []; modal(); };
+window.bpSecEdit = function(jobId, id){ editing = id; editJob = jobId; var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); draft = (it && it.photos) ? it.photos.slice() : []; modal(); };
 window.bpSecClose = function(){ var m = document.getElementById('bp-sec-modal'); if (m) m.remove(); };
 window.bpSecSave = function(){
   var j = job(editJob); if (!j) return;
   var k = document.getElementById('bpsec-kind').value, K = kind(k);
   var d = { kind:k, label:(document.getElementById('bpsec-label').value||'').trim(), user:K.user ? (document.getElementById('bpsec-user').value||'').trim() : '',
-            secret:(document.getElementById('bpsec-secret').value||'').trim(), notes:(document.getElementById('bpsec-notes').value||'').trim() };
-  if (!d.label && !d.secret && !d.user) { toast('Enter a label or a code'); return; }
+            secret:(document.getElementById('bpsec-secret').value||'').trim(), notes:(document.getElementById('bpsec-notes').value||'').trim(), photos:draft.slice() };
+  if (!d.label && !d.secret && !d.user && !d.photos.length) { toast('Enter a label, a code or a photo'); return; }
   j.security = j.security || [];
   var it = editing ? j.security.find(function(x){ return x.id === editing; }) : null;
   if (it) Object.assign(it, d); else j.security.push(Object.assign({ id:uid(), created:now() }, d));
