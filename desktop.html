@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '3.94';
+var APP_VERSION = '3.95';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -19416,7 +19416,7 @@ console.log('[BP] v3.88 ready — Mac text & button size matches the field app')
       } else apply();
     };
   };
-  var PEN = '<button class="bp-doc-edit-btn" title="Edit" style="background:none;border:none;color:#0A84FF;font-size:16px;font-weight:800;cursor:pointer;flex-shrink:0;padding:4px 8px">✎</button>';
+  var PEN = '<button class="bp-doc-edit-btn" title="Edit" style="background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.4);border-radius:10px;color:#0A84FF;cursor:pointer;flex-shrink:0;width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;padding:0;margin-right:6px;vertical-align:middle"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 000-3l-1-1a2.1 2.1 0 00-3 0L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>';
   function decorate(){
     document.querySelectorAll('button[onclick^="deleteDocument("]').forEach(function(b){
       if (b.previousElementSibling && b.previousElementSibling.classList.contains('bp-doc-edit-btn')) return;
