@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '4.11';
+var APP_VERSION = '4.12';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -19602,25 +19602,14 @@ console.log('[BP] v3.88 ready — Mac text & button size matches the field app')
 })();
 </script>
 <script>
-/* v4.01 — (1) buttons never sit on content: the Back/Menu/Mic buttons live in their own bottom strip
-   (2) sync is automatic whenever the app is online, and retries on its own after a failure or offline spell
+/* v4.01 — (2) sync is automatic whenever the app is online, and retries on its own after a failure or offline spell
    (3) background sync does not freeze the app: unchanged cloud = no download/merge/save/redraw; draws wait for an idle moment */
 (function(){
   'use strict';
   if (window.__bpAutoSync) return; window.__bpAutoSync = 1;
   var IS_DESK = !!document.getElementById('modal-new-room');
 
-  /* ── (1) reserved bottom strip (phone/iPad app only) ── */
-  if (!IS_DESK) {
-    var css = document.createElement('style'); css.id = 'bp-v401-css';
-    css.textContent =
-        'body{--bp-dockbar:calc(76px / var(--bp-zoom,1))}'
-      + 'body:not(:has(#bp-lock)) .screen{bottom:var(--bp-dockbar)!important;padding-bottom:16px!important}'
-      + 'body:not(:has(#bp-lock))::after{content:"";position:fixed;left:0;right:0;bottom:0;height:var(--bp-dockbar);background:var(--bg);border-top:1px solid var(--border);z-index:94;pointer-events:none}'
-      + '#bp-voice-fab{bottom:calc(14px / var(--bp-zoom,1))!important;width:calc(48px / var(--bp-zoom,1))!important;height:calc(48px / var(--bp-zoom,1))!important}'
-      + '#bp-dock{bottom:calc(14px / var(--bp-zoom,1))!important}';
-    document.head.appendChild(css);
-  }
+  /* (v4.12: the floating dock stays floating — no reserved strip, no bottom border) */
 
   /* ── (3) helpers ── */
   window.bpYield = function(){ return new Promise(function(r){ try { (window.requestIdleCallback ? requestIdleCallback(function(){ r(); }, {timeout:250}) : setTimeout(r, 0)); } catch(e){ setTimeout(r,0); } }); };

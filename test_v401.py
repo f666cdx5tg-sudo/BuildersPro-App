@@ -6,17 +6,6 @@ def check(name, ok, info=''):
     global fail; print(('PASS ' if ok else 'FAIL ')+name, info); fail += (not ok)
 with sync_playwright() as p:
     b=p.chromium.launch()
-    # ---- layout: field app
-    for vp,z in (((390,844),1),((820,1180),1.3)):
-        pg=b.new_page(viewport={'width':vp[0],'height':vp[1]}); pg.goto('http://localhost:8799/index.html'); pg.evaluate("document.getElementById('bp-lock')?.remove()")
-        pg.evaluate("DB.jobs=[{id:'j',name:'J',status:'active'}];currentJobId='j';bpSetZoom(%s);showScreen('s-job-detail');renderJobDetail('j')"%z); pg.wait_for_timeout(1200)
-        r=pg.evaluate("""(()=>{var sc=document.querySelector('.screen.active').getBoundingClientRect();
-          var f=[...document.querySelectorAll('#bp-dock button:not([hidden]),#bp-voice-fab,.fab')].filter(e=>e.offsetParent!==null||getComputedStyle(e).position==='fixed').map(e=>e.getBoundingClientRect()).filter(r=>r.width>0);
-          var over=f.filter(r=>r.top<sc.bottom-1);
-          var pair=[];for(var i=0;i<f.length;i++)for(var j=i+1;j<f.length;j++){var a=f[i],c=f[j];if(a.left<c.right-1&&c.left<a.right-1&&a.top<c.bottom-1&&c.top<a.bottom-1)pair.push([i,j])}
-          return {screenBottom:sc.bottom,vh:innerHeight,n:f.length,over:over.length,pair:pair.length}})()""")
-        check('layout %s z=%s: buttons below screen, not overlapping each other'%(vp,z), r['over']==0 and r['pair']==0 and r['n']>=1, r)
-        pg.close()
     # ---- sync (field + desktop)
     for u,pull,push in (('index.html','doPull','doPush'),('desktop.html','deskPull','deskPush')):
         pg=b.new_page(viewport={'width':1100,'height':800}); calls={'get':0,'304':0,'write':0}; state={'etag':'W/"a"'}
