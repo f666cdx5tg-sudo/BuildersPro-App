@@ -1232,25 +1232,27 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       <button class="sheet-close" onclick="closeSheet('sheet-add-note')">✕</button>
     </div>
     <div class="sheet-body">
+      <!-- v3.81: job (and area, when it's already fixed) is known at every
+           place this sheet opens from — no reason to ask again. This line
+           shows where the item is going; the Job/Area pickers below it are
+           hidden whenever that context is already settled (see
+           openAddNote). -->
+      <div id="an-context" style="font-size:13px;color:var(--muted);font-weight:700;margin:-2px 0 10px"></div>
       <div class="field"><div class="field-label">Item Description *</div>
         <input id="an-text" type="text" placeholder="What needs to be checked or done?"/>
       </div>
       <div class="field-row">
-        <div class="field"><div class="field-label">Job</div>
-          <select id="an-job"><option value="">No job</option></select>
-        </div>
         <div class="field"><div class="field-label">Priority</div>
           <select id="an-priority"><option>Normal</option><option>High</option><option>Critical</option></select>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field"><div class="field-label">Area</div>
-          <select id="an-room"><option value="">No space</option></select>
         </div>
         <div class="field"><div class="field-label">Value ($)</div>
           <input id="an-value" type="number" inputmode="decimal" placeholder="0.00" step="0.01"/>
         </div>
       </div>
+      <div class="field" id="an-room-wrap"><div class="field-label">Area</div>
+        <select id="an-room"><option value="">No space</option></select>
+      </div>
+      <select id="an-job" style="display:none"><option value="">No job</option></select>
       <div class="field"><div class="field-label">Notes (optional)</div>
         <textarea id="an-notes" rows="2" placeholder="Additional details..."></textarea>
       </div>
@@ -1501,7 +1503,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '3.71';
+var APP_VERSION = '4.01';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -1949,9 +1951,10 @@ function permitExpiryInfo(p) {
   if (days <= 30) return { label:'Expires in ' + days + 'd', color:'#FF9500', daysLeft:days, urgent:true };
   return { label:'Expires ' + fmtDate(p.expirationDate), color:'#0A84FF', daysLeft:days, urgent:false };
 }
-function permitAlertCounts() {
+function permitAlertCounts(onlyJobId) {
   var expired = 0, soon = 0;
   (DB.permits||[]).forEach(function(p){
+    if (onlyJobId && p.jobId !== onlyJobId) return;   /* v3.76: optional per-job scope */
     if (!p.expirationDate) return;
     var info = permitExpiryInfo(p);
     if (info.daysLeft < 0) expired++;
@@ -3602,6 +3605,20 @@ function openAddNote(jobId, roomId) {
   if (jobId) document.getElementById('an-job').value = jobId;
   var anRoom = document.getElementById('an-room');
   if (anRoom) anRoom.value = roomId || '';
+  /* v3.81: Stan — "why is job there, we are already in a job... why is job
+     name next to area, not needed." Job is always known by the time this
+     sheet opens (it's passed in from every call site), so show it as plain
+     text instead of a picker. When the area is ALSO already fixed (the "+
+     Item" button on a room/space screen passes roomId), skip asking for
+     that too — collapse straight to just the description. The job-level
+     "Add Item" button (no roomId yet) still shows the Area picker, since
+     that's a real choice at that point. */
+  var jobName = (DB.jobs.find(function(j){ return j.id === jobId; }) || {}).name || '';
+  var roomName = roomId ? ((DB.rooms || []).find(function(r){ return r.id === roomId; }) || {}).name || '' : '';
+  var anCtx = document.getElementById('an-context');
+  if (anCtx) anCtx.textContent = jobName + (roomName ? ' · ' + roomName : '');
+  var anRoomWrap = document.getElementById('an-room-wrap');
+  if (anRoomWrap) anRoomWrap.style.display = roomId ? 'none' : '';
   openSheet('sheet-add-note');
 }
 
@@ -5296,11 +5313,15 @@ async function doPull() {
   setSyncStatus('pending','Pulling...');
   showSyncResult('⏳ Downloading...', 'var(--muted)');
   try {
-    var _merge = mergeIncomingDB(await bpFetchRemote());
+    var _remote = await bpFetchRemote();
+    try { await bpYield(); } catch(e){}
+    var _merge = mergeIncomingDB(_remote);
     _lastSync = now();
     _suppressNextAutoPush = true;
     _lastSyncError = '';
-    save(); renderAll();
+    save();
+    /* v4.01: auto-pulls render only when something actually changed, and give the UI a breath first */
+    if (!window.__bpAutoPullRun || _merge.added || _merge.updated) { try { await bpYield(); } catch(e){} renderAll(); }
     setSyncStatus('ready','Synced ✓');
     showSyncResult((_merge.added||_merge.updated) ? ('✅ Pulled successfully! ' + _merge.added + ' new, ' + _merge.updated + ' updated') : '✅ Pulled — already up to date. If you expected new data, double-check both devices are linked to the SAME Gist ID.', 'var(--green)');
     var timeEl2 = document.getElementById('sync-time'); if (timeEl2) timeEl2.textContent = new Date().toLocaleTimeString();
@@ -11860,6 +11881,7 @@ window.duplicateJob = function(jobId) {
     completionDate: '',
     created: now()
   });
+  delete newJob.security;   /* v3.77: door codes / Wi-Fi / cameras belong to the original job only */
   DB.jobs.push(newJob);
 
   var roomIdMap = {};
@@ -16173,17 +16195,15 @@ function levelSelect(id, levels, cur, extra){
     + '</select>';
 }
 window.bpOpenSetLevels = function(){
-  /* v2.72: Arrange Locations — Stan's own order inside each level (arrows),
+  /* v2.72 / v3.74: Arrange Locations — Stan's own order inside each level (v3.74: a slider per room, not arrows; full names),
      and the level itself (dropdown). Saves on every tap. */
   var jobId = window._bpAreaJob || '';
   var rooms = (DB.rooms||[]).filter(function(r){ return !jobId || r.jobId === jobId; })
     .map(function(r,i){ return {r:r,i:i}; })
     .sort(function(a,b){ return window.bpRoomCmp(a.r, b.r) || String(a.r.name).localeCompare(String(b.r.name)); })
     .map(function(o){ return o.r; });
-  var ab = 'width:40px;height:40px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);'
-    + 'display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex-shrink:0';
-  var last = null, body = '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">Use the arrows to put the rooms in your order. '
-    + 'Change a room\'s level on the right. It saves as you go.</div>';
+  var last = null, body = '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">Drag a slider to put each room where you want it on its level. '
+    + 'Change a room\'s level on the right. It saves when you let go.</div>';
   rooms.forEach(function(r, idx){
     var l = window.bpLevelOf(r);
     if (l !== last) {
@@ -16191,13 +16211,20 @@ window.bpOpenSetLevels = function(){
         + 'margin:16px 0 4px;padding-bottom:4px;border-bottom:2px solid ' + LVL_COLOR(l) + '55">' + E(l || 'Level not set') + '</div>';
       last = l;
     }
-    var first = idx === 0 || window.bpLevelOf(rooms[idx-1]) !== l;
-    var lastIn = idx === rooms.length - 1 || window.bpLevelOf(rooms[idx+1]) !== l;
-    body += '<div data-arr-room="' + r.id + '" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border,#2a2a2a)">'
-      + '<button onclick="bpMoveRoom(\'' + r.id + '\',-1)" aria-label="Move up" style="' + ab + (first ? ';opacity:.25' : '') + '"' + (first ? ' disabled' : '') + '><svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><path d="M6 15l6-6l6 6"/></svg></button>'
-      + '<button onclick="bpMoveRoom(\'' + r.id + '\',1)" aria-label="Move down" style="' + ab + (lastIn ? ';opacity:.25' : '') + '"' + (lastIn ? ' disabled' : '') + '><svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><path d="M6 9l6 6l6-6"/></svg></button>'
-      + '<div title="' + E(r.name) + '" style="flex:1;min-width:0;font-size:13.5px;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + E(r.name) + '</div>'
-      + levelSelect('', window.bpJobLevels(r.jobId), l, 'onchange="bpSetRoomLevel(\'' + r.id + '\',this.value)"').replace('min-width:130px', 'width:96px;flex-shrink:0;padding-left:6px;padding-right:2px')
+    var cnt = rooms.filter(function(x){ return window.bpLevelOf(x) === l; }).length;
+    var pos = rooms.slice(0, idx + 1).filter(function(x){ return window.bpLevelOf(x) === l; }).length;
+    body += '<div data-arr-room="' + r.id + '" data-bp-wrap="1" style="padding:10px 0;border-bottom:1px solid var(--border,#2a2a2a)">'
+      + '<div style="display:flex;align-items:center;gap:8px">'
+      + '<div data-arr-name="1" style="flex:1;min-width:0;font-size:16px;font-weight:800;line-height:1.25;overflow-wrap:anywhere;">' + E(r.name) + '</div>'
+      + levelSelect('', window.bpJobLevels(r.jobId), l, 'onchange="bpSetRoomLevel(\'' + r.id + '\',this.value)"').replace('min-width:130px', 'width:110px;flex-shrink:0;padding-left:6px;padding-right:2px')
+      + '</div>'
+      + (cnt > 1
+        ? '<div style="display:flex;align-items:center;gap:12px;margin-top:6px">'
+          + '<input type="range" min="1" max="' + cnt + '" step="1" value="' + pos + '" aria-label="Position of ' + E(r.name) + '" '
+          + 'oninput="bpArrLabel(this)" onchange="bpPlaceRoom(\'' + r.id + '\',this.value)" '
+          + 'style="flex:1;min-width:0;height:36px;accent-color:#0A84FF;touch-action:pan-y">'
+          + '<span data-arr-pos="1" style="min-width:58px;text-align:right;font-size:13px;font-weight:800;color:var(--muted)">' + pos + ' of ' + cnt + '</span></div>'
+        : '<div style="font-size:12px;color:var(--muted);margin-top:4px">Only one on this level</div>')
       + '</div>';
   });
   body += '<button onclick="document.getElementById(\'bp-set-levels\').remove()" style="width:100%;margin-top:16px;background:#0A84FF;'
@@ -16216,6 +16243,26 @@ window.bpMoveRoom = function(roomId, dir){
     .map(function(o){ return o.r; });
   var i = list.indexOf(r), j = i + dir;
   if (i < 0 || j < 0 || j >= list.length) return;
+  list.splice(i, 1); list.splice(j, 0, r);
+  var ts = (typeof now === 'function') ? now() : new Date().toISOString();
+  list.forEach(function(x, k){ if (x.order !== k) { x.order = k; x.updatedAt = ts; } });
+  persist(); rerender();
+  if (document.getElementById('bp-set-levels')) window.bpOpenSetLevels();
+};
+window.bpArrLabel = function(el){
+  var s = el.parentNode && el.parentNode.querySelector('[data-arr-pos]');
+  if (s) s.textContent = el.value + ' of ' + el.max;
+};
+window.bpPlaceRoom = function(roomId, pos){
+  var r = (DB.rooms||[]).find(function(x){ return x.id === roomId; });
+  if (!r) return;
+  var l = window.bpLevelOf(r);
+  var list = (DB.rooms||[]).filter(function(x){ return x.jobId === r.jobId && window.bpLevelOf(x) === l; })
+    .map(function(x,i){ return {r:x,i:i}; })
+    .sort(function(a,b){ return window.bpRoomCmp(a.r, b.r) || String(a.r.name).localeCompare(String(b.r.name)); })
+    .map(function(o){ return o.r; });
+  var i = list.indexOf(r), j = Math.max(0, Math.min(list.length - 1, (parseInt(pos, 10) || 1) - 1));
+  if (i < 0 || i === j) { if (document.getElementById('bp-set-levels')) window.bpOpenSetLevels(); return; }
   list.splice(i, 1); list.splice(j, 0, r);
   var ts = (typeof now === 'function') ? now() : new Date().toISOString();
   list.forEach(function(x, k){ if (x.order !== k) { x.order = k; x.updatedAt = ts; } });
@@ -19133,11 +19180,13 @@ var IC = {
 
 /* ── numbers ── */
 function owed(){
-  var L = (DB.invoices||[]).filter(function(i){ return i && (i.status === 'Sent' || i.status === 'Overdue'); });
+  var sj = onSite();
+  var L = (DB.invoices||[]).filter(function(i){ return i && (i.status === 'Sent' || i.status === 'Overdue') && (!sj || i.jobId === sj.id); });
   return { n:L.length, total:L.reduce(function(s, i){ return s + (+i.amount||0); }, 0), list:L };
 }
 function moneyLeft(){
-  return active().filter(function(j){ return j.contract || (typeof bpCOApproved === 'function' && bpCOApproved(j.id)); }).reduce(function(s, j){
+  var sj = onSite();
+  return (sj ? [sj] : active()).filter(function(j){ return j.contract || (typeof bpCOApproved === 'function' && bpCOApproved(j.id)); }).reduce(function(s, j){
     var c = (typeof bpRevisedContract === 'function') ? bpRevisedContract(j.id) : +j.contract || 0;
     var sp = (typeof jobActualSpend === 'function') ? jobActualSpend(j.id).total : 0;
     return s + c - sp;
@@ -19147,17 +19196,19 @@ function todays(){
   var d = new Date(), t = today(), ev = [];
   try { ev = getCalendarEvents(d.getFullYear(), d.getMonth()).filter(function(e){ return e.date === t; }); }
   catch(e){ ev = (DB.appointments||[]).filter(function(a){ return a.date === t; }); }
+  var sj = onSite(); if (sj) ev = ev.filter(function(e){ return e.jobId === sj.id; });
   ev.sort(function(a, b){ return (a.time||'99') < (b.time||'99') ? -1 : 1; });
   return ev;
 }
 function openPunch(){
-  var ids = {}; active().forEach(function(j){ ids[j.id] = 1; });
+  var ids = {}, sj = onSite(); (sj ? [sj] : active()).forEach(function(j){ ids[j.id] = 1; });
   var L = (DB.punchlist||[]).filter(function(p){ return p && !p.done && ids[p.jobId]; });
   var jobs = {}; L.forEach(function(p){ jobs[p.jobId] = 1; });
   return { n:L.length, jobs:Object.keys(jobs).length };
 }
 function pendingCOs(){
-  var L = (DB.changeOrders||[]).filter(function(c){ return c && (c.status === 'Draft' || c.status === 'Submitted' || !c.status); });
+  var sj = onSite();
+  var L = (DB.changeOrders||[]).filter(function(c){ return c && (c.status === 'Draft' || c.status === 'Submitted' || !c.status) && (!sj || c.jobId === sj.id); });
   return { n:L.length, total:L.reduce(function(s, c){ return s + (+c.amount||0); }, 0) };
 }
 function lastWorkday(){ var d = new Date(); do { d.setDate(d.getDate() - 1); } while (d.getDay() === 0 || d.getDay() === 6); return dk(d); }
@@ -19165,13 +19216,15 @@ function lastWorkday(){ var d = new Date(); do { d.setDate(d.getDate() - 1); } w
 /* ── attention list ── */
 window.bpAttentionItems = function(){
   var items = [], RED = 'red', AMB = 'amber', BLUE = 'blue';
-  active().forEach(function(j){
+  var sel = onSite();   /* v3.76: a selected job is its own world — nothing from other jobs */
+  (sel ? [sel] : active()).forEach(function(j){
     if (!j.contract || typeof jobActualSpend !== 'function') return;
     var over = jobActualSpend(j.id).total - (typeof bpRevisedContract === 'function' ? bpRevisedContract(j.id) : +j.contract);
     if (over > 0) items.push({ k:'over', tone:RED, icon:IC.over, text:E(j.name) + ' is ' + money(over) + ' over budget', action:"openJobDetail('" + j.id + "')" });
   });
   var cut = new Date(); cut.setDate(cut.getDate() - 30); cut = dk(cut);
   var late = owed().list.filter(function(i){ return i.status === 'Overdue' || (i.date && i.date <= cut); });
+  if (sel) late = late.filter(function(i){ return i.jobId === sel.id; });
   if (late.length) {
     var tot = late.reduce(function(s, i){ return s + (+i.amount||0); }, 0);
     var oldest = late.slice().sort(function(a, b){ return (a.date||'') < (b.date||'') ? -1 : 1; })[0];
@@ -19180,7 +19233,7 @@ window.bpAttentionItems = function(){
       : late.length + ' invoices unpaid 30+ days — ' + money(tot), action:"_financeTab='invoices';showScreen('s-finance')" });
   }
   try {
-    var pc = permitAlertCounts();
+    var pc = permitAlertCounts(sel ? sel.id : null);
     if (pc.expired) items.push({ k:'permit', tone:RED, icon:IC.permit, text:pc.expired + ' permit' + (pc.expired > 1 ? 's' : '') + ' expired', action:"_financeTab='permits';showScreen('s-finance')" });
     if (pc.soon) items.push({ k:'permit', tone:AMB, icon:IC.permit, text:pc.soon + ' permit' + (pc.soon > 1 ? 's' : '') + ' expire within 30 days', action:"_financeTab='permits';showScreen('s-finance')" });
   } catch(e){}
@@ -20949,6 +21002,7 @@ var ICONS = {
   calendar:'<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
   file:'<path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5M9 13h6M9 17h4"/>',
   door:'<path d="M6 21V4.5A1.5 1.5 0 017.5 3h9A1.5 1.5 0 0118 4.5V21M4 21h16"/><circle class="f" cx="14.6" cy="12.5" r=".9"/>',
+  foyer:'<path d="M7 18V4.5A1.5 1.5 0 018.5 3h7A1.5 1.5 0 0117 4.5V18"/><circle class="f" cx="14" cy="11" r=".9"/><path d="M4 21h16M5.5 18h13l1.5 3H4z"/>',
   mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v3M9 21h6"/>',
   bricks:'<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M9 14.3V19"/>',
   upload:'<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M4 14v5a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 19v-5"/>',
@@ -21532,7 +21586,8 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
   /* icons on the Add-screen chips (they have none) */
   function chips(){
     [].forEach.call(document.querySelectorAll('button[onclick^="bpTogglePreset("]'), function(b){
-      if (b.querySelector('[data-v311]')) return;
+      if (b.hasAttribute('data-bp-chipic') || b.querySelector('[data-v311]')) return;   /* v3.73: mark the chip itself — stairs/ramp/walk/drive icons carry no data-v311, so they were re-added on every redraw */
+      b.setAttribute('data-bp-chipic', '1');
       var m = /bpTogglePreset\('[^']*','((?:[^'\\]|\\.)*)'\)/.exec(b.getAttribute('onclick') || ''); if (!m) return;
       var nm = m[1].replace(/\\'/g, "'"), h = window.bpRoomIconHtml(nm, '');
       if (h) b.insertAdjacentHTML('afterbegin', h + ' ');
@@ -21553,10 +21608,30 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
     saveNow(); paintHome();
   };
   window.bpSetLaundry = function(jobId, val){ window.bpSetHome(jobId, 'laundry', val); };
+  window.__bpHomeOpen = window.__bpHomeOpen || {};
+  window.bpToggleHome = function(jobId){
+    var cur = homeIsOpen(jobId); window.__bpHomeOpen[jobId] = !cur;
+    try { sessionStorage.setItem('bp_home_open_' + jobId, cur ? '0' : '1'); } catch(e){}
+    paintHome();
+  };
+  function homeComplete(job){ var i = job.homeInfo || {}; return HOME_Q.every(function(q){ return !!i[q[0]]; }); }
+  /* once the home is filled in, the card collapses to one line behind a hamburger (v3.99) */
+  function homeIsOpen(jobId){
+    var v = window.__bpHomeOpen[jobId];
+    if (v === undefined) { try { var m = sessionStorage.getItem('bp_home_open_' + jobId); if (m === '1') v = true; else if (m === '0') v = false; } catch(e){} }
+    if (v === undefined) { var job = (DB.jobs || []).find(function(j){ return j.id === jobId; }); v = job ? !homeComplete(job) : true; }
+    return v;
+  }
   function homeHtml(job){
-    var info = job.homeInfo || {}, c = '#0A84FF';
-    var h = '<div style="font-size:15px;font-weight:800;margin-bottom:2px">🏠 Home details</div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5">Tap one in each row (tap again to clear).</div>';
+    var info = job.homeInfo || {}, c = '#0A84FF', open = homeIsOpen(job.id);
+    var ham = '<button onclick="bpToggleHome(\'' + job.id + '\')" aria-label="' + (open ? 'Hide' : 'Show') + ' home details" aria-expanded="' + (open ? 'true' : 'false') + '" style="background:transparent;border:none;color:var(--muted);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex-shrink:0;margin:-6px -8px -6px 0"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>';
+    var ico = (typeof window.bpIcon === 'function' && window.bpIcon('home')) || '🏠';
+    var h = '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px;min-width:0">' + ico + ' Home details</div>' + ham + '</div>';
+    if (!open) {
+      var sum = HOME_Q.map(function(q){ return info[q[0]] ? (q[0] === 'laundry' ? 'Laundry: ' : q[0] === 'attic' ? 'Attic: ' : 'Chimneys: ') + info[q[0]] : ''; }).filter(Boolean).join(' · ');
+      return h + (sum ? '<div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5">' + sum.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>' : '');
+    }
+    h += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5">Tap one in each row (tap again to clear).</div>';
     HOME_Q.forEach(function(q){
       var cur = info[q[0]] || '';
       h += '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 0 7px">' + q[1]
@@ -22021,7 +22096,7 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   'use strict';
   var prev = window.bpRoomIconHtml;
   if (typeof prev !== 'function' || prev.__v328) return;
-  var DRIVE = '<span class="bp-ic" data-v328="1" role="img" aria-label="driveway"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 21.5h21"/><path d="M2 11l4.5-4.5L11 11"/><path d="M3.5 10v11.5M9.5 10v11.5"/><path d="M5.5 21.5v-4.5h2v4.5"/><path d="M11.8 19v-2.4l1.6-.6 1.5-2.7h4.8l2.4 2.7 1.5.6V19"/><path d="M11.8 19h1.4M15.8 19h2.4M20.8 19h1.4"/><path d="M17.1 13.4v2.6"/><circle cx="14.5" cy="19.9" r="1.4"/><circle cx="19.5" cy="19.9" r="1.4"/></svg></span>';
+  var DRIVE = '<span class="bp-ic" data-v328="1" role="img" aria-label="driveway"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 21.5h21"/><path d="M2 16v-3l2.6-5.2A2 2 0 016.4 6.7h7.2a2 2 0 011.8 1.1l2.7 4.4 2.9 1V16z"/><path d="M9.2 6.9v5.4h8.6"/><circle cx="7" cy="17" r="2.6"/><circle cx="17" cy="17" r="2.6"/></svg></span>';
   window.bpRoomIconHtml = function(name, type){
     if (/driveway|\bapron\b|curb cut/i.test(String(name || ''))) return DRIVE;
     return prev.apply(this, arguments);
@@ -22942,8 +23017,20 @@ st.textContent = '#bp-notes-ov{position:fixed;inset:0;z-index:9990;background:va
  + '#bp-notes-ov .nt{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--card2)}#bp-notes-ov .nt img{width:100%;height:100%;object-fit:cover}'
  + '#bp-notes-ov .nx{position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:16px;cursor:pointer}'
  + '#bp-notes-ov .na{display:flex;align-items:center;gap:8px;margin-bottom:8px}#bp-notes-ov .na audio{flex:1;min-width:0;height:40px}'
- + '#bp-notes-ov .rec{background:#FF453A !important;border-color:#FF453A !important;color:#fff !important}';
+ + '#bp-notes-ov .rec{background:#FF453A !important;border-color:#FF453A !important;color:#fff !important}'
+ + '#bp-notes-ov .nrow{display:flex;gap:8px;margin-top:14px}#bp-notes-ov .nrow .nb{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;font-size:15px;padding:0 6px;white-space:nowrap}'
+ + '#bp-notes-ov .nfr{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--border)}'
+ + '#bp-notes-ov .nfr .nfi{font-size:24px;color:#0A84FF;flex:none}'
+ + '#bp-notes-ov .nfr .nfn{flex:1;min-width:0;cursor:pointer}'
+ + '#bp-notes-ov .nfr .nfn b{display:block;font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+ + '#bp-notes-ov .nfr .nfn span{font-size:12px;color:var(--muted)}';
 document.head.appendChild(st);
+
+/* v3.86: files on a note. Line icons (no emoji) — paperclip for the button/count, document for each file row. */
+var IC_CLIP = '<span class="bp-ic" role="img" aria-label="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l-6.5 6.5a1.5 1.5 0 003 3l6.5-6.5a3 3 0 00-6-6l-6.5 6.5a4.5 4.5 0 009 9l6.5-6.5"/></svg></span>';
+var IC_DOC  = '<span class="bp-ic" role="img" aria-label="file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3v4a1 1 0 001 1h4M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z"/></svg></span>';
+var MAX_FILE = 15 * 1024 * 1024;   /* 15 MB per file keeps a note small enough to sync */
+function fmtSize(b){ b = +b || 0; return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' B'; }
 
 var N = null;            /* editor state */
 var listJob = null;      /* job shown in the list ('' = general) */
@@ -22954,12 +23041,12 @@ function closeOv(){ stopRec(true); var o = document.getElementById('bp-notes-ov'
 window.bpNotesClose = closeOv;
 
 function cardHtml(n){
-  var np = (n.photos||[]).length, na = (n.audio||[]).length;
+  var np = (n.photos||[]).length, na = (n.audio||[]).length, nf = (n.files||[]).length;
   var prev = (n.text||'').trim();
   return '<div class="nc" onclick="bpNoteEdit(\'' + E(n.id) + '\')">'
     + '<div style="font-size:15px;font-weight:800">' + E(titleOf(n)) + '</div>'
     + (prev ? '<div style="font-size:14px;line-height:1.35;margin-top:4px;white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + E(prev) + '</div>' : '')
-    + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
+    + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (nf ? IC_CLIP + ' ' + nf + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
 }
 function notesFor(j){ return (DB.jobNotes||[]).filter(function(n){ return n && (n.jobId||'') === (j||''); }).sort(function(a,b){ return String(a.created||'') < String(b.created||'') ? 1 : -1; }); }
 
@@ -22998,19 +23085,21 @@ function draw(){
     + '<div class="nl">Job</div><select id="bpn-job" class="nin" onchange="bpNoteJob()"><option value="">General (no job)</option>' + jobs.map(function(j){ return '<option value="' + E(j.id) + '"' + (j.id === N.jobId ? ' selected' : '') + '>' + E(j.name) + '</option>'; }).join('') + '</select>'
     + '<div class="nl">Space</div><select id="bpn-room" class="nin" onchange="bpNoteSpace()"><option value="">Whole job</option>' + rooms.map(function(r){ return '<option value="' + E(r.id) + '"' + (r.id === N.roomId ? ' selected' : '') + '>' + E(r.name) + '</option>'; }).join('') + '</select>'
     + '<div class="nl">Note</div><textarea id="bpn-text" class="nin" rows="6" placeholder="" style="resize:vertical;line-height:1.4">' + E(N.text) + '</textarea>'
-    + '<div style="display:flex;gap:8px;margin-top:14px">'
-    +   '<label class="nb" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer" aria-label="Add photos">📷 Photos<input id="bpn-file" type="file" accept="image/*" multiple style="display:none" onchange="bpNotePhotos(this)"/></label>'
-    +   '<button id="bpn-rec" class="nb' + (rec ? ' rec' : '') + '" style="flex:1" onclick="bpNoteRec()" aria-label="' + (rec ? 'Stop recording' : 'Record') + '">' + (rec ? '⏹ <span id="bpn-timer">0:00</span>' : '🎙 Record') + '</button></div>'
+    + '<div class="nrow">'
+    +   '<label class="nb" style="cursor:pointer" aria-label="Add photos">📷 Photos<input id="bpn-file" type="file" accept="image/*" multiple style="display:none" onchange="bpNotePhotos(this)"/></label>'
+    +   '<label class="nb" style="cursor:pointer" aria-label="Add files">' + IC_CLIP + ' Files<input id="bpn-files" type="file" multiple style="display:none" onchange="bpNoteFiles(this)"/></label>'
+    +   '<button id="bpn-rec" class="nb' + (rec ? ' rec' : '') + '" onclick="bpNoteRec()" aria-label="' + (rec ? 'Stop recording' : 'Record') + '">' + (rec ? '⏹ <span id="bpn-timer">0:00</span>' : '🎙 Record') + '</button></div>'
     + (N.photos.length ? '<div class="nl">Photos (' + N.photos.length + ')</div><div class="ng">' + N.photos.map(function(p,i){ return '<div class="nt"><img src="' + p + '" alt=""/><button class="nx" aria-label="Remove photo" onclick="bpNoteDelPhoto(' + i + ')">✕</button></div>'; }).join('') + '</div>' : '')
     + (N.audio.length ? '<div class="nl">Recordings (' + N.audio.length + ')</div>' + N.audio.map(function(a,i){ return '<div class="na"><audio controls preload="metadata" src="' + a.src + '"></audio><button class="nb" style="color:#FF453A" aria-label="Remove recording" onclick="bpNoteDelAudio(' + i + ')">🗑</button></div>'; }).join('') : '')
+    + (N.files.length ? '<div class="nl">Files (' + N.files.length + ')</div>' + N.files.map(function(f,i){ return '<div class="nfr"><span class="nfi">' + IC_DOC + '</span><div class="nfn" onclick="bpNoteOpenFile(' + i + ')"><b>' + E(f.name) + '</b><span>' + E(fmtSize(f.size)) + ' · tap to open</span></div><button class="nb" style="color:#FF453A" aria-label="Remove file" onclick="bpNoteDelFile(' + i + ')">✕</button></div>'; }).join('') : '')
     + (N.id ? '<button class="nb" style="width:100%;margin-top:22px;color:#FF453A;border-color:#FF453A" onclick="bpNoteDel2()">Delete note</button>' : '');
 }
 window.bpNoteEdit = function(id, jobId){
   stopRec(true);
   var n = id ? (DB.jobNotes||[]).find(function(x){ return x.id === id; }) : null;
   if (jobId === undefined) jobId = n ? (n.jobId||'') : (window.currentJobId || activeJob());
-  N = n ? { id:n.id, jobId:n.jobId||'', roomId:n.roomId||'', title:n.title || autoTitle(n), titleEdited:!!n.title, created:n.created || iso(), text:n.text||'', photos:(n.photos||[]).slice(), audio:(n.audio||[]).slice(), from:ov().innerHTML && document.getElementById('bp-notes-ov') && document.getElementById('bp-notes-ov').dataset.list ? 1 : 0 }
-         : { id:'', jobId:jobId||'', roomId:'', title:'', titleEdited:false, created:iso(), text:'', photos:[], audio:[] };
+  N = n ? { id:n.id, jobId:n.jobId||'', roomId:n.roomId||'', title:n.title || autoTitle(n), titleEdited:!!n.title, created:n.created || iso(), text:n.text||'', photos:(n.photos||[]).slice(), audio:(n.audio||[]).slice(), files:(n.files||[]).slice(), from:ov().innerHTML && document.getElementById('bp-notes-ov') && document.getElementById('bp-notes-ov').dataset.list ? 1 : 0 }
+         : { id:'', jobId:jobId||'', roomId:'', title:'', titleEdited:false, created:iso(), text:'', photos:[], audio:[], files:[] };
   var o = ov(); o.dataset.list = (document.querySelector('#bp-notes-ov .nc') || document.querySelector('#bp-notes-ov select[aria-label=Job]')) ? '1' : '';
   draw();
 };
@@ -23033,6 +23122,37 @@ window.bpNotePhotos = function(inp){
 };
 window.bpNoteDelPhoto = function(i){ sync(); N.photos.splice(i,1); draw(); };
 window.bpNoteDelAudio = function(i){ sync(); N.audio.splice(i,1); draw(); };
+window.bpNoteDelFile = function(i){ sync(); N.files.splice(i,1); draw(); };
+window.bpNoteFiles = function(inp){
+  sync();
+  var picked = Array.prototype.slice.call(inp.files || []);
+  try { inp.value = ''; } catch(e){}
+  if (!picked.length || !N) return;
+  var left = picked.length, skipped = [];
+  function fin(){ draw(); if (skipped.length) say(skipped.length === 1 ? skipped[0] + ' is over 15 MB — too big to sync' : skipped.length + ' files over 15 MB were skipped'); }
+  picked.forEach(function(f){
+    if (f.size > MAX_FILE) { skipped.push(f.name || 'File'); if (--left === 0) fin(); return; }
+    var r = new FileReader();
+    r.onload = function(e){
+      if (N) N.files.push({ id:nid(), name:f.name || 'File', type:f.type || '', size:f.size || 0, src:e.target.result, date:iso() });
+      if (--left === 0) fin();
+    };
+    r.onerror = function(){ skipped.push(f.name || 'File'); if (--left === 0) fin(); };
+    r.readAsDataURL(f);
+  });
+};
+window.bpNoteOpenFile = function(i){
+  sync();
+  var f = N && N.files[i]; if (!f) return;
+  if (!/^data:/.test(String(f.src || ''))) { say('File is still loading — try again in a moment'); return; }
+  fetch(f.src).then(function(r){ return r.blob(); }).then(function(b){
+    var url = URL.createObjectURL(new Blob([b], { type: f.type || b.type || 'application/octet-stream' }));
+    var a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(e){} }, 120000);
+  }).catch(function(){ say('Could not open that file'); });
+};
 
 function stopRec(discard){
   clearInterval(R.tick);
@@ -23072,12 +23192,12 @@ window.bpNoteRec = function(){
 window.bpNoteSave2 = function(){
   if (R.mr) { say('Stop the recording first'); return; }
   sync();
-  if (!N.text.trim() && !N.photos.length && !N.audio.length) { say('Add a note, photo or recording first'); return; }
+  if (!N.text.trim() && !N.photos.length && !N.audio.length && !N.files.length) { say('Add a note, photo, file or recording first'); return; }
   DB.jobNotes = DB.jobNotes || [];
   var n = N.id ? DB.jobNotes.find(function(x){ return x.id === N.id; }) : null;
   var title = N.titleEdited ? N.title.trim() : '';
-  if (n) { n.jobId = N.jobId; n.roomId = N.roomId; n.title = title; n.text = N.text; n.photos = N.photos; n.audio = N.audio; n.updatedAt = iso(); }
-  else DB.jobNotes.push({ id:nid(), jobId:N.jobId, roomId:N.roomId, title:title, text:N.text, photos:N.photos, audio:N.audio, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:N.created, updatedAt:iso() });
+  if (n) { n.jobId = N.jobId; n.roomId = N.roomId; n.title = title; n.text = N.text; n.photos = N.photos; n.audio = N.audio; n.files = N.files; n.updatedAt = iso(); }
+  else DB.jobNotes.push({ id:nid(), jobId:N.jobId, roomId:N.roomId, title:title, text:N.text, photos:N.photos, audio:N.audio, files:N.files, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:N.created, updatedAt:iso() });
   persist(); say('Note saved');
   var fromList = document.getElementById('bp-notes-ov').dataset.list;
   N = null;
@@ -23100,11 +23220,11 @@ window.bpRenderJobNotes = function(){
   el.innerHTML = '<div class="section-header" style="display:flex;align-items:center">Project Notes (' + L.length + ')'
     + '<button onclick="bpNoteEdit(\'\',\'' + E(jobId) + '\')" style="margin-left:auto;background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.4);border-radius:9px;color:#0A84FF;font-size:13px;font-weight:800;padding:8px 14px;cursor:pointer;font-family:inherit">+ Add Note</button></div>'
     + '<div style="margin:0 16px 14px">' + (L.length ? L.map(function(n){
-      var np = (n.photos||[]).length, na = (n.audio||[]).length, prev = (n.text||'').trim();
+      var np = (n.photos||[]).length, na = (n.audio||[]).length, nf = (n.files||[]).length, prev = (n.text||'').trim();
       return '<div onclick="bpNoteEdit(\'' + E(n.id) + '\',\'' + E(jobId) + '\')" style="padding:12px 14px;margin-bottom:8px;border-radius:12px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a);cursor:pointer">'
         + '<div style="font-size:15px;font-weight:800">' + E(titleOf(n)) + '</div>'
         + (prev ? '<div style="font-size:14px;line-height:1.35;margin-top:4px;white-space:pre-wrap;word-break:break-word">' + E(prev) + '</div>' : '')
-        + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
+        + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (nf ? IC_CLIP + ' ' + nf + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
     }).join('') : '<div style="padding:16px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:12px;font-size:14px">No notes yet — tap + Add Note</div>') + '</div>';
 };
 try { window.bpRenderJobNotes(); } catch(e){}
@@ -23930,5 +24050,1094 @@ if (typeof window.bpSetBodyZoom === 'function' && !window.bpSetBodyZoom.__f370) 
 window.addEventListener('resize', soon); window.addEventListener('orientationchange', function(){ setTimeout(soon, 300); });
 setTimeout(scan, 1200);
 console.log('[BP] v3.70 money fit ready');
+})();
+</script>
+<script>
+/* ══ v3.72 — SLIDERS instead of up/down arrows on room Width / Length / Ceiling Height ══
+   Stan (Oct 8, 2026): "Remove the up and down arrows, put slider instead." The number boxes
+   (Add / Edit location: ar-/er-/nr- width, length, height) lose their spinner arrows and get a
+   big slider under them. The box still takes typed values (3.5, 11.25), the slider moves in
+   half-foot steps, and the two stay in sync. Works for sheets built later (Edit location).
+   ══════════════════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (window.__bp372) return; window.__bp372 = 1;
+var RX = /^(ar|er|nr)-(width|length|height)$/;
+var RANGE = { width:[0,40], length:[0,60], height:[6,20] };
+var st = document.createElement('style');
+st.textContent = 'input.bp-nospin::-webkit-outer-spin-button,input.bp-nospin::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}'
+  + 'input.bp-nospin{-moz-appearance:textfield;appearance:textfield}'
+  + '.bp-slide{width:100%;margin:10px 0 2px;height:34px;accent-color:#0A84FF;touch-action:pan-y}'
+  + '.bp-slide-wrap{display:flex;align-items:center;gap:10px}'
+  + '.bp-slide-wrap .bp-slide{flex:1;min-width:0}';
+document.head.appendChild(st);
+function build(inp){
+  if (!inp || inp.__bp372 || !RX.test(inp.id || '')) return;
+  inp.__bp372 = 1;
+  var kind = RX.exec(inp.id)[2], r = RANGE[kind];
+  inp.classList.add('bp-nospin');
+  var s = document.createElement('input');
+  s.type = 'range'; s.className = 'bp-slide'; s.min = r[0]; s.max = r[1]; s.step = 0.5;
+  s.setAttribute('aria-label', kind + ' in feet');
+  function toSlider(){ var v = parseFloat(inp.value); s.value = isNaN(v) ? r[0] : Math.min(r[1], Math.max(r[0], v)); }
+  toSlider();
+  s.addEventListener('input', function(){
+    inp.value = (+s.value === r[0] && kind !== 'height') ? '' : String(s.value);
+    inp.dispatchEvent(new Event('input', {bubbles:true}));
+  });
+  inp.addEventListener('input', toSlider);
+  inp.addEventListener('change', toSlider);
+  inp.insertAdjacentElement('afterend', s);
+}
+function scan(){ try { [].forEach.call(document.querySelectorAll('input[id$="-width"],input[id$="-length"],input[id$="-height"]'), build); } catch(e){} }
+try { new MutationObserver(function(){ scan(); }).observe(document.body, { childList:true, subtree:true }); } catch(e){}
+scan();
+console.log('[BP] v3.72 sliders ready — room Width / Length / Height');
+})();
+</script>
+<script>
+/* ══ v3.75 — LEVELS & ROOMS WHEN YOU CREATE A JOB ═════════════════════════════════════════
+   Stan (Oct 8, 2026): "I like to create levels and rooms when I create a job."
+   New "Levels & Rooms" section on the New Job form (above Notes), both apps. Tabs for Basement,
+   Level 1…N (+ Level adds more), Roof and Outside; tap room chips for the active level, or type
+   your own. When you tap Create Job the job AND those rooms are made together, already on the
+   right levels and in the order you tapped them. The same room on a second level is named
+   "Bathroom – Level 2", same as the Add Locations picker. Leave it empty and nothing changes.
+   Wraps the existing save function, so nothing about how a job is saved is rewritten.
+   ══════════════════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (window.__bp375) return; window.__bp375 = 1;
+var DESK = !!document.getElementById('nj-name');
+var C = DESK ? {notes:'nj-notes', open:'openNewJob', save:'saveNewJob'} : {notes:'aj-notes', open:'openAddJob', save:'saveJob'};
+var notesEl = document.getElementById(C.notes);
+if (!notesEl || typeof window[C.save] !== 'function') return;
+var ROOF_RX = /\b(roof|gutter|downspout|leader|chimney|skylight|shingle)/i;
+var plan;
+function fresh(){ plan = { max: 3, active: 'Level 1', picks: {} }; }
+fresh();
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function levels(){ var o = ['Basement']; for (var i = 1; i <= plan.max; i++) o.push('Level ' + i); return o.concat(['Roof', 'Outside']); }
+function color(l){ return l === 'Basement' ? '#A2845E' : l === 'Roof' ? '#FF453A' : l === 'Outside' ? '#FF9F0A' : '#0A84FF'; }
+function presets(l){
+  var P = window.BP_SPACE_PRESETS || {Interior:[], Exterior:[]};
+  if (l === 'Roof') return (P.Exterior || []).filter(function(p){ return ROOF_RX.test(p.n); });
+  if (l === 'Outside') return (P.Exterior || []).filter(function(p){ return !ROOF_RX.test(p.n); });
+  return P.Interior || [];
+}
+function picksOf(l){ return plan.picks[l] || (plan.picks[l] = []); }
+function idx(l, n){ var a = picksOf(l), k = String(n).toLowerCase(); for (var i = 0; i < a.length; i++) if (a[i].n.toLowerCase() === k) return i; return -1; }
+function toggle(l, n, type){ var i = idx(l, n); if (i >= 0) picksOf(l).splice(i, 1); else picksOf(l).push({n: n, type: type}); }
+function total(){ var t = 0, ls = 0; levels().forEach(function(l){ var c = picksOf(l).length; t += c; if (c) ls++; }); return [t, ls]; }
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function rerenderAll(){
+  ['renderAll', 'renderDesktopJobs', 'renderDesktopRooms', 'renderDashboard'].forEach(function(n){ try { if (typeof window[n] === 'function') window[n](); } catch(e){} });
+}
+
+var host = document.createElement('div');
+host.id = 'bp-jobplan';
+var anchor = notesEl.closest('.field') || notesEl.parentNode;
+anchor.parentNode.insertBefore(host, anchor);
+
+var chipCss = 'padding:11px 14px;border-radius:99px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;min-height:44px;';
+function draw(){
+  var cv = '', old = host.querySelector('[data-jp-in]'); if (old) cv = old.value;
+  var act = plan.active, col = color(act), tabs = '', chips = '';
+  levels().forEach(function(l){
+    var on = l === act, c = color(l), n = picksOf(l).length;
+    tabs += '<button type="button" data-jp-tab="' + esc(l) + '" style="padding:10px 14px;border-radius:10px;border:2px solid ' + (on ? c : 'var(--border,#2a2a2a)') + ';'
+      + 'background:' + (on ? c + '26' : 'transparent') + ';color:' + (on ? c : 'var(--muted)') + ';font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;min-height:44px">'
+      + esc(l) + (n ? ' <span style="opacity:.9">· ' + n + '</span>' : '') + '</button>';
+  });
+  tabs += '<button type="button" data-jp-lvl="1" style="padding:10px 14px;border-radius:10px;border:2px dashed rgba(10,132,255,.5);background:transparent;color:#0A84FF;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;min-height:44px">+ Level</button>';
+  var ps = presets(act);
+  ps.forEach(function(p, i){
+    var on = idx(act, p.n) >= 0;
+    chips += '<button type="button" data-jp-pre="' + i + '" style="' + chipCss + 'border:1.5px solid ' + (on ? col : 'var(--border,#2a2a2a)') + ';background:' + (on ? col + '22' : 'transparent') + ';color:' + (on ? col : 'var(--muted)') + '">'
+      + (on ? '✓ ' : '+ ') + esc(p.n) + '</button>';
+  });
+  picksOf(act).forEach(function(p, i){
+    if (ps.some(function(x){ return x.n.toLowerCase() === p.n.toLowerCase(); })) return;
+    chips += '<button type="button" data-jp-cus="' + i + '" style="' + chipCss + 'border:1.5px solid ' + col + ';background:' + col + '22;color:' + col + '">✓ ' + esc(p.n) + '</button>';
+  });
+  var t = total();
+  host.innerHTML =
+    '<div style="margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--border)">'
+    + '<div style="font-size:13px;font-weight:800;letter-spacing:.03em">Levels &amp; Rooms</div>'
+    + '<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5">Optional. Pick a level, then tap its rooms. They are made with the job, in the order you tap.</div></div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">' + tabs + '</div>'
+    + '<div style="font-size:12px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:' + col + ';margin:2px 0 8px">' + esc(act) + '</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px">' + chips + '</div>'
+    + '<div style="display:flex;gap:8px;margin-top:12px"><input data-jp-in="1" type="text" placeholder="Type your own on ' + esc(act) + '…" spellcheck="true" autocapitalize="words" style="flex:1;min-width:0"/>'
+    + '<button type="button" data-jp-add="1" style="padding:0 18px;border-radius:12px;border:none;background:#0A84FF;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;min-height:44px">Add</button></div>'
+    + '<div style="font-size:12px;color:var(--muted);margin:10px 0 14px">' + (t[0] ? ('Will create <b>' + t[0] + '</b> room' + (t[0] === 1 ? '' : 's') + ' on <b>' + t[1] + '</b> level' + (t[1] === 1 ? '' : 's') + '.') : 'Nothing picked yet. You can always add rooms later.') + '</div>';
+  var inp = host.querySelector('[data-jp-in]'); if (inp && cv) inp.value = cv;
+}
+function addCustom(){
+  var inp = host.querySelector('[data-jp-in]'); if (!inp) return;
+  var v = inp.value.trim(); if (!v) return;
+  var l = plan.active;
+  if (idx(l, v) < 0) picksOf(l).push({n: v.replace(/\b[a-z]/g, function(c){ return c.toUpperCase(); }), type: l === 'Roof' ? 'Roof' : l === 'Outside' ? 'Exterior' : 'Other'});
+  inp.value = ''; draw();
+}
+host.addEventListener('click', function(e){
+  var b = e.target.closest && e.target.closest('button'); if (!b || !host.contains(b)) return;
+  e.preventDefault();
+  var l = plan.active;
+  if (b.hasAttribute('data-jp-tab')) { plan.active = b.getAttribute('data-jp-tab'); draw(); }
+  else if (b.hasAttribute('data-jp-lvl')) { plan.max++; plan.active = 'Level ' + plan.max; draw(); }
+  else if (b.hasAttribute('data-jp-pre')) { var p = presets(l)[+b.getAttribute('data-jp-pre')]; if (p) { toggle(l, p.n, p.type); draw(); } }
+  else if (b.hasAttribute('data-jp-cus')) { picksOf(l).splice(+b.getAttribute('data-jp-cus'), 1); draw(); }
+  else if (b.hasAttribute('data-jp-add')) addCustom();
+});
+host.addEventListener('keydown', function(e){ if (e.key === 'Enter' && e.target && e.target.hasAttribute && e.target.hasAttribute('data-jp-in')) { e.preventDefault(); addCustom(); } });
+
+function build(job){
+  var ls = levels().filter(function(l){ return picksOf(l).length; });
+  if (!ls.length) return 0;
+  DB.rooms = DB.rooms || [];
+  var ts = now(), made = 0, maxLvl = 0, used = {};
+  DB.rooms.forEach(function(r){ if (r.jobId === job.id) used[String(r.name).toLowerCase()] = 1; });
+  ls.forEach(function(l){
+    picksOf(l).forEach(function(p, k){
+      var name = used[p.n.toLowerCase()] ? (p.n + ' – ' + l) : p.n;
+      used[name.toLowerCase()] = 1;
+      DB.rooms.push({ id: uid(), name: name, baseName: p.n, type: p.type || 'Other', level: l,
+        space: (l === 'Outside' || l === 'Roof') ? 'Exterior' : 'Interior', jobId: job.id, notes: '', created: ts, updatedAt: ts, order: k });
+      made++;
+    });
+    var m = /^Level (\d+)$/.exec(l); if (m) maxLvl = Math.max(maxLvl, +m[1]);
+  });
+  var want = Math.max(maxLvl, plan.max);
+  if (want > 3) job.levelsMax = want;
+  return made;
+}
+
+var origSave = window[C.save];
+window[C.save] = function(){
+  var before = (DB.jobs || []).length;
+  var r = origSave.apply(this, arguments);
+  try {
+    if ((DB.jobs || []).length > before) {
+      var job = DB.jobs[DB.jobs.length - 1], n = build(job);
+      if (n) { persist(); rerenderAll(); try { toast('✅ Job created with ' + n + ' room' + (n === 1 ? '' : 's')); } catch(e){} }
+      fresh(); draw();
+    }
+  } catch(e){ console.error('[BP] v3.75', e); }
+  return r;
+};
+if (typeof window[C.open] === 'function') {
+  var origOpen = window[C.open];
+  window[C.open] = function(){ fresh(); draw(); return origOpen.apply(this, arguments); };
+}
+draw();
+console.log('[BP] v3.75 levels & rooms on New Job ready');
+})();
+</script>
+<script>
+/* ══ v3.77 — SECURITY section on every job ═══════════════════════════════════════
+   Stan (Oct 8, 2026): "Add a security section to each job to store door codes, wifi
+   passwords, camera access."
+   Saved on the job record itself (job.security = [{id,kind,label,user,secret,notes}]) so it
+   rides the normal job sync and stays strictly inside that job. Values are masked until
+   tapped (so nothing shows over a shoulder), with one-tap Copy. Duplicate Job does NOT carry
+   a job's codes to the copy, and Client Update / Email Update never read this field.
+   v3.79: each entry can carry photos of its QR code / barcode (stored on the entry — never in the
+   Photos gallery or in client updates). Tap a photo to enlarge it on a white screen so it can be scanned.
+   Field app only. */
+(function(){
+'use strict';
+if (window.__bpSec377) return; window.__bpSec377 = 1;
+var IC = window.BP_ICONS || {};
+IC.wifi   = IC.wifi   || '<path d="M12 18l.01 0"/><path d="M9.172 15.172a4 4 0 0 1 5.656 0"/><path d="M6.343 12.343a8 8 0 0 1 11.314 0"/><path d="M3.515 9.515c4.686 -4.687 12.284 -4.687 17 0"/>';
+IC.bell   = IC.bell   || '<path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>';
+IC.copy   = IC.copy   || '<path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/>';
+IC.shield = IC.shield || '<path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"/><path d="M12 11m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12l0 2.5"/>';
+IC.plus   = IC.plus   || '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>';
+IC.chev   = IC.chev   || '<path d="M9 6l6 6l-6 6"/>';
+function ic(n, px){ return '<span class="bp-ic" aria-hidden="true" style="width:' + (px||20) + 'px;height:' + (px||20) + 'px;flex:none"><svg viewBox="0 0 24 24">' + (IC[n]||'') + '</svg></span>'; }
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+var KINDS = [
+  { k:'door',    icon:'door', label:'Door / gate code', user:'',                      secret:'Code' },
+  { k:'wifi',    icon:'wifi', label:'Wi-Fi',            user:'Network name',          secret:'Password' },
+  { k:'camera',  icon:'camera', label:'Camera / DVR',     user:'Username / app / link', secret:'Password' },
+  { k:'alarm',   icon:'bell', label:'Alarm',            user:'',                      secret:'Code' },
+  { k:'lockbox', icon:'key', label:'Lockbox / key',    user:'',                      secret:'Code' },
+  { k:'other',   icon:'lock', label:'Other',            user:'Username',              secret:'Password / code' }
+];
+function kind(k){ return KINDS.find(function(x){ return x.k === k; }) || KINDS[KINDS.length-1]; }
+function job(id){ return (DB.jobs||[]).find(function(j){ return j.id === id; }); }
+var openFor = {}, timers = {}, editing = null, editJob = '', draft = [];
+var MAXPH = 6;
+
+function paint(jobId){
+  var old = document.getElementById('jd-security-section'); if (old) old.remove();
+  var scr = document.getElementById('s-job-detail'); if (!scr) return;
+  var anchor = scr.querySelector('.bp-act-row'); if (!anchor) return;
+  var j = job(jobId); if (!j) return;
+  var L = j.security || [], isOpen = !!openFor[jobId];
+  var s = document.createElement('div'); s.id = 'jd-security-section'; s.style.cssText = 'margin:10px 16px 0';
+  var head = '<div onclick="bpSecToggle(\'' + jobId + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;min-height:52px;padding:0 14px;background:var(--card);border:1px solid var(--border);border-radius:14px;font-size:15px;font-weight:800">'
+    + ic('shield',22) + '<span style="flex:1;min-width:0">Security' + (L.length ? ' <span style="color:var(--muted);font-weight:700">(' + L.length + ')</span>' : '') + '</span>'
+    + '<span style="color:var(--muted);display:flex;transform:rotate(' + (isOpen ? '90' : '0') + 'deg);transition:transform .15s">' + ic('chev',20) + '</span></div>';
+  var body = '';
+  if (isOpen) {
+    body = '<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">'
+      + (L.length ? L.map(function(it){
+          var K = kind(it.kind);
+          return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px">'
+            + '<div style="display:flex;align-items:center;gap:8px">' + ic(K.icon,22) + ''
+            + '<div style="flex:1;min-width:0;font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(it.label || K.label) + '</div>'
+            + '<button onclick="bpSecEdit(\'' + jobId + '\',\'' + it.id + '\')" aria-label="Edit" style="min-width:44px;min-height:44px;background:none;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center">' + ic('pencil',20) + '</button></div>'
+            + (it.user ? '<div style="font-size:13px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(K.user || 'Username') + ': <b style="color:var(--text)">' + E(it.user) + '</b></div>' : '')
+            + ((it.secret || !(it.photos||[]).length) ? '<div style="display:flex;gap:8px;margin-top:8px">'
+            + '<div data-sec-val="' + it.id + '" onclick="bpSecReveal(this,\'' + jobId + '\',\'' + it.id + '\')" style="flex:1;min-width:0;cursor:pointer;display:flex;align-items:center;min-height:44px;padding:0 12px;border-radius:10px;background:var(--card2,#222);border:1px solid var(--border);font-family:ui-monospace,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:.08em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (it.secret ? '••••••••' : '<span style="color:var(--faint);font-family:inherit;letter-spacing:0;font-size:14px">— none —</span>') + '</div>'
+            + '<button onclick="bpSecCopy(\'' + jobId + '\',\'' + it.id + '\')" style="min-width:76px;min-height:44px;border-radius:10px;border:1px solid var(--border);background:var(--card2,#222);color:var(--accent,#0A84FF);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' + ic('copy',18) + 'Copy</button></div>' : '')
+            + ((it.photos||[]).length ? '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' + it.photos.map(function(src, n){ return '<img src="' + src + '" alt="Code photo ' + (n+1) + '" onclick="bpSecView(\'' + jobId + '\',\'' + it.id + '\',' + n + ')" style="width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer"/>'; }).join('') + '</div><div style="font-size:11.5px;color:var(--faint);margin-top:4px">Tap a photo to enlarge it for scanning</div>' : '')
+            + (it.notes ? '<div style="font-size:13px;color:var(--muted);margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere">' + E(it.notes) + '</div>' : '')
+            + '</div>';
+        }).join('') : '<div style="padding:14px;text-align:center;color:var(--faint);font-size:14px;background:var(--card);border:1px solid var(--border);border-radius:14px">No codes yet — tap Add</div>')
+      + '<button onclick="bpSecAdd(\'' + jobId + '\')" style="min-height:48px;border-radius:12px;border:1px solid rgba(10,132,255,.4);background:rgba(10,132,255,.1);color:#409CFF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' + ic('plus',18) + 'Add</button>'
+      + '<div style="font-size:11.5px;color:var(--faint);line-height:1.35;padding:0 4px 2px">Tap a code to show it for 8 seconds. Saved in this app and in your private sync — not encrypted, so keep banking-level secrets out.</div>'
+      + '</div>';
+  }
+  s.innerHTML = head + body;
+  anchor.parentNode.insertBefore(s, anchor.nextSibling);
+}
+window.bpSecToggle = function(jobId){ openFor[jobId] = !openFor[jobId]; paint(jobId); };
+window.bpSecReveal = function(el, jobId, id){
+  var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !it.secret) return;
+  clearTimeout(timers[id]);
+  el.textContent = it.secret;
+  timers[id] = setTimeout(function(){ if (el.isConnected) el.textContent = '••••••••'; }, 8000);
+};
+window.bpSecCopy = function(jobId, id){
+  var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !it.secret) { toast('Nothing to copy'); return; }
+  try { navigator.clipboard.writeText(it.secret).then(function(){ toast('Copied'); }, function(){ toast('Tap the code to read it'); }); }
+  catch(e){ toast('Tap the code to read it'); }
+};
+
+function modal(){
+  var it = editing ? ((job(editJob)||{}).security||[]).find(function(x){ return x.id === editing; }) : null;
+  var m0 = document.getElementById('bp-sec-modal'); if (m0) m0.remove();
+  var inp = 'width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit';
+  var lb = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px';
+  var cur = it ? kind(it.kind) : KINDS[0];
+  var mo = document.createElement('div'); mo.id = 'bp-sec-modal';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  mo.innerHTML = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid var(--border,#2a2a2a)"><div style="font-size:17px;font-weight:700">' + (it ? 'Edit' : 'Add') + ' security info</div>'
+    + '<button onclick="bpSecClose()" style="width:36px;height:36px;border-radius:50%;background:var(--card2);border:none;color:var(--muted);font-size:18px;cursor:pointer">x</button></div>'
+    + '<div style="padding:4px 18px 18px">'
+    + '<div style="' + lb + '">Type</div><select id="bpsec-kind" onchange="bpSecKindChange()" style="' + inp + '">' + KINDS.map(function(k){ return '<option value="' + k.k + '"' + (k.k === cur.k ? ' selected' : '') + '>' + k.label + '</option>'; }).join('') + '</select>'
+    + '<div style="' + lb + '">Label</div><input id="bpsec-label" type="text" placeholder="e.g. Front door, Basement router" value="' + E(it ? it.label : '') + '" style="' + inp + '"/>'
+    + '<div id="bpsec-user-wrap"><div id="bpsec-user-lb" style="' + lb + '"></div><input id="bpsec-user" type="text" autocapitalize="off" autocorrect="off" value="' + E(it ? it.user : '') + '" style="' + inp + '"/></div>'
+    + '<div id="bpsec-secret-lb" style="' + lb + '"></div><input id="bpsec-secret" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + E(it ? it.secret : '') + '" style="' + inp + ';font-family:ui-monospace,Menlo,monospace"/>'
+    + '<div style="' + lb + '">Notes</div><textarea id="bpsec-notes" rows="2" placeholder="e.g. code changes after punch-out, app is Reolink" style="' + inp + ';resize:vertical">' + E(it ? it.notes : '') + '</textarea>'
+    + '<div style="' + lb + '">Photos of QR code / barcode</div><div id="bpsec-ph" style="display:flex;flex-wrap:wrap;gap:8px"></div>'
+    + '<label style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;min-height:48px;border-radius:12px;border:1px solid rgba(10,132,255,.4);background:rgba(10,132,255,.1);color:#409CFF;font-size:15px;font-weight:800;cursor:pointer">' + ic('camera',20) + 'Add photo<input type="file" accept="image/*" multiple style="display:none" onchange="bpSecPick(this)"/></label>'
+    + '<button onclick="bpSecSave()" style="width:100%;margin-top:18px;padding:14px;border-radius:12px;border:none;background:#0A84FF;color:#000;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Save</button>'
+    + (it ? '<button onclick="bpSecDelete()" style="width:100%;margin-top:10px;padding:13px;border-radius:12px;border:1px solid rgba(255,69,58,.4);background:none;color:#FF6961;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Delete</button>' : '')
+    + '</div></div>';
+  document.body.appendChild(mo);
+  window.bpSecKindChange();
+  drawDraft();
+}
+function drawDraft(){
+  var el = document.getElementById('bpsec-ph'); if (!el) return;
+  el.innerHTML = draft.map(function(src, n){
+    return '<div style="position:relative;width:76px;height:76px"><img src="' + src + '" style="width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);background:#fff"/>'
+      + '<button onclick="bpSecDropPhoto(' + n + ')" aria-label="Remove photo" style="position:absolute;top:-8px;right:-8px;width:28px;height:28px;border-radius:50%;border:none;background:#FF453A;color:#fff;font-size:15px;font-weight:800;cursor:pointer;line-height:1">×</button></div>';
+  }).join('');
+}
+window.bpSecDropPhoto = function(n){ draft.splice(n, 1); drawDraft(); };
+window.bpSecPick = function(input){
+  if (!input.files) return;
+  Array.from(input.files).forEach(function(f){
+    if (!f.type || f.type.indexOf('image/') !== 0) return;
+    if (draft.length >= MAXPH) { toast('Up to ' + MAXPH + ' photos per entry'); return; }
+    var r = new FileReader();
+    r.onload = function(e){
+      var raw = e.target.result; if (!raw) return;
+      var put = function(src){ if (draft.length < MAXPH) { draft.push(src); drawDraft(); } };
+      try { bpCompressFor('doc', raw, put); } catch(err){ put(raw); }   /* "doc" preset: 1800px — keeps a QR / barcode scannable */
+    };
+    r.readAsDataURL(f);
+  });
+  input.value = '';
+};
+var viewState = null;
+window.bpSecView = function(jobId, id, n){
+  var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !(it.photos||[]).length) return;
+  viewState = { jobId:jobId, id:id, n:n };
+  var v = document.getElementById('bp-sec-view'); if (v) v.remove();
+  v = document.createElement('div'); v.id = 'bp-sec-view';
+  v.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#fff;color:#000;display:flex;flex-direction:column;font-family:inherit;padding-top:max(env(safe-area-inset-top),14px);padding-bottom:env(safe-area-inset-bottom);box-sizing:border-box';
+  document.body.appendChild(v); viewDraw();
+};
+function viewDraw(){
+  var v = document.getElementById('bp-sec-view'); if (!v || !viewState) return;
+  var it = ((job(viewState.jobId)||{}).security||[]).find(function(x){ return x.id === viewState.id; }); if (!it) { v.remove(); return; }
+  var P = it.photos, n = Math.max(0, Math.min(viewState.n, P.length - 1)); viewState.n = n;
+  v.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px 8px">'
+    + '<div style="flex:1;min-width:0;font-size:17px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(it.label || kind(it.kind).label) + '</div>'
+    + (P.length > 1 ? '<span style="flex:none;color:#666;font-size:15px;font-weight:700">' + (n+1) + '/' + P.length + '</span>' : '')
+    + (P.length > 1 ? '<button onclick="bpSecViewStep(-1)" aria-label="Previous" style="min-width:48px;min-height:48px;border:none;background:#eee;border-radius:12px;color:#000;display:flex;align-items:center;justify-content:center;transform:rotate(180deg)">' + ic('chev',22) + '</button><button onclick="bpSecViewStep(1)" aria-label="Next" style="min-width:48px;min-height:48px;border:none;background:#eee;border-radius:12px;color:#000;display:flex;align-items:center;justify-content:center">' + ic('chev',22) + '</button>' : '')
+    + '<button onclick="bpSecViewClose()" style="min-width:72px;min-height:48px;border:none;background:#0A84FF;color:#fff;border-radius:12px;font-size:16px;font-weight:800;font-family:inherit">Done</button></div>'
+    + '<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px"><img src="' + P[n] + '" style="max-width:100%;max-height:100%;object-fit:contain"/></div>';
+}
+window.bpSecViewStep = function(d){ var it = ((job(viewState.jobId)||{}).security||[]).find(function(x){ return x.id === viewState.id; }); if (!it) return; viewState.n = (viewState.n + d + it.photos.length) % it.photos.length; viewDraw(); };
+window.bpSecViewClose = function(){ var v = document.getElementById('bp-sec-view'); if (v) v.remove(); viewState = null; };
+window.bpSecKindChange = function(){
+  var K = kind(document.getElementById('bpsec-kind').value);
+  var w = document.getElementById('bpsec-user-wrap'); if (w) w.style.display = K.user ? '' : 'none';
+  var ul = document.getElementById('bpsec-user-lb'); if (ul) ul.textContent = K.user;
+  var sl = document.getElementById('bpsec-secret-lb'); if (sl) sl.textContent = K.secret;
+};
+window.bpSecAdd  = function(jobId){ editing = null; editJob = jobId; draft = []; modal(); };
+window.bpSecEdit = function(jobId, id){ editing = id; editJob = jobId; var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); draft = (it && it.photos) ? it.photos.slice() : []; modal(); };
+window.bpSecClose = function(){ var m = document.getElementById('bp-sec-modal'); if (m) m.remove(); };
+window.bpSecSave = function(){
+  var j = job(editJob); if (!j) return;
+  var k = document.getElementById('bpsec-kind').value, K = kind(k);
+  var d = { kind:k, label:(document.getElementById('bpsec-label').value||'').trim(), user:K.user ? (document.getElementById('bpsec-user').value||'').trim() : '',
+            secret:(document.getElementById('bpsec-secret').value||'').trim(), notes:(document.getElementById('bpsec-notes').value||'').trim(), photos:draft.slice() };
+  if (!d.label && !d.secret && !d.user && !d.photos.length) { toast('Enter a label, a code or a photo'); return; }
+  j.security = j.security || [];
+  var it = editing ? j.security.find(function(x){ return x.id === editing; }) : null;
+  if (it) Object.assign(it, d); else j.security.push(Object.assign({ id:uid(), created:now() }, d));
+  j.updatedAt = now(); openFor[editJob] = true;
+  save(); bpSecClose(); paint(editJob); toast('Saved');
+};
+window.bpSecDelete = function(){
+  var j = job(editJob); if (!j || !editing) return;
+  if (!confirm('Delete this entry?')) return;
+  j.security = (j.security||[]).filter(function(x){ return x.id !== editing; });
+  j.updatedAt = now(); save(); bpSecClose(); paint(editJob);
+};
+
+var orig = renderJobDetail;
+renderJobDetail = function(jobId){ var r = orig.apply(this, arguments); try { paint(jobId); } catch(e){ console.warn('[BP] v3.77 security', e); } return r; };
+window.renderJobDetail = renderJobDetail;
+console.log('[BP] v3.77 job Security section ready');
+})();
+</script>
+
+<script>
+/* ══ v3.80 — Yard / Grading icon: small tree over grass blades, replacing the generic door/crane icon it was
+   falling back to (Stan: circled "Yard / Grading" on the Shedwick job, asked for a better match). Covers the
+   named preset plus Front/Rear/Side Yard and anything with "lawn"/"grading"/"landscap(e/ing)" in the name.
+   Both apps — identical block, appended at the end of the file per the house rule. ══ */
+(function(){
+  'use strict';
+  var prev = window.bpRoomIconHtml;
+  if (typeof prev !== 'function' || prev.__v380) return;
+  var YARD = '<span class="bp-ic" data-v380="1" role="img" aria-label="yard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 21.5h21"/><circle cx="12" cy="9" r="5"/><path d="M12 14v7.5"/><path d="M4 21.5c.8-1.8.8-3.6 0-5.4M7.5 21.5c.6-1.8.6-3.6 0-5.4M16.5 21.5c-.6-1.8-.6-3.6 0-5.4M20 21.5c-.8-1.8-.8-3.6 0-5.4"/></svg></span>';
+  window.bpRoomIconHtml = function(name, type){
+    if (/\b(yard|lawn|grading|landscap)/i.test(String(name || ''))) return YARD;
+    return prev.apply(this, arguments);
+  };
+  window.bpRoomIconHtml.__v380 = 1;
+  window.BP_LOC_SVG = window.BP_LOC_SVG || {};
+  window.BP_LOC_SVG.yard = YARD;
+  console.log('[BP] v3.80 ready — yard/grading icon');
+})();
+</script>
+
+<script>
+/* ══ v3.82 — job screen's section list (Security/Spaces/Finance/Expenses/
+   Contractors/Invoices/Permits/Daily Reports/Photos) collapses into one
+   "Job Sections ☰" hamburger row. Stan (screenshot of the job screen, Oct 9):
+   "put all of these into a hamburger" — same ☰ dropdown pattern already used
+   on the Punch page's Status/Space filters (v3.61, built on the v3.49
+   bpHMenu() component). Each menu item shows the section's existing count
+   (read straight off the already-rendered accordion header, nothing
+   recomputed/duplicated) and opens straight to that section.
+   v3.84 fix — Stan: "I should not see all those pages name when job
+   sections is closed." The original version gated visibility on a single
+   per-job REVEALED flag, so picking ANY one section from the menu un-hid
+   ALL 9 cards at once. Now each row's visibility is tied to its OWN
+   open/closed state instead of one job-wide flag: .bp-acc rows use their
+   existing .open class (already toggled live by bpJobAccToggle — pure
+   CSS, no JS needed), and the Security card — which has no existing
+   state-reflecting class — gets a MutationObserver-synced .sec-open class
+   so it still hides/shows correctly no matter which code path repaints it
+   (menu tap, header tap, or a save/delete inside it).
+   Field app only — desktop.html's job screen is a different, table-based
+   layout with no equivalent list to collapse (CURRENT_STATE.md rule: a
+   phone-only UX fix stays in index.html). Purely additive: the v3.59
+   accordion stack and the v3.77 Security card are untouched — this just
+   hides each row via CSS until IT is individually opened, so it keeps
+   working no matter how many times those two rebuild their own DOM nodes
+   on toggle. */
+(function(){
+  'use strict';
+  if (window.IS_DESK || document.getElementById('modal-new-room')) return;
+  if (typeof renderJobDetail !== 'function' || renderJobDetail.__v382) return;
+  if (typeof window.bpHMenu !== 'function') return;
+
+  var css = document.createElement('style');
+  css.textContent = '#jd-stack .bp-acc{display:none!important}'
+    + '#jd-stack .bp-acc.open{display:block!important}'
+    + '#jd-security-section{display:none!important}'
+    + '#jd-security-section.sec-open{display:block!important}'
+    + '#jd-sections-trigger{margin:10px 16px 0;display:flex;align-items:center;gap:10px;min-height:52px;'
+    + 'padding:0 14px;background:var(--card);border:1px solid var(--border);border-radius:14px;font-size:15px;font-weight:800}'
+    + '#jd-sections-trigger>span:first-child{flex:1;min-width:0}'
+    + '#jd-sections-trigger .bp-hm-pop{max-height:min(60vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch}';
+  document.head.appendChild(css);
+
+  /* Security section repaints via paint() removing + re-inserting a fresh
+     node (see v3.77) with no class reflecting open/closed — only inferable
+     from whether it got a body (children.length>1). A MutationObserver on
+     the screen keeps a real .sec-open class in sync with that regardless
+     of which code path triggered the repaint. */
+  var secMo = null;
+  function syncSecClass(){
+    var sec = document.getElementById('jd-security-section');
+    if (sec) sec.classList.toggle('sec-open', sec.children.length > 1);
+  }
+  function ensureSecObserver(){
+    var scr = document.getElementById('s-job-detail');
+    if (!scr || secMo) return;
+    secMo = new MutationObserver(syncSecClass);
+    secMo.observe(scr, { childList: true, subtree: true });
+    syncSecClass();
+  }
+
+  function reposTrigger(){
+    var trig = document.getElementById('jd-sections-trigger');
+    var row = document.querySelector('#s-job-detail .bp-act-row');
+    if (trig && row && row.nextSibling !== trig) row.parentNode.insertBefore(trig, row.nextSibling);
+  }
+
+  /* Hardcoded rather than scraped off the rendered header: the app's own
+     emoji→SVG icon converter (BPI_MAP, elsewhere in the file) silently
+     swaps several of these same characters out of any text node it finds
+     them in — including ones we'd be reading from — so scraping would
+     leave some menu rows iconless depending on render order. */
+  var SEC_ICON = { spaces:'🚪', finance:'💰', expenses:'🧾', contractors:'👷', invoices:'📄', permits:'📋', reports:'📝', photos:'📷', notes:'🗒️' };
+
+  function buildTrigger(jobId){
+    var old = document.getElementById('jd-sections-trigger'); if (old) old.remove();
+    var row = document.querySelector('#s-job-detail .bp-act-row'); if (!row) return;
+    var stack = document.getElementById('jd-stack');
+    var items = [];
+    var j = (DB.jobs || []).find(function(x){ return x.id === jobId; });
+    var secCt = (j && j.security) ? j.security.length : 0;
+    items.push({ icon: '🛡️', label: 'Security' + (secCt ? ' (' + secCt + ')' : ''), js: "bpOpenJobSection('security','" + jobId + "')" });
+    if (stack) {
+      [].forEach.call(stack.querySelectorAll('.bp-acc'), function(acc){
+        var key = acc.getAttribute('data-k');
+        var h = acc.querySelector('.bp-acc-h'); if (!h || !key) return;
+        var label = h.children[1] ? h.children[1].textContent : key;
+        var ct = h.children[2] ? h.children[2].textContent : '';
+        items.push({ icon: SEC_ICON[key] || '', label: label + (ct ? ' (' + ct + ')' : ''), js: "bpOpenJobSection('" + key + "','" + jobId + "')" });
+      });
+    }
+    var trig = document.createElement('div'); trig.id = 'jd-sections-trigger';
+    trig.innerHTML = '<span>Job Sections</span>' + window.bpHMenu('Job sections', items);
+    row.parentNode.insertBefore(trig, row.nextSibling);
+  }
+
+  window.bpOpenJobSection = function(key, jobId){
+    if (key === 'security') {
+      var sec = document.getElementById('jd-security-section');
+      if (sec && sec.children.length < 2 && typeof window.bpSecToggle === 'function') window.bpSecToggle(jobId);
+    } else {
+      var acc = document.querySelector('#jd-stack .bp-acc[data-k="' + key + '"]');
+      if (acc && !acc.classList.contains('open') && typeof window.bpJobAccToggle === 'function') window.bpJobAccToggle(key);
+    }
+    setTimeout(function(){
+      syncSecClass();
+      reposTrigger();
+      var target = (key === 'security') ? document.getElementById('jd-security-section')
+                                         : document.querySelector('#jd-stack .bp-acc[data-k="' + key + '"]');
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
+
+  var _prevRJD = renderJobDetail;
+  renderJobDetail = function(jobId){
+    var r = _prevRJD.apply(this, arguments);
+    try {
+      ensureSecObserver();
+      syncSecClass();
+      buildTrigger(jobId);
+    } catch(e){ console.warn('[BP] v3.82 sections menu', e); }
+    return r;
+  };
+  renderJobDetail.__v382 = 1;
+  console.log('[BP] v3.82 ready — Job Sections hamburger');
+})();
+</script>
+
+<script>
+/* ══ v3.83 — hamburger (☰) morphs into an X while its menu is open ══════════
+   Stan sent a screen recording of a site where tapping ☰ animates it into ✕;
+   asked for that style. Applied to the ☰ buttons that stay on screen while
+   their menu is open — the Job Sections / Punch-filter popovers (.bp-hm,
+   v3.49/v3.61/v3.82). Pure CSS: .bp-hm already gets an "open" class today,
+   so the three <line> elements in its inline SVG just get transformed into
+   an X while that class is set — no JS changes, nothing to wire up.
+   NOT applied to the bottom dock's ☰ (#bp-dock-menu, opens the left-side
+   nav drawer): that button hides itself the instant the drawer opens
+   (body.bp-drawer-open #bp-dock{display:none}, v3.43/v3.57's dock
+   show/hide logic) so it's never actually on screen at the same time as an
+   "open" state — a morph there would be invisible, not broken-looking, just
+   pointless. The drawer already closes via its own ✕ in its header. Field
+   app only — desktop.html has no hamburger/drawer pattern at all. */
+(function(){
+  'use strict';
+  if (window.IS_DESK || document.getElementById('modal-new-room')) return;
+  var css = document.createElement('style');
+  css.textContent =
+      '.bp-hm-btn svg line{transition:transform .2s ease,opacity .2s ease;transform-box:fill-box;transform-origin:50% 50%}'
+    + '.bp-hm.open .bp-hm-btn svg line:nth-child(1){transform:translateY(5px) rotate(45deg)}'
+    + '.bp-hm.open .bp-hm-btn svg line:nth-child(2){opacity:0}'
+    + '.bp-hm.open .bp-hm-btn svg line:nth-child(3){transform:translateY(-5px) rotate(-45deg)}';
+  document.head.appendChild(css);
+  console.log('[BP] v3.83 ready — hamburger-to-X');
+})();
+</script>
+
+<script>
+/* ══ v3.85 — Job Sections: blend-in ☰ + open-as-full-page ═══════════════
+   Stan, looking at the Job Sections row: "Why do I see the hamburger box,
+   it should blend in. Move it to the end of the tab. When I select a
+   section from the hamburger it should open full page."
+
+   1) Blend-in ☰: the Job Sections trigger's hamburger button was using
+      the default boxed .bp-hm-btn look (card background + border) — the
+      same look the app already strips off in the Punch-filter menus
+      (.bp-pm .bp-hm-btn{border:none;background:transparent}, ~L22922).
+      Scoped the same treatment to #jd-sections-trigger so it reads as a
+      plain icon sitting in the row, not a separate button-on-a-button.
+
+   2) Open full page: previously picking a section from the menu just
+      expanded its existing inline accordion card and scrolled to it —
+      every other section (and the job header/stats/action row) stayed in
+      the DOM, so it didn't read as "its own page." Now the chosen section
+      visually takes over the whole screen: its container goes
+      position:fixed/inset:0 (CSS only — it is NOT moved in the DOM, so
+      nothing about how v3.59/v3.77/v3.84 render or re-render it changes),
+      every other direct child of #s-job-detail is hidden, and a sticky
+      "‹ <Section Name>" back bar is added up top. Tapping it restores the
+      normal job-detail view exactly as it was.
+   Field app only — desktop.html's job screen has no equivalent list. */
+(function(){
+  'use strict';
+  if (window.IS_DESK || document.getElementById('modal-new-room')) return;
+  if (typeof window.bpOpenJobSection !== 'function') return;
+  if (window.bpOpenJobSection.__v385) return;
+
+  var css = document.createElement('style');
+  css.textContent =
+      '#jd-sections-trigger .bp-hm-btn{background:transparent;border:none;width:36px;height:36px}'
+    + '#jd-sections-trigger{padding-right:8px}'
+    + '#s-job-detail.bp-sec-full #jd-stack,#s-job-detail.bp-sec-full #jd-security-section{'
+    + 'position:fixed;inset:0;z-index:960;background:var(--bg);overflow-y:auto;'
+    + '-webkit-overflow-scrolling:touch;padding:calc(var(--safe-top) + 56px) 0 24px;margin:0!important}'
+    + '#jd-stack>.bp-acc{flex:0 0 auto}'   /* v4.00: accordions were flex-shrunk to the screen height (overflow:hidden), clipping long lists like Spaces so they could not scroll */
+    + '#jd-focus-bar{display:none;position:fixed;top:0;left:0;right:0;z-index:970;background:var(--bg);'
+    + 'padding:var(--safe-top) 16px 10px;border-bottom:1px solid var(--border);align-items:center}'
+    + '#jd-focus-bar .back-btn{margin-bottom:0;font-size:16px;font-weight:800}';
+  document.head.appendChild(css);
+
+  var FOCUS = { jobId: null, key: null };
+  var focusMo = null;
+
+  function focusLabel(){
+    if (FOCUS.key === 'security') return 'Security';
+    var h = document.querySelector('#jd-stack .bp-acc[data-k="' + FOCUS.key + '"] .bp-acc-h');
+    return (h && h.children[1]) ? h.children[1].textContent : 'Back';
+  }
+
+  function ensureFocusBar(){
+    var bar = document.getElementById('jd-focus-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'jd-focus-bar';
+      bar.innerHTML = '<button type="button" class="back-btn" onclick="bpCloseSectionFocus()">'
+        + '<svg viewBox="0 0 24 24" style="width:20px;height:20px"><polyline points="15 18 9 12 15 6"></polyline></svg>'
+        + '<span id="jd-focus-label">Back</span></button>';
+      var scr = document.getElementById('s-job-detail');
+      if (scr) scr.insertBefore(bar, scr.firstChild);
+    }
+    return bar;
+  }
+
+  function applyFocus(resetScroll){
+    var scr = document.getElementById('s-job-detail');
+    if (!scr || !FOCUS.key) return;
+    var keepEl = (FOCUS.key === 'security') ? document.getElementById('jd-security-section')
+                                             : document.getElementById('jd-stack');
+    if (!keepEl) return;
+    var bar = ensureFocusBar();
+    [].forEach.call(scr.children, function(c){
+      if (c === keepEl || c === bar) c.style.removeProperty('display');
+      else c.style.display = 'none';
+    });
+    bar.style.display = 'flex';
+    var lbl = document.getElementById('jd-focus-label');
+    if (lbl) lbl.textContent = focusLabel();
+    scr.classList.add('bp-sec-full');
+    if (resetScroll) keepEl.scrollTop = 0;
+  }
+
+  window.bpCloseSectionFocus = function(){
+    var scr = document.getElementById('s-job-detail');
+    FOCUS.key = null; FOCUS.jobId = null;
+    if (!scr) return;
+    scr.classList.remove('bp-sec-full');
+    [].forEach.call(scr.children, function(c){ c.style.removeProperty('display'); });
+    var bar = document.getElementById('jd-focus-bar');
+    if (bar) bar.style.display = 'none';
+  };
+
+  var focusRaf = null;
+  function ensureFocusObserver(){
+    var scr = document.getElementById('s-job-detail');
+    if (!scr || focusMo) return;
+    focusMo = new MutationObserver(function(){
+      if (!FOCUS.key || focusRaf) return;
+      focusRaf = requestAnimationFrame(function(){ focusRaf = null; if (FOCUS.key) applyFocus(false); });
+    });
+    /* Direct children only — catches #jd-stack / #jd-security-section
+       being wholesale removed+recreated on re-render (v3.59/v3.77), which
+       is the only case that needs a re-sync. subtree:true would also
+       fire on every incidental change deep inside the open section
+       (thumbnails loading, live voice text, etc.) and churn needlessly. */
+    focusMo.observe(scr, { childList: true });
+  }
+
+  /* A "full page" should show ONLY the section just picked — not it plus
+     whatever else happened to already be open (Spaces defaults open per
+     v3.59). So close every other open row first; the target then opens
+     clean via the existing _prevOpen logic below. */
+  function closeOthers(key, jobId){
+    [].forEach.call(document.querySelectorAll('#jd-stack .bp-acc.open'), function(acc){
+      var k = acc.getAttribute('data-k');
+      if (k && k !== key && typeof window.bpJobAccToggle === 'function') window.bpJobAccToggle(k);
+    });
+    var sec = document.getElementById('jd-security-section');
+    if (key !== 'security' && sec && sec.children.length > 1 && typeof window.bpSecToggle === 'function') {
+      window.bpSecToggle(jobId);
+    }
+  }
+
+  var _prevOpen = window.bpOpenJobSection;
+  window.bpOpenJobSection = function(key, jobId){
+    closeOthers(key, jobId);
+    _prevOpen(key, jobId);
+    FOCUS.key = key; FOCUS.jobId = jobId;
+    ensureFocusObserver();
+    setTimeout(function(){ applyFocus(true); }, 90);
+  };
+  window.bpOpenJobSection.__v385 = 1;
+
+  if (typeof renderJobDetail === 'function' && !renderJobDetail.__v385) {
+    var _prevRJD2 = renderJobDetail;
+    renderJobDetail = function(jobId){
+      var r = _prevRJD2.apply(this, arguments);
+      try {
+        ensureFocusObserver();
+        if (FOCUS.key && FOCUS.jobId === jobId) applyFocus(false);
+        else window.bpCloseSectionFocus();
+      } catch(e){ console.warn('[BP] v3.85 section focus', e); }
+      return r;
+    };
+    renderJobDetail.__v385 = 1;
+  }
+
+  console.log('[BP] v3.85 ready — Job Sections blend-in ☰ + full-page open');
+})();
+</script>
+
+<script>
+/* ══ v3.86 — Boiler room = flame, Utility room = wrench in a room. Stan (Oct 9): picked the flame for the Boiler Room,
+   asked for "a wrench in a room" for the Utility Room (they were sharing one emoji fire before — no emoji, line icons
+   only). Same 24px stroke style as the rest (.bp-ic). Boiler/Furnace -> flame; Utility -> room box with a wrench inside.
+   Both apps — identical block, appended at the end of the file per the house rule. ══ */
+(function(){
+  'use strict';
+  var prev = window.bpRoomIconHtml;
+  if (typeof prev !== 'function' || prev.__v386) return;
+  var FLAME = '<span class="bp-ic" data-v386="1" role="img" aria-label="boiler room"><svg viewBox="0 0 24 24" aria-hidden="true">'
+    + '<path d="M12 2.8c.6 3.1 5.7 5.2 5.7 10.4a5.7 5.7 0 01-11.4 0c0-2.4 1.1-4 2.4-5.2.1 1.7.9 2.7 1.9 3.2C10.3 8.3 10.7 5.1 12 2.8z"/>'
+    + '<path d="M12 20.4a2.5 2.5 0 01-2.5-2.5c0-1.5 1.2-2.2 2.5-3.9 1.3 1.7 2.5 2.4 2.5 3.9a2.5 2.5 0 01-2.5 2.5z"/></svg></span>';
+  var UTIL = '<span class="bp-ic" data-v386="1" role="img" aria-label="utility room"><svg viewBox="0 0 24 24" aria-hidden="true">'
+    + '<rect x="3" y="3" width="18" height="18" rx="3.5"/>'
+    + '<g transform="translate(5.1 5.1) scale(.6)" stroke-width="3"><path d="M7 10h3v-3l-3.5-3.5a6 6 0 018 8l6 6a2 2 0 01-3 3l-6-6a6 6 0 01-8-8l3.5 3.5"/></g></svg></span>';
+  window.bpRoomIconHtml = function(name, type){
+    var n = String(name || '');
+    if (/\b(boiler|furnace)/i.test(n)) return FLAME;
+    if (/\butility/i.test(n)) return UTIL;
+    return prev.apply(this, arguments);
+  };
+  window.bpRoomIconHtml.__v386 = 1;
+  console.log('[BP] v3.86 ready — boiler flame + utility wrench-in-room icons');
+})();
+</script>
+
+<script>
+/* ══ v3.91 — every space icon is a line icon, never an emoji ═══════════════════
+   Stan (Oct 9, 2026), after several rounds of "icon X hasn't changed":
+   "I keep asking for icons to be updated, do a unit test for icons in command
+   center." Cause of the leftovers: bpRoomIconHtml() only knew a list of name
+   patterns; any space it didn't recognise (Foyer, Basement/mechanical, Family
+   Room, Garage, ...) came back empty and the tile fell back to a plain emoji,
+   which only turned into a line icon IF a separate converter happened to run
+   on that part of the page (it doesn't on every screen/device). Now, when the
+   normal lookup finds nothing, the emoji it WOULD have used is looked up
+   against the app's line-icon set (bpIcon) right here, so the answer is
+   always an SVG. test_command_center_icons.py asserts it for every space
+   name x every space type, and scans every Mac screen for raw emoji. ═════ */
+(function(){
+  'use strict';
+  if (typeof window.bpRoomIconHtml !== 'function' || window.bpRoomIconHtml.__v391) return;
+  var E2N = { '🍳':'pan','🚿':'shower','🛏':'bed','🛋':'sofa','🏚':'basement','🏗':'crane','🏠':'home','🚗':'car','💼':'briefcase',
+    '🚪':'door','🧺':'basket','❄':'snow','⚡':'bolt','🔧':'wrench','📦':'box','🔥':'flame','🛣':'road','🪟':'window','🔺':'triangle',
+    '🧱':'bricks','🪵':'log','🌿':'leaf','🪜':'ladder','🚧':'barrier','🚰':'faucet','🕳':'hole','🔌':'plug','❓':'help' };
+  var prev = window.bpRoomIconHtml, busy = false;
+  window.bpRoomIconHtml = function(name, type){
+    if (/foyer|entry|vestibule/i.test(String(name||'')) && typeof window.bpIcon==='function' && window.BP_ICONS && window.BP_ICONS.foyer) return window.bpIcon('foyer');
+    var h = prev.apply(this, arguments);
+    if (h || busy) return h;
+    busy = true;                                   /* BPX.icon calls back into this function */
+    try {
+      var e = (window.BPX && typeof BPX.icon === 'function') ? BPX.icon({ name: name, type: type }) : '';
+      if (!e) return '';
+      if (String(e).indexOf('<') >= 0) return e;   /* already markup */
+      var nm = E2N[String(e).replace(/️/g, '')];
+      return (nm && typeof window.bpIcon === 'function') ? window.bpIcon(nm) : '';
+    } catch(err){ return ''; }
+    finally { busy = false; }
+  };
+  window.bpRoomIconHtml.__v391 = 1;
+  try { bpRoomIconHtml = window.bpRoomIconHtml; } catch(e){}
+  console.log('[BP] v3.91 ready — every space icon is a line icon');
+})();
+</script>
+<script>
+/* v3.94 — Documents are editable (name, category, job, notes, replace file). Shared block for field + Mac. */
+(function(){
+  'use strict';
+  if (window.__bpDocEdit) return; window.__bpDocEdit = 1;
+  var IS_DESK = typeof window.renderDesktopDocuments === 'function';
+  function persist(){ try { (typeof window.saveDB==='function'?window.saveDB:window.save)(); } catch(e){ try{ save(); }catch(e2){} } }
+  function rerender(){
+    try { if (IS_DESK) {
+      if (typeof renderDesktopDocuments==='function') renderDesktopDocuments();
+      if (typeof renderDesktopJobDetail==='function' && window.currentJobId) renderDesktopJobDetail(window.currentJobId);
+    } else if (window.currentJobId && typeof renderJobDetail==='function') renderJobDetail(window.currentJobId); } catch(e){}
+  }
+  function esc2(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+  window.bpEditDocClose = function(){ var m=document.getElementById('bp-doc-edit'); if(m) m.remove(); };
+  window.bpEditDoc = function(id){
+    var d = (DB.documents||[]).find(function(x){ return x.id===id; }); if(!d) return;
+    bpEditDocClose();
+    var cats = ['Permit Copy','Insurance','Contract','License','Inspection Report','Warranty','Other'];
+    var sel = document.getElementById('doc-category');
+    if (sel && sel.options.length) cats = Array.prototype.map.call(sel.options,function(o){return o.text;});
+    if (d.category && cats.indexOf(d.category)<0) cats.push(d.category);
+    var fld = 'width:100%;box-sizing:border-box;padding:11px 12px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit';
+    var lbl = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin:12px 0 6px';
+    var m = document.createElement('div'); m.id='bp-doc-edit';
+    m.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box';
+    m.innerHTML='<div style="background:var(--card,#1a1a1a);color:var(--text,#f0f0f0);border-radius:18px;padding:18px;width:100%;max-width:460px;max-height:100%;overflow-y:auto;box-sizing:border-box">'
+      +'<div style="font-size:18px;font-weight:800;margin-bottom:4px">Edit document</div>'
+      +'<div style="'+lbl+'">Name</div><input id="bpde-name" style="'+fld+'" value="'+esc2(d.name)+'">'
+      +'<div style="'+lbl+'">Category</div><select id="bpde-cat" style="'+fld+'">'+cats.map(function(c){return '<option'+(c===(d.category||'Other')?' selected':'')+'>'+esc2(c)+'</option>';}).join('')+'</select>'
+      +'<div style="'+lbl+'">Job</div><select id="bpde-job" style="'+fld+'"><option value="">— none —</option>'+(DB.jobs||[]).map(function(j){return '<option value="'+esc2(j.id)+'"'+(j.id===d.jobId?' selected':'')+'>'+esc2(j.name)+'</option>';}).join('')+'</select>'
+      +'<div style="'+lbl+'">Notes</div><textarea id="bpde-notes" rows="3" style="'+fld+'">'+esc2(d.notes||'')+'</textarea>'
+      +'<div style="'+lbl+'">Replace file (optional)</div><input id="bpde-file" type="file" accept="image/*,application/pdf" style="'+fld+'">'
+      +'<div style="display:flex;gap:10px;margin-top:16px"><button onclick="bpEditDocClose()" style="flex:1;padding:13px;border-radius:12px;border:1px solid var(--border,#333);background:transparent;color:inherit;font-size:15px;font-weight:700;cursor:pointer">Cancel</button>'
+      +'<button id="bpde-save" style="flex:1;padding:13px;border-radius:12px;border:none;background:#0A84FF;color:#fff;font-size:15px;font-weight:800;cursor:pointer">Save</button></div></div>';
+    document.body.appendChild(m);
+    m.addEventListener('click',function(e){ if(e.target===m) bpEditDocClose(); });
+    document.getElementById('bpde-save').onclick = function(){
+      var name = document.getElementById('bpde-name').value.trim();
+      if(!name){ if(typeof toast==='function') toast('Document name required'); return; }
+      var apply = function(src,fname,type){
+        d.name=name; d.category=document.getElementById('bpde-cat').value; d.jobId=document.getElementById('bpde-job').value;
+        d.notes=document.getElementById('bpde-notes').value.trim(); d.edited=new Date().toISOString();
+        if(src){ d.fileSrc=src; d.fileName=fname; d.fileType=type; }
+        persist(); bpEditDocClose(); rerender(); if(typeof toast==='function') toast('✏️ Document updated');
+      };
+      var f = document.getElementById('bpde-file').files[0];
+      if(f){
+        var lim = window.DOC_PDF_MAX_BYTES || (15*1024*1024);
+        if(f.type==='application/pdf' && f.size>lim){ if(typeof toast==='function') toast('⚠️ PDF too large (max 15 MB) — not saved'); return; }
+        readDocumentFile(f, apply);
+      } else apply();
+    };
+  };
+  var TRASH = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>';
+  var PEN = '<button class="bp-doc-edit-btn" title="Edit" style="background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.4);border-radius:10px;color:#0A84FF;cursor:pointer;flex-shrink:0;width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;padding:0;margin-right:6px;vertical-align:middle"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 000-3l-1-1a2.1 2.1 0 00-3 0L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>';
+  function decorate(){
+    document.querySelectorAll('button[onclick^="deleteDocument("]').forEach(function(b){
+      if (b.previousElementSibling && b.previousElementSibling.classList.contains('bp-doc-edit-btn')) return;
+      var m = /deleteDocument\('([^']+)'\)/.exec(b.getAttribute('onclick')||''); if(!m) return;
+      var t=document.createElement('span'); t.innerHTML=PEN; var e=t.firstChild;
+      e.setAttribute('onclick',"bpEditDoc('"+m[1]+"')"); e.setAttribute('aria-label','Edit document');
+      b.parentNode.insertBefore(e,b);
+      b.className = 'bp-doc-del-btn'; b.title='Delete'; b.setAttribute('aria-label','Delete document');
+      b.style.cssText='background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.4);border-radius:10px;color:#FF453A;cursor:pointer;flex-shrink:0;width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;padding:0;vertical-align:middle';
+      b.innerHTML=TRASH;
+    });
+  }
+  ['renderDesktopDocuments','renderDesktopJobDetail','renderJobDetail'].forEach(function(n){
+    var f = window[n]; if (typeof f!=='function' || f.__v394) return;
+    var w = function(){ var r=f.apply(this,arguments); try{ decorate(); }catch(e){} return r; };
+    w.__v394=1; window[n]=w; try{ (0,eval)(n+'=window.'+n); }catch(e){}
+  });
+  try{ decorate(); }catch(e){}
+  console.log('[BP] v3.94 ready — documents editable');
+})();
+</script>
+<script>
+/* v3.96 — Recently Deleted: select all / bulk Restore / bulk Delete forever / clear all markers. Shared (field + Mac). */
+(function(){
+  'use strict';
+  if (window.__bpRecSel) return; window.__bpRecSel = 1;
+  var SEL = {};   // entry id -> true
+  function allIds(){ return (typeof bpRecycleList==='function' ? bpRecycleList() : (DB.recycle||[])).map(function(e){return e.id;}); }
+  function count(){ return Object.keys(SEL).filter(function(k){return SEL[k];}).length; }
+  function rerender(){ try{ bpRenderRecycle(); }catch(e){} }
+  function persist(){ try{ bpSave(); }catch(e){ try{ save(); }catch(e2){ try{ saveDB(); }catch(e3){} } } }
+  function t(m){ try{ toast(m); }catch(e){} }
+  window.bpRecSelToggle = function(id, on){ if(on) SEL[id]=true; else delete SEL[id]; paintBar(); };
+  window.bpRecSelAll = function(on){
+    SEL = {}; if (on) allIds().forEach(function(id){ SEL[id]=true; });
+    document.querySelectorAll('#recycle-wrap .bp-rec-cb').forEach(function(cb){ cb.checked = !!on; });
+    paintBar();
+  };
+  window.bpRecBulkRestore = function(){
+    var ids = Object.keys(SEL); if(!ids.length) return;
+    var n=0; ids.forEach(function(id){ try{ if (bpRestore(id,true)) n++; }catch(e){} });
+    SEL={}; rerender(); t(n ? '↩️ Restored '+n+' item'+(n>1?'s':'') : 'Nothing restored');
+  };
+  window.bpRecBulkPurge = function(){
+    var ids = Object.keys(SEL); if(!ids.length) return;
+    if (!confirm('Permanently delete '+ids.length+' item'+(ids.length>1?'s':'')+'?\n\nThis cannot be undone.')) return;
+    var set = {}; ids.forEach(function(i){set[i]=1;});
+    DB.recycle = (DB.recycle||[]).filter(function(x){ return !set[x.id]; });
+    SEL={}; persist(); rerender(); t('Permanently deleted '+ids.length);
+  };
+  window.bpRecClearAllMarkers = function(){
+    var keys = Object.keys(DB.tombstones||{});
+    var ghosts = (typeof bpTombstoneList==='function') ? bpTombstoneList() : [];
+    if(!ghosts.length) return;
+    if (!confirm('Clear all '+ghosts.length+' old delete markers?\n\nThis restores nothing by itself. It lets those records come back on the next Pull if your cloud copy still has them.')) return;
+    ghosts.forEach(function(g){ try{ delete DB.tombstones[g.key]; }catch(e){} });
+    persist(); rerender(); t('Cleared '+ghosts.length+' markers — now tap Pull');
+  };
+  function paintBar(){
+    var bar = document.getElementById('bp-rec-bar'); if(!bar) return;
+    var n = count(), total = allIds().length;
+    var all = bar.querySelector('#bp-rec-all'); if(all){ all.checked = n>0 && n===total; all.indeterminate = n>0 && n<total; }
+    bar.querySelector('#bp-rec-n').textContent = n ? (n+' selected') : 'Select all ('+total+')';
+    bar.querySelectorAll('.bp-rec-act').forEach(function(b){ b.disabled = !n; b.style.opacity = n?1:.4; });
+  }
+  function decorate(){
+    var wrap = document.getElementById('recycle-wrap'); if(!wrap) return;
+    var ids = allIds();
+    // drop selections that no longer exist
+    Object.keys(SEL).forEach(function(k){ if (ids.indexOf(k)<0) delete SEL[k]; });
+    wrap.querySelectorAll('button[onclick^="bpRestore(\'"],button[onclick^="bpRecyclePurge("]').forEach(function(bt){
+      var del = /bpRecyclePurge/.test(bt.getAttribute('onclick')||'');
+      bt.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:112px;height:44px;padding:0 14px;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;box-sizing:border-box;'
+        + (del ? 'background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.45);color:#FF453A' : 'background:rgba(48,209,88,.12);border:1px solid rgba(48,209,88,.45);color:#30D158');
+      bt.innerHTML = del ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg> Delete' : '&#8629; Restore';
+    });
+    var restoreBtns = wrap.querySelectorAll('button[onclick^="bpRestore(\'"]');
+    if (restoreBtns.length) {
+      restoreBtns.forEach(function(b){
+        var m=/bpRestore\('([^']+)'\)/.exec(b.getAttribute('onclick')||''); if(!m) return;
+        var card=b.closest('div[style*="border-radius:10px"]'); if(!card||card.querySelector('.bp-rec-cb')) return;
+        var cb=document.createElement('input'); cb.type='checkbox'; cb.className='bp-rec-cb'; cb.checked=!!SEL[m[1]];
+        cb.style.cssText='width:26px;height:26px;flex-shrink:0;accent-color:#0A84FF;margin:0 10px 0 0;cursor:pointer';
+        cb.onchange=function(){ bpRecSelToggle(m[1], cb.checked); };
+        var row=card.firstElementChild; row.style.alignItems='center'; row.insertBefore(cb,row.firstChild);
+      });
+      var first = wrap.querySelector('.bp-rec-cb'); var anchor = first && first.closest('div[style*="border-radius:10px"]');
+      if (anchor && !document.getElementById('bp-rec-bar')) {
+        var bar=document.createElement('div'); bar.id='bp-rec-bar';
+        bar.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card2,var(--card));border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px';
+        var bs='border-radius:10px;font-size:14px;font-weight:800;flex:1 1 130px;height:44px;padding:0 10px;cursor:pointer;font-family:inherit;box-sizing:border-box;';
+        bar.innerHTML='<label style="display:flex;align-items:center;gap:10px;flex:1;min-width:140px;font-size:14px;font-weight:800;cursor:pointer"><input type="checkbox" id="bp-rec-all" style="width:26px;height:26px;accent-color:#0A84FF;margin:0" onchange="bpRecSelAll(this.checked)"><span id="bp-rec-n"></span></label>'
+          +'<button class="bp-rec-act" onclick="bpRecBulkRestore()" style="'+bs+'background:rgba(48,209,88,.12);border:1px solid rgba(48,209,88,.45);color:#30D158">↩ Restore selected</button>'
+          +'<button class="bp-rec-act" onclick="bpRecBulkPurge()" style="'+bs+'background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.45);color:#FF453A">Delete selected</button>';
+        anchor.parentNode.insertBefore(bar, anchor);
+      }
+      paintBar();
+    }
+    var clr = wrap.querySelectorAll('button[onclick^="bpClearTombstone("]');
+    if (clr.length > 1 && !document.getElementById('bp-rec-clrall')) {
+      var first2=clr[0].closest('div[style*="border-radius:10px"]');
+      var b=document.createElement('button'); b.id='bp-rec-clrall'; b.textContent='Clear all '+clr.length+' markers';
+      b.style.cssText='background:rgba(255,159,10,.12);border:1px solid rgba(255,159,10,.4);border-radius:8px;color:#FF9F0A;font-size:13px;font-weight:800;padding:9px 14px;cursor:pointer;font-family:inherit;margin-bottom:10px';
+      b.onclick=bpRecClearAllMarkers; first2.parentNode.insertBefore(b, first2);
+    }
+  }
+  var prev = window.bpRenderRecycle;
+  if (typeof prev === 'function') {
+    window.bpRenderRecycle = function(){ var r = prev.apply(this, arguments); try{ decorate(); }catch(e){ console.warn('[BP] rec decorate', e); } return r; };
+    try { bpRenderRecycle = window.bpRenderRecycle; } catch(e){}
+    try { decorate(); } catch(e){}
+  }
+  console.log('[BP] v3.96 ready — recently deleted select all');
+})();
+</script>
+<script>
+/* v3.97 — BALANCE: buttons that sit side by side in a row are the same height, and icon-only buttons the same width. */
+(function(){
+  'use strict';
+  if (window.__bpBalance) return; window.__bpBalance = 1;
+  var timer = 0, busy = false;
+  function vis(e){ var r=e.getBoundingClientRect(); return r.width>4 && r.height>4 && e.offsetParent!==null; }
+  function isBtn(e){ return e.tagName==='BUTTON' || (e.getAttribute && e.getAttribute('role')==='button') || (e.classList && e.classList.contains('btn')); }
+  function iconOnly(e){ return (e.textContent||'').replace(/\s+/g,'').length<=2; }
+  function skip(p){ return p.closest('[data-bp-nozoom],[role=tablist],.tabs,nav,select,#bp-glass,.bp-g-stage'); }
+  function run(){
+    busy = true;
+    try {
+      var Z = parseFloat(document.body.style.zoom) || 1;
+      var seen = new Set();
+      document.querySelectorAll('button, [role=button], .btn').forEach(function(b){
+        var p = b.parentElement; if (!p || seen.has(p)) return; seen.add(p);
+        if (skip(p)) return;
+        var kids = Array.prototype.filter.call(p.children, function(c){ return isBtn(c) && vis(c); });
+        if (kids.length < 2) return;
+        var rows = {};
+        kids.forEach(function(k){ var r=k.getBoundingClientRect(); (rows[Math.round((r.top+r.height/2)/10)] = rows[Math.round((r.top+r.height/2)/10)] || []).push(k); });
+        Object.keys(rows).forEach(function(key){
+          var g = rows[key]; if (g.length < 2) return;
+          var hs = g.map(function(k){ return k.getBoundingClientRect().height; });
+          var mx = Math.max.apply(0,hs);
+          if (mx - Math.min.apply(0,hs) > 2) g.forEach(function(k){ k.style.minHeight = (mx/ Z) + 'px'; k.style.boxSizing='border-box'; });
+          var io = g.filter(iconOnly);
+          if (io.length > 1) {
+            var ws = io.map(function(k){ return k.getBoundingClientRect().width; }), mw = Math.max.apply(0,ws);
+            if (mw - Math.min.apply(0,ws) > 2) io.forEach(function(k){ k.style.minWidth = (mw/Z) + 'px'; k.style.boxSizing='border-box'; });
+          }
+        });
+      });
+    } catch(e) { console.warn('[BP] balance', e); }
+    busy = false;
+  }
+  function later(){ if (busy) return; clearTimeout(timer); timer = setTimeout(run, 180); }
+  window.bpBalance = run;
+  try { new MutationObserver(later).observe(document.body, {childList:true, subtree:true}); } catch(e){}
+  window.addEventListener('resize', later);
+  later();
+  console.log('[BP] v3.97 ready — balanced buttons');
+})();
+</script>
+<script>
+/* v4.01 — (1) buttons never sit on content: the Back/Menu/Mic buttons live in their own bottom strip
+   (2) sync is automatic whenever the app is online, and retries on its own after a failure or offline spell
+   (3) background sync does not freeze the app: unchanged cloud = no download/merge/save/redraw; draws wait for an idle moment */
+(function(){
+  'use strict';
+  if (window.__bpAutoSync) return; window.__bpAutoSync = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+
+  /* ── (1) reserved bottom strip (phone/iPad app only) ── */
+  if (!IS_DESK) {
+    var css = document.createElement('style'); css.id = 'bp-v401-css';
+    css.textContent =
+        'body{--bp-dockbar:calc(76px / var(--bp-zoom,1))}'
+      + 'body:not(:has(#bp-lock)) .screen{bottom:var(--bp-dockbar)!important;padding-bottom:16px!important}'
+      + 'body:not(:has(#bp-lock))::after{content:"";position:fixed;left:0;right:0;bottom:0;height:var(--bp-dockbar);background:var(--bg);border-top:1px solid var(--border);z-index:94;pointer-events:none}'
+      + '#bp-voice-fab{bottom:calc(14px / var(--bp-zoom,1))!important;width:calc(48px / var(--bp-zoom,1))!important;height:calc(48px / var(--bp-zoom,1))!important}'
+      + '#bp-dock{bottom:calc(14px / var(--bp-zoom,1))!important}';
+    document.head.appendChild(css);
+  }
+
+  /* ── (3) helpers ── */
+  window.bpYield = function(){ return new Promise(function(r){ try { (window.requestIdleCallback ? requestIdleCallback(function(){ r(); }, {timeout:250}) : setTimeout(r, 0)); } catch(e){ setTimeout(r,0); } }); };
+  function online(){ return !(typeof navigator !== 'undefined' && navigator.onLine === false); }
+  function cellular(){ try { var c = navigator.connection; return !!(c && (c.type === 'cellular' || c.saveData) && localStorage.getItem('bp_sync_cellular') !== '1'); } catch(e){ return false; } }
+
+  /* remember the cloud copy's ETag, so "nothing changed" costs one tiny request (304) instead of a full download + merge */
+  var og = window.bpGitHubFetch, tmp = '';
+  if (typeof og === 'function') {
+    window.bpGitHubFetch = async function(url, opts){
+      var r = await og.apply(this, arguments);
+      try { if (r && r.headers && (!opts || !opts.method || opts.method === 'GET') && String(url) === 'https://api.github.com/gists/' + _syncGistId) tmp = r.headers.get('ETag') || ''; } catch(e){}
+      return r;
+    };
+    try { bpGitHubFetch = window.bpGitHubFetch; } catch(e){}
+  }
+  var ofr = window.bpFetchRemote;
+  if (typeof ofr === 'function') {
+    window.bpFetchRemote = async function(){ tmp = ''; var r = await ofr.apply(this, arguments); window.__bpGistEtag = tmp; return r; };
+    try { bpFetchRemote = window.bpFetchRemote; } catch(e){}
+  }
+  async function remoteUnchanged(){
+    if (!window.__bpGistEtag || !_syncGistId || !_syncToken || !online()) return false;
+    try {
+      var h = {}; var a = bpAuthHeaders(); for (var k in a) h[k] = a[k]; h['If-None-Match'] = window.__bpGistEtag;
+      var r = await fetch('https://api.github.com/gists/' + _syncGistId, { headers: h });
+      return r.status === 304;
+    } catch(e){ return false; }
+  }
+  window.bpRemoteUnchanged = remoteUnchanged;
+  var ofm = window.fetchRemoteMerge;
+  if (typeof ofm === 'function') {
+    window.fetchRemoteMerge = async function(){ if (await remoteUnchanged()) return null; return ofm.apply(this, arguments); };
+    try { fetchRemoteMerge = window.fetchRemoteMerge; } catch(e){}
+  }
+  var opa = window.bpPushAll;
+  if (typeof opa === 'function') {
+    window.bpPushAll = async function(){ var r = await opa.apply(this, arguments); window.__bpPushedAt = Date.now(); window.__bpGistEtag = ''; return r; };
+    try { bpPushAll = window.bpPushAll; } catch(e){}
+  }
+
+  /* ── (2) automatic sync ── */
+  var dirty = 0, fails = 0, lastTry = 0;
+  ['save','saveDB'].forEach(function(fn){
+    var o = window[fn]; if (typeof o !== 'function') return;
+    window[fn] = function(){ var r = o.apply(this, arguments); dirty = Date.now(); window.__bpDirty = dirty; return r; };
+    try { (0,eval)(fn + ' = window.' + fn); } catch(e){}
+  });
+  function pushFn(){ return IS_DESK ? window.deskPush : window.doPush; }
+  async function tryPush(){
+    var f = pushFn(); if (typeof f !== 'function') return;
+    var started = Date.now(), d = dirty; lastTry = started;
+    try { await f(); } catch(e){}
+    if ((window.__bpPushedAt || 0) >= started) { fails = 0; if (dirty === d) dirty = 0; }
+    else fails = Math.min(fails + 1, 5);
+  }
+  function backoff(){ return Math.min(30000 * Math.pow(2, fails), 300000); }
+  function pullFn(){ return IS_DESK ? window.deskPull : window.doPull; }
+  window.maybeAutoPull = function(){
+    if (!_syncToken || !_syncGistId || _isSyncing || !online() || cellular()) return;
+    var t = Date.now(); if (t - _lastAutoPullAt < 30000) return; _lastAutoPullAt = t;
+    remoteUnchanged().then(function(same){
+      if (same) { try { _lastSync = now(); if (typeof setSyncStatus === 'function') setSyncStatus('ready','Synced ✓'); } catch(e){} return; }
+      if (_isSyncing) return;
+      window.__bpAutoPullRun = true;
+      var f = pullFn(); var p; try { p = f(); } catch(e){}
+      var done = function(){ window.__bpAutoPullRun = false; };
+      Promise.resolve(p).then(done, done);
+    });
+  };
+  function tick(){
+    try {
+      if (document.hidden || !online() || !_syncToken || _isSyncing || cellular()) return;
+      if (dirty && Date.now() - lastTry > backoff() && Date.now() - dirty > 3000) { tryPush(); return; }
+      if (_syncGistId) window.maybeAutoPull();
+    } catch(e){}
+  }
+  window.bpAutoSyncTick = tick;
+  setInterval(tick, 30000);
+  window.addEventListener('online', function(){ fails = 0; lastTry = 0; setTimeout(tick, 1500); });
+  window.addEventListener('pageshow', function(){ setTimeout(tick, 1500); });
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) setTimeout(tick, 1200); });
+  setTimeout(tick, 4000);
+  console.log('[BP] v4.01 ready — auto sync when online, bottom strip, non-blocking pulls');
 })();
 </script>
