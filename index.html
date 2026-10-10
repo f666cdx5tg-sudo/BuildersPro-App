@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.12';
+var APP_VERSION = '4.13';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -2587,7 +2587,7 @@ function closeSheet(id) {
 /* ── Greeting ── */
 function updateGreeting() {
   var h = new Date().getHours();
-  var g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
+  var g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : h < 19 ? 'Good Evening' : 'Good Night';
   document.getElementById('home-greeting').textContent = g;
   document.getElementById('home-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}); // v2.61: "Fri, Sep 25, 2026"
 }
@@ -25151,7 +25151,7 @@ var orig = window.updateGreeting;
 function greet(){
   var el = document.getElementById('home-greeting'); if (!el) return;
   var h = new Date().getHours();
-  var g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
+  var g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : h < 19 ? 'Good Evening' : 'Good Night';
   var n = ''; try { n = String(typeof _userName !== 'undefined' ? _userName : '').trim().split(/\s+/)[0]; } catch(e){}
   el.textContent = g;
 }
