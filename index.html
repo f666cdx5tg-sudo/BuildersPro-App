@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.01';
+var APP_VERSION = '4.02';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -25134,5 +25134,18 @@ console.log('[BP] v3.77 job Security section ready');
   document.addEventListener('visibilitychange', function(){ if (!document.hidden) setTimeout(tick, 1200); });
   setTimeout(tick, 4000);
   console.log('[BP] v4.01 ready — auto sync when online, bottom strip, non-blocking pulls');
+})();
+</script>
+<script>
+/* ══ v4.02 — BIGGER CLOCK THAT STAYS PUT ═══════════════════════════════════
+   The home clock was 18px and shifted as the digits changed width (9:59 → 10:00)
+   and as the address text beside it resized. It is now 30px, with equal-width
+   digits and a fixed-width, right-aligned slot, so it never shifts. */
+(function(){
+if (document.getElementById('modal-new-room')) return;
+var st = document.createElement('style');
+st.textContent = '#info-time{font-size:30px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:0 !important;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;white-space:nowrap !important;flex:0 0 auto !important;min-width:7.6ch;text-align:right;margin-left:auto}';
+document.head.appendChild(st);
+console.log('[BP] v4.02 clock');
 })();
 </script>
