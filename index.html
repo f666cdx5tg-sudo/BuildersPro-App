@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.04';
+var APP_VERSION = '4.05';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -25147,5 +25147,28 @@ var st = document.createElement('style');
 st.textContent = '#info-time{font-size:30px !important;line-height:1 !important;font-weight:400 !important;letter-spacing:0 !important;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;white-space:nowrap !important;flex:0 0 auto !important;min-width:7.6ch;text-align:right;margin:-8px 0 -8px auto}';
 document.head.appendChild(st);
 console.log('[BP] v4.02 clock');
+})();
+</script>
+<script>
+/* ══ v4.05 — LONGER, LIGHTER GREETING ═════════════════════════════════════
+   "Good Evening" → "Good Evening, Stan" (first name from the per-device Your
+   Name setting; without one: "Good Evening — welcome back"). Regular weight. */
+(function(){
+if (document.getElementById('modal-new-room')) return;
+var st = document.createElement('style');
+st.textContent = '#home-greeting{font-weight:400 !important;font-size:22px !important;line-height:1.15 !important;white-space:normal;overflow-wrap:anywhere}';
+document.head.appendChild(st);
+var orig = window.updateGreeting;
+function greet(){
+  var el = document.getElementById('home-greeting'); if (!el) return;
+  var h = new Date().getHours();
+  var g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
+  var n = ''; try { n = String(typeof _userName !== 'undefined' ? _userName : '').trim().split(/\s+/)[0]; } catch(e){}
+  el.textContent = n ? g + ', ' + n : g + ' \u2014 welcome back';
+}
+window.updateGreeting = function(){ if (typeof orig === 'function') orig.apply(this, arguments); greet(); };
+greet();
+setInterval(greet, 60000);
+console.log('[BP] v4.05 greeting');
 })();
 </script>
