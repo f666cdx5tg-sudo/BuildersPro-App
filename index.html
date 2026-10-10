@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.05';
+var APP_VERSION = '4.06';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -25150,13 +25150,13 @@ console.log('[BP] v4.02 clock');
 })();
 </script>
 <script>
-/* ══ v4.05 — LONGER, LIGHTER GREETING ═════════════════════════════════════
+/* ══ v4.05/4.06 — BIGGER, LIGHTER GREETING (plain text; was bold 23px) ═════════════════════════════════════
    "Good Evening" → "Good Evening, Stan" (first name from the per-device Your
    Name setting; without one: "Good Evening — welcome back"). Regular weight. */
 (function(){
 if (document.getElementById('modal-new-room')) return;
 var st = document.createElement('style');
-st.textContent = '#home-greeting{font-weight:400 !important;font-size:22px !important;line-height:1.15 !important;white-space:normal;overflow-wrap:anywhere}';
+st.textContent = '#home-greeting{font-weight:400 !important;font-size:32px !important;line-height:1.1 !important;white-space:normal}';
 document.head.appendChild(st);
 var orig = window.updateGreeting;
 function greet(){
@@ -25164,7 +25164,7 @@ function greet(){
   var h = new Date().getHours();
   var g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
   var n = ''; try { n = String(typeof _userName !== 'undefined' ? _userName : '').trim().split(/\s+/)[0]; } catch(e){}
-  el.textContent = n ? g + ', ' + n : g + ' \u2014 welcome back';
+  el.textContent = g;
 }
 window.updateGreeting = function(){ if (typeof orig === 'function') orig.apply(this, arguments); greet(); };
 greet();
