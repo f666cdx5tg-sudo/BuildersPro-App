@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.09';
+var APP_VERSION = '4.10';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -25173,3 +25173,14 @@ console.log('[BP] v4.05 greeting');
 })();
 </script>
 <style id="v409">#bp-d-text-sub,#bp-d-theme-sub{display:none !important}</style>
+<style id="v410">
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+#bp-dock button:not(#bp-dock-add),#bp-drawer,.bp-hm-pop,.sheet{
+ background:color-mix(in srgb,var(--card) 62%,transparent) !important;
+ -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
+ border-color:rgba(255,255,255,.18) !important;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 10px 30px rgba(0,0,0,.35) !important}
+.sheet-overlay.open{background:rgba(0,0,0,.35) !important;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+}
+@media (prefers-reduced-transparency:reduce){#bp-dock button:not(#bp-dock-add),#bp-drawer,.bp-hm-pop,.sheet{background:var(--card) !important;-webkit-backdrop-filter:none;backdrop-filter:none}}
+</style>
