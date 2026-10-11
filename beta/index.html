@@ -724,7 +724,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
          their own row and can never be split apart. -->
     <div id="home-date" style="font-size:13px;font-weight:600;color:var(--muted);margin-left:19px;margin-bottom:2px"></div>
     <!-- Row 5: weather icon + weather text, always together -->
-    <div style="display:flex;align-items:center;gap:6px;margin-left:19px;white-space:nowrap">
+    <div style="display:flex;align-items:center;gap:6px;margin-left:0;white-space:nowrap">
       <span id="info-weather-icon" style="font-size:17px;line-height:1;flex-shrink:0">🌡️</span>
       <span id="info-weather-text" style="font-size:14px;font-weight:700;color:var(--muted);overflow:hidden;text-overflow:ellipsis">Loading...</span>
     </div>
@@ -1503,7 +1503,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.02';
+var APP_VERSION = '4.14';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -2592,7 +2592,7 @@ function closeSheet(id) {
 /* ── Greeting ── */
 function updateGreeting() {
   var h = new Date().getHours();
-  var g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
+  var g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : h < 19 ? 'Good Evening' : 'Good Night';
   document.getElementById('home-greeting').textContent = g;
   document.getElementById('home-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}); // v2.61: "Fri, Sep 25, 2026"
 }
@@ -9493,7 +9493,7 @@ function buildPaymentModal(con, payment) {
   document.getElementById('log-payment-modal') && document.getElementById('log-payment-modal').remove();
   var s = 'width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit';
   var lbl = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px';
-  var METHODS = ['Check','Cash','ACH / Bank Transfer','Credit Card','Zelle','Venmo','Other'];
+  var METHODS = ['Check','Cash','ACH / Bank Transfer','Credit Card','Zelle','Venmo','Cash App','Other'];
   var methodOpts = METHODS.map(function(m){ return '<option'+(payment&&m===payment.method?' selected':'')+'>'+m+'</option>'; }).join('');
   var mo = document.createElement('div');
   mo.id = 'log-payment-modal';
@@ -25036,25 +25036,14 @@ console.log('[BP] v3.77 job Security section ready');
 })();
 </script>
 <script>
-/* v4.01 — (1) buttons never sit on content: the Back/Menu/Mic buttons live in their own bottom strip
-   (2) sync is automatic whenever the app is online, and retries on its own after a failure or offline spell
+/* v4.01 — (2) sync is automatic whenever the app is online, and retries on its own after a failure or offline spell
    (3) background sync does not freeze the app: unchanged cloud = no download/merge/save/redraw; draws wait for an idle moment */
 (function(){
   'use strict';
   if (window.__bpAutoSync) return; window.__bpAutoSync = 1;
   var IS_DESK = !!document.getElementById('modal-new-room');
 
-  /* ── (1) reserved bottom strip (phone/iPad app only) ── */
-  if (!IS_DESK) {
-    var css = document.createElement('style'); css.id = 'bp-v401-css';
-    css.textContent =
-        'body{--bp-dockbar:calc(76px / var(--bp-zoom,1))}'
-      + 'body:not(:has(#bp-lock)) .screen{bottom:var(--bp-dockbar)!important;padding-bottom:16px!important}'
-      + 'body:not(:has(#bp-lock))::after{content:"";position:fixed;left:0;right:0;bottom:0;height:var(--bp-dockbar);background:var(--bg);border-top:1px solid var(--border);z-index:94;pointer-events:none}'
-      + '#bp-voice-fab{bottom:calc(14px / var(--bp-zoom,1))!important;width:calc(48px / var(--bp-zoom,1))!important;height:calc(48px / var(--bp-zoom,1))!important}'
-      + '#bp-dock{bottom:calc(14px / var(--bp-zoom,1))!important}';
-    document.head.appendChild(css);
-  }
+  /* (v4.12: the floating dock stays floating — no reserved strip, no bottom border) */
 
   /* ── (3) helpers ── */
   window.bpYield = function(){ return new Promise(function(r){ try { (window.requestIdleCallback ? requestIdleCallback(function(){ r(); }, {timeout:250}) : setTimeout(r, 0)); } catch(e){ setTimeout(r,0); } }); };
@@ -25149,8 +25138,43 @@ console.log('[BP] v3.77 job Security section ready');
 (function(){
 if (document.getElementById('modal-new-room')) return;
 var st = document.createElement('style');
-st.textContent = '#info-time{font-size:30px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:0 !important;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;white-space:nowrap !important;flex:0 0 auto !important;min-width:7.6ch;text-align:right;margin-left:auto}';
+st.textContent = '#info-time{font-size:30px !important;line-height:1 !important;font-weight:400 !important;letter-spacing:0 !important;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;white-space:nowrap !important;flex:0 0 auto !important;min-width:7.6ch;text-align:right;margin:-8px 0 -8px auto}#info-loc-text{white-space:normal !important;overflow:visible !important;text-overflow:clip !important;line-height:1.2 !important;overflow-wrap:anywhere}';   /* v4.14: never cut the zip/state — let the address wrap */
 document.head.appendChild(st);
 console.log('[BP] v4.02 clock');
 })();
 </script>
+<script>
+/* ══ v4.05/4.06 — BIGGER, LIGHTER GREETING (plain text; was bold 23px) ═════════════════════════════════════
+   "Good Evening" → "Good Evening, Stan" (first name from the per-device Your
+   Name setting; without one: "Good Evening — welcome back"). Regular weight. */
+(function(){
+if (document.getElementById('modal-new-room')) return;
+var st = document.createElement('style');
+st.textContent = '#home-greeting{font-weight:400 !important;font-size:32px !important;line-height:1.1 !important;white-space:normal}';
+document.head.appendChild(st);
+var orig = window.updateGreeting;
+function greet(){
+  var el = document.getElementById('home-greeting'); if (!el) return;
+  var h = new Date().getHours();
+  var g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : h < 19 ? 'Good Evening' : 'Good Night';
+  var n = ''; try { n = String(typeof _userName !== 'undefined' ? _userName : '').trim().split(/\s+/)[0]; } catch(e){}
+  el.textContent = g;
+}
+window.updateGreeting = function(){ if (typeof orig === 'function') orig.apply(this, arguments); greet(); };
+greet();
+setInterval(greet, 60000);
+console.log('[BP] v4.05 greeting');
+})();
+</script>
+<style id="v409">#bp-d-text-sub,#bp-d-theme-sub{display:none !important}</style>
+<style id="v410">
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+#bp-dock button:not(#bp-dock-add),#bp-drawer,.bp-hm-pop,.sheet{
+ background:color-mix(in srgb,var(--card) 62%,transparent) !important;
+ -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
+ border-color:rgba(255,255,255,.18) !important;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 10px 30px rgba(0,0,0,.35) !important}
+.sheet-overlay.open{background:rgba(0,0,0,.35) !important;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+}
+@media (prefers-reduced-transparency:reduce){#bp-dock button:not(#bp-dock-add),#bp-drawer,.bp-hm-pop,.sheet{background:var(--card) !important;-webkit-backdrop-filter:none;backdrop-filter:none}}
+</style>
