@@ -67,7 +67,7 @@ with sync_playwright() as p:
         pg.on('pageerror', lambda x: errs.append(str(x)))
         pg.goto('http://localhost:8773/' + app); pg.wait_for_timeout(2200)
         pg.evaluate("document.getElementById('bp-lock')?.remove()")
-        chk(tag + ': version 4.19', pg.evaluate('APP_VERSION') == '4.19')
+        chk(tag + ': version 4.19+', pg.evaluate('APP_VERSION') in ('4.19', '4.20'))
         pg.evaluate(SEED); pg.wait_for_timeout(300)
         res = pg.evaluate(BUILD)
         raw = base64.b64decode(res['b64']); path = os.path.join(OUT, 'v419_%s.pdf' % tag); open(path, 'wb').write(raw)

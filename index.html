@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.19';
+var APP_VERSION = '4.20';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -18594,7 +18594,7 @@ function paintBars(){
     var home = document.getElementById('home-attention');
     if (home) {
       var hb = document.getElementById('bp-daily-bar');
-      if (!hb) { hb = document.createElement('div'); hb.id = 'bp-daily-bar'; hb.style.cssText = 'display:flex;gap:8px;margin:10px 16px 0'; home.parentNode.insertBefore(hb, home); }
+      if (!hb) { hb = document.createElement('div'); hb.id = 'bp-daily-bar'; hb.style.cssText = 'display:flex;gap:12px;margin:10px 16px 0'; home.parentNode.insertBefore(hb, home); }
       hb.innerHTML = barHtml();
     }
     var jd = document.getElementById('s-job-detail');
@@ -18602,7 +18602,7 @@ function paintBars(){
       var jb = document.getElementById('bp-job-daily-bar');
       if (!jb) {
         var grid = [].slice.call(jd.children).find(function(el){ return /grid-template-columns:1fr 1fr 1fr/.test(el.getAttribute('style')||''); });
-        jb = document.createElement('div'); jb.id = 'bp-job-daily-bar'; jb.style.cssText = 'display:flex;gap:8px;padding:0 16px 14px';
+        jb = document.createElement('div'); jb.id = 'bp-job-daily-bar'; jb.style.cssText = 'display:flex;gap:12px;padding:8px 16px 18px';
         if (grid) grid.parentNode.insertBefore(jb, grid.nextSibling); else jd.appendChild(jb);
       }
       jb.innerHTML = barHtml(currentJobId);
@@ -24646,6 +24646,20 @@ console.log('[BP] v3.77 job Security section ready');
   var FOCUS = { jobId: null, key: null };
   var focusMo = null;
 
+  /* v4.20: hiding a child used to be undone with removeProperty('display'), which also
+     threw away any display the child set for ITSELF (the Shopping List / Daily Log
+     bar is display:flex) — so after opening and closing a section the two buttons
+     fell out of their row and stacked with no gap. Remember it, put it back. */
+  function bpHideChild(c){
+    if (c.getAttribute('data-bp-disp') === null) c.setAttribute('data-bp-disp', c.style.display || '');
+    c.style.display = 'none';
+  }
+  function bpShowChild(c){
+    var d = c.getAttribute('data-bp-disp');
+    if (d !== null) { c.removeAttribute('data-bp-disp'); if (d) c.style.display = d; else c.style.removeProperty('display'); }
+    else if (c.style.display === 'none') c.style.removeProperty('display');
+  }
+
   function focusLabel(){
     if (FOCUS.key === 'security') return 'Security';
     var h = document.querySelector('#jd-stack .bp-acc[data-k="' + FOCUS.key + '"] .bp-acc-h');
@@ -24674,8 +24688,8 @@ console.log('[BP] v3.77 job Security section ready');
     if (!keepEl) return;
     var bar = ensureFocusBar();
     [].forEach.call(scr.children, function(c){
-      if (c === keepEl || c === bar) c.style.removeProperty('display');
-      else c.style.display = 'none';
+      if (c === keepEl || c === bar) bpShowChild(c);
+      else bpHideChild(c);
     });
     bar.style.display = 'flex';
     var lbl = document.getElementById('jd-focus-label');
@@ -24689,7 +24703,7 @@ console.log('[BP] v3.77 job Security section ready');
     FOCUS.key = null; FOCUS.jobId = null;
     if (!scr) return;
     scr.classList.remove('bp-sec-full');
-    [].forEach.call(scr.children, function(c){ c.style.removeProperty('display'); });
+    [].forEach.call(scr.children, bpShowChild);
     var bar = document.getElementById('jd-focus-bar');
     if (bar) bar.style.display = 'none';
   };
@@ -25532,6 +25546,12 @@ document.head.appendChild(st);
 
 </script>
 
+<style id="bp-v420-bars">
+/* v4.20: Shopping List / Daily Log / Notes buttons — their row layout is in CSS so no inline-style
+   edit elsewhere can strip it; a clear gap between every button, and wrapping if the screen is narrow */
+#bp-job-daily-bar,#bp-daily-bar{display:flex;flex-wrap:wrap;gap:12px;box-sizing:border-box}
+#bp-job-daily-bar>button,#bp-daily-bar>button{flex:1 1 150px;min-width:0;margin:0}
+</style>
 <script>
 /* ══════════════════════════════════════════════════════════════════════════
    v4.19 — FULL DAY PDF REPORT  (Stan, Oct 14 2026)
