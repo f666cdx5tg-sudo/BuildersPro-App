@@ -17,7 +17,7 @@ def run(name,url,vw,vh,desk):
         pg.on('pageerror',lambda x:e.append(str(x)))
         pg.goto('http://localhost:8769/'+url);pg.wait_for_timeout(2200)
         pg.evaluate("document.getElementById('bp-lock')?.remove()")
-        chk(name+' version',pg.evaluate("APP_VERSION")=='4.17')
+        chk(name+' version',pg.evaluate("APP_VERSION")=='4.18')
         pg.evaluate(SEED)
         if desk: pg.evaluate("showView('photos')")
         else: pg.evaluate("showScreen('s-photos')")

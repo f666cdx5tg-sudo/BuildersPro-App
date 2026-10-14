@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '4.17';
+var APP_VERSION = '4.18';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -19908,7 +19908,7 @@ console.log('[BP] v4.16 unfiled select menu');
    and every screen follows the same order (it is saved as room.order inside the tile's level). ── */
 (function(){
 var SEL = '[onclick^="openRoomDetail("],[onclick^="bpOpenPhotoArea("],[onclick^="bpOpenPunchArea("]';
-var HOLD = 380, drag = null, press = null, lastTouch = 0, suppressUntil = 0, raf = 0;
+var HOLD = 300, drag = null, press = null, lastTouch = 0, suppressUntil = 0, raf = 0;
 function idOf(c){ var m = /\('([^']+)'\)/.exec(c.getAttribute('onclick') || ''); return m ? m[1] : ''; }
 function roomOf(id){ return (DB.rooms || []).find(function(r){ return r.id === id; }); }
 function lvl(c){ var r = roomOf(idOf(c)); return r && window.bpLevelOf ? window.bpLevelOf(r) : ''; }
@@ -19927,7 +19927,7 @@ function begin(c, p){
   drag = { c:c, lvl:lvl(c), ox:p.x - (r.left + r.width/2), oy:p.y - (r.top + r.height/2), p:p, swapAt:0, sc:scroller(c),
            before:[].filter.call(c.parentNode.children, function(k){ return k.matches && k.matches(SEL) && lvl(k) === lvl(c); }).map(idOf).join() };
   c.style.transition = 'none'; c.style.zIndex = 60; c.style.pointerEvents = 'none'; c.style.boxShadow = '0 14px 34px rgba(0,0,0,.5)'; c.style.opacity = '.95';
-  document.body.style.webkitUserSelect = 'none'; document.body.style.userSelect = 'none';
+  document.body.style.webkitUserSelect = 'none'; document.body.style.userSelect = 'none'; document.body.style.touchAction = 'none';
   try { if (navigator.vibrate) navigator.vibrate(12); } catch(e){}
   place(p); loop();
 }
@@ -19957,7 +19957,7 @@ function finish(){
   cancelAnimationFrame(raf);
   var c = drag.c, d = drag;
   ['transition','zIndex','pointerEvents','boxShadow','opacity','transform'].forEach(function(k){ c.style[k] = ''; });
-  document.body.style.webkitUserSelect = ''; document.body.style.userSelect = '';
+  document.body.style.webkitUserSelect = ''; document.body.style.userSelect = ''; document.body.style.touchAction = '';
   drag = null; suppressUntil = Date.now() + 500;
   var ids = [].filter.call(c.parentNode.children, function(k){ return k.matches && k.matches(SEL) && lvl(k) === d.lvl; }).map(idOf);
   if (ids.join() === d.before) return;
@@ -19981,7 +19981,7 @@ document.addEventListener('touchstart', function(e){
 document.addEventListener('touchmove', function(e){
   var p = pt(e);
   if (drag) { e.preventDefault(); place(p); return; }
-  if (press && Math.abs(p.x - press.p.x) + Math.abs(p.y - press.p.y) > 10) cancelPress();
+  if (press && Math.abs(p.x - press.p.x) + Math.abs(p.y - press.p.y) > 16) cancelPress();
 }, { passive:false });
 ['touchend','touchcancel'].forEach(function(n){ document.addEventListener(n, function(){ cancelPress(); finish(); }, { passive:true }); });
 document.addEventListener('mousedown', function(e){
@@ -19997,6 +19997,7 @@ document.addEventListener('mousemove', function(e){
 document.addEventListener('mouseup', function(){ if (press && press.mouse) press = null; finish(); });
 document.addEventListener('click', function(e){ if (Date.now() < suppressUntil) { e.stopPropagation(); e.preventDefault(); } }, true);
 document.addEventListener('contextmenu', function(e){ if (drag || press) e.preventDefault(); });
+setInterval(function(){ try { if (localStorage.getItem('bpDndHint') || !document.querySelector(SEL) || typeof toast !== 'function') return; localStorage.setItem('bpDndHint','1'); toast('💡 Press and hold a space, then drag to arrange'); } catch(e){} }, 4000);
 var st = document.createElement('style');
 st.textContent = SEL.split(',').map(function(s){ return s; }).join(',') + '{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}';
 document.head.appendChild(st);
