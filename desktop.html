@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '4.14';
+var APP_VERSION = '4.15';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -19694,5 +19694,182 @@ console.log('[BP] v3.88 ready — Mac text & button size matches the field app')
   document.addEventListener('visibilitychange', function(){ if (!document.hidden) setTimeout(tick, 1200); });
   setTimeout(tick, 4000);
   console.log('[BP] v4.01 ready — auto sync when online, bottom strip, non-blocking pulls');
+})();
+</script>
+
+<script id="v415-unfiled">
+/* v4.15 — UNFILED PHOTOS: select several, then assign them to a location or move them to Documents.
+   Wraps the existing Unfiled screen; the one-photo 📁 button and "File all" still work as before. */
+(function(){
+'use strict';
+var DESK = typeof window.renderDesktopPhotos === 'function';
+var FN = DESK ? 'renderDesktopPhotos' : 'renderPhotos';
+var orig = window[FN];
+if (typeof orig !== 'function' || !window.BPX) return;
+var sel = null;               // null = not selecting, else {photoId:true}
+
+function gridEl(){ return document.getElementById(DESK ? 'photos-grid-wrap' : 'photos-grid'); }
+function hdrEl(){ return document.getElementById(DESK ? 'bp-desk-photo-header' : 'bp-photo-header'); }
+function jobF(){ var s = document.getElementById(DESK ? 'photo-filter' : 'photo-job-filter'); return s ? (s.value||'') : ''; }
+function unfiledIds(){
+  var j = jobF();
+  return (DB.photos||[]).filter(function(p){ return (!j || p.jobId === j) && BPX.isOrphanPhoto(p); })
+    .reverse().map(function(p){ return p.id; });
+}
+function count(){ return sel ? Object.keys(sel).length : 0; }
+function barOff(){ var b = document.getElementById('bp-unf-bar'); if (b) b.remove(); }
+
+function paint(){
+  var ids = unfiledIds(), kids = gridEl() ? gridEl().children : [];
+  for (var i = 0; i < ids.length && i < kids.length; i++) {
+    var on = !!(sel && sel[ids[i]]), k = kids[i];
+    var m = k.querySelector('.bp-unf-mark');
+    if (m) { m.textContent = on ? '✓' : ''; m.style.background = on ? '#0A84FF' : 'rgba(0,0,0,.45)'; }
+    k.style.outline = on ? '3px solid #0A84FF' : '';
+    k.style.outlineOffset = on ? '-3px' : '';
+  }
+  var bar = document.getElementById('bp-unf-bar');
+  if (bar) {
+    var n = count();
+    bar.querySelector('.bp-unf-n').textContent = n ? n + ' selected' : 'Tap photos to select';
+    Array.prototype.forEach.call(bar.querySelectorAll('.bp-unf-act'), function(b){ b.style.opacity = n ? '1' : '.4'; });
+    bar.querySelector('.bp-unf-all').textContent = n === ids.length ? 'None' : 'All';
+  }
+}
+function toggleOne(id){ if (!sel) return; if (sel[id]) delete sel[id]; else sel[id] = true; paint(); }
+function toggleAll(){
+  var ids = unfiledIds();
+  if (count() === ids.length) sel = {}; else { sel = {}; ids.forEach(function(i){ sel[i] = true; }); }
+  paint();
+}
+function startStop(){ sel = sel ? null : {}; window[FN](); }
+
+function showBar(){
+  barOff();
+  var bar = document.createElement('div');
+  bar.id = 'bp-unf-bar';
+  var btn = 'border:none;border-radius:11px;font-family:inherit;font-weight:800;font-size:14px;padding:12px 14px;cursor:pointer;min-height:44px';
+  bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);z-index:9500;width:min(560px,calc(100% - 20px));'
+    + 'bottom:calc(' + (DESK ? '16px' : '96px') + ' + env(safe-area-inset-bottom,0px));background:var(--card,#1c1c1e);'
+    + 'border:1.5px solid rgba(10,132,255,.6);border-radius:16px;padding:10px;display:flex;align-items:center;gap:8px;'
+    + 'box-shadow:0 10px 30px rgba(0,0,0,.45);box-sizing:border-box;flex-wrap:wrap';
+  bar.innerHTML = '<div class="bp-unf-n" style="flex:1 1 100%;font-size:13px;font-weight:800;color:var(--muted,#999)"></div>'
+    + '<button class="bp-unf-all" style="' + btn + ';background:rgba(255,255,255,.12);color:var(--text,#fff)">All</button>'
+    + '<button class="bp-unf-act" id="bp-unf-assign" style="' + btn + ';flex:1;background:#0A84FF;color:#fff">📁 Assign to…</button>'
+    + '<button class="bp-unf-act" id="bp-unf-docs" style="' + btn + ';flex:1;background:#BF5AF2;color:#fff">📎 To Documents</button>';
+  document.body.appendChild(bar);
+  bar.querySelector('.bp-unf-all').onclick = toggleAll;
+  bar.querySelector('#bp-unf-assign').onclick = assign;
+  bar.querySelector('#bp-unf-docs').onclick = toDocs;
+}
+
+function decorate(){
+  var area = window._bpPhotoArea, grid = gridEl(), h = hdrEl();
+  var ids = (area === 'UNFILED') ? unfiledIds() : [];
+  if (grid) grid.style.paddingBottom = '';
+  if (!grid || !h || area !== 'UNFILED' || !ids.length) { sel = null; barOff(); return; }
+  var old = document.getElementById('bp-unf-selbtn'); if (old) old.remove();
+  var b = document.createElement('button');
+  b.id = 'bp-unf-selbtn';
+  b.textContent = sel ? '✓ Done selecting' : '☑️ Select photos';
+  b.style.cssText = DESK
+    ? 'padding:9px 14px;border-radius:9px;border:1.5px solid rgba(10,132,255,.5);background:rgba(10,132,255,.12);color:#0A84FF;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit'
+    : 'width:100%;margin-top:8px;background:rgba(10,132,255,.12);border:1.5px solid rgba(10,132,255,.45);border-radius:10px;color:#0A84FF;font-size:13px;font-weight:800;padding:10px;cursor:pointer;font-family:inherit';
+  b.onclick = startStop;
+  (DESK ? h : (h.firstElementChild || h)).appendChild(b);
+  var kids = grid.children;
+  if (!sel) { barOff(); return; }
+  grid.style.paddingBottom = DESK ? '120px' : '210px';   // so the last row can scroll clear of the floating bar
+  for (var i = 0; i < ids.length && i < kids.length; i++) (function(id, k){
+    k.style.position = 'relative';
+    Array.prototype.forEach.call(k.querySelectorAll('button'), function(x){ x.style.display = 'none'; });
+    var m = document.createElement('div');
+    m.className = 'bp-unf-mark';
+    m.style.cssText = 'position:absolute;top:6px;left:6px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;'
+      + 'color:#fff;font-weight:900;font-size:15px;line-height:22px;text-align:center;pointer-events:none';
+    k.appendChild(m);
+    k.onclick = function(e){ if (e && e.preventDefault) e.preventDefault(); toggleOne(id); };
+  })(ids[i], kids[i]);
+  showBar();
+  paint();
+}
+
+window[FN] = function(){
+  var r = orig.apply(this, arguments);
+  try { decorate(); } catch (e) { console.warn('[BP] unfiled select', e); }
+  return r;
+};
+
+function afterChange(){
+  sel = null; barOff();
+  if (!unfiledIds().length) window._bpPhotoArea = null;
+  try { if (typeof renderAll === 'function') renderAll(); } catch (e) {}
+  window[FN]();
+}
+function stamp(){ return typeof now === 'function' ? now() : new Date().toISOString(); }
+
+/* ── Assign to a location (reuses the existing location picker) ── */
+var origFile = window.bpFilePhoto, origTo = window.bpFilePhotoTo;
+window._bpFilingMulti = null; window._bpMultiPending = false;
+if (typeof origFile === 'function') window.bpFilePhoto = function(){
+  if (!window._bpMultiPending) window._bpFilingMulti = null;     // a normal one-photo filing
+  window._bpMultiPending = false;
+  return origFile.apply(this, arguments);
+};
+function assign(){
+  var picked = Object.keys(sel || {});
+  if (!picked.length) { toast('Tap the photos you want first'); return; }
+  window._bpFilingMulti = picked; window._bpMultiPending = true;
+  window.bpFilePhoto(picked[0]);
+}
+if (typeof origTo === 'function') window.bpFilePhotoTo = function(roomId){
+  var multi = window._bpFilingMulti;
+  if (!multi) return origTo.apply(this, arguments);
+  window._bpFilingMulti = null;
+  var room = (DB.rooms||[]).find(function(r){ return r.id === roomId; });
+  var n = 0, skip = 0;
+  multi.forEach(function(id){
+    var p = (DB.photos||[]).find(function(x){ return x.id === id; });
+    if (!p) return;
+    if (room && p.jobId && room.jobId && p.jobId !== room.jobId) { skip++; return; }
+    p.roomId = roomId; if (!p.jobId && room) p.jobId = room.jobId; p.updatedAt = stamp(); n++;
+  });
+  var s = document.getElementById('bp-file-sheet'); if (s) s.remove();
+  bpSave();
+  toast('📁 Filed ' + n + ' photo' + (n !== 1 ? 's' : '') + ' to ' + (room ? room.name : 'location')
+    + (skip ? ' · ' + skip + ' skipped (different job)' : ''));
+  afterChange();
+};
+
+/* ── Move to Documents ── */
+function toDocs(){
+  var picked = Object.keys(sel || {});
+  if (!picked.length) { toast('Tap the photos you want first'); return; }
+  if (!confirm('Move ' + picked.length + ' photo' + (picked.length !== 1 ? 's' : '') + ' to Documents?\n\nThey leave the Photos screen and show under Documents on their job. (If you change your mind, they can be restored from Recently Deleted.)')) return;
+  if (!DB.documents) DB.documents = [];
+  if (!DB.deletedPhotoIds) DB.deletedPhotoIds = {};
+  var fj = jobF(), moved = {}, nMoved = 0, skip = 0;
+  picked.forEach(function(id){
+    var p = (DB.photos||[]).find(function(x){ return x.id === id; });
+    if (!p) return;
+    var job = p.jobId || fj;
+    if (!job || !p.src) { skip++; return; }
+    var m = /^data:([^;,]+)/.exec(p.src), type = m ? m[1] : 'image/jpeg';
+    var name = (p.caption && String(p.caption).trim()) || ('Photo ' + (p.date ? fmtDate(p.date) : '')).trim();
+    DB.documents.push({ id: uid(), jobId: job, name: name, category: 'Photo', fileSrc: p.src,
+      fileName: name.replace(/[^\w\- ]+/g, '').trim() + '.' + (type.split('/')[1] || 'jpg'), fileType: type,
+      notes: p.notes || '', created: p.date || stamp() });
+    moved[id] = true; nMoved++;
+  });
+  if (nMoved) {
+    bpRemoveFrom('photos', function(p){ return !moved[p.id]; });
+    Object.keys(moved).forEach(function(id){ DB.deletedPhotoIds[id] = stamp(); });
+    bpSave();
+  }
+  toast(nMoved ? '📎 Moved ' + nMoved + ' to Documents' + (skip ? ' · ' + skip + ' skipped (no job)' : '')
+               : 'Nothing moved — these photos have no job. Pick a job at the top first.');
+  afterChange();
+}
+console.log('[BP] v4.15 unfiled select');
 })();
 </script>
