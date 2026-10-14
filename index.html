@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.18';
+var APP_VERSION = '4.19';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -13989,7 +13989,7 @@ function summaryText(r, job, forSms){
     + (r.safety     ? '\nSafety:\n' + r.safety + '\n' : '')
     + (r.clientNotes? '\nNotes:\n' + r.clientNotes + '\n' : '')
     + (nPhotos ? '\n' + nPhotos + ' photo' + (nPhotos !== 1 ? 's' : '')
-               + ' from today are in the attached report.\n' : '')
+               + ' from today — the full PDF report is coming separately.\n' : '')
     + '\nThanks,\n' + (r.createdBy || '');
 }
 
@@ -14079,9 +14079,8 @@ window.bpSendEod = function(id){
     + '<div style="font-size:12.5px;color:var(--muted,#8e8e93);margin-bottom:16px">'
     + sesc((job ? job.name + ' · ' : '') + prettyDate(r.date||''))
     + ' · ' + n + ' photo' + (n !== 1 ? 's' : '') + '</div>'
-    + row('📄', 'Photo Report', n ? n + ' photos, grouped by area — print or Save as PDF'
-                                 : 'No photos on this date — text only', 'bpSendPick(\'report\',\'' + id + '\')', true)
-    + row('📧', 'Email', em ? 'To ' + sesc(em) : '⚠️ No client email on this job',
+    + row('📄', 'Full Day PDF', 'Every checklist item + ' + (n ? n + ' photo' + (n !== 1 ? 's' : '') : 'the day\'s notes') + ' — email, text or save', 'bpSendPick(\'report\',\'' + id + '\')', true)
+    + row('📧', 'Email summary only', em ? 'To ' + sesc(em) + ' — text only, no PDF or photos' : '⚠️ No client email on this job',
           'bpSendPick(\'email\',\'' + id + '\')')
     + row('💬', 'Text', ph ? 'To ' + sesc(ph) + ' — summary only, no photos'
                            : 'Pick the contact in Messages — summary only',
@@ -25533,3 +25532,633 @@ document.head.appendChild(st);
 
 </script>
 
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   v4.19 — FULL DAY PDF REPORT  (Stan, Oct 14 2026)
+   "When I email client the report it's blank — none of the checklist items nor
+    pictures are included… It's supposed to be a full day PDF."
+
+   WHY IT WAS BLANK
+   • Email only ever opened a text-only mailto: a mail link can't carry a file,
+     so the client got a few lines and nothing attached.
+   • The "Photo Report" was a print window: no checklist at all, and it depended
+     on a pop-up + the print dialog (blank window on a phone).
+   • The job-level "Full report" was an .html file, 12 photos max.
+
+   WHAT THIS DOES
+   One real PDF file, built right on the device, for ONE day on ONE job:
+     header (job, date, progress)  →  the day's notes  →  EVERY checklist item
+     for the job grouped by area (done today / done earlier / still open, with
+     that day's item photos)  →  EVERY photo from that day grouped by area.
+   Then the phone's own share sheet attaches the PDF to Mail / Messages /
+   Files — so it really is attached. Nothing sends by itself.
+
+   HOW THE PDF IS MADE  (no library, works offline)
+   Each page is drawn on a Letter-size canvas and embedded as a JPEG page in a
+   minimal hand-written PDF. Photos are drawn one at a time so a heavy day
+   can't blow iPhone memory. (Text in the PDF is an image, not selectable.)
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (window.bpDayPdf) return;
+
+var PW = 1275, PH = 1650;            // US Letter @ 150 dpi
+var MX = 84, MT = 84, MB = 100;      // margins
+var CW = PW - 2 * MX;
+var FONT = '-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif';
+var K = { ink:'#111827', mid:'#4b5563', faint:'#9ca3af', line:'#e5e7eb', soft:'#f3f4f6',
+          blue:'#0A84FF', navy:'#1e293b', green:'#15803d', greenBg:'#dcfce7',
+          amber:'#b45309', amberBg:'#fff7ed', amberLine:'#f0dcc0' };
+var WD = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+/* ── small helpers ───────────────────────────────────────────────────── */
+function say(m){ try { if (window.toast) window.toast(m); } catch(e){} }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function pad2(n){ return (n < 10 ? '0' : '') + n; }
+function dayKey(raw){
+  if (!raw) return '';
+  if (typeof window.bpDayKeyOf === 'function') return window.bpDayKeyOf(raw);
+  var s = String(raw);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var d = new Date(s); if (isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+}
+function todayKey(){
+  var d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+}
+function mdy(key){            // 2026-10-14 → 10/14/2026
+  var p = String(key || '').split('-');
+  return p.length === 3 ? p[1] + '/' + p[2] + '/' + p[0] : String(key || '');
+}
+function longDate(key){
+  var p = String(key || '').split('-');
+  if (p.length !== 3) return mdy(key);
+  var d = new Date(+p[0], +p[1]-1, +p[2]);
+  return WD[d.getDay()] + '  ' + mdy(key);
+}
+function jobOf(id){ return (DB.jobs || []).find(function(j){ return j.id === id; }); }
+function clientEmail(job){
+  if (!job) return '';
+  if (job.clientEmail) return job.clientEmail;
+  var l = (DB.contacts || []).filter(function(c){ return c.jobId === job.id && c.email; });
+  return ((l.find(function(c){ return c.type === 'Client'; }) || l[0]) || {}).email || '';
+}
+function clientPhone(job){
+  if (!job) return '';
+  if (job.clientPhone) return job.clientPhone;
+  var l = (DB.contacts || []).filter(function(c){ return c.jobId === job.id && c.phone; });
+  return ((l.find(function(c){ return c.type === 'Client'; }) || l[0]) || {}).phone || '';
+}
+function isData(src){ return typeof src === 'string' && src.indexOf('data:image') === 0; }
+
+/* ── gather everything for one job + one day ─────────────────────────── */
+function gather(opts){
+  var r = opts.reportId ? (DB.reports || []).find(function(x){ return x.id === opts.reportId; }) : null;
+  var jobId = r ? r.jobId : (opts.jobId || '');
+  var job = jobOf(jobId);
+  var day = dayKey(r ? r.date : (opts.date || '')) || todayKey();
+
+  var rooms = (DB.rooms || []).filter(function(x){ return x.jobId === jobId; })
+    .sort(function(a, b){ return (a.order || 0) - (b.order || 0); });
+  var items = (DB.punchlist || []).filter(function(n){ return n && n.jobId === jobId; });
+
+  function itemShots(it){
+    var out = [];
+    function add(p, label){
+      var src = (p && typeof p === 'object') ? p.src : p;
+      var when = (p && typeof p === 'object') ? p.date : '';
+      var d = dayKey(when) || dayKey(it.completedAt);          // undated → the day it was finished
+      if (d !== day) return;
+      out.push({ src: src, label: label });
+    }
+    (it.photosBefore || []).forEach(function(p){ add(p, 'Before'); });
+    (it.photosAfter  || []).forEach(function(p){ add(p, 'After'); });
+    if (it.completionPhoto) {
+      var d2 = dayKey(it.completionPhotoDate) || dayKey(it.completedAt);
+      if (d2 === day) out.push({ src: it.completionPhoto, label: 'Completed' });
+    }
+    return out;
+  }
+
+  var seen = {};
+  var rows = items.map(function(it){
+    var doneDay = it.done ? dayKey(it.completedAt) : '';
+    var shots = itemShots(it);
+    shots.forEach(function(s){ if (s.src) seen[s.src] = 1; });
+    return { it: it, roomId: it.roomId || '', done: !!it.done, doneDay: doneDay,
+             doneToday: !!it.done && doneDay === day, shots: shots };
+  });
+
+  var photos = (DB.photos || []).filter(function(p){
+    return p && (!jobId || p.jobId === jobId) && dayKey(p.date || p.created || p.createdAt || p.updatedAt) === day;
+  });
+
+  return { r: r, job: job, jobId: jobId, day: day, rooms: rooms, rows: rows, photos: photos, seen: seen };
+}
+
+/* ── canvas page engine ──────────────────────────────────────────────── */
+function Engine(onProgress){
+  var cv = document.createElement('canvas'); cv.width = PW; cv.height = PH;
+  var g = cv.getContext('2d');
+  var pages = [], y = MT, footerLeft = '';
+  function fresh(){ g.fillStyle = '#fff'; g.fillRect(0, 0, PW, PH); y = MT; }
+  fresh();
+
+  function footer(n){
+    g.fillStyle = K.faint; g.font = '20px ' + FONT; g.textBaseline = 'alphabetic';
+    g.textAlign = 'left';  g.fillText(footerLeft, MX, PH - 52);
+    g.textAlign = 'right'; g.fillText('Page ' + n, PW - MX, PH - 52);
+    g.textAlign = 'left';
+    g.fillStyle = K.line; g.fillRect(MX, PH - 82, CW, 2);
+  }
+  function flush(){
+    footer(pages.length + 1);
+    var url = cv.toDataURL('image/jpeg', 0.86);
+    var bin = atob(url.slice(url.indexOf(',') + 1));
+    var u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    pages.push({ bytes: u8, w: PW, h: PH });
+    if (onProgress) onProgress('page', pages.length);
+  }
+  function newPage(){ flush(); fresh(); }
+  function room(h){ return y + h <= PH - MB; }
+  function ensure(h){ if (!room(h)) newPage(); }
+
+  function wrap(text, font, maxW){
+    g.font = font;
+    var out = [];
+    String(text == null ? '' : text).split(/\r?\n/).forEach(function(par){
+      if (!par.trim()) { out.push(''); return; }
+      var line = '';
+      par.split(/\s+/).forEach(function(w){
+        var t = line ? line + ' ' + w : w;
+        if (g.measureText(t).width <= maxW) { line = t; return; }
+        if (line) out.push(line);
+        while (g.measureText(w).width > maxW && w.length > 1) {
+          var k = w.length;
+          while (k > 1 && g.measureText(w.slice(0, k)).width > maxW) k--;
+          out.push(w.slice(0, k)); w = w.slice(k);
+        }
+        line = w;
+      });
+      out.push(line);
+    });
+    return out;
+  }
+  function rr(x, yy, w, h, r){
+    g.beginPath(); g.moveTo(x + r, yy);
+    g.arcTo(x + w, yy, x + w, yy + h, r); g.arcTo(x + w, yy + h, x, yy + h, r);
+    g.arcTo(x, yy + h, x, yy, r);         g.arcTo(x, yy, x + w, yy, r); g.closePath();
+  }
+  /* wrapped paragraph that may flow over page breaks */
+  function para(text, size, color, weight, x, maxW, lead){
+    var font = (weight || '400') + ' ' + size + 'px ' + FONT, lh = lead || Math.round(size * 1.38);
+    wrap(text, font, maxW).forEach(function(ln){
+      ensure(lh);
+      g.font = font; g.fillStyle = color; g.textBaseline = 'top'; g.fillText(ln, x, y);
+      y += lh;
+    });
+  }
+  function heading(text, color){
+    ensure(90);
+    y += 18;
+    g.font = '700 21px ' + FONT; g.fillStyle = color || K.faint; g.textBaseline = 'top';
+    g.fillText(String(text).toUpperCase(), MX, y);
+    y += 30;
+    g.fillStyle = K.line; g.fillRect(MX, y, CW, 2); y += 16;
+  }
+  function checkbox(x, yy, done){
+    var s = 30;
+    rr(x, yy, s, s, 7);
+    if (done) {
+      g.fillStyle = K.green; g.fill();
+      g.strokeStyle = '#fff'; g.lineWidth = 4; g.lineCap = 'round'; g.lineJoin = 'round';
+      g.beginPath(); g.moveTo(x + 7, yy + 16); g.lineTo(x + 13, yy + 22); g.lineTo(x + 24, yy + 9); g.stroke();
+    } else {
+      g.fillStyle = '#fff'; g.fill(); g.strokeStyle = '#9ca3af'; g.lineWidth = 3; g.stroke();
+    }
+  }
+  function pill(text, rightX, yy, fg, bg){
+    g.font = '700 19px ' + FONT; g.textBaseline = 'top';
+    var w = g.measureText(text).width + 26;
+    rr(rightX - w, yy, w, 32, 16); g.fillStyle = bg; g.fill();
+    g.fillStyle = fg; g.fillText(text, rightX - w + 13, yy + 6);
+    return w;
+  }
+  /* draw an <img> into a rounded box, keeping its shape (cover) */
+  function drawImg(im, x, yy, w, h){      // "contain": the whole photo shows, nothing is cropped
+    g.save(); rr(x, yy, w, h, 10); g.clip();
+    g.fillStyle = K.soft; g.fillRect(x, yy, w, h);
+    var iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
+    if (iw && ih) {
+      var s = Math.min(w / iw, h / ih), dw = iw * s, dh = ih * s;
+      g.drawImage(im, x + (w - dw) / 2, yy + (h - dh) / 2, dw, dh);
+    }
+    g.restore();
+    g.strokeStyle = K.line; g.lineWidth = 2; rr(x, yy, w, h, 10); g.stroke();
+  }
+  return { g: g, pages: pages, wrap: wrap, rr: rr, para: para, heading: heading, checkbox: checkbox,
+           pill: pill, drawImg: drawImg, ensure: ensure, room: room, newPage: newPage, flush: flush,
+           getY: function(){ return y; }, setY: function(v){ y = v; },
+           setFooter: function(t){ footerLeft = t; } };
+}
+
+function loadImg(src){
+  return new Promise(function(res){
+    if (!isData(src)) { res(null); return; }
+    var im = new Image(), done = false;
+    function fin(v){ if (!done) { done = true; res(v); } }
+    im.onload = function(){ fin(im); };
+    im.onerror = function(){ fin(null); };
+    setTimeout(function(){ fin(null); }, 10000);
+    im.src = src;
+  });
+}
+
+/* ── minimal PDF writer: one full-page JPEG per page ─────────────────── */
+function makePdf(pages, title){
+  var chunks = [], pos = 0, offs = [];
+  function put(x){
+    if (typeof x === 'string') {
+      var a = new Uint8Array(x.length);
+      for (var i = 0; i < x.length; i++) a[i] = x.charCodeAt(i) & 255;
+      x = a;
+    }
+    chunks.push(x); pos += x.length;
+  }
+  function begin(n){ offs[n] = pos; put(n + ' 0 obj\n'); }
+  var n = pages.length, infoNo = 3 + n * 3;
+  put('%PDF-1.4\n%âãÏÓ\n');
+  begin(1); put('<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  var kids = []; for (var i = 0; i < n; i++) kids.push((3 + i * 3) + ' 0 R');
+  begin(2); put('<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + n + ' >>\nendobj\n');
+  pages.forEach(function(p, i){
+    var pg = 3 + i * 3, ct = pg + 1, im = pg + 2;
+    begin(pg);
+    put('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 ' + im + ' 0 R >> >> /Contents ' + ct + ' 0 R >>\nendobj\n');
+    var cs = 'q 612 0 0 792 0 0 cm /Im0 Do Q';
+    begin(ct); put('<< /Length ' + cs.length + ' >>\nstream\n' + cs + '\nendstream\nendobj\n');
+    begin(im);
+    put('<< /Type /XObject /Subtype /Image /Width ' + p.w + ' /Height ' + p.h +
+        ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + p.bytes.length + ' >>\nstream\n');
+    put(p.bytes); put('\nendstream\nendobj\n');
+  });
+  var t = String(title || 'Daily Report').replace(/[^\x20-\x7E]/g, '').replace(/([\\()])/g, '\\$1');
+  begin(infoNo); put('<< /Title (' + t + ') /Producer (BuildersPro) >>\nendobj\n');
+  var xr = pos, total = infoNo + 1;
+  var tbl = 'xref\n0 ' + total + '\n0000000000 65535 f \n';
+  for (var k = 1; k < total; k++) tbl += ('0000000000' + offs[k]).slice(-10) + ' 00000 n \n';
+  put(tbl + 'trailer\n<< /Size ' + total + ' /Root 1 0 R /Info ' + infoNo + ' 0 R >>\nstartxref\n' + xr + '\n%%EOF\n');
+  return new Blob(chunks, { type: 'application/pdf' });
+}
+
+/* ── the report itself ───────────────────────────────────────────────── */
+async function buildDayPdf(opts, onProgress){
+  var D = gather(opts), r = D.r, job = D.job;
+  var E = Engine(onProgress), g = E.g;
+  var dpr = r ? (r.dprNumber || ('DPR-' + String(r.id || '').slice(-4).toUpperCase())) : '';
+  E.setFooter('BuildersPro daily report' + (job ? '  ·  ' + job.name : '') + (dpr ? '  ·  ' + dpr : '') + '  ·  ' + mdy(D.day));
+
+  var total = D.rows.length, doneAll = D.rows.filter(function(x){ return x.done; }).length;
+  var doneToday = D.rows.filter(function(x){ return x.doneToday; }).length;
+  var pct = (r && r.progress !== undefined && r.progress !== '' && r.progress !== null)
+    ? Math.round(+r.progress || 0) : (total ? Math.round(doneAll / total * 100) : 0);
+
+  /* ── header band ── */
+  var by = E.getY(), bh = 300;
+  E.rr(MX, by, CW, bh, 22); g.fillStyle = K.navy; g.fill();
+  g.textBaseline = 'top';
+  g.fillStyle = 'rgba(255,255,255,.65)'; g.font = '700 21px ' + FONT;
+  g.fillText('DAILY FIELD REPORT' + (dpr ? '   ·   ' + dpr : ''), MX + 40, by + 34);
+  g.fillStyle = '#fff'; g.font = '800 54px ' + FONT;
+  var jn = E.wrap(job ? job.name : 'Project Report', '800 54px ' + FONT, CW - 80)[0] || '';
+  g.fillText(jn, MX + 40, by + 70);
+  g.font = '400 25px ' + FONT; g.fillStyle = 'rgba(255,255,255,.85)';
+  var sub = [];
+  if (job && job.address) sub.push(job.address);
+  if (job && job.client) sub.push('Prepared for ' + job.client);
+  if (sub.length) g.fillText(E.wrap(sub.join('   ·   '), '400 25px ' + FONT, CW - 80)[0], MX + 40, by + 142);
+  g.fillStyle = '#fff'; g.font = '700 28px ' + FONT;
+  var meta = [longDate(D.day)];
+  if (r && r.workers) meta.push(r.workers + ' on site');
+  if (r && r.weather) meta.push(r.weather);
+  g.fillText(E.wrap(meta.join('   ·   '), '700 28px ' + FONT, CW - 80)[0], MX + 40, by + 186);
+  // progress bar
+  g.fillStyle = 'rgba(255,255,255,.22)'; E.rr(MX + 40, by + 244, CW - 200, 16, 8); g.fill();
+  g.fillStyle = K.blue; E.rr(MX + 40, by + 244, Math.max(16, (CW - 200) * Math.min(100, pct) / 100), 16, 8); g.fill();
+  g.fillStyle = '#fff'; g.font = '800 34px ' + FONT; g.textAlign = 'right';
+  g.fillText(pct + '%', MX + CW - 40, by + 232); g.textAlign = 'left';
+  E.setY(by + bh + 26);
+
+  /* ── quick numbers ── */
+  var stats = [
+    [String(doneToday), 'items finished today'],
+    [doneAll + ' / ' + total, 'checklist items done'],
+    [String(total - doneAll), 'items still open'],
+    [String(D.photos.filter(function(p){ return !(p.src && D.seen[p.src]); }).length + Object.keys(D.seen).length), 'photos today']
+  ];
+  var sw = (CW - 3 * 16) / 4, sy = E.getY();
+  stats.forEach(function(s, i){
+    var sx = MX + i * (sw + 16);
+    E.rr(sx, sy, sw, 104, 14); g.fillStyle = K.soft; g.fill();
+    g.fillStyle = K.ink; g.font = '800 38px ' + FONT; g.textBaseline = 'top'; g.fillText(s[0], sx + 20, sy + 16);
+    g.fillStyle = K.mid; g.font = '400 19px ' + FONT; g.fillText(s[1], sx + 20, sy + 66);
+  });
+  E.setY(sy + 104 + 10);
+
+  /* ── the day's notes ── */
+  function note(title, body, client){
+    if (!body || !String(body).trim()) return;
+    E.heading(title, client ? K.amber : null);
+    if (client) {
+      var lines = E.wrap(body, '400 25px ' + FONT, CW - 48), h = lines.length * 35 + 36;
+      E.ensure(Math.min(h, 400));
+      if (E.room(h)) {
+        var yy = E.getY();
+        E.rr(MX, yy, CW, h, 12); g.fillStyle = K.amberBg; g.fill(); g.strokeStyle = K.amberLine; g.lineWidth = 2; g.stroke();
+        g.fillStyle = K.ink; g.font = '400 25px ' + FONT; g.textBaseline = 'top';
+        lines.forEach(function(ln, i){ g.fillText(ln, MX + 24, yy + 18 + i * 35); });
+        E.setY(yy + h + 6); return;
+      }
+    }
+    E.para(body, 25, K.ink, '400', MX, CW, 35);
+  }
+  if (r) {
+    note('Work completed today', r.completed);
+    note('Incomplete / blockers', r.incomplete);
+    note("Tomorrow's plan", r.tomorrow);
+    note('Safety notes', r.safety);
+    note('Notes for owner / client', r.clientNotes, true);
+  }
+
+  /* ── EVERY checklist item, by area ── */
+  var groups = D.rooms.map(function(rm){
+    return { name: rm.name, rows: D.rows.filter(function(x){ return x.roomId === rm.id; }) };
+  });
+  var knownIds = {}; D.rooms.forEach(function(rm){ knownIds[rm.id] = 1; });
+  var general = D.rows.filter(function(x){ return !x.roomId || !knownIds[x.roomId]; });
+  if (general.length) groups.push({ name: 'General', rows: general });
+  groups = groups.filter(function(gp){ return gp.rows.length; });
+
+  E.heading('Checklist — all ' + total + ' item' + (total !== 1 ? 's' : '') + '  ·  ' + doneAll + ' done  ·  ' + (total - doneAll) + ' open');
+  if (!groups.length) E.para('No checklist items on this job yet.', 24, K.faint, '400', MX, CW);
+
+  var missing = 0, TW = Math.floor((CW - 2 * 14) / 3);
+  for (var gi = 0; gi < groups.length; gi++) {
+    var gp = groups[gi];
+    var gd = gp.rows.filter(function(x){ return x.done; }).length;
+    var ordered = gp.rows.filter(function(x){ return x.doneToday; })
+      .concat(gp.rows.filter(function(x){ return x.done && !x.doneToday; }))
+      .concat(gp.rows.filter(function(x){ return !x.done; }));
+    E.ensure(66 + 90 + (ordered[0].shots.length ? Math.round((TW - 20) * 0.75) + 50 : 0));
+    var gy = E.getY() + 14;
+    E.rr(MX, gy, CW, 52, 10); g.fillStyle = K.soft; g.fill();
+    g.fillStyle = K.ink; g.font = '800 28px ' + FONT; g.textBaseline = 'top';
+    g.fillText(E.wrap(gp.name, '800 28px ' + FONT, CW - 300)[0] || '', MX + 18, gy + 11);
+    g.font = '700 21px ' + FONT; g.fillStyle = K.mid; g.textAlign = 'right';
+    g.fillText(gd + ' of ' + gp.rows.length + ' done', MX + CW - 18, gy + 15); g.textAlign = 'left';
+    E.setY(gy + 52 + 10);
+
+    for (var ri = 0; ri < ordered.length; ri++) {
+      var row = ordered[ri], it = row.it;
+      var tag = row.doneToday ? 'DONE TODAY' : (row.done ? ('Done ' + (row.doneDay ? mdy(row.doneDay).slice(0, 5) : '')) : 'OPEN');
+      g.font = '700 19px ' + FONT;
+      var tagW = g.measureText(tag).width + 40;
+      var lines = E.wrap(it.text || '(no description)', (row.done && !row.doneToday ? '400 ' : '600 ') + '25px ' + FONT, CW - 60 - tagW - 20);
+      var notes = it.extraNotes ? E.wrap(it.extraNotes, '400 21px ' + FONT, CW - 60) : [];
+      var h = Math.max(lines.length * 33, 36) + (notes.length ? notes.length * 28 + 4 : 0) + 22;
+      E.ensure(h + (row.shots.length ? Math.round((TW - 20) * 0.75) + 50 : 0));   // keep an item with its first photo row
+      var ry = E.getY();
+      E.checkbox(MX + 4, ry + 8, row.done);
+      g.font = (row.done && !row.doneToday ? '400 ' : '600 ') + '25px ' + FONT; g.textBaseline = 'top';
+      g.fillStyle = row.done && !row.doneToday ? K.mid : K.ink;
+      lines.forEach(function(ln, i){ g.fillText(ln, MX + 56, ry + 6 + i * 33); });
+      if (row.doneToday) E.pill(tag, MX + CW, ry + 6, K.green, K.greenBg);
+      else if (row.done) { g.font = '600 20px ' + FONT; g.fillStyle = K.faint; g.textAlign = 'right'; g.fillText(tag, MX + CW, ry + 10); g.textAlign = 'left'; }
+      else E.pill(tag, MX + CW, ry + 6, K.amber, K.amberBg);
+      var cy = ry + 6 + Math.max(lines.length * 33, 36);
+      g.font = '400 21px ' + FONT; g.fillStyle = K.faint;
+      notes.forEach(function(ln, i){ g.fillText(ln, MX + 56, cy + 2 + i * 28); });
+      E.setY(ry + h);
+      g.fillStyle = K.line; g.fillRect(MX, E.getY() - 6, CW, 1);
+
+      /* that day's photos for this item — small thumbnails, three across */
+      for (var si = 0; si < row.shots.length; si += 3) {
+        E.ensure(Math.round((TW - 20) * 0.75) + 50);
+        var ty = E.getY() + 6;
+        for (var c = 0; c < 3 && si + c < row.shots.length; c++) {
+          var sh = row.shots[si + c], im = await loadImg(sh.src);
+          var tw = TW - 20;   // slight inset because items are indented
+          var tx = MX + 56 + c * (tw + 14);
+          if (im) {
+            E.drawImg(im, tx, ty, tw, Math.round(tw * 0.75)); im.src = '';
+            g.font = '700 18px ' + FONT; g.fillStyle = K.mid; g.textBaseline = 'top';
+            g.fillText(sh.label, tx + 4, ty + Math.round(tw * 0.75) + 6);
+          } else missing++;
+          if (onProgress) onProgress('photo', 1);
+        }
+        E.setY(ty + Math.round((TW - 20) * 0.75) + 34);
+      }
+    }
+    E.setY(E.getY() + 8);
+  }
+
+  /* ── EVERY photo from the day, by area ── */
+  var byRoom = {};
+  D.photos.forEach(function(p){
+    if (p.src && D.seen[p.src]) return;                 // already shown under its checklist item
+    var k = p.roomId && knownIds[p.roomId] ? p.roomId : '__none';
+    (byRoom[k] = byRoom[k] || []).push(p);
+  });
+  var order = D.rooms.map(function(rm){ return rm.id; }).filter(function(id){ return byRoom[id]; });
+  if (byRoom.__none) order.push('__none');
+  var nPhotos = order.reduce(function(s, k){ return s + byRoom[k].length; }, 0);
+
+  if (nPhotos) {
+    E.newPage();
+    var onItems = Object.keys(D.seen).length;
+    E.heading('Photos from today — ' + nPhotos + (onItems ? '  (+ ' + onItems + ' shown under checklist items)' : ''));
+    var CWp = Math.floor((CW - 18) / 2);
+    for (var oi = 0; oi < order.length; oi++) {
+      var key = order[oi], list = byRoom[key];
+      var rmName = key === '__none' ? 'Other / not filed to an area' : ((D.rooms.find(function(x){ return x.id === key; }) || {}).name || 'Area');
+      E.ensure(110 + Math.round(CWp * 0.75));
+      g.font = '800 28px ' + FONT; g.fillStyle = K.ink; g.textBaseline = 'top';
+      g.fillText(rmName, MX, E.getY() + 14);
+      var nmW = g.measureText(rmName).width;
+      g.font = '600 21px ' + FONT; g.fillStyle = K.faint;
+      g.fillText(list.length + ' photo' + (list.length !== 1 ? 's' : ''), MX + nmW + 16, E.getY() + 20);
+      E.setY(E.getY() + 56);
+      for (var pi = 0; pi < list.length; pi += 2) {
+        var cap0 = list[pi].caption || list[pi].note || list[pi].text || '';
+        var need2 = Math.round(CWp * 0.75) + 70;
+        E.ensure(need2);
+        var py = E.getY(), rowH = 0;
+        for (var cc = 0; cc < 2 && pi + cc < list.length; cc++) {
+          var ph = list[pi + cc], img = await loadImg(ph.src), px = MX + cc * (CWp + 18);
+          if (onProgress) onProgress('photo', 1);
+          if (!img) { missing++; continue; }
+          var dh = Math.round(CWp * 0.75);
+          E.drawImg(img, px, py, CWp, dh); img.src = '';
+          var cap = ph.caption || ph.note || ph.text || '', capH = 0;
+          if (cap) {
+            var cl = E.wrap(cap, '400 20px ' + FONT, CWp).slice(0, 2);
+            g.font = '400 20px ' + FONT; g.fillStyle = K.mid; g.textBaseline = 'top';
+            cl.forEach(function(ln, i){ g.fillText(ln, px, py + dh + 8 + i * 26); });
+            capH = cl.length * 26 + 8;
+          }
+          rowH = Math.max(rowH, dh + capH);
+        }
+        E.setY(py + rowH + 26);
+      }
+      E.setY(E.getY() + 6);
+    }
+  }
+  if (missing) {
+    E.ensure(70);
+    E.para(missing + ' photo' + (missing !== 1 ? 's' : '') + ' could not be loaded on this device and ' + (missing !== 1 ? 'are' : 'is') + ' not shown.', 21, K.amber, '600', MX, CW);
+  }
+  E.flush();
+  var title = 'Daily Report ' + (dpr ? dpr + ' ' : '') + (job ? job.name + ' ' : '') + mdy(D.day);
+  return { blob: makePdf(E.pages, title), pages: E.pages.length, data: D,
+           doneToday: doneToday, total: total, doneAll: doneAll, photos: nPhotos + Object.keys(D.seen).length,
+           title: title, dpr: dpr };
+}
+window.bpBuildDayPdf = buildDayPdf;            // exposed for tests
+
+/* ── the little build → share sheet ──────────────────────────────────── */
+function fileName(res){
+  var j = res.data.job ? res.data.job.name : 'Job';
+  var s = ('Daily-Report-' + (res.dpr ? res.dpr + '-' : '') + j + '-' + mdy(res.data.day))
+    .replace(/[^A-Za-z0-9\-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return s + '.pdf';
+}
+function emailBody(res){
+  var D = res.data, r = D.r, job = D.job;
+  return 'Hi' + (job && job.client ? ' ' + job.client : '') + ',\n\n'
+    + 'Attached is the full daily report for ' + (job ? job.name : 'the job') + ' — ' + mdy(D.day)
+    + ': every checklist item (' + res.doneAll + ' of ' + res.total + ' done, ' + res.doneToday + ' finished today)'
+    + (res.photos ? ' and ' + res.photos + ' photo' + (res.photos !== 1 ? 's' : '') : '') + '.\n'
+    + (r && r.completed ? '\nCompleted today:\n' + r.completed + '\n' : '')
+    + (r && r.tomorrow ? "\nTomorrow's plan:\n" + r.tomorrow + '\n' : '')
+    + '\nThanks,\n' + ((typeof _userName !== 'undefined' && _userName) || (r && r.createdBy) || '');
+}
+function subject(res){
+  var D = res.data;
+  return 'Daily Report ' + (res.dpr ? res.dpr + ' ' : '') + '– ' + (D.job ? D.job.name + ' – ' : '') + mdy(D.day);
+}
+function download(res){
+  var url = URL.createObjectURL(res.blob), a = document.createElement('a');
+  a.href = url; a.download = fileName(res);
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 20000);
+}
+function mb(n){ return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; }
+
+var UI = 'bp-daypdf';
+function shell(inner){
+  var w = document.getElementById(UI);
+  if (!w) {
+    w = document.createElement('div'); w.id = UI;
+    w.style.cssText = 'position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center;padding-top:var(--safe-top,0px);box-sizing:border-box;font-family:inherit';
+    document.body.appendChild(w);
+  }
+  w.innerHTML = '<div style="width:100%;max-width:480px;background:var(--bg,#111);color:var(--text,#f0f0f0);border:1px solid var(--border,#333);border-radius:20px 20px 0 0;padding:18px 16px calc(22px + env(safe-area-inset-bottom,0px));max-height:100%;overflow:auto;box-sizing:border-box">' + inner + '</div>';
+  return w;
+}
+function closeUi(){ var w = document.getElementById(UI); if (w) w.remove(); }
+function btn(icon, title, sub, fn, primary){
+  return '<button onclick="' + fn + '" style="display:flex;gap:14px;align-items:center;width:100%;text-align:left;padding:15px 16px;margin-bottom:10px;border-radius:13px;cursor:pointer;font-family:inherit;color:inherit;border:1px solid '
+    + (primary ? '#0A84FF' : 'var(--border,#333)') + ';background:' + (primary ? 'rgba(10,132,255,.14)' : 'var(--card,#1c1c1e)') + '">'
+    + '<span style="font-size:24px;line-height:1">' + icon + '</span><span style="flex:1;min-width:0"><span style="display:block;font-size:16px;font-weight:800">' + title
+    + '</span><span style="display:block;font-size:12.5px;color:var(--muted,#8e8e93);margin-top:2px">' + sub + '</span></span></button>';
+}
+
+var LAST = null, BUSY = false;
+window.bpDayPdf = async function(reportId, jobId, date){
+  if (BUSY) return;
+  var probe = gather({ reportId: reportId, jobId: jobId, date: date });
+  if (!probe.job) { say('Report not found'); return; }
+  BUSY = true;
+  var nPh = probe.photos.filter(function(p){ return !(p.src && probe.seen[p.src]); }).length + Object.keys(probe.seen).length;
+  var pgN = 0, phN = 0;
+  function paint(){
+    shell('<div style="font-size:19px;font-weight:900;margin-bottom:6px">Building your PDF…</div>'
+      + '<div style="font-size:13px;color:var(--muted,#8e8e93);line-height:1.5">' + esc(probe.job.name) + ' · ' + mdy(probe.day)
+      + '<br>' + probe.rows.length + ' checklist item' + (probe.rows.length !== 1 ? 's' : '') + ' · ' + nPh + ' photo' + (nPh !== 1 ? 's' : '') + '</div>'
+      + '<div style="height:8px;border-radius:99px;background:var(--card2,#222);margin:16px 0 8px;overflow:hidden"><div style="height:8px;width:'
+      + Math.min(100, nPh ? Math.round(phN / nPh * 100) : (pgN ? 90 : 10)) + '%;background:#0A84FF;border-radius:99px"></div></div>'
+      + '<div style="font-size:13px;color:var(--muted,#8e8e93)">' + (nPh ? 'photo ' + Math.min(phN, nPh) + ' of ' + nPh + ' · ' : '') + 'page ' + Math.max(1, pgN) + '</div>');
+  }
+  paint();
+  await new Promise(function(r){ setTimeout(r, 30); });     // let the sheet paint before the heavy work
+  var res;
+  try {
+    res = await buildDayPdf({ reportId: reportId, jobId: jobId, date: date }, function(kind, n){
+      if (kind === 'page') pgN = n; else phN += n;
+      paint();
+    });
+  } catch (e) {
+    BUSY = false;
+    shell('<div style="font-size:19px;font-weight:900;margin-bottom:8px">Could not build the PDF</div>'
+      + '<div style="font-size:13px;color:#ff6961;margin-bottom:14px">' + esc(e && e.message || e) + '</div>'
+      + btn('✕', 'Close', '', "document.getElementById('" + UI + "').remove()"));
+    return;
+  }
+  BUSY = false; LAST = res;
+  var job = res.data.job, em = clientEmail(job), ph = clientPhone(job);
+  var canShare = !!(navigator.canShare && navigator.share && (function(){
+    try { return navigator.canShare({ files: [new File([res.blob], 'x.pdf', { type: 'application/pdf' })] }); } catch(e){ return false; } })());
+  shell('<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="font-size:19px;font-weight:900">PDF ready</div>'
+    + '<button onclick="document.getElementById(\'' + UI + '\').remove()" style="background:none;border:none;color:var(--muted,#8e8e93);font-size:27px;line-height:1;cursor:pointer;font-family:inherit">×</button></div>'
+    + '<div style="font-size:12.5px;color:var(--muted,#8e8e93);margin-bottom:16px;line-height:1.5">' + esc(job.name) + ' · ' + mdy(res.data.day) + '<br>'
+    + res.pages + ' page' + (res.pages !== 1 ? 's' : '') + ' · ' + res.total + ' checklist item' + (res.total !== 1 ? 's' : '') + ' (' + res.doneToday + ' done today) · '
+    + res.photos + ' photo' + (res.photos !== 1 ? 's' : '') + ' · ' + mb(res.blob.size) + '</div>'
+    + (canShare
+        ? btn('📧', 'Email / send the PDF', em ? 'Pick Mail or Messages — the PDF is attached. To: ' + esc(em) : 'Pick Mail or Messages — the PDF is attached', 'bpDayPdfShare()', true)
+        : btn('💾', 'Save the PDF', 'Downloads the file — then attach it to your email', 'bpDayPdfSave()', true))
+    + (canShare ? btn('💾', 'Save to Files', 'Keep a copy of the PDF', 'bpDayPdfSave()') : btn('📧', 'Open an email', (em ? 'To ' + esc(em) + ' — ' : '') + 'attach the saved PDF before you send', 'bpDayPdfMail()'))
+    + (em ? '<button onclick="bpDayPdfCopy()" style="width:100%;padding:11px;border-radius:11px;border:none;background:none;color:var(--muted,#8e8e93);font-size:13px;font-family:inherit;cursor:pointer">Copy client email address</button>' : '')
+    + '<div style="font-size:11.5px;color:var(--faint,#5a5a5f);text-align:center;margin-top:6px;line-height:1.5">Nothing sends by itself — you press Send.</div>');
+};
+
+window.bpDayPdfShare = async function(){
+  if (!LAST) return;
+  var res = LAST, file = new File([res.blob], fileName(res), { type: 'application/pdf' });
+  try {
+    await navigator.share({ files: [file], title: subject(res), text: emailBody(res) });
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;          // they closed the share sheet
+    download(res); say('⬇ Saved the PDF — attach it to your email');
+  }
+};
+window.bpDayPdfSave = function(){ if (LAST) { download(LAST); say('⬇ PDF saved'); } };
+window.bpDayPdfMail = function(){
+  if (!LAST) return;
+  var job = LAST.data.job, to = clientEmail(job);
+  var body = emailBody(LAST).replace('Attached is', 'Attached is (PDF)');
+  window.location.href = 'mailto:' + encodeURIComponent(to || '') + '?subject=' + encodeURIComponent(subject(LAST)) + '&body=' + encodeURIComponent(body);
+};
+window.bpDayPdfCopy = function(){
+  if (!LAST) return;
+  var em = clientEmail(LAST.data.job);
+  try { navigator.clipboard.writeText(em); say('📋 Copied ' + em); } catch(e){ say(em); }
+};
+
+/* a job with no EOD saved for today still gets a full PDF (checklist + photos) */
+window.bpDayPdfForJob = function(jobId){
+  var t = todayKey();
+  var rep = (DB.reports || []).filter(function(x){ return x.jobId === jobId && dayKey(x.date) === t; })
+    .sort(function(a, b){ return String(b.updatedAt || b.createdAt || '') < String(a.updatedAt || a.createdAt || '') ? -1 : 1; })[0];
+  return rep ? window.bpDayPdf(rep.id) : window.bpDayPdf('', jobId, t);
+};
+
+/* every old "report" entry point now leads to the one full-day PDF */
+window.bpOpenPhotoReport = function(id){ return window.bpDayPdf(id); };
+window.exportClientUpdate = function(jobId){ return window.bpDayPdfForJob(jobId); };
+
+console.log('[BP] v4.19 Full Day PDF ready');
+})();
+</script>
