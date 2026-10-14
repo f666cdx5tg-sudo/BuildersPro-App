@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.16';
+var APP_VERSION = '4.17';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -14645,7 +14645,8 @@ window.bpFitNums = function() {
     var out = items.filter(function(it){
       if (F.show === 'open' && it.done) return false;
       if (F.show === 'done' && !it.done) return false;
-      if (F.space && it.roomId !== F.space) return false;
+      if (F.space === '__GEN') { if (it.roomId && (DB.rooms||[]).some(function(q){ return q.id === it.roomId; })) return false; }
+      else if (F.space && it.roomId !== F.space) return false;
       if (q) {
         var hay = ((it.text||'') + ' ' + (it.extraNotes||'') + ' ' + (it.trade||'')).toLowerCase();
         if (hay.indexOf(q) < 0) return false;
@@ -23638,6 +23639,8 @@ function diff(){
   });
   return { unknown: false, items: items, total: items.length, snap: snap };
 }
+var _dc = null, _dcT = 0;
+function diffCached(){ if (_dc && Date.now() - _dcT < 60000) return _dc; _dc = diff(); _dcT = Date.now(); return _dc; }
 function jobName(id){ var j = (DB.jobs || []).find(function(x){ return x && x.id === id; }); return j ? j.name : ''; }
 function labelOf(it){
   if (it.a === 'deleted') return 'Removed ' + KIND[it.c][0];
@@ -23684,11 +23687,13 @@ function state(){
 }
 function render(){
   if (!canSync()) { chip.classList.remove('on'); return; }
+  /* v4.17: normal background syncing is SILENT — no "waiting to sync"/"syncing" pill, and no
+     full scan of every record. The chip only appears when you are offline or a sync failed. */
+  var onl = online(), err0 = ''; try { err0 = _lastSyncError || ''; } catch(e){}
+  if (onl && !err0) { chip.classList.remove('on'); if (sheetOpen) renderSheet(); return; }
   var s = state(), n = s.d.total, txt = '', bg = '';
   if (!s.on) { txt = n ? '📴 Offline · ' + n + ' waiting' : '📴 Offline · saved on this device'; bg = '#FF9F0A'; }
-  else if (s.syncing && n) { txt = '↻ Syncing ' + n + '…'; bg = '#0A84FF'; }
   else if (n && s.err) { txt = '⚠️ ' + n + ' waiting · sync failed'; bg = '#FF453A'; }
-  else if (n) { txt = '⏳ ' + n + ' waiting to sync'; bg = '#0A84FF'; }
   else if (s.err && !s.d.unknown) { txt = '⚠️ Sync failed'; bg = '#FF453A'; }
   if (!txt) { chip.classList.remove('on'); } else { chip.textContent = txt; chip.style.background = bg; chip.classList.add('on'); }
   if (sheetOpen) renderSheet();
@@ -23727,7 +23732,7 @@ function kick(force){
   if (busy) { render(); return; }
   var wait = 45000 * Math.min(Math.max(failStreak, 1), 6);
   if (!force && Date.now() - lastKick < wait) return;
-  var d = diff(), err = ''; try { err = _lastSyncError || ''; } catch(e){}
+  var d = force ? diff() : diffCached(), err = ''; try { err = _lastSyncError || ''; } catch(e){}
   if (!force && !d.unknown && !d.total && !err) return;
   if (!force && d.unknown && firstKickDone && !err) return;
   lastKick = Date.now(); firstKickDone = true;
@@ -23808,7 +23813,7 @@ loadBase(); hook();
 window.addEventListener('online', function(){ failStreak = 0; render(); setTimeout(function(){ kick(true); }, 1500); });
 window.addEventListener('offline', function(){ render(); });
 document.addEventListener('visibilitychange', function(){ if (!document.hidden) { render(); setTimeout(function(){ kick(false); }, 2000); } });
-setInterval(function(){ render(); kick(false); }, 15000);
+setInterval(function(){ if (document.hidden) return; render(); kick(false); }, 60000);
 setTimeout(function(){ render(); kick(false); }, 4000);
 console.log('[BP] v3.68 offline queue ready');
 })();
@@ -25380,3 +25385,150 @@ function toDocs(){
 console.log('[BP] v4.16 unfiled select menu');
 })();
 </script>
+
+<script id="v417">
+/* ── Punch as space tiles (same look as Photos). Tap a space → its punch list. ── */
+(function(){
+var orig = window.bpRenderPunch;
+if (typeof orig !== 'function') return;
+window._bpPunchArea = window._bpPunchArea || null;
+window.bpOpenPunchArea = function(id){ window._bpPunchArea = id; window._bpClFilter = window._bpClFilter || {}; window._bpClFilter.space = id; bpRenderPunch(); var s = document.getElementById('s-punch'); if (s) s.scrollTop = 0; };
+window.bpClosePunchArea = function(){ window._bpPunchArea = null; if (window._bpClFilter) window._bpClFilter.space = ''; bpRenderPunch(); };
+window.bpRenderPunch = function(){
+  orig.apply(this, arguments);
+  var body = document.getElementById('punch-body'); if (!body || !body.firstElementChild) return;
+  var jobSel = document.getElementById('pn-job'), jobId = jobSel ? jobSel.value : '';
+  if (window._bpPunchJobSeen !== jobId) { window._bpPunchJobSeen = jobId; window._bpPunchArea = null; if (window._bpClFilter) window._bpClFilter.space = ''; }
+  var first = body.firstElementChild;
+  var area = window._bpPunchArea;
+  var rooms = (DB.rooms || []).filter(function(r){ return r.jobId === jobId; });
+  if (area && area !== '__GEN' && !rooms.some(function(r){ return r.id === area; })) area = window._bpPunchArea = null;
+  if (area) {
+    var r = rooms.find(function(x){ return x.id === area; });
+    var name = area === '__GEN' ? 'General' : (r ? r.name : '');
+    var bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;align-items:center;gap:10px;margin:0 0 10px';
+    bar.innerHTML = '<button onclick="bpClosePunchArea()" style="padding:9px 14px;border-radius:99px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">‹ All Spaces</button>'
+      + '<div style="font-size:16px;font-weight:900;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r ? BPX.icon(r) + ' ' : '') + esc(name) + '</div>';
+    first.after(bar);
+    return;
+  }
+  while (first.nextSibling) body.removeChild(first.nextSibling);
+  var items = (DB.punchlist || []).filter(function(x){ return x && x.jobId === jobId; });
+  function cnt(id){ var o = 0, d = 0; items.forEach(function(x){ var m = id === '__GEN' ? (!x.roomId || !rooms.some(function(q){ return q.id === x.roomId; })) : x.roomId === id; if (m) { if (x.done) d++; else o++; } }); return { o:o, d:d }; }
+  var tiles = rooms.slice().sort(window.bpRoomCmp || function(){ return 0; }).map(function(room){
+    var c = cnt(room.id), all = c.o === 0 && c.d > 0;
+    return BPX.box({ onclick:"bpOpenPunchArea('" + room.id + "')", icon:BPX.icon(room), name:esc(room.name), flag:BPX.flag(room), minH:104,
+      border: all ? 'rgba(48,209,88,.45)' : 'var(--border)',
+      a:{ n:c.o, label:'OPEN', color:c.o ? '#FF453A' : 'var(--faint)' }, b:{ n:c.d, label:'DONE', color:c.d ? '#30D158' : 'var(--faint)' } });
+  }).join('');
+  var g = cnt('__GEN');
+  var gen = (g.o + g.d) ? BPX.box({ onclick:"bpOpenPunchArea('__GEN')", icon:'📋', name:'General', minH:104,
+    a:{ n:g.o, label:'OPEN', color:g.o ? '#FF453A' : 'var(--faint)' }, b:{ n:g.d, label:'DONE', color:g.d ? '#30D158' : 'var(--faint)' } }) : '';
+  var wrap = document.createElement('div'); wrap.style.cssText = 'margin:0 -16px';
+  wrap.innerHTML = BPX.grid(gen + tiles) || '';
+  body.appendChild(wrap);
+  if (!rooms.length && !gen) wrap.innerHTML = '<div class="empty"><div class="empty-icon">🏠</div><div class="empty-text">No spaces yet</div></div>';
+};
+})();
+
+/* ── Drag & drop: press-and-hold a space tile, drag it, drop it. Works on Spaces, Photos and Punch,
+   and every screen follows the same order (it is saved as room.order inside the tile's level). ── */
+(function(){
+var SEL = '[onclick^="openRoomDetail("],[onclick^="bpOpenPhotoArea("],[onclick^="bpOpenPunchArea("]';
+var HOLD = 380, drag = null, press = null, lastTouch = 0, suppressUntil = 0, raf = 0;
+function idOf(c){ var m = /\('([^']+)'\)/.exec(c.getAttribute('onclick') || ''); return m ? m[1] : ''; }
+function roomOf(id){ return (DB.rooms || []).find(function(r){ return r.id === id; }); }
+function lvl(c){ var r = roomOf(idOf(c)); return r && window.bpLevelOf ? window.bpLevelOf(r) : ''; }
+function eligible(el){
+  if (!el || !el.closest) return null;
+  var c = el.closest(SEL); if (!c) return null;
+  var id = idOf(c); if (!id || id === 'UNFILED' || id === '__GEN' || !roomOf(id)) return null;
+  var g = c.parentNode; if (!g || getComputedStyle(g).display !== 'grid') return null;
+  if (document.querySelector('#bp-unf-selbtn.on, .bpu-pill.on')) return null;     // not while selecting Unfiled photos
+  return c;
+}
+function scroller(el){ for (var n = el.parentNode; n && n !== document.body; n = n.parentNode) { var o = getComputedStyle(n).overflowY; if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n; } return document.scrollingElement || document.documentElement; }
+function pt(e){ var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e; return { x:t.clientX, y:t.clientY }; }
+function begin(c, p){
+  var r = c.getBoundingClientRect();
+  drag = { c:c, lvl:lvl(c), ox:p.x - (r.left + r.width/2), oy:p.y - (r.top + r.height/2), p:p, swapAt:0, sc:scroller(c),
+           before:[].filter.call(c.parentNode.children, function(k){ return k.matches && k.matches(SEL) && lvl(k) === lvl(c); }).map(idOf).join() };
+  c.style.transition = 'none'; c.style.zIndex = 60; c.style.pointerEvents = 'none'; c.style.boxShadow = '0 14px 34px rgba(0,0,0,.5)'; c.style.opacity = '.95';
+  document.body.style.webkitUserSelect = 'none'; document.body.style.userSelect = 'none';
+  try { if (navigator.vibrate) navigator.vibrate(12); } catch(e){}
+  place(p); loop();
+}
+function place(p){
+  var c = drag.c; drag.p = p;
+  c.style.transform = 'none';
+  var r = c.getBoundingClientRect();
+  c.style.transform = 'translate(' + (p.x - drag.ox - (r.left + r.width/2)) + 'px,' + (p.y - drag.oy - (r.top + r.height/2)) + 'px) scale(1.05)';
+  if (Date.now() - drag.swapAt < 110) return;
+  var under = document.elementFromPoint(p.x, p.y), t = under && under.closest ? under.closest(SEL) : null;
+  if (t && t !== c && t.parentNode === c.parentNode && lvl(t) === drag.lvl) {
+    var kids = [].slice.call(c.parentNode.children);
+    if (kids.indexOf(c) < kids.indexOf(t)) t.parentNode.insertBefore(c, t.nextSibling); else t.parentNode.insertBefore(c, t);
+    drag.swapAt = Date.now();
+    c.style.transform = 'none'; var r2 = c.getBoundingClientRect();
+    c.style.transform = 'translate(' + (p.x - drag.ox - (r2.left + r2.width/2)) + 'px,' + (p.y - drag.oy - (r2.top + r2.height/2)) + 'px) scale(1.05)';
+  }
+}
+function loop(){
+  if (!drag) return;
+  var y = drag.p.y, h = window.innerHeight, sc = drag.sc;
+  if (y < 110) sc.scrollTop -= 14; else if (y > h - 130) sc.scrollTop += 14;
+  raf = requestAnimationFrame(loop);
+}
+function finish(){
+  if (!drag) return;
+  cancelAnimationFrame(raf);
+  var c = drag.c, d = drag;
+  ['transition','zIndex','pointerEvents','boxShadow','opacity','transform'].forEach(function(k){ c.style[k] = ''; });
+  document.body.style.webkitUserSelect = ''; document.body.style.userSelect = '';
+  drag = null; suppressUntil = Date.now() + 500;
+  var ids = [].filter.call(c.parentNode.children, function(k){ return k.matches && k.matches(SEL) && lvl(k) === d.lvl; }).map(idOf);
+  if (ids.join() === d.before) return;
+  var stamp = (typeof now === 'function') ? now() : new Date().toISOString();
+  ids.forEach(function(id, i){ var r = roomOf(id); if (r) { r.order = i; r.updatedAt = stamp; } });
+  try { (window.bpSave || window.save)(); } catch(e){}
+  if (typeof toast === 'function') toast('↕ Order saved');
+  var fns = ['renderDesktopRooms','renderRooms','renderDesktopPhotos','renderPhotos','bpRenderPunch'];
+  var act = document.querySelector('.screen.active, .view.active'); var aid = act ? act.id : '';
+  var pick = /punch/.test(aid) ? 'bpRenderPunch' : /photos/.test(aid) ? (window.renderDesktopPhotos ? 'renderDesktopPhotos' : 'renderPhotos') : (window.renderDesktopRooms ? 'renderDesktopRooms' : 'renderRooms');
+  try { if (typeof window[pick] === 'function') window[pick](); } catch(e){}
+}
+function cancelPress(){ if (press) { clearTimeout(press.t); press = null; } }
+document.addEventListener('touchstart', function(e){
+  lastTouch = Date.now();
+  if (e.touches.length !== 1) { cancelPress(); return; }
+  var c = eligible(e.target); if (!c) return;
+  var p = pt(e);
+  press = { c:c, p:p, t:setTimeout(function(){ var pr = press; press = null; if (pr) begin(pr.c, pr.p); }, HOLD) };
+}, { passive:true });
+document.addEventListener('touchmove', function(e){
+  var p = pt(e);
+  if (drag) { e.preventDefault(); place(p); return; }
+  if (press && Math.abs(p.x - press.p.x) + Math.abs(p.y - press.p.y) > 10) cancelPress();
+}, { passive:false });
+['touchend','touchcancel'].forEach(function(n){ document.addEventListener(n, function(){ cancelPress(); finish(); }, { passive:true }); });
+document.addEventListener('mousedown', function(e){
+  if (e.button !== 0 || Date.now() - lastTouch < 800) return;
+  var c = eligible(e.target); if (!c) return;
+  press = { c:c, p:pt(e), mouse:true };
+});
+document.addEventListener('mousemove', function(e){
+  var p = pt(e);
+  if (drag) { e.preventDefault(); place(p); return; }
+  if (press && press.mouse && Math.abs(p.x - press.p.x) + Math.abs(p.y - press.p.y) > 8) { var pr = press; press = null; begin(pr.c, p); }
+});
+document.addEventListener('mouseup', function(){ if (press && press.mouse) press = null; finish(); });
+document.addEventListener('click', function(e){ if (Date.now() < suppressUntil) { e.stopPropagation(); e.preventDefault(); } }, true);
+document.addEventListener('contextmenu', function(e){ if (drag || press) e.preventDefault(); });
+var st = document.createElement('style');
+st.textContent = SEL.split(',').map(function(s){ return s; }).join(',') + '{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}';
+document.head.appendChild(st);
+})();
+
+</script>
+
