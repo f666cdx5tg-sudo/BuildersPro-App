@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '4.15';
+var APP_VERSION = '4.16';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -19698,8 +19698,8 @@ console.log('[BP] v3.88 ready — Mac text & button size matches the field app')
 </script>
 
 <script id="v415-unfiled">
-/* v4.15 — UNFILED PHOTOS: select several, then assign them to a location or move them to Documents.
-   Wraps the existing Unfiled screen; the one-photo 📁 button and "File all" still work as before. */
+/* v4.15/v4.16 — UNFILED PHOTOS: a round menu button + a "Select" pill sit in the header row.
+   Select photos, then use the menu to assign them to a location or move them to Documents. */
 (function(){
 'use strict';
 var DESK = typeof window.renderDesktopPhotos === 'function';
@@ -19707,6 +19707,23 @@ var FN = DESK ? 'renderDesktopPhotos' : 'renderPhotos';
 var orig = window[FN];
 if (typeof orig !== 'function' || !window.BPX) return;
 var sel = null;               // null = not selecting, else {photoId:true}
+
+var st = document.createElement('style');
+st.textContent = '.bpu{display:inline-flex;align-items:center;gap:8px;position:relative;flex:0 0 auto;margin-left:auto}'
+ + '.bpu-btn{height:44px;border-radius:22px;border:1px solid rgba(255,255,255,.18);color:var(--text,#fff);cursor:pointer;font-family:inherit;'
+ + 'background:color-mix(in srgb,var(--card,#1c1c1e) 62%,transparent);-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%);'
+ + 'box-shadow:inset 0 1px 0 rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;padding:0}'
+ + '.bpu-round{width:44px}.bpu-round svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}'
+ + '.bpu-pill{padding:0 20px;font-size:17px;font-weight:600}.bpu-pill.on{background:#0A84FF;border-color:#0A84FF;color:#fff}'
+ + '.bpu-pop{display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:230px;background:var(--card,#1c1c1e);border:1px solid var(--border,#333);'
+ + 'border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:6px;z-index:600}'
+ + '.bpu.open .bpu-pop{display:block}'
+ + '.bpu-it{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:0 12px;border:none;background:transparent;color:var(--text,#fff);'
+ + 'font-size:16px;font-weight:700;border-radius:10px;font-family:inherit;text-align:left;cursor:pointer;white-space:nowrap}'
+ + '.bpu-it .ic{width:22px;text-align:center;flex:0 0 22px}.bpu-it.dim{opacity:.45}'
+ + '.bpu-sep{display:block;height:1px;background:var(--border,#333);margin:4px 6px}'
+ + '#bp-photo-header:has(.bpu.open),#bp-desk-photo-header:has(.bpu.open){position:relative;z-index:500}';
+document.head.appendChild(st);
 
 function gridEl(){ return document.getElementById(DESK ? 'photos-grid-wrap' : 'photos-grid'); }
 function hdrEl(){ return document.getElementById(DESK ? 'bp-desk-photo-header' : 'bp-photo-header'); }
@@ -19717,8 +19734,10 @@ function unfiledIds(){
     .reverse().map(function(p){ return p.id; });
 }
 function count(){ return sel ? Object.keys(sel).length : 0; }
-function barOff(){ var b = document.getElementById('bp-unf-bar'); if (b) b.remove(); }
+function closeMenu(){ var m = document.querySelector('.bpu.open'); if (m) m.classList.remove('open'); }
+document.addEventListener('click', function(e){ if (!e.target.closest || !e.target.closest('.bpu')) closeMenu(); }, true);
 
+var countEl = null, countTxt = '';
 function paint(){
   var ids = unfiledIds(), kids = gridEl() ? gridEl().children : [];
   for (var i = 0; i < ids.length && i < kids.length; i++) {
@@ -19728,13 +19747,7 @@ function paint(){
     k.style.outline = on ? '3px solid #0A84FF' : '';
     k.style.outlineOffset = on ? '-3px' : '';
   }
-  var bar = document.getElementById('bp-unf-bar');
-  if (bar) {
-    var n = count();
-    bar.querySelector('.bp-unf-n').textContent = n ? n + ' selected' : 'Tap photos to select';
-    Array.prototype.forEach.call(bar.querySelectorAll('.bp-unf-act'), function(b){ b.style.opacity = n ? '1' : '.4'; });
-    bar.querySelector('.bp-unf-all').textContent = n === ids.length ? 'None' : 'All';
-  }
+  if (countEl) countEl.textContent = sel ? (count() ? count() + ' selected' : 'Tap photos') : countTxt;
 }
 function toggleOne(id){ if (!sel) return; if (sel[id]) delete sel[id]; else sel[id] = true; paint(); }
 function toggleAll(){
@@ -19742,44 +19755,62 @@ function toggleAll(){
   if (count() === ids.length) sel = {}; else { sel = {}; ids.forEach(function(i){ sel[i] = true; }); }
   paint();
 }
-function startStop(){ sel = sel ? null : {}; window[FN](); }
+function startStop(){ closeMenu(); sel = sel ? null : {}; window[FN](); }
 
-function showBar(){
-  barOff();
-  var bar = document.createElement('div');
-  bar.id = 'bp-unf-bar';
-  var btn = 'border:none;border-radius:11px;font-family:inherit;font-weight:800;font-size:14px;padding:12px 14px;cursor:pointer;min-height:44px';
-  bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);z-index:9500;width:min(560px,calc(100% - 20px));'
-    + 'bottom:calc(' + (DESK ? '16px' : '96px') + ' + env(safe-area-inset-bottom,0px));background:var(--card,#1c1c1e);'
-    + 'border:1.5px solid rgba(10,132,255,.6);border-radius:16px;padding:10px;display:flex;align-items:center;gap:8px;'
-    + 'box-shadow:0 10px 30px rgba(0,0,0,.45);box-sizing:border-box;flex-wrap:wrap';
-  bar.innerHTML = '<div class="bp-unf-n" style="flex:1 1 100%;font-size:13px;font-weight:800;color:var(--muted,#999)"></div>'
-    + '<button class="bp-unf-all" style="' + btn + ';background:rgba(255,255,255,.12);color:var(--text,#fff)">All</button>'
-    + '<button class="bp-unf-act" id="bp-unf-assign" style="' + btn + ';flex:1;background:#0A84FF;color:#fff">📁 Assign to…</button>'
-    + '<button class="bp-unf-act" id="bp-unf-docs" style="' + btn + ';flex:1;background:#BF5AF2;color:#fff">📎 To Documents</button>';
-  document.body.appendChild(bar);
-  bar.querySelector('.bp-unf-all').onclick = toggleAll;
-  bar.querySelector('#bp-unf-assign').onclick = assign;
-  bar.querySelector('#bp-unf-docs').onclick = toDocs;
+function menuItems(){
+  var n = count(), ids = unfiledIds();
+  if (!sel) return [
+    { ic:'☑️', t:'Select photos', f:startStop },
+    { ic:'📁', t:'File all ' + ids.length + ' to a location…', f:function(){ window.bpFileAllPrompt(); } }
+  ];
+  return [
+    { ic:'☑️', t: n === ids.length ? 'Select none' : 'Select all', f:toggleAll, keep:true },
+    { ic:'📁', t:'Assign to location…' + (n ? ' (' + n + ')' : ''), f:assign, dim:!n },
+    { ic:'📎', t:'Move to Documents' + (n ? ' (' + n + ')' : ''), f:toDocs, dim:!n },
+    { sep:true },
+    { ic:'✕', t:'Done selecting', f:startStop }
+  ];
+}
+function buildPop(pop){
+  pop.innerHTML = '';
+  menuItems().forEach(function(it){
+    if (it.sep) { var s = document.createElement('span'); s.className = 'bpu-sep'; pop.appendChild(s); return; }
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'bpu-it' + (it.dim ? ' dim' : '');
+    b.innerHTML = '<span class="ic">' + it.ic + '</span><span>' + it.t + '</span>';
+    b.onclick = function(){ if (!it.keep) closeMenu(); it.f(); if (it.keep) buildPop(pop); };
+    pop.appendChild(b);
+  });
 }
 
 function decorate(){
   var area = window._bpPhotoArea, grid = gridEl(), h = hdrEl();
   var ids = (area === 'UNFILED') ? unfiledIds() : [];
+  var oldBar = document.getElementById('bp-unf-bar'); if (oldBar) oldBar.remove();
   if (grid) grid.style.paddingBottom = '';
-  if (!grid || !h || area !== 'UNFILED' || !ids.length) { sel = null; barOff(); return; }
-  var old = document.getElementById('bp-unf-selbtn'); if (old) old.remove();
-  var b = document.createElement('button');
-  b.id = 'bp-unf-selbtn';
-  b.textContent = sel ? '✓ Done selecting' : '☑️ Select photos';
-  b.style.cssText = DESK
-    ? 'padding:9px 14px;border-radius:9px;border:1.5px solid rgba(10,132,255,.5);background:rgba(10,132,255,.12);color:#0A84FF;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit'
-    : 'width:100%;margin-top:8px;background:rgba(10,132,255,.12);border:1.5px solid rgba(10,132,255,.45);border-radius:10px;color:#0A84FF;font-size:13px;font-weight:800;padding:10px;cursor:pointer;font-family:inherit';
-  b.onclick = startStop;
-  (DESK ? h : (h.firstElementChild || h)).appendChild(b);
+  if (!grid || !h || area !== 'UNFILED' || !ids.length) { sel = null; countEl = null; return; }
+  var row = DESK ? h : (h.firstElementChild && h.firstElementChild.firstElementChild);
+  if (!row) return;
+  Array.prototype.forEach.call(h.querySelectorAll('button'), function(b){
+    if ((b.getAttribute('onclick')||'').indexOf('bpFileAllPrompt') > -1) b.remove();   // lives in the menu now
+  });
+  countEl = row.querySelector('div:last-of-type');
+  countTxt = countEl ? countEl.textContent : '';
+  if (countEl) { countEl.style.marginLeft = '10px'; countEl.style.whiteSpace = 'nowrap'; }
+  var wrap = document.createElement('span');
+  wrap.className = 'bpu';
+  wrap.innerHTML = '<button type="button" class="bpu-btn bpu-round" id="bpu-menu-btn" aria-label="Photo actions" aria-haspopup="true">'
+    + '<svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="17" x2="14" y2="17"/></svg></button>'
+    + '<button type="button" class="bpu-btn bpu-pill' + (sel ? ' on' : '') + '" id="bpu-sel">' + (sel ? 'Done' : 'Select') + '</button>'
+    + '<span class="bpu-pop" role="menu"></span>';
+  row.appendChild(wrap);
+  wrap.querySelector('#bpu-sel').onclick = startStop;
+  wrap.querySelector('#bpu-menu-btn').onclick = function(){
+    var was = wrap.classList.contains('open'); closeMenu();
+    if (!was) { buildPop(wrap.querySelector('.bpu-pop')); wrap.classList.add('open'); }
+  };
+  if (!sel) return;
   var kids = grid.children;
-  if (!sel) { barOff(); return; }
-  grid.style.paddingBottom = DESK ? '120px' : '210px';   // so the last row can scroll clear of the floating bar
   for (var i = 0; i < ids.length && i < kids.length; i++) (function(id, k){
     k.style.position = 'relative';
     Array.prototype.forEach.call(k.querySelectorAll('button'), function(x){ x.style.display = 'none'; });
@@ -19790,7 +19821,6 @@ function decorate(){
     k.appendChild(m);
     k.onclick = function(e){ if (e && e.preventDefault) e.preventDefault(); toggleOne(id); };
   })(ids[i], kids[i]);
-  showBar();
   paint();
 }
 
@@ -19801,7 +19831,7 @@ window[FN] = function(){
 };
 
 function afterChange(){
-  sel = null; barOff();
+  sel = null;
   if (!unfiledIds().length) window._bpPhotoArea = null;
   try { if (typeof renderAll === 'function') renderAll(); } catch (e) {}
   window[FN]();
@@ -19870,6 +19900,6 @@ function toDocs(){
                : 'Nothing moved — these photos have no job. Pick a job at the top first.');
   afterChange();
 }
-console.log('[BP] v4.15 unfiled select');
+console.log('[BP] v4.16 unfiled select menu');
 })();
 </script>
