@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.21';
+var APP_VERSION = '4.22';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -23412,12 +23412,19 @@ function paintRoom(){
 }
 function paintCats(){
   var w = $('pa-cats'); if (!w) return;
-  w.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px';
-  w.innerHTML = TRADE_CATEGORY_ORDER.map(function(cat){
-    var on = cat === S.cat;
-    return '<button type="button" data-cat="' + cat + '" onclick="bpPunchCat(\'' + cat + '\')" style="min-height:54px;padding:8px 10px;border-radius:12px;border:2px solid ' + (on ? '#0A84FF' : 'var(--border)') + ';background:' + (on ? 'rgba(10,132,255,.2)' : 'var(--card2,#222)') + ';color:' + (on ? '#4DA3FF' : 'var(--text)') + ';font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">'
-      + '<span>' + (TRADE_CATEGORY_ICON[cat] || '') + '</span><span>' + E(cat) + '</span></button>';
-  }).join('');
+  w.style.cssText = '';
+  var open = !!S.catOpen, cur = S.cat;
+  var burger = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>';
+  var h = '<button type="button" aria-haspopup="true" aria-expanded="' + open + '" onclick="bpPunchCatMenu()" style="width:100%;min-height:56px;padding:8px 14px;border-radius:12px;border:2px solid ' + (cur ? '#0A84FF' : 'var(--border)') + ';background:' + (cur ? 'rgba(10,132,255,.2)' : 'var(--card2,#222)') + ';color:var(--text,#f0f0f0);font-size:17px;font-weight:800;font-family:inherit;display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">'
+    + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (cur ? (TRADE_CATEGORY_ICON[cur] || '') + ' ' + E(cur) : 'Choose a category') + '</span>' + burger + '</button>';
+  if (open) {
+    h += '<div style="margin-top:8px;border:1px solid var(--border);border-radius:12px;background:var(--card2,#222);overflow:hidden">' + TRADE_CATEGORY_ORDER.map(function(cat, i){
+      var on = cat === cur;
+      return '<button type="button" data-cat="' + cat + '" onclick="bpPunchCat(\'' + cat + '\')" style="width:100%;min-height:50px;padding:8px 14px;border:none;' + (i ? 'border-top:1px solid var(--border);' : '') + 'background:' + (on ? 'rgba(10,132,255,.2)' : 'transparent') + ';color:var(--text,#f0f0f0);font-size:16px;font-weight:' + (on ? '800' : '600') + ';font-family:inherit;display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">'
+        + '<span style="width:26px;text-align:center">' + (TRADE_CATEGORY_ICON[cat] || '') + '</span><span style="flex:1">' + E(cat) + '</span>' + (on ? '<span style="color:#0A84FF">✓</span>' : '') + '</button>';
+    }).join('') + '</div>';
+  }
+  w.innerHTML = h;
 }
 function paintPhotoBtns(){
   var w = $('pa-pbtns'); if (!w) return;
@@ -23440,7 +23447,7 @@ function paintPhotos(){
 function paintBtn(){
   var b = $('pa-add'); if (!b) return;
   var n = S.files.length;
-  b.textContent = S.cat ? ('Add ' + S.cat + ' to ' + roomName() + (n ? ' · ' + n + ' photo' + (n > 1 ? 's' : '') : '')) : 'Pick a category above';
+  b.textContent = S.cat ? ('Add ' + S.cat + ' to ' + roomName() + (n ? ' · ' + n + ' photo' + (n > 1 ? 's' : '') : '')) : 'Choose a category first';
   b.style.opacity = S.cat ? '1' : '.45';
   b.style.minHeight = '56px';
   b.style.fontSize = '17px';
@@ -23503,7 +23510,7 @@ window.openAddPunchItem = function(jobId, roomId){
   var r = roomId || getLast(jobId);
   if (r && !roomsFor(jobId).some(function(x){ return x.id === r; })) r = '';
   revoke();
-  S = { jobId: jobId, roomId: r, cat: '', files: [], urls: [], note: '', added: [], tpl: false };
+  S = { jobId: jobId, roomId: r, catOpen: false, cat: '', files: [], urls: [], note: '', added: [], tpl: false };
   build();
   openSheet('sheet-add-punch');
 };
@@ -23513,8 +23520,9 @@ window.bpPunchRoom = function(v){
   S.roomId = v || ''; setLast(S.jobId, S.roomId);
   paintRoom(); paintBtn(); paintAdded(); paintTpl();
 };
+window.bpPunchCatMenu = function(){ S.catOpen = !S.catOpen; paintCats(); };
 window.bpPunchCat = function(cat){
-  S.cat = (S.cat === cat) ? '' : cat; S.tpl = false;
+  S.cat = (S.cat === cat) ? '' : cat; S.tpl = false; S.catOpen = false;
   paintCats(); paintBtn(); paintTpl();
 };
 window.bpPunchNote = function(v){ S.note = v || ''; };
