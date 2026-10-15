@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.20';
+var APP_VERSION = '4.21';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -25461,12 +25461,16 @@ function eligible(el){
   if (document.querySelector('#bp-unf-selbtn.on, .bpu-pill.on')) return null;     // not while selecting Unfiled photos
   return c;
 }
+function isHdr(k){ return k.nodeType === 1 && (k.hasAttribute('data-bp-level') || k.hasAttribute('data-bp-lvl3')); }
+function hdrLevel(h){ var a = h.getAttribute('data-bp-level'); if (a !== null) return a === 'none' ? '' : a; var sp = h.querySelector('span'); var t = sp ? sp.textContent.trim() : ''; return /^level not set$/i.test(t) ? '' : t; }
+function tilesOf(grid){ return [].filter.call(grid.children, function(k){ return k.matches && k.matches(SEL); }); }
+function newLevelOf(c){ for (var n = c.previousElementSibling; n; n = n.previousElementSibling) if (isHdr(n)) return { h:n, l:hdrLevel(n) }; return null; }
 function scroller(el){ for (var n = el.parentNode; n && n !== document.body; n = n.parentNode) { var o = getComputedStyle(n).overflowY; if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n; } return document.scrollingElement || document.documentElement; }
 function pt(e){ var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e; return { x:t.clientX, y:t.clientY }; }
 function begin(c, p){
   var r = c.getBoundingClientRect();
   drag = { c:c, lvl:lvl(c), ox:p.x - (r.left + r.width/2), oy:p.y - (r.top + r.height/2), p:p, swapAt:0, sc:scroller(c),
-           before:[].filter.call(c.parentNode.children, function(k){ return k.matches && k.matches(SEL) && lvl(k) === lvl(c); }).map(idOf).join() };
+           before:tilesOf(c.parentNode).map(idOf).join() + '|' + (newLevelOf(c) || {}).l };
   c.style.transition = 'none'; c.style.zIndex = 60; c.style.pointerEvents = 'none'; c.style.boxShadow = '0 14px 34px rgba(0,0,0,.5)'; c.style.opacity = '.95';
   document.body.style.webkitUserSelect = 'none'; document.body.style.userSelect = 'none'; document.body.style.touchAction = 'none';
   try { if (navigator.vibrate) navigator.vibrate(12); } catch(e){}
@@ -25477,15 +25481,18 @@ function place(p){
   c.style.transform = 'none';
   var r = c.getBoundingClientRect();
   c.style.transform = 'translate(' + (p.x - drag.ox - (r.left + r.width/2)) + 'px,' + (p.y - drag.oy - (r.top + r.height/2)) + 'px) scale(1.05)';
-  if (Date.now() - drag.swapAt < 110) return;
+  if (Date.now() - drag.swapAt < 60) return;
   var under = document.elementFromPoint(p.x, p.y), t = under && under.closest ? under.closest(SEL) : null;
-  if (t && t !== c && t.parentNode === c.parentNode && lvl(t) === drag.lvl) {
+  var hd = null; if (!t && under) { for (var q = under; q && q !== c.parentNode; q = q.parentNode) if (q.parentNode === c.parentNode && isHdr(q)) { hd = q; break; } }
+  if (hd) {
+    if (c.previousElementSibling !== hd) { hd.parentNode.insertBefore(c, hd.nextSibling); drag.swapAt = Date.now(); }
+  } else if (t && t !== c && t.parentNode === c.parentNode) {
     var kids = [].slice.call(c.parentNode.children);
     if (kids.indexOf(c) < kids.indexOf(t)) t.parentNode.insertBefore(c, t.nextSibling); else t.parentNode.insertBefore(c, t);
     drag.swapAt = Date.now();
-    c.style.transform = 'none'; var r2 = c.getBoundingClientRect();
-    c.style.transform = 'translate(' + (p.x - drag.ox - (r2.left + r2.width/2)) + 'px,' + (p.y - drag.oy - (r2.top + r2.height/2)) + 'px) scale(1.05)';
-  }
+  } else return;
+  c.style.transform = 'none'; var r2 = c.getBoundingClientRect();
+  c.style.transform = 'translate(' + (p.x - drag.ox - (r2.left + r2.width/2)) + 'px,' + (p.y - drag.oy - (r2.top + r2.height/2)) + 'px) scale(1.05)';
 }
 function loop(){
   if (!drag) return;
@@ -25500,12 +25507,15 @@ function finish(){
   ['transition','zIndex','pointerEvents','boxShadow','opacity','transform'].forEach(function(k){ c.style[k] = ''; });
   document.body.style.webkitUserSelect = ''; document.body.style.userSelect = ''; document.body.style.touchAction = '';
   drag = null; suppressUntil = Date.now() + 500;
-  var ids = [].filter.call(c.parentNode.children, function(k){ return k.matches && k.matches(SEL) && lvl(k) === d.lvl; }).map(idOf);
-  if (ids.join() === d.before) return;
+  var nl = newLevelOf(c), all = tilesOf(c.parentNode).map(idOf);
+  if (all.join() + '|' + (nl || {}).l === d.before) return;
   var stamp = (typeof now === 'function') ? now() : new Date().toISOString();
-  ids.forEach(function(id, i){ var r = roomOf(id); if (r) { r.order = i; r.updatedAt = stamp; } });
+  if (nl) {
+    var grp = []; for (var n = nl.h.nextElementSibling; n && !isHdr(n); n = n.nextElementSibling) if (n.matches && n.matches(SEL)) grp.push(idOf(n));
+    grp.forEach(function(id, i){ var r = roomOf(id); if (r) { r.level = nl.l; r.order = i; r.updatedAt = stamp; } });
+  }
   try { (window.bpSave || window.save)(); } catch(e){}
-  if (typeof toast === 'function') toast('↕ Order saved');
+  if (typeof toast === 'function') toast(nl && nl.l !== d.lvl ? '↕ Moved to ' + (nl.l || 'no level') : '↕ Order saved');
   var fns = ['renderDesktopRooms','renderRooms','renderDesktopPhotos','renderPhotos','bpRenderPunch'];
   var act = document.querySelector('.screen.active, .view.active'); var aid = act ? act.id : '';
   var pick = /punch/.test(aid) ? 'bpRenderPunch' : /photos/.test(aid) ? (window.renderDesktopPhotos ? 'renderDesktopPhotos' : 'renderPhotos') : (window.renderDesktopRooms ? 'renderDesktopRooms' : 'renderRooms');
