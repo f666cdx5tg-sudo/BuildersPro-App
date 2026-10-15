@@ -14,7 +14,7 @@ with sync_playwright() as p:
     pg.on('pageerror',lambda x:e.append(str(x)))
     pg.goto('http://localhost:8771/index.html');pg.wait_for_timeout(2200)
     pg.evaluate("document.getElementById('bp-lock')?.remove()")
-    chk('version',pg.evaluate("APP_VERSION")=='4.22')
+    chk('version',pg.evaluate("APP_VERSION")=='4.23')
     pg.evaluate(SEED);pg.evaluate("window._bpPunchJob='j1';showScreen('s-punch')");pg.wait_for_timeout(700)
     t=pg.locator('#punch-body [onclick^="bpOpenPunchArea("]')
     chk('tiles: 3 spaces + General',t.count()==4)

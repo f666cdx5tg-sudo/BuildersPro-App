@@ -12,7 +12,7 @@ with sync_playwright() as p:
     ctx=b.new_context(viewport={'width':390,'height':844},has_touch=True,is_mobile=True)
     pg=ctx.new_page();e=[];pg.on('pageerror',lambda x:e.append(str(x)))
     pg.goto('http://localhost:8775/index.html');pg.wait_for_timeout(2200);pg.evaluate("document.getElementById('bp-lock')?.remove()")
-    chk('version',pg.evaluate("APP_VERSION")=='4.22')
+    chk('version',pg.evaluate("APP_VERSION")=='4.23')
     cdp=ctx.new_cdp_session(pg)
     def T(t,x,y): cdp.send('Input.dispatchTouchEvent',{'type':t,'touchPoints':([{'x':x,'y':y}] if t!='touchEnd' else [])})
     def lv(i): return pg.evaluate("DB.rooms.find(function(r){return r.id=='%s'}).level"%i)

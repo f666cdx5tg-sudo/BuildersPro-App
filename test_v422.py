@@ -7,7 +7,7 @@ with sync_playwright() as p:
     b=p.chromium.launch();pg=b.new_context(viewport={'width':390,'height':844}).new_page();e=[]
     pg.on('pageerror',lambda x:e.append(str(x)))
     pg.goto('http://localhost:8776/index.html');pg.wait_for_timeout(2200);pg.evaluate("document.getElementById('bp-lock')?.remove()")
-    chk('version',pg.evaluate("APP_VERSION")=='4.22')
+    chk('version',pg.evaluate("APP_VERSION")=='4.23')
     pg.evaluate("DB.jobs=[{id:'j1',name:'J',status:'Active'}];DB.rooms=[{id:'r1',jobId:'j1',name:'Kitchen',level:'Level 1'}];DB.punchlist=[];(window.bpSave||save)();openAddPunchItem('j1','r1')")
     pg.wait_for_timeout(600)
     chk('closed: no category list showing',pg.locator('#pa-cats [data-cat]').count()==0)
