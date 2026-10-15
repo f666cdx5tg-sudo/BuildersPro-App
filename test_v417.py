@@ -29,6 +29,7 @@ with sync_playwright() as p:
     pg.click('[onclick="bpOpenPunchArea(\'__GEN\')"]');pg.wait_for_timeout(400)
     tx=pg.locator('#punch-body').inner_text();chk('General shows unassigned only',('Cleanup' in tx) and ('Caulk' not in tx))
     pg.click('text=All Spaces');pg.wait_for_timeout(400)
+    pg.wait_for_timeout(1600)
     # drag Kitchen after Hall
     a=pg.locator('[onclick="bpOpenPunchArea(\'r1\')"]').bounding_box();h=pg.locator('[onclick="bpOpenPunchArea(\'r3\')"]').bounding_box()
     pg.mouse.move(a['x']+30,a['y']+30);pg.mouse.down();pg.mouse.move(a['x']+60,a['y']+40,steps=3);pg.mouse.move(h['x']+h['width']/2,h['y']+h['height']/2,steps=8);pg.wait_for_timeout(250)
