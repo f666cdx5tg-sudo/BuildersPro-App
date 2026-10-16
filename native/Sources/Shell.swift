@@ -53,7 +53,23 @@ struct RootShell: View {
     private var dynamicSize: DynamicTypeSize { [DynamicTypeSize.large, .xLarge, .xxxLarge][min(max(textSize, 0), 2)] }
     private let sizeNames = ["Normal", "Large", "Extra large"]
 
+    private var zoom: CGFloat { [1.0, 1.15, 1.32][min(max(textSize, 0), 2)] }
+
     var body: some View {
+        #if os(macOS)
+        // macOS ignores Dynamic Type, so Text size zooms the whole layout instead.
+        GeometryReader { g in
+            content
+                .frame(width: g.size.width / zoom, height: g.size.height / zoom)
+                .scaleEffect(zoom, anchor: .topLeading)
+                .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+        }
+        #else
+        content
+        #endif
+    }
+
+    private var content: some View {
         ZStack(alignment: .leading) {
             Group {
                 switch screen {
