@@ -99,12 +99,13 @@ struct JobDetailView: View {
                     case "Expense": sheet = .expense
                     case "Contractor": sheet = .contractor
                     case "Invoice": sheet = .invoice
+                    case "Change order": sheet = .changeOrder
+                    case "Permit": sheet = .permit
+                    case "Delivery": sheet = .delivery
                     case "Appointment": sheet = .appointment
                     default:
                         sheet = nil
                         switch choice {
-                        case "Change order": addChangeOrder()
-                        case "Permit": addPermit()
                         case "Clock in (labor)": clockIn()
                         case "Daily report": addReport()
                         case "Note": addNote()
@@ -117,6 +118,9 @@ struct JobDetailView: View {
             case .expense: ExpenseSheet(job: job)
             case .contractor: ContractorSheet(job: job)
             case .invoice: InvoiceSheet(job: job)
+            case .changeOrder: ChangeOrderSheet(job: job)
+            case .permit: PermitSheet(job: job)
+            case .delivery: DeliverySheet(job: job)
             case .appointment: AppointmentSheet(req: ApptRequest(kind: "Appointment", date: Date(), job: job))
             }
         }
@@ -1187,4 +1191,4 @@ extension View {
 
 
 enum JobSheet: String, Identifiable {
-    case picker, spaces, expense, contractor, invoice, appointment; var id: String { rawValue } }
+    case picker, spaces, expense, contractor, invoice, appointment, changeOrder, permit, delivery; var id: String { rawValue } }

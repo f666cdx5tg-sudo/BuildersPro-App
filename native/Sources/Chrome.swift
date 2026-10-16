@@ -884,7 +884,7 @@ struct AddPickerSheet: View {
     private let items: [(String, String)] = [
         ("Space", "square.grid.2x2"), ("Expense", "receipt"), ("Contractor", "person.badge.plus"),
         ("Change order", "arrow.triangle.2.circlepath"), ("Invoice", "doc.text"), ("Permit", "checkmark.seal"),
-        ("Clock in (labor)", "clock"), ("Daily report", "doc.plaintext"), ("Appointment", "calendar.badge.plus"),
+        ("Delivery", "shippingbox"), ("Clock in (labor)", "clock"), ("Daily report", "doc.plaintext"), ("Appointment", "calendar.badge.plus"),
         ("Note", "note.text"), ("Shopping item", "cart")]
     var body: some View {
         SheetFrame(title: "Add to this job") {
@@ -913,7 +913,7 @@ struct FinanceAddSheet: View {
     let initial: Job?
     let pick: (Job, String) -> Void
     @State private var jobName = ""
-    private let items: [(String, String)] = [("Expense", "receipt"), ("Contractor", "person.badge.plus"), ("Invoice", "doc.text")]
+    private let items: [(String, String)] = [("Expense", "receipt"), ("Contractor", "person.badge.plus"), ("Invoice", "doc.text"), ("Change order", "arrow.triangle.2.circlepath"), ("Permit", "checkmark.seal"), ("Delivery", "shippingbox")]
     private var job: Job? { jobs.first { $0.name == jobName } ?? initial ?? jobs.first }
     var body: some View {
         SheetFrame(title: "Add to Finance") {
@@ -934,5 +934,127 @@ struct FinanceAddSheet: View {
             }
         }
         .onAppear { if jobName.isEmpty { jobName = (initial ?? jobs.first)?.name ?? "" } }
+    }
+}
+
+
+// MARK: - Change order / Permit / Delivery forms
+
+struct ChangeOrderSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    let job: Job
+    @State private var title = ""
+    @State private var details = ""
+    @State private var amount = ""
+    @State private var days = ""
+    @State private var status = "Draft"
+    @State private var reason = "Owner request"
+    private var number: String { String(format: "CO-%03d", (job.changeOrders ?? []).count + 1) }
+    var body: some View {
+        SheetFrame(title: "New \(number)") {
+            FField(title: "Title *", text: $title, prompt: "What's changing?")
+            FField(title: "Details", text: $details, prompt: "Describe the change")
+            HStack(alignment: .top, spacing: 12) {
+                FField(title: "Amount ($)", text: $amount, prompt: "0.00 (negative = credit)")
+                FField(title: "Days added", text: $days, prompt: "0")
+            }
+            FMenu(title: "Status", value: $status, options: ["Draft", "Submitted", "Approved", "Rejected", "Void"])
+            FMenu(title: "Reason", value: $reason, options: ["Owner request", "Field condition", "Design change", "Code / inspector", "Hidden condition", "Scope clarification", "Other"])
+            FBigButton(title: "Save Change Order", enabled: !title.trimmingCharacters(in: .whitespaces).isEmpty) {
+                let c = ChangeOrder(number: number)
+                c.title = title.trimmingCharacters(in: .whitespaces); c.details = details
+                c.amount = money(amount); c.daysAdded = Int(days) ?? 0; c.status = status; c.reason = reason
+                if status == "Approved" { c.approvedAt = Date() }
+                context.insert(c); c.job = job
+                dismiss()
+            }
+        }
+    }
+}
+
+struct PermitSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    let job: Job
+    @State private var trade = "General"
+    @State private var number = ""
+    @State private var cost = ""
+    @State private var status = "Active"
+    @State private var issue = Date()
+    @State private var expires = Calendar.current.date(byAdding: .month, value: 6, to: Date()) ?? Date()
+    @State private var notes = ""
+    var body: some View {
+        SheetFrame(title: "New Permit") {
+            FMenu(title: "Trade", value: $trade, options: ["General", "Electrical", "Plumbing", "HVAC", "Framing", "Roofing", "Masonry", "Building", "Other"])
+            FField(title: "Permit number", text: $number, prompt: "e.g. B-2026-0142")
+            HStack(alignment: .top, spacing: 12) {
+                FField(title: "Cost ($)", text: $cost, prompt: "0.00")
+                FMenu(title: "Status", value: $status, options: ["Active", "Pending", "Closed"])
+            }
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("ISSUE DATE").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                    DatePicker("", selection: $issue, displayedComponents: .date).labelsHidden()
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("EXPIRATION *").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                    DatePicker("", selection: $expires, displayedComponents: .date).labelsHidden()
+                }
+            }
+            FField(title: "Notes", text: $notes, prompt: "Optional")
+            FBigButton(title: "Save Permit") {
+                let p = Permit(trade: trade)
+                p.number = number; p.cost = money(cost); p.status = status
+                p.issueDate = issue; p.expirationDate = expires; p.notes = notes
+                context.insert(p); p.job = job
+                dismiss()
+            }
+        }
+    }
+}
+
+struct DeliverySheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    let job: Job
+    @State private var what = ""
+    @State private var supplier = ""
+    @State private var date = Date()
+    @State private var window = ""
+    @State private var po = ""
+    @State private var amount = ""
+    @State private var status = "Scheduled"
+    @State private var notes = ""
+    var body: some View {
+        SheetFrame(title: "Schedule Delivery") {
+            FField(title: "What's coming *", text: $what, prompt: "Lumber, tile, fixtures…")
+            FField(title: "Supplier *", text: $supplier, prompt: "Home Depot, supplier name…")
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("DELIVERY DATE *").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                    DatePicker("", selection: $date, displayedComponents: .date).labelsHidden().frame(height: 54)
+                }
+                FField(title: "Time window", text: $window, prompt: "8–10 AM")
+            }
+            HStack(alignment: .top, spacing: 12) {
+                FField(title: "PO / Order #", text: $po, prompt: "Optional")
+                FField(title: "Amount ($)", text: $amount, prompt: "0.00")
+            }
+            Text("Leave the amount at 0 if the ticket hasn't come yet — fill it in when you mark it received.").font(.callout).foregroundStyle(.secondary)
+            FMenu(title: "Status", value: $status, options: ["Scheduled", "Delivered", "Partial", "Backordered"])
+            FField(title: "Notes", text: $notes, prompt: "Optional")
+            FBigButton(title: "Save Delivery", enabled: !what.trimmingCharacters(in: .whitespaces).isEmpty && !supplier.trimmingCharacters(in: .whitespaces).isEmpty) {
+                let e = Expense(title: what.trimmingCharacters(in: .whitespaces), amount: money(amount))
+                e.vendor = supplier; e.category = "Delivery"; e.date = date
+                e.deliveryStatus = status; e.poNumber = po; e.timeWindow = window
+                context.insert(e); e.job = job
+                let a = Appointment(title: "🚚 " + e.title)
+                a.kind = "Delivery"; a.date = date
+                a.notes = [supplier, window, po.isEmpty ? "" : "PO " + po, notes].filter { !$0.isEmpty }.joined(separator: " · ")
+                context.insert(a); a.job = job
+                dismiss()
+            }
+        }
     }
 }

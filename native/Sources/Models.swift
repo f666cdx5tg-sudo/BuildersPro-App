@@ -131,6 +131,9 @@ final class Expense {
     var date: Date = Date()
     var itemsText: String = ""                       // one line per item: "Trash — 250.00"
     @Attribute(.externalStorage) var receipt: Data?
+    var deliveryStatus: String = ""                  // "" for a normal expense; Scheduled/Delivered/Partial/Backordered for deliveries
+    var poNumber: String = ""
+    var timeWindow: String = ""
     var sourceID: String = ""
     var job: Job?
 

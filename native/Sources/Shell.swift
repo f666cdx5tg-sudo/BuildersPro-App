@@ -880,6 +880,9 @@ struct AllMoneyView: View {
                     }
                 case "Expense": if let t = k.job { ExpenseSheet(job: t) }
                 case "Contractor": if let t = k.job { ContractorSheet(job: t) }
+                case "Change order": if let t = k.job { ChangeOrderSheet(job: t) }
+                case "Permit": if let t = k.job { PermitSheet(job: t) }
+                case "Delivery": if let t = k.job { DeliverySheet(job: t) }
                 default: if let t = k.job { InvoiceSheet(job: t) }
                 }
             }
