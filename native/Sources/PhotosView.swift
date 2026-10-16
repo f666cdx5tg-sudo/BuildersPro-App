@@ -57,7 +57,9 @@ struct PhotosView: View {
             } label: { Image(systemName: "line.3.horizontal") }
         }
         .onChange(of: picked) { _, items in Task { await load(items) } }
-        .navigationDestination(item: $openPhoto) { p in PhotoViewer(photo: p) }
+        .navigationDestination(item: $openPhoto) { p in
+            MarkupView(data: p.data ?? Data(), caption: Binding(get: { p.caption }, set: { p.caption = $0 })) { p.data = $0 }
+        }
         #if os(iOS)
         .fullScreenCover(isPresented: $camera) {
             CameraPicker { data in
@@ -110,41 +112,28 @@ struct PhotoThumb: View {
 
 // MARK: - Viewer, markup, camera
 
-struct PhotoViewer: View {
-    @Bindable var photo: SitePhoto
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                if let d = photo.data, let img = PhotoThumb.image(d) { img.resizable().scaledToFit() }
-                TextField("Caption", text: $photo.caption).textFieldStyle(.roundedBorder).padding(.horizontal)
-                if let d = photo.data {
-                    NavigationLink { MarkupView(data: d) { photo.data = $0 } } label: {
-                        Label("Mark up (draw on photo)", systemImage: "pencil.tip.crop.circle")
-                    }
-                }
-            }.padding(.vertical)
-        }
-        .navigationTitle("Photo")
-    }
-}
-
 struct Stroke: Identifiable {
     let id = UUID()
     var points: [CGPoint]            // 0...1 of the picture's width/height
     var color: Color
+    var width: CGFloat               // fraction of the picture's short side
 }
 
-/// Draw on a photo with a finger or mouse; Save puts the marked-up picture back in place of the original.
+/// Opens straight into drawing: tools sit on a bar above the photo, so they are always visible.
 struct MarkupView: View {
     let data: Data
+    var caption: Binding<String>? = nil
     let onSave: (Data) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var strokes: [Stroke] = []
     @State private var color: Color = .red
+    @State private var width: CGFloat = 0.008
     private let palette: [Color] = [.red, .yellow, .blue, .green, .white, .black]
+    private let widths: [(String, CGFloat)] = [("Thin", 0.004), ("Medium", 0.008), ("Thick", 0.016)]
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
+            toolbar
             if let img = PhotoThumb.image(data) {
                 img.resizable().scaledToFit()
                     .overlay {
@@ -153,34 +142,50 @@ struct MarkupView: View {
                                 .gesture(DragGesture(minimumDistance: 0).onChanged { v in
                                     let pt = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
                                                      y: min(max(v.location.y / g.size.height, 0), 1))
-                                    if v.translation == .zero { strokes.append(Stroke(points: [pt], color: color)) }
+                                    if v.translation == .zero { strokes.append(Stroke(points: [pt], color: color, width: width)) }
                                     else if !strokes.isEmpty { strokes[strokes.count - 1].points.append(pt) }
                                 })
                         }
                     }
-                    .padding(.horizontal)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 8)
             }
-            HStack(spacing: 14) {
-                ForEach(palette, id: \.self) { c in
-                    Circle().fill(c).frame(width: 30, height: 30)
-                        .overlay(Circle().stroke(Color.primary, lineWidth: color == c ? 3 : 0.5))
-                        .onTapGesture { color = c }
-                }
-                Spacer()
-                Button("Undo", systemImage: "arrow.uturn.backward") { _ = strokes.popLast() }.disabled(strokes.isEmpty)
-            }.padding(.horizontal)
-            HStack {
-                Button("Cancel", role: .cancel) { dismiss() }
-                Spacer()
-                Button("Save") { save() }.buttonStyle(.borderedProminent).disabled(strokes.isEmpty)
-            }.padding(.horizontal).padding(.bottom)
+            if let caption { TextField("Caption", text: caption).textFieldStyle(.roundedBorder).padding(.horizontal) }
         }
+        .padding(.bottom, 8)
         .navigationTitle("Mark up")
     }
 
+    private var toolbar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                ForEach(palette, id: \.self) { c in
+                    Circle().fill(c).frame(width: 34, height: 34)
+                        .overlay(Circle().stroke(Color.accentColor, lineWidth: color == c ? 4 : 0))
+                        .overlay(Circle().stroke(Color.gray.opacity(0.6), lineWidth: 1))
+                        .onTapGesture { color = c }
+                }
+                Divider().frame(height: 28)
+                ForEach(widths, id: \.0) { w in
+                    Button(w.0) { width = w.1 }
+                        .buttonStyle(.bordered).tint(width == w.1 ? .accentColor : .gray)
+                }
+                Spacer()
+            }
+            HStack(spacing: 12) {
+                Button("Undo", systemImage: "arrow.uturn.backward") { _ = strokes.popLast() }.disabled(strokes.isEmpty)
+                Button("Clear", systemImage: "trash") { strokes.removeAll() }.disabled(strokes.isEmpty)
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent).disabled(strokes.isEmpty)
+            }
+        }
+        .padding(.horizontal).padding(.top, 8)
+    }
+
     static func draw(_ strokes: [Stroke], in ctx: inout GraphicsContext, size: CGSize) {
-        let w = max(3, min(size.width, size.height) * 0.008)
         for s in strokes {
+            let w = max(3, min(size.width, size.height) * s.width)
             var path = Path()
             for (i, p) in s.points.enumerated() {
                 let q = CGPoint(x: p.x * size.width, y: p.y * size.height)
