@@ -79,11 +79,16 @@ struct JobsView: View {
 
 enum BackupImporter {
     struct Summary {
-        var jobs = 0, spaces = 0, punch = 0, photos = 0, skipped = 0
+        var jobs = 0, spaces = 0, punch = 0, photos = 0
+        var expenses = 0, contractors = 0, payments = 0, reports = 0
         var text: String {
-            var t = "Imported \(jobs) job(s): \(spaces) spaces, \(punch) punch items, \(photos) photos."
-            if skipped > 0 { t += " \(skipped) job(s) were already here and were skipped." }
-            return t
+            var parts: [String] = []
+            if jobs > 0 { parts.append("\(jobs) new job(s): \(spaces) spaces, \(punch) punch items, \(photos) photos") }
+            if expenses + contractors + payments + reports > 0 {
+                parts.append("\(expenses) expenses, \(contractors) contractors, \(payments) payments, \(reports) daily reports")
+            }
+            return parts.isEmpty ? "Nothing new to import. Everything in that file is already here."
+                                 : "Imported " + parts.joined(separator: "; ") + "."
         }
     }
 
@@ -103,6 +108,14 @@ enum BackupImporter {
     private static func date(_ value: Any?) -> Date? {
         guard let s = value as? String, !s.isEmpty else { return nil }
         return isoFraction.date(from: s) ?? isoPlain.date(from: s) ?? dayOnly.date(from: s)
+    }
+
+    private static func num(_ value: Any?) -> Double { (value as? NSNumber)?.doubleValue ?? Double((value as? String) ?? "") ?? 0 }
+
+    private static func str(_ value: Any?) -> String {
+        if let s = value as? String { return s }
+        if let n = value as? NSNumber { return n.stringValue }
+        return ""
     }
 
     /// Same guess the web app makes for old rooms that never got a level.
@@ -136,60 +149,148 @@ enum BackupImporter {
         let rooms = db["rooms"] as? [[String: Any]] ?? []
         let punch = db["punchlist"] as? [[String: Any]] ?? []
         let photos = db["photos"] as? [[String: Any]] ?? []
-        let have = Set(((try? context.fetch(FetchDescriptor<Job>())) ?? []).map { $0.sourceID })
+        let expenseList = db["expenses"] as? [[String: Any]] ?? []
+        let contractorList = db["contractors"] as? [[String: Any]] ?? []
+        let paymentList = db["payments"] as? [[String: Any]] ?? []
+        let reportList = db["reports"] as? [[String: Any]] ?? []
+
+        // What is already here, so importing the same file twice never duplicates anything.
+        var jobBySource: [String: Job] = [:]
+        for j in (try? context.fetch(FetchDescriptor<Job>())) ?? [] where !j.sourceID.isEmpty { jobBySource[j.sourceID] = j }
+        let haveExpense = Set(((try? context.fetch(FetchDescriptor<Expense>())) ?? []).map { $0.sourceID })
+        let haveContractor = Set(((try? context.fetch(FetchDescriptor<Contractor>())) ?? []).map { $0.sourceID })
+        let haveReport = Set(((try? context.fetch(FetchDescriptor<DailyReport>())) ?? []).map { $0.sourceID })
 
         var out = Summary()
         for j in jobList {
             let jid = (j["id"] as? String) ?? ""
-            if jid.isEmpty || have.contains(jid) { out.skipped += 1; continue }
+            if jid.isEmpty { continue }
 
-            let job = Job(name: (j["name"] as? String) ?? "Untitled job")
-            job.sourceID = jid
-            job.client = (j["client"] as? String) ?? ""
-            let stateZip = [(j["state"] as? String) ?? "", (j["zip"] as? String) ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
-            job.address = [(j["address"] as? String) ?? "", (j["city"] as? String) ?? "", stateZip].filter { !$0.isEmpty }.joined(separator: ", ")
-            job.isActive = ((j["status"] as? String) ?? "") != "Complete"
-            job.created = date(j["created"]) ?? date(j["startDate"]) ?? Date()
-            context.insert(job)
-            out.jobs += 1
+            // Find the job, or create it (with its spaces, punch items and photos) the first time.
+            let job: Job
+            if let existing = jobBySource[jid] {
+                job = existing
+                if job.contract == 0 { job.contract = num(j["contract"]) }
+            } else {
+                job = Job(name: (j["name"] as? String) ?? "Untitled job")
+                job.sourceID = jid
+                job.client = (j["client"] as? String) ?? ""
+                let stateZip = [(j["state"] as? String) ?? "", (j["zip"] as? String) ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
+                job.address = [(j["address"] as? String) ?? "", (j["city"] as? String) ?? "", stateZip].filter { !$0.isEmpty }.joined(separator: ", ")
+                job.isActive = ((j["status"] as? String) ?? "") != "Complete"
+                job.created = date(j["created"]) ?? date(j["startDate"]) ?? Date()
+                job.contract = num(j["contract"])
+                context.insert(job)
+                jobBySource[jid] = job
+                out.jobs += 1
 
-            // Spaces (the web app calls them rooms)
-            var spaceByRoom: [String: Space] = [:]
-            let myRooms = rooms.filter { ($0["jobId"] as? String) == jid }
-            for (i, r) in myRooms.enumerated() {
-                let arranged = (r["order"] as? NSNumber)?.intValue
-                let s = Space(name: (r["name"] as? String) ?? "Space",
-                              level: level(of: r),
-                              order: arranged ?? (1000 + i),          // un-arranged ones keep the old order, after arranged ones
-                              isExterior: ((r["space"] as? String) ?? "") == "Exterior")
-                context.insert(s)
-                s.job = job
-                if let rid = r["id"] as? String { spaceByRoom[rid] = s }
-                out.spaces += 1
+                // Spaces (the web app calls them rooms)
+                var spaceByRoom: [String: Space] = [:]
+                let myRooms = rooms.filter { ($0["jobId"] as? String) == jid }
+                for (i, r) in myRooms.enumerated() {
+                    let arranged = (r["order"] as? NSNumber)?.intValue
+                    let s = Space(name: (r["name"] as? String) ?? "Space",
+                                  level: level(of: r),
+                                  order: arranged ?? (1000 + i),
+                                  isExterior: ((r["space"] as? String) ?? "") == "Exterior")
+                    context.insert(s)
+                    s.job = job
+                    if let rid = r["id"] as? String { spaceByRoom[rid] = s }
+                    out.spaces += 1
+                }
+
+                // Punch items (no matching space = General)
+                for p in punch where (p["jobId"] as? String) == jid {
+                    let item = PunchItem(text: (p["text"] as? String) ?? "", trade: (p["trade"] as? String) ?? "")
+                    item.done = (p["done"] as? Bool) ?? false
+                    item.created = date(p["created"]) ?? Date()
+                    if item.done { item.completed = date(p["completedAt"]) ?? item.created }
+                    context.insert(item)
+                    item.job = job
+                    if let rid = p["roomId"] as? String { item.space = spaceByRoom[rid] }
+                    out.punch += 1
+                }
+
+                // Photos taken in spaces
+                for ph in photos where (ph["jobId"] as? String) == jid {
+                    guard let bytes = photoData(ph["src"]) else { continue }
+                    let pic = SitePhoto(data: bytes)
+                    pic.caption = (ph["caption"] as? String) ?? ""
+                    pic.created = date(ph["date"]) ?? Date()
+                    context.insert(pic)
+                    pic.job = job
+                    if let rid = ph["roomId"] as? String { pic.space = spaceByRoom[rid] }
+                    out.photos += 1
+                }
             }
 
-            // Punch items (no matching space = General)
-            for p in punch where (p["jobId"] as? String) == jid {
-                let item = PunchItem(text: (p["text"] as? String) ?? "", trade: (p["trade"] as? String) ?? "")
-                item.done = (p["done"] as? Bool) ?? false
-                item.created = date(p["created"]) ?? Date()
-                if item.done { item.completed = date(p["completedAt"]) ?? item.created }
-                context.insert(item)
-                item.job = job
-                if let rid = p["roomId"] as? String { item.space = spaceByRoom[rid] }
-                out.punch += 1
+            // Money — added to the job whether it is new or was imported earlier.
+            for e in expenseList where (e["jobId"] as? String) == jid {
+                let sid = (e["id"] as? String) ?? ""
+                if sid.isEmpty || haveExpense.contains(sid) { continue }
+                let x = Expense(title: str(e["desc"]), amount: num(e["amount"]))
+                x.sourceID = sid
+                x.vendor = str(e["vendor"])
+                x.category = str(e["category"])
+                x.date = date(e["date"]) ?? date(e["created"]) ?? Date()
+                if let items = e["items"] as? [[String: Any]] {
+                    x.itemsText = items.map { item in
+                        let name = str(item["name"]).isEmpty ? "Item" : str(item["name"])
+                        return name + " — " + String(format: "%.2f", num(item["cost"]))
+                    }.joined(separator: "\n")
+                }
+                x.receipt = photoData(e["receiptSrc"])
+                context.insert(x)
+                x.job = job
+                out.expenses += 1
             }
 
-            // Photos taken in spaces
-            for ph in photos where (ph["jobId"] as? String) == jid {
-                guard let bytes = photoData(ph["src"]) else { continue }
-                let pic = SitePhoto(data: bytes)
-                pic.caption = (ph["caption"] as? String) ?? ""
-                pic.created = date(ph["date"]) ?? Date()
-                context.insert(pic)
-                pic.job = job
-                if let rid = ph["roomId"] as? String { pic.space = spaceByRoom[rid] }
-                out.photos += 1
+            var contractorBySource: [String: Contractor] = [:]
+            for c in contractorList where (c["jobId"] as? String) == jid {
+                let sid = (c["id"] as? String) ?? ""
+                if sid.isEmpty || haveContractor.contains(sid) { continue }
+                let k = Contractor(name: str(c["name"]).isEmpty ? "Contractor" : str(c["name"]))
+                k.sourceID = sid
+                k.trade = str(c["trade"])
+                k.value = num(c["value"])
+                k.scope = str(c["scope"])
+                k.phone = str(c["phone"])
+                k.status = str(c["status"]).isEmpty ? "Active" : str(c["status"])
+                context.insert(k)
+                k.job = job
+                contractorBySource[sid] = k
+                out.contractors += 1
+            }
+            for p in paymentList {
+                guard let cid = p["contractorId"] as? String, let k = contractorBySource[cid] else { continue }
+                let pay = Payment(amount: num(p["amount"]))
+                pay.date = date(p["date"]) ?? date(p["created"]) ?? Date()
+                pay.method = str(p["method"]).isEmpty ? "Other" : str(p["method"])
+                pay.notes = str(p["notes"])
+                context.insert(pay)
+                pay.contractor = k
+                out.payments += 1
+            }
+
+            for r in reportList where (r["jobId"] as? String) == jid {
+                let sid = (r["id"] as? String) ?? ""
+                if sid.isEmpty || haveReport.contains(sid) { continue }
+                let rep = DailyReport(number: str(r["dprNumber"]))
+                rep.sourceID = sid
+                rep.date = date(r["date"]) ?? date(r["createdAt"]) ?? Date()
+                rep.workers = Int(num(r["workers"]))
+                rep.hours = str(r["hours"])
+                rep.weather = str(r["weather"])
+                rep.completed = str(r["completed"])
+                rep.incomplete = str(r["incomplete"])
+                rep.tomorrow = str(r["tomorrow"])
+                rep.visitors = str(r["visitors"])
+                rep.safety = str(r["safety"])
+                rep.clientNotes = str(r["clientNotes"])
+                rep.progress = Int(num(r["progress"]))
+                context.insert(rep)
+                rep.job = job
+                out.reports += 1
             }
             try context.save()
         }
