@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '4.29';
+var APP_VERSION = '4.30';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -20689,3 +20689,55 @@ try { window.renderDesktopPunchlist(); } catch(e) { sync(); }
 console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Complete');
 })();
 </script>
+
+<script id="v430-master">
+/* v4.30 — master option button (Command Center): one round ••• button, bottom-right beside the mic,
+   holding every screen and top-bar action. Dark glass + white dots so it shows in light and dark mode. */
+(function(){
+  var css = document.createElement('style');
+  css.textContent = '#bp-master{position:fixed;right:98px;bottom:30px;z-index:96}'
+    + '#bp-master-btn{width:54px;height:54px;border-radius:50%;border:1.5px solid rgba(255,255,255,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;'
+    + 'background:linear-gradient(180deg,#4a4a4d 0%,#2c2c2e 100%);box-shadow:0 6px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.28)}'
+    + '#bp-master-btn svg{width:26px;height:26px;fill:#fff}'
+    + '#bp-master-pop{display:none;position:absolute;right:0;bottom:calc(100% + 10px);width:270px;max-height:min(70vh,560px);overflow-y:auto;padding:6px;border-radius:16px;'
+    + 'background:var(--card,#1c1c1e);border:1px solid var(--border,#333);box-shadow:0 14px 40px rgba(0,0,0,.45)}'
+    + '#bp-master.open #bp-master-pop{display:block}'
+    + '#bp-master-pop .mh{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 12px 4px}'
+    + '#bp-master-pop button{display:flex;align-items:center;gap:12px;width:100%;min-height:46px;padding:0 12px;border:none;border-radius:10px;background:transparent;color:var(--text);font-size:15px;font-weight:700;font-family:inherit;text-align:left;cursor:pointer;white-space:nowrap}'
+    + '#bp-master-pop button:hover{background:var(--card2,rgba(128,128,128,.15))}'
+    + '#bp-master-pop button svg{width:20px;height:20px;flex:0 0 20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}';
+  document.head.appendChild(css);
+  var wrap = document.createElement('div'); wrap.id = 'bp-master';
+  wrap.innerHTML = '<button type="button" id="bp-master-btn" aria-label="Options" aria-haspopup="true"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2.1"/><circle cx="12" cy="12" r="2.1"/><circle cx="19" cy="12" r="2.1"/></svg></button><div id="bp-master-pop" role="menu"></div>';
+  document.body.appendChild(wrap);
+  function label(el){ var c = el.cloneNode(true); [].forEach.call(c.querySelectorAll('svg,img'), function(x){ x.remove(); }); return c.textContent.replace(/\s+/g,' ').trim(); }
+  function item(el){
+    var t = label(el); if (!t) return '';
+    var ic = el.querySelector('svg'); var i = document.createElement('i'); 
+    return { t:t, ic: ic ? ic.outerHTML : '', el: el };
+  }
+  function build(){
+    var pop = document.getElementById('bp-master-pop'); pop.innerHTML = '';
+    function group(title, els){
+      var items = els.map(item).filter(function(x){ return x && x.t; }); if (!items.length) return;
+      var h = document.createElement('div'); h.className = 'mh'; h.textContent = title; pop.appendChild(h);
+      items.forEach(function(x){
+        var b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'menuitem');
+        b.innerHTML = x.ic + '<span></span>'; b.lastChild.textContent = x.t;
+        b.onclick = function(){ wrap.classList.remove('open'); x.el.click(); };
+        pop.appendChild(b);
+      });
+    }
+    group('Go to', [].slice.call(document.querySelectorAll('.sidebar button.ni, nav button.ni, button.ni')));
+    group('Actions', [].slice.call(document.querySelectorAll('.topbar .tb-btn, .topbar button.btn-primary, .tb-right button')).filter(function(b){ return !b.closest('#bp-master'); }));
+  }
+  document.getElementById('bp-master-btn').onclick = function(e){
+    e.stopPropagation();
+    if (!wrap.classList.contains('open')) build();
+    wrap.classList.toggle('open');
+  };
+  document.addEventListener('click', function(e){ if (!e.target.closest('#bp-master')) wrap.classList.remove('open'); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') wrap.classList.remove('open'); });
+})();
+</script>
+
