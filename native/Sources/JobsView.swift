@@ -34,11 +34,12 @@ struct JobsView: View {
             .navigationTitle("Jobs")
             .navigationDestination(for: Job.self) { JobDetailView(job: $0) }
             .toolbar {
+                ToolbarItem(placement: .navigation) { MenuButton() }
                 // one button holds the options (standing rule)
                 Menu {
                     Button("Add a job", systemImage: "plus") { adding = true }
                     Button("Import backup file…", systemImage: "square.and.arrow.down") { picking = true }
-                } label: { Image(systemName: "line.3.horizontal") }
+                } label: { Image(systemName: "plus") }
             }
             .alert("New job", isPresented: $adding) {
                 TextField("Job name", text: $newName)
@@ -58,7 +59,7 @@ struct JobsView: View {
             .alert("Import", isPresented: $showReport) {
                 Button("OK", role: .cancel) {}
             } message: { Text(report) }
-            .overlay { if jobs.isEmpty && !importing { ContentUnavailableView("No jobs yet", systemImage: "hammer", description: Text("Use the ≡ button to add a job or import your backup.")) } }
+            .overlay { if jobs.isEmpty && !importing { ContentUnavailableView("No jobs yet", systemImage: "hammer", description: Text("Use the + button to add a job or import your backup.")) } }
             .overlay { if importing { ProgressView("Importing your jobs…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14)) } }
         }
     }
