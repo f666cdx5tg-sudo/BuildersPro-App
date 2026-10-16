@@ -905,3 +905,34 @@ struct AddPickerSheet: View {
         }
     }
 }
+
+
+// MARK: - Finance "+" (pick job, then what to add)
+struct FinanceAddSheet: View {
+    let jobs: [Job]
+    let initial: Job?
+    let pick: (Job, String) -> Void
+    @State private var jobName = ""
+    private let items: [(String, String)] = [("Expense", "receipt"), ("Contractor", "person.badge.plus"), ("Invoice", "doc.text")]
+    private var job: Job? { jobs.first { $0.name == jobName } ?? initial ?? jobs.first }
+    var body: some View {
+        SheetFrame(title: "Add to Finance") {
+            FMenu(title: "Job", value: $jobName, options: jobs.map(\.name))
+            VStack(spacing: 10) {
+                ForEach(items, id: \.0) { it in
+                    Button { if let j = job { pick(j, it.0) } } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: it.1).font(.title3).frame(width: 30)
+                            Text(it.0).font(.headline)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 16).frame(height: 54)
+                        .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+        .onAppear { if jobName.isEmpty { jobName = (initial ?? jobs.first)?.name ?? "" } }
+    }
+}
