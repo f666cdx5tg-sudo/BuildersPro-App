@@ -57,7 +57,7 @@ struct RootShell: View {
                 case .jobs: JobsView()
                 case .punch: AllPunchView()
                 case .photos: AllPhotosView()
-                case .money: MoneyView()
+                case .money: AllMoneyView()
                 case .search: SearchView()
                 case .calendar: AllCalendarView()
                 }
@@ -299,7 +299,7 @@ private extension View {
 
 // MARK: - Money (every job at a glance)
 
-struct MoneyView: View {
+struct AllMoneyView: View {
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
 
