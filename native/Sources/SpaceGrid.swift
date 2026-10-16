@@ -40,14 +40,14 @@ struct SpaceGrid: View {
                                            description: Text("Use the ≡ button above to add one."))
                 }
             }
-            .padding(.horizontal).padding(.bottom, 100)    // room so nothing hides behind buttons
+            .padding(.horizontal, 16).padding(.bottom, 100)    // room so nothing hides behind buttons
         }
     }
 
     private func header(_ level: String) -> some View {
         HStack {
-            Text(Levels.title(level).uppercased()).font(.footnote.weight(.heavy)).foregroundStyle(.tint)
-            Text("\(inLevel(level).count) areas").font(.callout).foregroundStyle(.secondary)
+            Text(Levels.title(level).uppercased()).font(.title3.weight(.heavy)).tracking(1).foregroundStyle(Theme.blue)
+            Text("\(inLevel(level).count) areas").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
             Spacer()
         }
         .padding(.top, 8)
@@ -102,39 +102,55 @@ struct SpaceGrid: View {
 struct SpaceTile: View {
     let space: Space
     let mode: Section3
+    @AppStorage("bpDark") private var dark = true
+
+    private var total: Int { space.openCount + space.doneCount }
+    private var complete: Bool { total > 0 && space.openCount == 0 }
+    private var pct: Double { total == 0 ? 0 : Double(space.doneCount) / Double(total) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                Image(systemName: space.symbol).font(.title2)
+                Image(systemName: space.symbol).font(.system(size: 30))
                 Spacer()
-                Text(space.isExterior ? "EXT" : "INT").font(.system(size: 9, weight: .heavy))
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background((space.isExterior ? Color.orange : Color.blue).opacity(0.18), in: Capsule())
-                    .foregroundStyle(space.isExterior ? .orange : .blue)
             }
-            Text(space.name).font(.subheadline.weight(.heavy)).lineLimit(1)
-            Spacer(minLength: 0)
+            Text(space.name).font(.headline.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.8)
             switch mode {
             case .spaces, .punch:
                 HStack {
                     stat(space.openCount, "OPEN", .red)
                     Spacer()
-                    stat(space.doneCount, "DONE", .green)
+                    stat(space.doneCount, "DONE", Theme.green)
+                }
+                Capsule().fill(Color.primary.opacity(0.12)).frame(height: 5)
+                    .overlay(alignment: .leading) {
+                        GeometryReader { g in Capsule().fill(complete ? Theme.green : Theme.blue).frame(width: g.size.width * pct) }
+                    }
+                HStack {
+                    Text(total == 0 ? "No items" : "\(space.openCount) to do").font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: "camera").foregroundStyle(space.photoCount > 0 ? Theme.lightBlue : .secondary)
+                    Text("\(space.photoCount)").font(.callout.weight(.bold)).foregroundStyle(space.photoCount > 0 ? Theme.lightBlue : .secondary)
                 }
             case .photos:
-                stat(space.photoCount, space.photoCount == 1 ? "PHOTO" : "PHOTOS", .cyan)
+                stat(space.photoCount, space.photoCount == 1 ? "PHOTO" : "PHOTOS", Theme.lightBlue)
             }
         }
-        .padding(12).frame(minHeight: 104)
-        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
-        .contentShape(RoundedRectangle(cornerRadius: 14))
+        .padding(14).frame(minHeight: 150)
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 22))
+        .overlay(alignment: .topTrailing) {
+            Text(space.isExterior ? "EXT" : "INT").font(.system(size: 13, weight: .heavy)).foregroundStyle(space.isExterior ? Theme.orange : Theme.blue)
+                .padding(.horizontal, 14).padding(.vertical, 5)
+                .background((space.isExterior ? Theme.orange : Theme.blue).opacity(0.18), in: UnevenRoundedRectangle(bottomLeadingRadius: 14, topTrailingRadius: 22))
+        }
+        .overlay(RoundedRectangle(cornerRadius: 22).stroke(complete && mode != .photos ? Theme.green.opacity(0.7) : Theme.border(dark), lineWidth: 1.5))
+        .contentShape(RoundedRectangle(cornerRadius: 22))
     }
 
     private func stat(_ n: Int, _ label: String, _ color: Color) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text("\(n)").font(.title3.weight(.black)).foregroundStyle(n == 0 ? Color.secondary : color)
-            Text(label).font(.caption2.weight(.bold)).foregroundStyle(.secondary)
-        }.lineLimit(1)
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text("\(n)").font(.system(size: 30, weight: .black)).foregroundStyle(n == 0 ? Color.secondary : color)
+            Text(label).font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+        }.lineLimit(1).minimumScaleFactor(0.7)
     }
 }

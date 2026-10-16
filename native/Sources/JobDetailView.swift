@@ -14,6 +14,27 @@ enum JobTab: String, CaseIterable, Identifiable {
     case spaces = "Spaces", punch = "Punch", photos = "Photos", money = "Money", reports = "Reports",
          schedule = "Schedule", notes = "Notes", shopping = "Shopping", docs = "Docs"
     var id: String { rawValue }
+    var menuTitle: String {
+        switch self {
+        case .money: return "Finance"
+        case .reports: return "Daily Reports"
+        case .notes: return "Project Notes"
+        default: return rawValue
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .spaces: return "door.left.hand.closed"
+        case .punch: return "checkmark.square"
+        case .photos: return "camera"
+        case .money: return "dollarsign.circle"
+        case .reports: return "doc.text"
+        case .schedule: return "calendar"
+        case .notes: return "note.text"
+        case .shopping: return "cart"
+        case .docs: return "doc.on.doc"
+        }
+    }
     var grid: Section3? {
         switch self {
         case .spaces: return .spaces
@@ -36,65 +57,216 @@ struct JobDetailView: View {
         _tab = State(initialValue: start)
     }
 
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("bpDark") private var dark = true
+    @State private var section: JobTab?
+    @State private var addMenu = false
+
+    private func usd(_ v: Double) -> String { v.formatted(.currency(code: "USD").precision(.fractionLength(0))) }
+    private var levels: [String] { Array(Set((job.spaces ?? []).map(\.level))).sorted { Levels.rank($0) < Levels.rank($1) } }
+    private func inLevel(_ l: String) -> [Space] { (job.spaces ?? []).filter { $0.level == l }.sorted { $0.order < $1.order } }
+    private var statusText: String { job.status.isEmpty ? (job.isActive ? "Active" : "Complete") : job.status }
+
     var body: some View {
-        VStack(spacing: 0) {
-            // progress line: "91% (20/22) · 2 left"
-            HStack {
-                Text("Progress").font(.callout).foregroundStyle(.secondary)
-                Spacer()
-                Text("\(job.percent)% (\(job.doneCount)/\(job.totalCount))" +
-                     (job.totalCount > job.doneCount ? " · \(job.totalCount - job.doneCount) left" : " ✓"))
-                    .font(.callout.bold())
-            }.padding(.horizontal).padding(.top, 8)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(JobTab.allCases) { t in
-                        Button { tab = t } label: {
-                            Text(t.rawValue).font(.body.weight(.semibold))
-                                .padding(.horizontal, 14).padding(.vertical, 7)
-                                .background(tab == t ? Color.accentColor : Color.gray.opacity(0.15), in: Capsule())
-                                .foregroundStyle(tab == t ? Color.white : Color.primary)
-                        }.buttonStyle(.plain)
-                    }
-                }.padding(.horizontal).padding(.vertical, 10)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                Divider().padding(.horizontal, -16)
+                progress
+                iconRow
+                sectionsMenu
+                spacesCard
+                Spacer(minLength: 100)
             }
-
-            switch tab {
-            case .money: MoneyView(job: job)
-            case .reports: ReportsView(job: job)
-            case .schedule: ScheduleView(job: job)
-            case .notes: NotesView(job: job)
-            case .shopping: ShoppingView(job: job)
-            case .docs: DocsView(job: job)
-            default: SpaceGrid(job: job, mode: tab.grid ?? .spaces)
-            }
+            .padding(.horizontal, 16).padding(.top, 8)
         }
-        .navigationTitle(job.name)
+        .background(Theme.bg(dark))
         #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         #endif
-        .toolbar {
-            // one button holds the options (standing rule)
-            Menu {
-                Button("Add a space", systemImage: "plus.square") { addingSpace = true }
-                Button("Add an expense", systemImage: "dollarsign.circle") { addExpense() }
-                Button("Add a contractor", systemImage: "person.badge.plus") { addContractor() }
-                Button("Add a change order", systemImage: "arrow.triangle.2.circlepath") { addChangeOrder() }
-                Button("Add an invoice", systemImage: "doc.plaintext") { addInvoice() }
-                Button("Add a permit", systemImage: "checkmark.seal") { addPermit() }
-                Button("Clock in (labor)", systemImage: "clock") { clockIn() }
-                Button("Add a daily report", systemImage: "doc.text") { addReport() }
-                Button("Add an appointment", systemImage: "calendar.badge.plus") { addAppointment() }
-                Button("Add a note", systemImage: "note.text.badge.plus") { addNote() }
-                Button("Add a shopping item", systemImage: "cart.badge.plus") { addShopping() }
-            } label: { Image(systemName: "line.3.horizontal") }
+        .navigationDestination(item: $section) { t in sectionPage(t) }
+        .onAppear { if tab != .spaces { section = tab; tab = .spaces } }
+        .onChange(of: tab) { _, new in if new != .spaces { section = new; tab = .spaces } }
+        .shellAdd { addMenu = true }
+        .confirmationDialog("Add to this job", isPresented: $addMenu) {
+            Button("Space") { addingSpace = true }
+            Button("Expense") { addExpense() }
+            Button("Contractor") { addContractor() }
+            Button("Change order") { addChangeOrder() }
+            Button("Invoice") { addInvoice() }
+            Button("Permit") { addPermit() }
+            Button("Clock in (labor)") { clockIn() }
+            Button("Daily report") { addReport() }
+            Button("Appointment") { addAppointment() }
+            Button("Note") { addNote() }
+            Button("Shopping item") { addShopping() }
         }
         .alert("New space", isPresented: $addingSpace) {
             TextField("Name (Kitchen, Roof…)", text: $newSpace)
             Button("Add") { addSpace() }
             Button("Cancel", role: .cancel) { newSpace = "" }
         }
+    }
+
+    // MARK: header (client · address · status · dates · money · started/done)
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Button { dismiss() } label: {
+                    HStack(spacing: 6) { Image(systemName: "chevron.left").font(.title3.weight(.semibold)); Text("Jobs").font(.title3) }
+                        .foregroundStyle(Theme.blue)
+                }.buttonStyle(.plain)
+                Spacer()
+            }
+            Text(job.name).font(.system(size: 38, weight: .heavy)).lineLimit(2).minimumScaleFactor(0.6)
+            HStack(spacing: 6) {
+                if !job.client.isEmpty { Image(systemName: "person"); Text(job.client).lineLimit(1) }
+                if !job.address.isEmpty { Text("·"); Image(systemName: "mappin.and.ellipse"); Text(job.address).lineLimit(1) }
+                Spacer(minLength: 4)
+                Text("·").foregroundStyle(Theme.lightBlue)
+                Text(statusText).font(.headline.weight(.bold)).foregroundStyle(Theme.lightBlue)
+            }
+            .font(.callout).foregroundStyle(.secondary)
+            if job.startDate != nil || job.completionDate != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar")
+                    Text(dateText(job.startDate)); Image(systemName: "arrow.right").font(.caption); Text(dateText(job.completionDate))
+                }.font(.callout).foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("Received to date").foregroundStyle(.secondary)
+                Text(usd(job.collected)).font(.title3.weight(.heavy)).foregroundStyle(Theme.green)
+                Spacer(minLength: 8)
+                Text("Balance owed").foregroundStyle(.secondary)
+                Text(usd(max(0, job.revisedContract - job.collected))).font(.title3.weight(.heavy)).foregroundStyle(Theme.red)
+            }
+            .font(.title3).lineLimit(1).minimumScaleFactor(0.6)
+            HStack {
+                toggleBox("Started", on: job.startDate != nil, color: Theme.green, bold: true)
+                Spacer()
+                toggleBox("Done", on: job.completionDate != nil, color: .secondary, bold: false)
+                if let d = job.completionDate { Text(dateText(d)).font(.title3.weight(.heavy)) }
+            }
+        }
+    }
+
+    private func dateText(_ d: Date?) -> String { d?.formatted(.dateTime.month(.twoDigits).day(.twoDigits).year()) ?? "—" }
+
+    private func toggleBox(_ title: String, on: Bool, color: Color, bold: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: on ? "checkmark.square.fill" : "square").font(.title).foregroundStyle(on ? Theme.blue : Color.secondary)
+            Text(title).font(.title3.weight(bold ? .heavy : .regular)).foregroundStyle(bold && on ? color : .secondary)
+        }
+    }
+
+    private var progress: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Progress").font(.title3).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(job.percent)%").font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
+            }
+            ProgressView(value: Double(job.percent), total: 100).tint(Theme.blue).scaleEffect(x: 1, y: 2.2, anchor: .center)
+        }
+    }
+
+    private var iconRow: some View {
+        HStack(spacing: 12) {
+            iconButton("square.grid.2x2") { section = .spaces }
+            iconButton("camera") { section = .photos }
+            iconButton("checkmark.square") { section = .punch }
+        }
+    }
+
+    private func iconButton(_ symbol: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Image(systemName: symbol).font(.system(size: 30)).foregroundStyle(Color.primary)
+                .frame(maxWidth: .infinity, minHeight: 80)
+                .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 20))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.border(dark)))
+        }.buttonStyle(.plain)
+    }
+
+    private var sectionsMenu: some View {
+        Menu {
+            ForEach(JobTab.allCases) { t in
+                Button(t.menuTitle, systemImage: t.symbol) { section = t }
+            }
+        } label: {
+            HStack {
+                Text("Job Sections").font(.title2.weight(.heavy))
+                Spacer()
+                Image(systemName: "line.3.horizontal").font(.title2.weight(.bold))
+            }
+            .padding(.horizontal, 20).frame(minHeight: 72)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.border(dark)))
+            .foregroundStyle(Color.primary)
+        }.buttonStyle(.plain)
+    }
+
+    // MARK: Spaces list (inline, grouped by level)
+
+    private var spacesCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 14) {
+                Image(systemName: "door.left.hand.closed").font(.title2)
+                Text("Spaces").font(.title2.weight(.heavy))
+                Spacer()
+                Text("\((job.spaces ?? []).count)").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
+                Image(systemName: "chevron.down").foregroundStyle(.secondary)
+            }
+            .padding(20)
+            Divider()
+            VStack(alignment: .leading, spacing: 12) {
+                Text("SPACES (\((job.spaces ?? []).count))").font(.title3.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                ForEach(levels, id: \.self) { level in
+                    Text(Levels.title(level).uppercased()).font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary).padding(.top, 6)
+                    ForEach(inLevel(level)) { s in
+                        NavigationLink { PunchListView(job: job, space: s) } label: { spaceRow(s) }.buttonStyle(.plain)
+                    }
+                }
+                if (job.spaces ?? []).isEmpty { Text("No spaces yet — tap + then Space.").foregroundStyle(.secondary) }
+            }
+            .padding(16)
+        }
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.border(dark)))
+    }
+
+    private func spaceRow(_ s: Space) -> some View {
+        let total = s.openCount + s.doneCount
+        let pct = total == 0 ? 0 : Int((Double(s.doneCount) / Double(total) * 100).rounded())
+        let contractors = 0
+        return HStack(spacing: 14) {
+            Image(systemName: s.symbol).font(.system(size: 28)).frame(width: 46)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(s.name).font(.title3.weight(.heavy)).lineLimit(1)
+                Text("\(s.doneCount)/\(total) checklist items · \(pct)%" + (contractors > 0 ? " · \(contractors) contractors" : ""))
+                    .font(.callout).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+                ProgressView(value: Double(pct), total: 100).tint(Theme.blue)
+            }
+            Image(systemName: "chevron.right").font(.title3.weight(.semibold)).foregroundStyle(Theme.blue)
+        }
+        .padding(16)
+        .background(Theme.bg(dark).opacity(0.55), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
+    }
+
+    @ViewBuilder private func sectionPage(_ t: JobTab) -> some View {
+        VStack(spacing: 0) {
+            switch t {
+            case .money: MoneyView(job: job)
+            case .reports: ReportsView(job: job)
+            case .schedule: ScheduleView(job: job)
+            case .notes: NotesView(job: job)
+            case .shopping: ShoppingView(job: job)
+            case .docs: DocsView(job: job)
+            default: SpaceGrid(job: job, mode: t.grid ?? .spaces)
+            }
+        }
+        .navigationTitle(t.menuTitle)
     }
 
     private func addSpace() {
