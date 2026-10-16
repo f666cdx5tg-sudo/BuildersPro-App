@@ -935,27 +935,99 @@ struct SearchView: View {
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
     @State private var q = ""
+    @State private var path: [Hit] = []
+    @FocusState private var focused: Bool
+
+    struct Hit: Identifiable, Hashable {
+        let id = UUID()
+        let type: String, symbol: String, title: String, sub: String
+        let job: Job
+        let start: JobTab
+        static func == (a: Hit, b: Hit) -> Bool { a.id == b.id }
+        func hash(into h: inout Hasher) { h.combine(id) }
+    }
 
     private var term: String { q.trimmingCharacters(in: .whitespaces).lowercased() }
-    private var jobHits: [Job] { jobs.filter { $0.name.lowercased().contains(term) || $0.client.lowercased().contains(term) || $0.address.lowercased().contains(term) } }
-    private var punchHits: [PunchItem] { jobs.flatMap { $0.punchItems ?? [] }.filter { $0.text.lowercased().contains(term) } }
-    private var noteHits: [JobNote] { jobs.flatMap { $0.notes ?? [] }.filter { $0.title.lowercased().contains(term) || $0.text.lowercased().contains(term) } }
+    private func m(_ s: String) -> Bool { s.lowercased().contains(term) }
+    private func usd(_ v: Double) -> String { v.formatted(.currency(code: "USD").precision(.fractionLength(0))) }
+
+    private var hits: [Hit] {
+        guard !term.isEmpty else { return [] }
+        var out: [Hit] = []
+        for j in jobs where m(j.name) || m(j.client) || m(j.address) {
+            out.append(Hit(type: "Job", symbol: "briefcase", title: j.name, sub: [j.client, j.address].filter { !$0.isEmpty }.joined(separator: " · "), job: j, start: .spaces))
+        }
+        for j in jobs {
+            for c in j.contractors ?? [] where m(c.name) || m(c.trade) {
+                out.append(Hit(type: "Contractor", symbol: "person.2", title: c.name, sub: c.trade, job: j, start: .money))
+            }
+            for e in j.expenses ?? [] where m(e.title) || m(e.vendor) {
+                out.append(Hit(type: "Expense", symbol: "receipt", title: e.title, sub: (e.vendor.isEmpty ? "" : e.vendor + " · ") + usd(e.amount), job: j, start: .money))
+            }
+            for i in j.invoices ?? [] where m(i.title) {
+                out.append(Hit(type: "Invoice", symbol: "doc.text", title: i.title, sub: usd(i.amount), job: j, start: .money))
+            }
+            for p in j.punchItems ?? [] where m(p.text) {
+                out.append(Hit(type: "Punchlist", symbol: "checkmark.square", title: p.text, sub: j.name, job: j, start: .spaces))
+            }
+            for p in j.permits ?? [] where m(p.trade) || m(p.number) {
+                out.append(Hit(type: "Permit", symbol: "checkmark.seal", title: p.trade + (p.number.isEmpty ? "" : " #" + p.number), sub: j.name, job: j, start: .money))
+            }
+            for n in j.notes ?? [] where m(n.title) || m(n.text) {
+                out.append(Hit(type: "Note", symbol: "note.text", title: n.title.isEmpty ? n.text : n.title, sub: j.name, job: j, start: .spaces))
+            }
+        }
+        return out
+    }
 
     var body: some View {
-        NavigationStack {
-            List {
-                if !term.isEmpty {
-                    if !jobHits.isEmpty { Section("Jobs") { ForEach(jobHits) { j in NavigationLink(j.name) { JobDetailView(job: j) } } } }
-                    if !punchHits.isEmpty { Section("Punch items") { ForEach(punchHits.prefix(50)) { p in NavigationLink { PunchDetail(item: p) } label: { VStack(alignment: .leading) { Text(p.text); Text(p.job?.name ?? "").font(.subheadline).foregroundStyle(.secondary) } } } } }
-                    if !noteHits.isEmpty { Section("Notes") { ForEach(noteHits.prefix(50)) { n in NavigationLink { if let j = n.job { JobDetailView(job: j) } } label: { Text(n.title.isEmpty ? n.text : n.title).lineLimit(2) } } } }
+        NavigationStack(path: $path) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Search").font(.system(size: 40, weight: .heavy)).padding(.top, 4)
+                    TextField("SEARCH", text: $q)
+                        .textFieldStyle(.plain).font(.title3).focused($focused)
+                        .padding(.horizontal, 16).frame(height: 54)
+                        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark)))
+                    let r = hits
+                    if term.isEmpty {
+                        note("Start typing to search everything — jobs, contractors, expenses, invoices, checklist items, permits.")
+                    } else if r.isEmpty {
+                        note("No matches for \"\(q)\"")
+                    } else {
+                        ForEach(r.prefix(50)) { h in
+                            Button { path.append(h) } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: h.symbol).font(.title3).foregroundStyle(Theme.blue).frame(width: 30)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(h.type.uppercased()).font(.footnote.weight(.heavy)).tracking(1).foregroundStyle(.secondary)
+                                        Text(h.title).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
+                                        if !h.sub.isEmpty { Text(h.sub).font(.callout).foregroundStyle(.secondary).lineLimit(1) }
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
+                                }
+                                .padding(.horizontal, 14).padding(.vertical, 12)
+                                .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark)))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    Spacer(minLength: 90)
                 }
+                .padding(.horizontal, 16)
             }
-            .scrollContentBackground(.hidden).background(Theme.bg(dark))
-            .searchable(text: $q, prompt: "Search jobs, punch items, notes")
-            .overlay { if term.isEmpty { ContentUnavailableView("Search", systemImage: "magnifyingglass", description: Text("Type to search every job.")) }
-                       else if jobHits.isEmpty && punchHits.isEmpty && noteHits.isEmpty { ContentUnavailableView.search(text: q) } }
-            .navigationTitle("Search")
+            .background(Theme.bg(dark))
+            .navigationDestination(for: Hit.self) { JobDetailView(job: $0.job, start: $0.start) }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
         }
+    }
+
+    private func note(_ t: String) -> some View {
+        Text(t).font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity).multilineTextAlignment(.center).padding(.top, 30)
     }
 }
 
