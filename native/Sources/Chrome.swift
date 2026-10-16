@@ -527,6 +527,7 @@ struct SheetFrame<Content: View>: View {
     @AppStorage("bpDark") private var dark = true
     let title: String
     @ViewBuilder var content: Content
+    @State private var pinned: PinnedSave?
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -539,7 +540,12 @@ struct SheetFrame<Content: View>: View {
             }.padding(.horizontal, 20).padding(.vertical, 14)
             Divider()
             ScrollView { VStack(alignment: .leading, spacing: 18) { content }.padding(20) }
+            if let p = pinned {
+                Divider()
+                PinnedSaveBar(s: p).padding(.horizontal, 20).padding(.vertical, 12)
+            }
         }
+        .onPreferenceChange(PinnedSaveKey.self) { pinned = $0 }
         .background(Theme.bg(dark))
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 600)
@@ -583,15 +589,35 @@ struct FMenu: View {
     }
 }
 
+struct PinnedSave: Equatable {
+    var title: String
+    var enabled: Bool
+    var action: () -> Void
+    static func == (a: PinnedSave, b: PinnedSave) -> Bool { a.title == b.title && a.enabled == b.enabled }
+}
+struct PinnedSaveKey: PreferenceKey {
+    static var defaultValue: PinnedSave? = nil
+    static func reduce(value: inout PinnedSave?, nextValue: () -> PinnedSave?) { value = nextValue() ?? value }
+}
+
+/// Inside a SheetFrame this doesn't draw in place: it hands itself to the frame, which pins it to the
+/// bottom of the sheet so Save is always reachable (long forms, small windows, iPhone with keyboard).
 struct FBigButton: View {
     let title: String
     var enabled = true
     let action: () -> Void
     var body: some View {
-        Button(action: action) {
-            Text(title).font(.title3.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 58)
-                .background(Theme.blue.opacity(enabled ? 1 : 0.4), in: RoundedRectangle(cornerRadius: 16))
-        }.buttonStyle(.plain).disabled(!enabled)
+        Color.clear.frame(height: 0).preference(key: PinnedSaveKey.self, value: PinnedSave(title: title, enabled: enabled, action: action))
+    }
+}
+
+struct PinnedSaveBar: View {
+    let s: PinnedSave
+    var body: some View {
+        Button(action: s.action) {
+            Text(s.title).font(.title3.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 58)
+                .background(Theme.blue.opacity(s.enabled ? 1 : 0.4), in: RoundedRectangle(cornerRadius: 16))
+        }.buttonStyle(.plain).disabled(!s.enabled)
     }
 }
 
