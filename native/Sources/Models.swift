@@ -149,7 +149,7 @@ final class DailyReport {
 enum Money {
     static func text(_ n: Double) -> String {
         let sign = n < 0 ? "-" : ""
-        return sign + abs(n).formatted(.currency(code: "USD").precision(.fractionLength(0...2)))
+        return sign + abs(n).formatted(.currency(code: "USD").precision(.fractionLength(2)))
     }
     static let categories = ["Materials", "Labor", "Permits", "Equipment", "Other"]
     static let methods = ["Check", "Zelle", "Cash", "Credit Card", "Other"]
