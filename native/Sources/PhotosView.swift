@@ -113,7 +113,7 @@ struct PhotoThumb: View {
 // MARK: - Viewer, markup, camera
 
 enum MarkTool: String, CaseIterable, Identifiable {
-    case pen = "Pen", text = "Text", circle = "Circle", arrow = "Arrow", square = "Square", move = "Move"
+    case pen = "Pen", text = "Text", circle = "Circle", arrow = "Arrow", square = "Square"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -122,7 +122,6 @@ enum MarkTool: String, CaseIterable, Identifiable {
         case .circle: return "circle"
         case .arrow: return "arrow.up.right"
         case .square: return "square"
-        case .move: return "arrow.up.and.down.and.arrow.left.and.right"
         }
     }
 }
@@ -146,6 +145,7 @@ struct MarkupView: View {
     @State private var color: Color = .red
     @State private var width: CGFloat = 0.008
     @State private var tool: MarkTool = .pen
+    @State private var didMove = false
     @State private var moveActive = false
     @State private var movingIndex: Int?
     @State private var lastPoint: CGPoint = .zero
@@ -163,33 +163,36 @@ struct MarkupView: View {
                         GeometryReader { g in
                             Canvas { ctx, size in MarkupView.draw(strokes, in: &ctx, size: size) }
                                 .gesture(DragGesture(minimumDistance: 0).onChanged { v in
-                                    if tool == .text { return }
                                     let pt = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
                                                      y: min(max(v.location.y / g.size.height, 0), 1))
-                                    if tool == .move {
-                                        if !moveActive {
-                                            moveActive = true
-                                            movingIndex = MarkupView.hit(strokes, at: v.location, size: g.size)
-                                            lastPoint = pt
-                                        } else if let i = movingIndex, strokes.indices.contains(i) {
-                                            let dx = pt.x - lastPoint.x, dy = pt.y - lastPoint.y
-                                            strokes[i].points = strokes[i].points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
-                                            lastPoint = pt
+                                    if !moveActive {
+                                        moveActive = true
+                                        didMove = false
+                                        movingIndex = MarkupView.hit(strokes, at: v.location, size: g.size)
+                                        lastPoint = pt
+                                        if movingIndex == nil && tool != .text {
+                                            strokes.append(Stroke(tool: tool, points: [pt], color: color, width: width))
                                         }
                                         return
                                     }
-                                    if v.translation == .zero {
-                                        strokes.append(Stroke(tool: tool, points: [pt], color: color, width: width))
-                                    } else if !strokes.isEmpty {
+                                    if v.translation != .zero { didMove = true }
+                                    if let i = movingIndex, strokes.indices.contains(i) {
+                                        let dx = pt.x - lastPoint.x, dy = pt.y - lastPoint.y
+                                        strokes[i].points = strokes[i].points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
+                                        lastPoint = pt
+                                    } else if tool != .text, !strokes.isEmpty {
                                         if tool == .pen { strokes[strokes.count - 1].points.append(pt) }
                                         else { strokes[strokes.count - 1].points = [strokes[strokes.count - 1].points[0], pt] }
                                     }
                                 }.onEnded { v in
-                                    if tool == .move { moveActive = false; movingIndex = nil; return }
-                                    guard tool == .text else { return }
-                                    textSpot = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
-                                                       y: min(max(v.location.y / g.size.height, 0), 1))
-                                    textValue = ""
+                                    let hitSomething = movingIndex != nil
+                                    let moved = didMove
+                                    moveActive = false; movingIndex = nil
+                                    if tool == .text && !hitSomething && !moved {
+                                        textSpot = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
+                                                           y: min(max(v.location.y / g.size.height, 0), 1))
+                                        textValue = ""
+                                    }
                                 })
                         }
                     }
@@ -274,7 +277,6 @@ struct MarkupView: View {
                 let fs = max(14, min(size.width, size.height) * s.width * 4)
                 let r = CGRect(x: a.x, y: a.y, width: CGFloat(s.text.count) * fs * 0.62, height: fs * 1.3).insetBy(dx: -tol / 2, dy: -tol / 2)
                 if r.contains(p) { return i }
-            case .move: break
             }
         }
         return nil
@@ -304,7 +306,6 @@ struct MarkupView: View {
                     layer.addFilter(.shadow(color: .black.opacity(0.7), radius: 2, x: 0, y: 1))
                     layer.draw(resolved, at: origin, anchor: .topLeading)
                 }
-            case .move: break
             case .circle, .square:
                 guard pts.count > 1, let b = pts.last else { continue }
                 let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
