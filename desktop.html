@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '4.23';
+var APP_VERSION = '4.24';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -20642,5 +20642,47 @@ window.bpOpenPhotoReport = function(id){ return window.bpDayPdf(id); };
 window.exportClientUpdate = function(jobId){ return window.bpDayPdfForJob(jobId); };
 
 console.log('[BP] v4.19 Full Day PDF ready');
+})();
+</script>
+
+<script>
+/* ══ v4.24 — PUNCHLIST FILTER SHELVED · STATUS = OPEN | COMPLETE ══════════
+   Same change as the field app. The Filter button + panel (Status/Space/Search) are hidden, not deleted —
+   deleting THIS block brings them back. Replaced by two small drop-downs next to the job picker.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var F = window._bpDF;
+var jobSel = document.getElementById('punch-job-filter');
+var btn = document.getElementById('punch-filter-btn');
+if (!F || !jobSel || !btn || window.__bpV424) return;
+window.__bpV424 = 1;
+function esc3(t){ return String(t==null?'':t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+F.open = false; F.q = ''; if (F.show !== 'done') F.show = 'open';
+btn.style.display = 'none';
+var pan = document.getElementById('punch-filter-panel'); if (pan) pan.style.display = 'none';
+window.bpDeskFilterToggle = function(){};
+var STY = 'padding:9px 14px;border-radius:9px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:13px;font-family:inherit';
+var stSel = document.createElement('select'); stSel.id = 'punch-status-sel'; stSel.setAttribute('aria-label', 'Status'); stSel.style.cssText = STY;
+stSel.innerHTML = '<option value="open">Status: Open</option><option value="done">Status: Complete</option>';
+stSel.onchange = function(){ window.bpDeskFilterSet('show', stSel.value); };
+var spSel = document.createElement('select'); spSel.id = 'punch-space-sel'; spSel.setAttribute('aria-label', 'Space'); spSel.style.cssText = STY + ';display:none';
+spSel.onchange = function(){ window.bpDeskFilterSet('space', spSel.value); };
+btn.parentNode.insertBefore(stSel, btn); btn.parentNode.insertBefore(spSel, btn);
+function sync(){
+  stSel.value = F.show === 'done' ? 'done' : 'open';
+  var jf = jobSel.value || '';
+  var rooms = jf ? (DB.rooms || []).filter(function(r){ return r.jobId === jf; }) : [];
+  if (!rooms.length) { spSel.style.display = 'none'; F.space = ''; return; }
+  spSel.innerHTML = '<option value="">Space: All</option>' + rooms.map(function(r){ return '<option value="' + r.id + '">' + esc3(r.name) + '</option>'; }).join('');
+  spSel.value = F.space || ''; spSel.style.display = '';
+}
+var _r = window.renderDesktopPunchlist;
+if (typeof _r === 'function') {
+  window.renderDesktopPunchlist = function(){ var r = _r.apply(this, arguments); try { sync(); } catch(e){} return r; };
+}
+jobSel.addEventListener('change', sync);
+try { window.renderDesktopPunchlist(); } catch(e) { sync(); }
+console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Complete');
 })();
 </script>

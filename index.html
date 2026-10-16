@@ -1498,7 +1498,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.23';
+var APP_VERSION = '4.24';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -14794,7 +14794,7 @@ window.bpFitNums = function() {
     var items = bpApplyClFilter(all);
     var head = (items.length !== all.length)
       ? '<div style="font-size:12px;font-weight:700;color:#0A84FF;margin:0 2px 6px">Showing ' + items.length + ' of ' + all.length + '</div>' : '';
-    if (!items.length) return head + emptyCard('Nothing matches — tap Filter → Clear filters');
+    if (!items.length) return head + emptyCard('Nothing matches — try Status above');
     return head + items.map(buildChecklistLineItem).join('');
   };
 
@@ -14804,7 +14804,7 @@ window.bpFitNums = function() {
     if (typeof _punchCategoryFilter !== 'undefined' && _punchCategoryFilter) all = all.filter(function(x){ return x.trade === _punchCategoryFilter; });
     if (!all.length) return emptyCard('No punch items yet — tap + Add Punch Item');
     var items = bpApplyClFilter(all);
-    if (!items.length) return emptyCard('Nothing matches — tap Filter → Clear filters');
+    if (!items.length) return emptyCard('Nothing matches — try Status above');
     var rooms = (DB.rooms||[]).filter(function(r){ return r.jobId === jobId; });
     var groups = {};
     items.forEach(function(it){ var k = it.roomId || ''; (groups[k] = groups[k] || []).push(it); });
@@ -23371,7 +23371,7 @@ function allDoneNote(html){
   /* every item is finished → say so, instead of "Nothing matches" */
   if (F.show !== 'open' || F.q || F.space || F.from || F.to) return html;
   if (String(html).indexOf('Nothing matches') < 0) return html;
-  return '<div class="card" style="padding:16px;text-align:center;color:var(--muted);font-size:14px;line-height:1.5"><b style="color:var(--green)">All done ✓</b><br>Finished items are hidden. Filter → Status → Complete shows them.</div>';
+  return '<div class="card" style="padding:16px;text-align:center;color:var(--muted);font-size:14px;line-height:1.5"><b style="color:var(--green)">All done ✓</b><br>Finished items are hidden. Status → Complete shows them.</div>';
 }
 ['bpRoomChecklistItemsHtml','bpJobPunchGroupsHtml'].forEach(function(fn){
   var o = window[fn];
@@ -26203,5 +26203,56 @@ window.bpOpenPhotoReport = function(id){ return window.bpDayPdf(id); };
 window.exportClientUpdate = function(jobId){ return window.bpDayPdfForJob(jobId); };
 
 console.log('[BP] v4.19 Full Day PDF ready');
+})();
+</script>
+
+<script>
+/* ══ v4.24 — CHECKLIST FILTER SHELVED · STATUS = OPEN | COMPLETE ═══════════
+   Stan (Oct 15, 2026): "Checklist filter is useless, remove it … Status should be either open or complete."
+   The Filter button and its panel (search, sort, date added / completed range) are no longer drawn.
+   The old code above (bpClFilterBar base, bpApplyClFilter) is left in place, dormant — deleting THIS block
+   brings the Filter button back exactly as it was in v4.23.
+   What shows instead, on the Location, Job and Punch checklists: one row — Status ☰ (Open / Complete),
+   Space ☰ (Punch screen only) and the Select button, which used to hide inside the Filter panel.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if (typeof window.bpClFilterBar !== 'function' || typeof window.bpHMenu !== 'function') return;
+if (window.bpClFilterBar.__v424) return;
+var F = window._bpClFilter = window._bpClFilter || {};
+function calm(){
+  F.q = ''; F.sort = 'open'; F.dateField = 'added'; F.from = ''; F.to = ''; F.panel = false; F.searchOpen = false;
+  if (F.show !== 'done') F.show = 'open';          /* only two states now: open or done */
+}
+calm();
+function E(s){ return (typeof esc === 'function') ? esc(s) : String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+var st = document.createElement('style'); st.id = 'bp-v424-css';
+st.textContent = '.bp-pmrow{display:flex;gap:8px;margin-bottom:8px}'
+ + '.bp-pmrow .bp-pm:first-child .bp-hm-pop{left:0;right:auto}.bp-pmrow .bp-pm:not(:first-child) .bp-hm-pop{right:0;left:auto}'
+ + '.bp-pmrow .bp-selbtn{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:0 14px;min-height:46px;border-radius:12px;border:1.5px solid rgba(10,132,255,.5);background:rgba(10,132,255,.1);color:#0A84FF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap}'
+ + '.bp-pmrow .bp-selbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}';
+document.head.appendChild(st);
+window.bpClFilterBar = function(scope, id){
+  calm();
+  var a = "'" + scope + "','" + id + "'";
+  var stItems = [['open','Open'],['done','Complete']].map(function(o){
+    return { label:o[1], on:F.show === o[0], js:"bpClSet('show','" + o[0] + "'," + a + ")" };
+  });
+  var cells = '<div class="bp-pm"><span class="bp-pm-t"><i>Status</i>' + (F.show === 'done' ? 'Complete' : 'Open') + '</span>' + bpHMenu('Status', stItems) + '</div>';
+  if (scope === 'punch' && id) {
+    var space = F.space || '';
+    var rooms = (DB.rooms || []).filter(function(r){ return r.jobId === id; });
+    var sName = (rooms.find(function(r){ return r.id === space; }) || {}).name || 'All';
+    var spItems = [{ label:'All spaces', on:!space, js:"bpClSet('space',''," + a + ")" }].concat(rooms.map(function(r){
+      return { label:E(r.name), on:space === r.id, js:"bpClSet('space','" + r.id + "'," + a + ")" };
+    }));
+    cells += '<div class="bp-pm"><span class="bp-pm-t"><i>Space</i>' + E(sName) + '</span>' + bpHMenu('Space', spItems) + '</div>';
+  }
+  var sel = id ? '<button type="button" class="bp-selbtn" data-bp-select="1" onclick="bpOpenSelect(\'' + (scope === 'room' ? 'room' : 'job') + '\',\'' + id + '\')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12l2 2l4-4"/></svg>Select</button>' : '';
+  return '<div id="bp-clf-' + scope + '" style="margin:0 0 8px"><div class="bp-pmrow">' + cells + sel + '</div></div>';
+};
+window.bpClFilterBar.__v424 = 1;
+window.bpClFilterBar.__sel = 1;
+console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete');
 })();
 </script>
