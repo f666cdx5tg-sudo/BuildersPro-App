@@ -21,11 +21,11 @@ struct JobsView: View {
                             Text(job.name).font(.headline).lineLimit(1)      // names never wrap
                             HStack {
                                 ProgressView(value: Double(job.percent), total: 100)
-                                Text("\(job.percent)%").font(.caption.bold())
+                                Text("\(job.percent)%").font(.callout.bold())
                             }
                             Text("\(job.doneCount)/\(job.totalCount) done" +
                                  (job.totalCount > job.doneCount ? " · \(job.totalCount - job.doneCount) left" : ""))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.callout).foregroundStyle(.secondary)
                         }
                     }
                 }

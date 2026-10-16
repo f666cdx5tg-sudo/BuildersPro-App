@@ -15,7 +15,7 @@ struct BuildersProApp: App {
     }()
 
     var body: some Scene {
-        WindowGroup { LockGate { JobsView() } }
+        WindowGroup { LockGate { JobsView() }.font(.title3).controlSize(.large) }
             .modelContainer(container)
     }
 }

@@ -35,18 +35,18 @@ struct JobDetailView: View {
         VStack(spacing: 0) {
             // progress line: "91% (20/22) · 2 left"
             HStack {
-                Text("Progress").font(.caption).foregroundStyle(.secondary)
+                Text("Progress").font(.callout).foregroundStyle(.secondary)
                 Spacer()
                 Text("\(job.percent)% (\(job.doneCount)/\(job.totalCount))" +
                      (job.totalCount > job.doneCount ? " · \(job.totalCount - job.doneCount) left" : " ✓"))
-                    .font(.caption.bold())
+                    .font(.callout.bold())
             }.padding(.horizontal).padding(.top, 8)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(JobTab.allCases) { t in
                         Button { tab = t } label: {
-                            Text(t.rawValue).font(.subheadline.weight(.semibold))
+                            Text(t.rawValue).font(.body.weight(.semibold))
                                 .padding(.horizontal, 14).padding(.vertical, 7)
                                 .background(tab == t ? Color.accentColor : Color.gray.opacity(0.15), in: Capsule())
                                 .foregroundStyle(tab == t ? Color.white : Color.primary)
@@ -224,7 +224,7 @@ struct MoneyView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("\(c.number) · \(c.title)").lineLimit(1)
-                                Text(c.status).font(.caption).foregroundStyle(c.status == "Approved" ? Color.green : Color.secondary)
+                                Text(c.status).font(.callout).foregroundStyle(c.status == "Approved" ? Color.green : Color.secondary)
                             }
                             Spacer()
                             Text(Money.text(c.amount)).bold()
@@ -242,7 +242,7 @@ struct MoneyView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(i.title.isEmpty ? "Invoice" : i.title).lineLimit(1)
                                 Text("\(i.status) · \(i.date.formatted(date: .abbreviated, time: .omitted))")
-                                    .font(.caption).foregroundStyle(i.status == "Paid" ? Color.green : (i.status == "Overdue" ? Color.red : Color.secondary))
+                                    .font(.callout).foregroundStyle(i.status == "Paid" ? Color.green : (i.status == "Overdue" ? Color.red : Color.secondary))
                             }
                             Spacer()
                             Text(Money.text(i.amount)).bold()
@@ -260,7 +260,7 @@ struct MoneyView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(e.title.isEmpty ? "Expense" : e.title).lineLimit(1)
                                 Text([e.vendor, e.category].filter { !$0.isEmpty }.joined(separator: " · "))
-                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    .font(.callout).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
                             if e.receipt != nil { Image(systemName: "paperclip").foregroundStyle(.secondary) }
@@ -279,13 +279,13 @@ struct MoneyView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(c.name).lineLimit(1)
                                 Text([c.trade, c.status].filter { !$0.isEmpty }.joined(separator: " · "))
-                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    .font(.callout).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text(Money.text(c.value)).bold()
                                 Text(c.owed > 0.005 ? "\(Money.text(c.owed)) owed" : "paid")
-                                    .font(.caption).foregroundStyle(c.owed > 0.005 ? Color.orange : Color.green)
+                                    .font(.callout).foregroundStyle(c.owed > 0.005 ? Color.orange : Color.green)
                             }
                         }
                     }
@@ -301,7 +301,7 @@ struct MoneyView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("\(p.trade) \(p.number)").lineLimit(1)
                                 Text("\(p.status) · expires \(p.expirationDate.formatted(date: .abbreviated, time: .omitted))")
-                                    .font(.caption).foregroundStyle(p.status != "Closed" && p.expirationDate < Date() ? Color.red : Color.secondary)
+                                    .font(.callout).foregroundStyle(p.status != "Closed" && p.expirationDate < Date() ? Color.red : Color.secondary)
                             }
                             Spacer()
                             Text(Money.text(p.cost)).bold()
@@ -319,7 +319,7 @@ struct MoneyView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(t.worker.isEmpty ? "Worker" : t.worker).lineLimit(1)
                                 Text(t.clockIn.formatted(date: .abbreviated, time: .shortened) + (t.isOpen ? " · clocked in" : ""))
-                                    .font(.caption).foregroundStyle(t.isOpen ? Color.green : Color.secondary)
+                                    .font(.callout).foregroundStyle(t.isOpen ? Color.green : Color.secondary)
                             }
                             Spacer()
                             Text("\(String(format: "%.2f", t.hours)) h").bold()
@@ -360,7 +360,7 @@ struct ChangeOrderDetail: View {
             Section("Scope of the change") { TextEditor(text: $order.details).frame(minHeight: 90) }
             Section {
                 Text(order.status == "Approved" ? "Counted in the revised contract." : "Not counted until it is Approved.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -536,12 +536,12 @@ struct ReportsView: View {
                         HStack {
                             Text(r.number.isEmpty ? "Daily report" : r.number).font(.headline)
                             Spacer()
-                            Text(r.date.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                            Text(r.date.formatted(date: .abbreviated, time: .omitted)).font(.callout).foregroundStyle(.secondary)
                         }
                         Text(r.completed.isEmpty ? "Nothing written yet" : r.completed)
-                            .font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                            .font(.body).foregroundStyle(.secondary).lineLimit(2)
                         Text([r.workers > 0 ? "\(r.workers) worker(s)" : "", r.weather].filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.callout).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -607,7 +607,7 @@ struct ScheduleView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(a.title.isEmpty ? "Appointment" : a.title).font(.headline)
                     Text(a.date.formatted(date: .abbreviated, time: .shortened) + " · " + a.kind)
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.callout).foregroundStyle(.secondary)
                 }
             }
         }
@@ -643,8 +643,8 @@ struct NotesView: View {
                 NavigationLink { NoteDetail(item: n) } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(n.title.isEmpty ? "Note" : n.title).font(.headline)
-                        Text(n.text.isEmpty ? "Empty" : n.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                        Text(n.created.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                        Text(n.text.isEmpty ? "Empty" : n.text).font(.body).foregroundStyle(.secondary).lineLimit(2)
+                        Text(n.created.formatted(date: .abbreviated, time: .omitted)).font(.callout).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -700,7 +700,7 @@ struct ShoppingView: View {
                         Text(i.text.isEmpty ? "Item" : i.text).strikethrough(i.bought)
                         Text([i.qty != 1 ? "\(i.qty.formatted()) \(i.unit)" : "", i.store, i.total > 0 ? Money.text(i.total) : ""]
                                 .filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.callout).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -771,7 +771,7 @@ struct DocsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(d.name.isEmpty ? "Document" : d.name).font(.headline)
                         Text(d.category + " · " + d.created.formatted(date: .abbreviated, time: .omitted))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.callout).foregroundStyle(.secondary)
                     }
                 }
             }

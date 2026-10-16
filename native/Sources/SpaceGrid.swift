@@ -47,7 +47,7 @@ struct SpaceGrid: View {
     private func header(_ level: String) -> some View {
         HStack {
             Text(Levels.title(level).uppercased()).font(.footnote.weight(.heavy)).foregroundStyle(.tint)
-            Text("\(inLevel(level).count) areas").font(.footnote).foregroundStyle(.secondary)
+            Text("\(inLevel(level).count) areas").font(.callout).foregroundStyle(.secondary)
             Spacer()
         }
         .padding(.top, 8)
