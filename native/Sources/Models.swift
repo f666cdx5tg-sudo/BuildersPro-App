@@ -10,6 +10,7 @@ final class Job {
     var address: String = ""
     var isActive: Bool = true
     var created: Date = Date()
+    var sourceID: String = ""        // id from the old web app backup, so importing twice never duplicates
 
     @Relationship(deleteRule: .cascade, inverse: \Space.job) var spaces: [Space]? = []
     @Relationship(deleteRule: .cascade, inverse: \PunchItem.job) var punchItems: [PunchItem]? = []
