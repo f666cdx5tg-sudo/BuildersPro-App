@@ -514,8 +514,7 @@ struct MoneyView: View {
                 .onDelete { idx in idx.forEach { context.delete(permits[$0]) } }
             }
 
-            Section("Time clock · \(String(format: "%.1f", job.laborHours)) h · \(Money.text(job.laborTotal))") {
-                if timeEntries.isEmpty { Text("No time entries.").foregroundStyle(.secondary) }
+            if !timeEntries.isEmpty { Section("Time clock · \(String(format: "%.1f", job.laborHours)) h · \(Money.text(job.laborTotal))") {
                 ForEach(timeEntries) { t in
                     NavigationLink { TimeEntryDetail(entry: t) } label: {
                         HStack {
@@ -530,7 +529,7 @@ struct MoneyView: View {
                     }
                 }
                 .onDelete { idx in idx.forEach { context.delete(timeEntries[$0]) } }
-            }
+            } }
         }
     }
 

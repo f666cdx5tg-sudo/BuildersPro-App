@@ -1537,7 +1537,7 @@ struct DailyLogSheet: View {
                 fact("Photos", String(photos), photos > 0 ? Theme.blue : nil)
                 fact("Checklist finished", String(doneItems.count), doneItems.isEmpty ? nil : Theme.green)
                 fact("Checklist added", String(addedItems))
-                fact("Time clock", clockHours > 0 ? num(clockHours) + " hr" : "0 hr")
+                if clockHours > 0 { fact("Time clock", num(clockHours) + " hr") }
                 if !dayExpenses.isEmpty { fact("Expenses", "\(dayExpenses.count) · " + usd(dayExpenses.reduce(0) { $0 + $1.amount })) }
                 if dayDeliveries > 0 { fact("Deliveries", String(dayDeliveries), Theme.orange) }
                 if !dayAppts.isEmpty { fact("Appointments", dayAppts.map(\.title).joined(separator: ", ")) }
