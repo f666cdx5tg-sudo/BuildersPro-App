@@ -212,9 +212,14 @@ struct HomeView: View {
                     .minimumScaleFactor(0.5).lineLimit(1)
                     .foregroundStyle(LinearGradient(colors: [Theme.blue, Theme.orange], startPoint: .leading, endPoint: .trailing))
             }
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "mappin.and.ellipse").font(.title3).foregroundStyle(Theme.blue).padding(.top, 2)
-                Text(info.place).font(.headline).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: 10) {
+                FeatherPin().stroke(Theme.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    .frame(width: 20, height: 20).padding(.top, 2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(info.place).font(.headline.weight(.bold)).fixedSize(horizontal: false, vertical: true)
+                    Text(Date.now.formatted(.dateTime.weekday(.abbreviated).month(.twoDigits).day(.twoDigits).year()))
+                        .font(.callout.weight(.semibold)).foregroundStyle(.secondary)
+                }
                 Spacer(minLength: 6)
                 TimelineView(.everyMinute) { ctx in
                     Text(ctx.date.formatted(.dateTime.hour().minute()))
@@ -222,11 +227,9 @@ struct HomeView: View {
                         .minimumScaleFactor(0.6).lineLimit(1)
                 }
             }
-            Text(Date.now.formatted(.dateTime.weekday(.abbreviated).month(.twoDigits).day(.twoDigits).year()))
-                .font(.title3).foregroundStyle(.secondary).padding(.leading, 30)
             HStack(spacing: 10) {
-                Text(info.icon).font(.title2)
-                Text(info.weather).font(.title3.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+                Image(systemName: info.icon).font(.title3).foregroundStyle(Color.primary).frame(width: 20)
+                Text(info.weather).font(.callout.weight(.bold)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             }
         }
     }
@@ -787,5 +790,22 @@ struct AllCalendarView: View {
         context.insert(a)
         a.job = job
         editing = a
+    }
+}
+
+
+/// The outlined map-pin used in the web header (Feather "map-pin").
+struct FeatherPin: Shape {
+    func path(in r: CGRect) -> Path {
+        let k = min(r.width, r.height) / 24
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: r.minX + x * k, y: r.minY + y * k) }
+        var path = Path()
+        path.move(to: p(21, 10))
+        path.addCurve(to: p(12, 23), control1: p(21, 17), control2: p(12, 23))
+        path.addCurve(to: p(3, 10), control1: p(12, 23), control2: p(3, 17))
+        path.addArc(center: p(12, 10), radius: 9 * k, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+        path.closeSubpath()
+        path.addEllipse(in: CGRect(x: r.minX + 9 * k, y: r.minY + 7 * k, width: 6 * k, height: 6 * k))
+        return path
     }
 }

@@ -4,9 +4,9 @@ import CoreLocation
 /// Where you are + the weather there, for the Home header (same idea as the web app's header).
 @MainActor
 final class HeaderInfo: NSObject, ObservableObject, CLLocationManagerDelegate {
-    @Published var place = "Detecting location…"
-    @Published var weather = "Loading weather…"
-    @Published var icon = "🌡️"
+    @Published var place = "Detecting..."
+    @Published var weather = "Loading..."
+    @Published var icon = "thermometer.medium"
 
     private let manager = CLLocationManager()
     private var lastFetch: Date?
@@ -45,9 +45,9 @@ final class HeaderInfo: NSObject, ObservableObject, CLLocationManagerDelegate {
     private func lookUp(_ loc: CLLocation) async {
         // Address
         if let p = try? await CLGeocoder().reverseGeocodeLocation(loc).first {
-            let street = [p.subThoroughfare, p.thoroughfare].compactMap { $0 }.joined(separator: " ")
-            let city = [p.locality, p.administrativeArea].compactMap { $0 }.joined(separator: ", ")
-            place = [street, city].filter { !$0.isEmpty }.joined(separator: ", ")
+            // Same format as the web app: "Bergenfield NJ 07621"
+            place = [p.locality, p.administrativeArea, p.postalCode].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+            if place.isEmpty { place = p.name ?? "Location found" }
         } else {
             place = String(format: "%.4f, %.4f", loc.coordinate.latitude, loc.coordinate.longitude)
         }
@@ -59,27 +59,26 @@ final class HeaderInfo: NSObject, ObservableObject, CLLocationManagerDelegate {
                let cur = root["current"] as? [String: Any],
                let t = cur["temperature_2m"] as? Double {
                 let code = (cur["weather_code"] as? Int) ?? -1
-                let wind = (cur["wind_speed_10m"] as? Double) ?? 0
-                let (emoji, text) = Self.describe(code)
+                                let (emoji, text) = Self.describe(code)
                 icon = emoji
-                weather = "\(Int(t.rounded()))°F · \(text) · wind \(Int(wind.rounded())) mph"
+                weather = "\(Int(t.rounded()))°F \(text)"
             }
         } catch { weather = "Weather unavailable" }
     }
 
     private static func describe(_ c: Int) -> (String, String) {
         switch c {
-        case 0: return ("☀️", "Clear")
-        case 1, 2: return ("🌤️", "Mostly clear")
-        case 3: return ("☁️", "Cloudy")
-        case 45, 48: return ("🌫️", "Fog")
-        case 51...57: return ("🌦️", "Drizzle")
-        case 61...67: return ("🌧️", "Rain")
-        case 71...77: return ("🌨️", "Snow")
-        case 80...82: return ("🌦️", "Showers")
-        case 85, 86: return ("🌨️", "Snow showers")
-        case 95...99: return ("⛈️", "Thunderstorms")
-        default: return ("🌡️", "Weather")
+        case 0: return ("sun.max", "Clear")
+        case 1, 2: return ("cloud.sun", "Partly cloudy")
+        case 3: return ("cloud", "Overcast")
+        case 45, 48: return ("cloud.fog", "Fog")
+        case 51...57: return ("cloud.drizzle", "Drizzle")
+        case 61...67: return ("cloud.rain", "Rain")
+        case 71...77: return ("cloud.snow", "Snow")
+        case 80...82: return ("cloud.heavyrain", "Showers")
+        case 85, 86: return ("cloud.snow", "Snow showers")
+        case 95...99: return ("cloud.bolt.rain", "Thunderstorms")
+        default: return ("thermometer.medium", "")
         }
     }
 }
