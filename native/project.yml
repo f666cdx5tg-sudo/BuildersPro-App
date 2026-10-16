@@ -8,7 +8,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "5.11.0"
+    MARKETING_VERSION: "5.12.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   BuildersPro:
@@ -24,6 +24,7 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Unlock BuildersPro with Face ID."
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Show your job-site location and local weather on the Home screen."
         INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of job sites and punch items."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Attach photos to your jobs and punch items."
         CODE_SIGN_ENTITLEMENTS: Config/BuildersPro.entitlements

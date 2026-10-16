@@ -144,6 +144,7 @@ struct HomeView: View {
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @Query private var photos: [SitePhoto]
     @AppStorage("bpDark") private var dark = true
+    @StateObject private var info = HeaderInfo()
     let go: (AppScreen) -> Void
 
     private var greeting: String {
@@ -162,9 +163,7 @@ struct HomeView: View {
                     Text(greeting)
                         .font(.system(size: 30, weight: .black))
                         .foregroundStyle(LinearGradient(colors: [Theme.blue, Theme.orange], startPoint: .leading, endPoint: .trailing))
-                    Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
-                        .font(.callout.weight(.semibold)).foregroundStyle(.secondary)
-                        .padding(.bottom, 6)
+                    headerInfo.padding(.bottom, 6)
 
                     HStack(spacing: 10) {
                         kpi("\(active.count)", "Active Jobs", Theme.orange) { go(.jobs) }
@@ -195,6 +194,27 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
         }
+    }
+
+    private var headerInfo: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
+                Text(info.place).font(.subheadline.weight(.bold)).lineLimit(1)
+                Spacer(minLength: 8)
+                TimelineView(.everyMinute) { ctx in
+                    Text(ctx.date.formatted(.dateTime.hour().minute()))
+                        .font(.title3.weight(.black)).foregroundStyle(Theme.blue)
+                }
+            }
+            Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
+                .font(.callout.weight(.semibold)).foregroundStyle(.secondary).padding(.leading, 22)
+            HStack(spacing: 6) {
+                Text(info.icon)
+                Text(info.weather).font(.callout.weight(.bold)).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .onAppear { info.start() }
     }
 
     private func kpi(_ value: String, _ label: String, _ color: Color, _ tap: @escaping () -> Void) -> some View {
