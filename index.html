@@ -605,8 +605,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         userVerification: 'required',
         timeout: 60000
       }});
+      window.bpFaceIDLastError = '';
       return !!cred;
-    } catch(e){ return false; }
+    } catch(e){ window.bpFaceIDLastError = (e && e.name) || 'error'; return false; }
   };
 
   function renderMode(){
@@ -624,15 +625,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       document.getElementById('bp-lock-forgot').style.display = 'none';
       document.getElementById('bp-lock-faceid').style.display = 'none';
     }
-    input.focus();
+    if (!(window.bpHasPasscode() && window.bpFaceIDRegistered())) input.focus();   // v4.28: don't pop the keyboard over Face ID
   }
 
   window.bpLockSubmit = async function(){
     if (window.bpHasPasscode()) {
       var ok = await window.bpCheckPasscode(input.value);
       if (ok && input.value.length > 0) {
-        el.remove();
-        if (typeof bpForceRepaintNudge === 'function') bpForceRepaintNudge();
+        bpLockOpen();
       } else {
         errEl.textContent = 'Incorrect passcode — try again';
         input.value=''; input.focus();
@@ -642,8 +642,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       if (!a || a.length < 4) { errEl.textContent = 'Use at least 4 characters'; return; }
       if (a !== b) { errEl.textContent = "Passcodes don't match"; input2.value=''; input2.focus(); return; }
       await window.bpSetPasscode(a);
-      el.remove();
-      if (typeof bpForceRepaintNudge === 'function') bpForceRepaintNudge();
+      bpLockOpen();
     }
   };
   window.bpLockForgot = function(){
@@ -651,32 +650,79 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     window.bpClearPasscode();
     renderMode();
   };
-  window.bpLockFaceID = async function(){
+  /* v4.28 — Face ID now opens the app with NO tap. Three layers, because iOS
+     can silently refuse a Face ID prompt that fires before the page is fully
+     visible/focused (that refusal is what used to leave you stuck on the button):
+       1. fire the instant the lock screen exists;
+       2. fire again (up to 4 tries) each time the app becomes visible/focused
+          while it is still locked — covers launch from the Home Screen, where
+          the first attempt can land before iOS is ready;
+       3. last resort only if iOS keeps refusing: a touch ANYWHERE on the lock
+          screen (not just the small button) starts Face ID.
+     A deliberate cancel (user dismisses the sheet) is never retried — that
+     would trap you in a Face ID loop — the passcode is right there instead. */
+  var faceBusy = false, faceAutoTries = 0, faceArmed = false, faceDone = false;
+  function bpLockOpen(){
+    faceDone = true;
+    document.removeEventListener('visibilitychange', onWake, true);
+    window.removeEventListener('pageshow', onWake, true);
+    window.removeEventListener('focus', onWake, true);
+    el.remove();
+    if (typeof bpForceRepaintNudge === 'function') bpForceRepaintNudge();
+  }
+  window.bpLockFaceID = async function(auto){
+    if (faceBusy || faceDone || !el.parentNode) return;
+    faceBusy = true;
     var faceBtn = document.getElementById('bp-lock-faceid');
     if (faceBtn) { faceBtn.disabled = true; }
+    var t0 = Date.now();
     var ok = await window.bpFaceIDUnlock();
-    if (ok) {
-      el.remove();
-      if (typeof bpForceRepaintNudge === 'function') bpForceRepaintNudge();
+    faceBusy = false;
+    if (ok) { bpLockOpen(); return; }
+    if (faceBtn) { faceBtn.disabled = false; }
+    var blocked = (window.bpFaceIDLastError === 'NotAllowedError') && (Date.now() - t0 < 1500);
+    if (auto === true && blocked) {
+      // iOS refused to show the sheet (not the user) — wait for the next wake-up, and
+      // arm tap-anywhere in case there isn't one.
+      subEl.textContent = 'Tap anywhere to use Face ID';
+      armTapAnywhere();
       return;
     }
-    if (faceBtn) { faceBtn.disabled = false; }
     errEl.textContent = "Face ID didn't confirm — use your passcode below";
   };
+  function armTapAnywhere(){
+    if (faceArmed) return; faceArmed = true;
+    var h = function(e){
+      var t = e.target;
+      if (t && t.closest && t.closest('#bp-lock-input, #bp-lock-input2, #bp-lock-btn, #bp-lock-forgot')) return;
+      el.removeEventListener('pointerup', h, true); faceArmed = false;
+      window.bpLockFaceID(false);
+    };
+    el.addEventListener('pointerup', h, true);
+  }
+  function faceReady(){ return window.bpHasPasscode() && window.bpFaceIDRegistered(); }
+  async function autoFace(){
+    if (faceDone || faceBusy || faceAutoTries >= 4 || !faceReady()) return;
+    if (document.visibilityState && document.visibilityState !== 'visible') return;
+    if (!(await window.bpFaceIDSupported())) return;
+    faceAutoTries++;
+    var faceBtn = document.getElementById('bp-lock-faceid');
+    if (faceBtn) faceBtn.style.display = 'flex';
+    window.bpLockFaceID(true);
+  }
+  function onWake(e){ if (e && e.type === 'focus' && e.target !== window) return; autoFace(); }   // ignore focus on the passcode box
+  document.addEventListener('visibilitychange', onWake, true);
+  window.addEventListener('pageshow', onWake, true);
+  window.addEventListener('focus', onWake, true);
+
   input.addEventListener('keydown', function(e){ if (e.key==='Enter') { if (input2wrap.style.display==='block') input2.focus(); else bpLockSubmit(); } });
   input2.addEventListener('keydown', function(e){ if (e.key==='Enter') bpLockSubmit(); });
 
   renderMode();
 
-  // Offer Face ID right away, like a native app would — the passcode form
-  // stays visible underneath as the fallback if it's cancelled or fails.
-  (async function(){
-    if (window.bpHasPasscode() && window.bpFaceIDRegistered() && await window.bpFaceIDSupported()) {
-      var faceBtn = document.getElementById('bp-lock-faceid');
-      if (faceBtn) faceBtn.style.display = 'flex';
-      window.bpLockFaceID();
-    }
-  })();
+  // Face ID starts immediately — the passcode form stays visible underneath as
+  // the fallback if it's cancelled or fails.
+  autoFace();
 })();
 </script>
 
@@ -1498,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.27';
+var APP_VERSION = '4.28';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){

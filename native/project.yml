@@ -23,6 +23,7 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "Unlock BuildersPro with Face ID."
         INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of job sites and punch items."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Attach photos to your jobs and punch items."
         CODE_SIGN_ENTITLEMENTS: Config/BuildersPro.entitlements

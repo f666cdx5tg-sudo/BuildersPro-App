@@ -12,7 +12,7 @@ struct BuildersProApp: App {
     }()
 
     var body: some Scene {
-        WindowGroup { JobsView() }
+        WindowGroup { LockGate { JobsView() } }
             .modelContainer(container)
     }
 }
