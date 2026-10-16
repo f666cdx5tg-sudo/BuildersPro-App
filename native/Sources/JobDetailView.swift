@@ -1,5 +1,7 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
+import PDFKit
 
 enum Section3: String, CaseIterable, Identifiable {
     case spaces = "Spaces", punch = "Punch", photos = "Photos"
@@ -9,7 +11,8 @@ enum Section3: String, CaseIterable, Identifiable {
 
 /// Every tab on a job. Spaces / Punch / Photos reuse the space grid; Money and Reports have their own screens.
 enum JobTab: String, CaseIterable, Identifiable {
-    case spaces = "Spaces", punch = "Punch", photos = "Photos", money = "Money", reports = "Reports"
+    case spaces = "Spaces", punch = "Punch", photos = "Photos", money = "Money", reports = "Reports",
+         schedule = "Schedule", notes = "Notes", shopping = "Shopping", docs = "Docs"
     var id: String { rawValue }
     var grid: Section3? {
         switch self {
@@ -39,13 +42,26 @@ struct JobDetailView: View {
                     .font(.caption.bold())
             }.padding(.horizontal).padding(.top, 8)
 
-            Picker("Section", selection: $tab) {
-                ForEach(JobTab.allCases) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented).padding()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(JobTab.allCases) { t in
+                        Button { tab = t } label: {
+                            Text(t.rawValue).font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(tab == t ? Color.accentColor : Color.gray.opacity(0.15), in: Capsule())
+                                .foregroundStyle(tab == t ? Color.white : Color.primary)
+                        }.buttonStyle(.plain)
+                    }
+                }.padding(.horizontal).padding(.vertical, 10)
+            }
 
             switch tab {
             case .money: MoneyView(job: job)
             case .reports: ReportsView(job: job)
+            case .schedule: ScheduleView(job: job)
+            case .notes: NotesView(job: job)
+            case .shopping: ShoppingView(job: job)
+            case .docs: DocsView(job: job)
             default: SpaceGrid(job: job, mode: tab.grid ?? .spaces)
             }
         }
@@ -64,6 +80,9 @@ struct JobDetailView: View {
                 Button("Add a permit", systemImage: "checkmark.seal") { addPermit() }
                 Button("Clock in (labor)", systemImage: "clock") { clockIn() }
                 Button("Add a daily report", systemImage: "doc.text") { addReport() }
+                Button("Add an appointment", systemImage: "calendar.badge.plus") { addAppointment() }
+                Button("Add a note", systemImage: "note.text.badge.plus") { addNote() }
+                Button("Add a shopping item", systemImage: "cart.badge.plus") { addShopping() }
             } label: { Image(systemName: "line.3.horizontal") }
         }
         .alert("New space", isPresented: $addingSpace) {
@@ -116,6 +135,21 @@ struct JobDetailView: View {
         t.clockIn = Date(); t.isOpen = true
         context.insert(t); t.job = job
         tab = .money
+    }
+    private func addAppointment() {
+        let a = Appointment(title: "New appointment")
+        context.insert(a); a.job = job
+        tab = .schedule
+    }
+    private func addNote() {
+        let n = JobNote(title: "New note")
+        context.insert(n); n.job = job
+        tab = .notes
+    }
+    private func addShopping() {
+        let i = ShoppingItem(text: "New item")
+        context.insert(i); i.job = job
+        tab = .shopping
     }
     private func addReport() {
         let n = (job.reports ?? []).count + 1
@@ -542,5 +576,239 @@ struct ReportDetail: View {
 
     private func notes(_ title: String, _ text: Binding<String>) -> some View {
         Section(title) { TextEditor(text: text).frame(minHeight: 70) }
+    }
+}
+
+
+// MARK: - Schedule
+
+struct ScheduleView: View {
+    @Environment(\.modelContext) private var context
+    @Bindable var job: Job
+
+    private var upcoming: [Appointment] { (job.appointments ?? []).filter { $0.date >= Calendar.current.startOfDay(for: Date()) }.sorted { $0.date < $1.date } }
+    private var past: [Appointment] { (job.appointments ?? []).filter { $0.date < Calendar.current.startOfDay(for: Date()) }.sorted { $0.date > $1.date } }
+
+    var body: some View {
+        List {
+            if (job.appointments ?? []).isEmpty { Text("Nothing scheduled. Use ≡ → Add an appointment.").foregroundStyle(.secondary) }
+            if !upcoming.isEmpty {
+                Section("Upcoming") { rows(upcoming) }
+            }
+            if !past.isEmpty {
+                Section("Past") { rows(past) }
+            }
+        }
+    }
+
+    @ViewBuilder private func rows(_ items: [Appointment]) -> some View {
+        ForEach(items) { a in
+            NavigationLink { AppointmentDetail(item: a) } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(a.title.isEmpty ? "Appointment" : a.title).font(.headline)
+                    Text(a.date.formatted(date: .abbreviated, time: .shortened) + " · " + a.kind)
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .onDelete { idx in idx.forEach { context.delete(items[$0]) } }
+    }
+}
+
+struct AppointmentDetail: View {
+    @Bindable var item: Appointment
+    var body: some View {
+        Form {
+            TextField("Title", text: $item.title)
+            Picker("Type", selection: $item.kind) { ForEach(Money.appointmentKinds, id: \.self) { Text($0).tag($0) } }
+            DatePicker("When", selection: $item.date)
+            Section("Notes") { TextEditor(text: $item.notes).frame(minHeight: 90) }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(item.title.isEmpty ? "Appointment" : item.title)
+    }
+}
+
+// MARK: - Notes
+
+struct NotesView: View {
+    @Environment(\.modelContext) private var context
+    @Bindable var job: Job
+    private var items: [JobNote] { (job.notes ?? []).sorted { $0.created > $1.created } }
+
+    var body: some View {
+        List {
+            if items.isEmpty { Text("No notes yet. Use ≡ → Add a note.").foregroundStyle(.secondary) }
+            ForEach(items) { n in
+                NavigationLink { NoteDetail(item: n) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(n.title.isEmpty ? "Note" : n.title).font(.headline)
+                        Text(n.text.isEmpty ? "Empty" : n.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                        Text(n.created.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .onDelete { idx in idx.forEach { context.delete(items[$0]) } }
+        }
+    }
+}
+
+struct NoteDetail: View {
+    @Bindable var item: JobNote
+    var body: some View {
+        Form {
+            TextField("Title", text: $item.title)
+            TextField("Written by", text: $item.author)
+            Section("Note") { TextEditor(text: $item.text).frame(minHeight: 200) }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(item.title.isEmpty ? "Note" : item.title)
+    }
+}
+
+// MARK: - Shopping
+
+struct ShoppingView: View {
+    @Environment(\.modelContext) private var context
+    @Bindable var job: Job
+    private var toBuy: [ShoppingItem] { (job.shopping ?? []).filter { !$0.bought }.sorted { $0.created < $1.created } }
+    private var bought: [ShoppingItem] { (job.shopping ?? []).filter { $0.bought }.sorted { ($0.boughtAt ?? .distantPast) > ($1.boughtAt ?? .distantPast) } }
+
+    var body: some View {
+        List {
+            if (job.shopping ?? []).isEmpty { Text("Nothing on the list. Use ≡ → Add a shopping item.").foregroundStyle(.secondary) }
+            if !toBuy.isEmpty {
+                Section("To buy · est. " + Money.text(toBuy.reduce(0) { $0 + $1.total })) { rows(toBuy) }
+            }
+            if !bought.isEmpty {
+                Section("Bought · " + Money.text(bought.reduce(0) { $0 + $1.total })) { rows(bought) }
+            }
+        }
+    }
+
+    @ViewBuilder private func rows(_ items: [ShoppingItem]) -> some View {
+        ForEach(items) { i in
+            HStack {
+                Button {
+                    i.bought.toggle(); i.boughtAt = i.bought ? Date() : nil
+                } label: {
+                    Image(systemName: i.bought ? "checkmark.circle.fill" : "circle").font(.title3)
+                        .foregroundStyle(i.bought ? Color.green : Color.secondary)
+                }.buttonStyle(.plain)
+                NavigationLink { ShoppingDetail(item: i) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(i.text.isEmpty ? "Item" : i.text).strikethrough(i.bought)
+                        Text([i.qty != 1 ? "\(i.qty.formatted()) \(i.unit)" : "", i.store, i.total > 0 ? Money.text(i.total) : ""]
+                                .filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .onDelete { idx in idx.forEach { context.delete(items[$0]) } }
+    }
+}
+
+struct ShoppingDetail: View {
+    @Bindable var item: ShoppingItem
+    @Query(sort: \Vendor.name) private var vendors: [Vendor]
+    var body: some View {
+        Form {
+            TextField("Item", text: $item.text)
+            HStack { Text("Quantity"); Spacer(); TextField("1", value: $item.qty, format: .number).multilineTextAlignment(.trailing).frame(width: 90) }
+            TextField("Unit (ea, box, ft…)", text: $item.unit)
+            HStack { Text("Price each"); Spacer(); TextField("0", value: $item.price, format: .number).multilineTextAlignment(.trailing).frame(width: 110) }
+            TextField("Store / vendor", text: $item.store)
+            if !vendors.isEmpty {
+                Picker("Pick a vendor", selection: $item.store) {
+                    Text("—").tag(item.store)
+                    ForEach(vendors) { Text($0.name).tag($0.name) }
+                }
+            }
+            Toggle("Bought", isOn: $item.bought)
+                .onChange(of: item.bought) { _, now in item.boughtAt = now ? Date() : nil }
+            TextField("Note", text: $item.note, axis: .vertical)
+            Text("Total: " + Money.text(item.total)).foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+        .navigationTitle(item.text.isEmpty ? "Item" : item.text)
+    }
+}
+
+// MARK: - Documents
+
+struct PDFBox: View {
+    let data: Data
+    var body: some View { PDFRep(data: data) }
+}
+#if os(iOS)
+struct PDFRep: UIViewRepresentable {
+    let data: Data
+    func makeUIView(context: Context) -> PDFView { let v = PDFView(); v.autoScales = true; v.document = PDFDocument(data: data); return v }
+    func updateUIView(_ v: PDFView, context: Context) {}
+}
+#else
+struct PDFRep: NSViewRepresentable {
+    let data: Data
+    func makeNSView(context: Context) -> PDFView { let v = PDFView(); v.autoScales = true; v.document = PDFDocument(data: data); return v }
+    func updateNSView(_ v: PDFView, context: Context) {}
+}
+#endif
+
+struct DocsView: View {
+    @Environment(\.modelContext) private var context
+    @Bindable var job: Job
+    @State private var picking = false
+    @State private var message = ""
+    private var items: [JobDocument] { (job.documents ?? []).sorted { $0.created > $1.created } }
+
+    var body: some View {
+        List {
+            Button { picking = true } label: { Label("Add a document (PDF or picture)", systemImage: "doc.badge.plus") }
+            if items.isEmpty { Text("No documents yet.").foregroundStyle(.secondary) }
+            ForEach(items) { d in
+                NavigationLink { DocDetail(item: d) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(d.name.isEmpty ? "Document" : d.name).font(.headline)
+                        Text(d.category + " · " + d.created.formatted(date: .abbreviated, time: .omitted))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .onDelete { idx in idx.forEach { context.delete(items[$0]) } }
+        }
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.pdf, .image]) { result in
+            guard case .success(let url) = result else { return }
+            let ok = url.startAccessingSecurityScopedResource()
+            defer { if ok { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { return }
+            let d = JobDocument(name: url.deletingPathExtension().lastPathComponent)
+            d.fileName = url.lastPathComponent
+            d.ext = url.pathExtension.lowercased()
+            d.data = data
+            context.insert(d); d.job = job
+        }
+    }
+}
+
+struct DocDetail: View {
+    @Bindable var item: JobDocument
+    var body: some View {
+        Form {
+            TextField("Name", text: $item.name)
+            Picker("Category", selection: $item.category) { ForEach(Money.documentCategories, id: \.self) { Text($0).tag($0) } }
+            TextField("Notes", text: $item.notes, axis: .vertical)
+            Section("Preview") {
+                if let d = item.data {
+                    if item.ext == "pdf" { PDFBox(data: d).frame(height: 460) }
+                    else if let img = PhotoThumb.image(d) { img.resizable().scaledToFit() }
+                    else { Text("Can't preview this file type.").foregroundStyle(.secondary) }
+                } else {
+                    Text("No file attached.").foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(item.name.isEmpty ? "Document" : item.name)
     }
 }

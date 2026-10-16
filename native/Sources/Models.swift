@@ -23,6 +23,10 @@ final class Job {
     @Relationship(deleteRule: .cascade, inverse: \Invoice.job) var invoices: [Invoice]? = []
     @Relationship(deleteRule: .cascade, inverse: \Permit.job) var permits: [Permit]? = []
     @Relationship(deleteRule: .cascade, inverse: \TimeEntry.job) var timeEntries: [TimeEntry]? = []
+    @Relationship(deleteRule: .cascade, inverse: \Appointment.job) var appointments: [Appointment]? = []
+    @Relationship(deleteRule: .cascade, inverse: \JobNote.job) var notes: [JobNote]? = []
+    @Relationship(deleteRule: .cascade, inverse: \ShoppingItem.job) var shopping: [ShoppingItem]? = []
+    @Relationship(deleteRule: .cascade, inverse: \JobDocument.job) var documents: [JobDocument]? = []
 
     init(name: String) { self.name = name }
 
@@ -228,6 +232,72 @@ final class TimeEntry {
     }
 }
 
+@Model
+final class Appointment {
+    var title: String = ""
+    var kind: String = "Appointment"                 // Appointment, Delivery, Inspection, Meeting, Other
+    var date: Date = Date()                          // date and time together
+    var notes: String = ""
+    var sourceID: String = ""
+    var job: Job?
+
+    init(title: String) { self.title = title }
+}
+
+@Model
+final class JobNote {
+    var title: String = ""
+    var text: String = ""
+    var author: String = ""
+    var created: Date = Date()
+    var sourceID: String = ""
+    var job: Job?
+
+    init(title: String) { self.title = title }
+}
+
+@Model
+final class ShoppingItem {
+    var text: String = ""
+    var qty: Double = 1
+    var unit: String = ""
+    var price: Double = 0                            // price for one
+    var store: String = ""
+    var note: String = ""
+    var bought: Bool = false
+    var boughtAt: Date?
+    var created: Date = Date()
+    var sourceID: String = ""
+    var job: Job?
+
+    init(text: String) { self.text = text }
+
+    var total: Double { qty * price }
+}
+
+@Model
+final class Vendor {
+    var name: String = ""
+    var sourceID: String = ""
+
+    init(name: String) { self.name = name }
+}
+
+@Model
+final class JobDocument {
+    var name: String = ""
+    var category: String = "Other"                   // Contract, License, Inspection Report, Other…
+    var fileName: String = ""
+    var ext: String = "pdf"                          // extension used when previewing: pdf, jpg, png…
+    var notes: String = ""
+    var created: Date = Date()
+    @Attribute(.externalStorage) var data: Data?
+    var sourceID: String = ""
+    var job: Job?
+
+    init(name: String) { self.name = name }
+}
+
 enum Money {
     static func text(_ n: Double) -> String {
         let sign = n < 0 ? "-" : ""
@@ -241,6 +311,8 @@ enum Money {
     static let invoiceStatuses = ["Draft", "Sent", "Paid", "Overdue"]
     static let permitTrades = ["General", "Electrical", "Plumbing", "HVAC", "Framing", "Roofing", "Masonry", "Building", "Other"]
     static let permitStatuses = ["Active", "Pending", "Closed"]
+    static let appointmentKinds = ["Appointment", "Delivery", "Inspection", "Meeting", "Other"]
+    static let documentCategories = ["Contract", "License", "Insurance", "Inspection Report", "Permit", "Plans", "Other"]
 }
 
 enum Levels {

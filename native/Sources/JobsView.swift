@@ -82,6 +82,7 @@ enum BackupImporter {
         var jobs = 0, spaces = 0, punch = 0, photos = 0
         var expenses = 0, contractors = 0, payments = 0, reports = 0
         var changeOrders = 0, invoices = 0, permits = 0, timeEntries = 0
+        var appointments = 0, shopping = 0, vendors = 0, documents = 0
         var text: String {
             var parts: [String] = []
             if jobs > 0 { parts.append("\(jobs) new job(s): \(spaces) spaces, \(punch) punch items, \(photos) photos") }
@@ -90,6 +91,9 @@ enum BackupImporter {
             }
             if changeOrders + invoices + permits + timeEntries > 0 {
                 parts.append("\(changeOrders) change orders, \(invoices) invoices, \(permits) permits, \(timeEntries) time entries")
+            }
+            if appointments + shopping + vendors + documents > 0 {
+                parts.append("\(appointments) appointments, \(shopping) shopping items, \(vendors) vendors, \(documents) documents")
             }
             return parts.isEmpty ? "Nothing new to import. Everything in that file is already here."
                                  : "Imported " + parts.joined(separator: "; ") + "."
@@ -161,6 +165,12 @@ enum BackupImporter {
         let invoiceList = db["invoices"] as? [[String: Any]] ?? []
         let permitList = db["permits"] as? [[String: Any]] ?? []
         let timeList = db["timeEntries"] as? [[String: Any]] ?? []
+        let apptList = db["appointments"] as? [[String: Any]] ?? []
+        let shopList = db["shopping"] as? [[String: Any]] ?? []
+        let vendorList = db["vendors"] as? [[String: Any]] ?? []
+        let docList = db["documents"] as? [[String: Any]] ?? []
+
+        var out = Summary()
 
         // What is already here, so importing the same file twice never duplicates anything.
         var jobBySource: [String: Job] = [:]
@@ -172,8 +182,21 @@ enum BackupImporter {
         let haveInvoice = Set(((try? context.fetch(FetchDescriptor<Invoice>())) ?? []).map { $0.sourceID })
         let havePermit = Set(((try? context.fetch(FetchDescriptor<Permit>())) ?? []).map { $0.sourceID })
         let haveTime = Set(((try? context.fetch(FetchDescriptor<TimeEntry>())) ?? []).map { $0.sourceID })
+        let haveAppt = Set(((try? context.fetch(FetchDescriptor<Appointment>())) ?? []).map { $0.sourceID })
+        let haveShop = Set(((try? context.fetch(FetchDescriptor<ShoppingItem>())) ?? []).map { $0.sourceID })
+        let haveDoc = Set(((try? context.fetch(FetchDescriptor<JobDocument>())) ?? []).map { $0.sourceID })
+        var vendorNames = Set(((try? context.fetch(FetchDescriptor<Vendor>())) ?? []).map { $0.name.lowercased() })
 
-        var out = Summary()
+        // Vendors are shared across jobs; the web list has repeats, so keep one of each name.
+        for v in vendorList {
+            let name = str(v["name"]).trimmingCharacters(in: .whitespaces)
+            if name.isEmpty || vendorNames.contains(name.lowercased()) { continue }
+            vendorNames.insert(name.lowercased())
+            let vv = Vendor(name: name); vv.sourceID = str(v["id"])
+            context.insert(vv)
+            out.vendors += 1
+        }
+
         for j in jobList {
             let jid = (j["id"] as? String) ?? ""
             if jid.isEmpty { continue }
@@ -365,6 +388,57 @@ enum BackupImporter {
                 context.insert(te)
                 te.job = job
                 out.timeEntries += 1
+            }
+            for a in apptList where (a["jobId"] as? String) == jid {
+                let sid = str(a["id"])
+                if sid.isEmpty || haveAppt.contains(sid) { continue }
+                let ap = Appointment(title: str(a["title"]))
+                ap.sourceID = sid
+                ap.kind = str(a["type"]).isEmpty ? "Appointment" : str(a["type"])
+                ap.notes = str(a["notes"])
+                var when = date(a["date"]) ?? Date()
+                let parts = str(a["time"]).split(separator: ":").compactMap { Int($0) }
+                if parts.count >= 2, let t = Calendar.current.date(bySettingHour: parts[0], minute: parts[1], second: 0, of: when) { when = t }
+                ap.date = when
+                context.insert(ap)
+                ap.job = job
+                out.appointments += 1
+            }
+
+            for i in shopList where (i["jobId"] as? String) == jid {
+                let sid = str(i["id"])
+                if sid.isEmpty || haveShop.contains(sid) { continue }
+                let it = ShoppingItem(text: str(i["text"]))
+                it.sourceID = sid
+                it.qty = num(i["qty"]) == 0 ? 1 : num(i["qty"])
+                it.unit = str(i["unit"]) == "1" ? "" : str(i["unit"])
+                it.price = num(i["price"])
+                it.store = str(i["store"])
+                it.note = str(i["note"])
+                let b = str(i["bought"]).lowercased()
+                it.bought = (b == "true" || b == "1")
+                it.boughtAt = date(i["boughtAt"])
+                it.created = date(i["created"]) ?? Date()
+                context.insert(it)
+                it.job = job
+                out.shopping += 1
+            }
+
+            for d in docList where (d["jobId"] as? String) == jid {
+                let sid = str(d["id"])
+                if sid.isEmpty || haveDoc.contains(sid) { continue }
+                let doc = JobDocument(name: str(d["name"]))
+                doc.sourceID = sid
+                doc.category = str(d["category"]).isEmpty ? "Other" : str(d["category"])
+                doc.fileName = str(d["fileName"])
+                doc.notes = str(d["notes"])
+                doc.created = date(d["created"]) ?? Date()
+                let src = str(d["fileSrc"])
+                if src.hasPrefix("data:application/pdf") || str(d["fileType"]) == "pdf" { doc.ext = "pdf" } else { doc.ext = "jpg" }
+                doc.data = photoData(src)
+                context.insert(doc)
+                doc.job = job
+                out.documents += 1
             }
             try context.save()
         }
