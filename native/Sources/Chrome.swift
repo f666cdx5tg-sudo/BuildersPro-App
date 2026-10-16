@@ -8,6 +8,7 @@ import SwiftData
 final class ShellState: ObservableObject {
     @Published var addSymbol = "plus"
     @Published var addAction: (() -> Void)?
+    var owner: UUID?
     var goHome: () -> Void = {}
 }
 
@@ -15,10 +16,11 @@ private struct ShellAdd: ViewModifier {
     @EnvironmentObject var shell: ShellState
     let symbol: String
     let action: () -> Void
+    @State private var token = UUID()
     func body(content: Content) -> some View {
         content
-            .onAppear { shell.addSymbol = symbol; shell.addAction = action }
-            .onDisappear { shell.addAction = nil }
+            .onAppear { shell.owner = token; shell.addSymbol = symbol; shell.addAction = action }
+            .onDisappear { if shell.owner == token { shell.owner = nil; shell.addAction = nil } }
     }
 }
 
