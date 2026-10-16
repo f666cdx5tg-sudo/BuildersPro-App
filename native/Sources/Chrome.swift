@@ -1370,7 +1370,7 @@ struct ShoppingSheet: View {
         SheetFrame(title: "Add item") {
             HStack(alignment: .top, spacing: 10) {
                 FField(title: "Qty", text: $qty, prompt: "1").frame(width: 90)
-                FField(title: "Item name / description", text: $text, prompt: "1/2\" PEX elbow")
+                FField(title: "Item", text: $text, prompt: "1/2\" PEX elbow")
                 FField(title: "Cost $", text: $price, prompt: "0.00").frame(width: 110)
             }
             Text("Cost is per item. Tap the item afterwards to add store, notes and more.").font(.callout).foregroundStyle(.secondary)
