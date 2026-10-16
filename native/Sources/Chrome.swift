@@ -167,6 +167,7 @@ struct JobsView: View {
     @Query(sort: \Estimate.created, order: .reverse) private var estimates: [Estimate]
     @State private var estSheet: EstimateRequest?
     @State private var openJob: Job?
+    @State private var editingJob: Job?
 
     var body: some View {
         NavigationStack {
@@ -177,7 +178,10 @@ struct JobsView: View {
                     if tab == 0 {
                         ForEach(jobs) { job in
                             NavigationLink(value: job) { JobCardFull(job: job) }.buttonStyle(.plain)
-                                .contextMenu { Button("Delete job", systemImage: "trash", role: .destructive) { context.delete(job) } }
+                                .contextMenu {
+                                    Button("Edit job", systemImage: "pencil") { editingJob = job }
+                                    Button("Delete job", systemImage: "trash", role: .destructive) { context.delete(job) }
+                                }
                         }
                         if jobs.isEmpty && !importing {
                             ContentUnavailableView("No jobs yet", systemImage: "hammer", description: Text("Tap + to add a job or import your backup."))
@@ -203,6 +207,7 @@ struct JobsView: View {
             #endif
             .shellAdd { if tab == 1 { estSheet = EstimateRequest(est: nil) } else { asking = true } }
             .sheet(item: $estSheet) { EstimateSheet(est: $0.est) }
+            .sheet(item: $editingJob) { EditJobSheet(job: $0) }
             .navigationDestination(item: $openJob) { JobDetailView(job: $0) }
             .confirmationDialog("Jobs", isPresented: $asking) {
                 Button("Add a job") { adding = true }
@@ -1247,6 +1252,71 @@ struct EstimateSheet: View {
         e.status = status; e.notes = notes; e.updated = Date()
         e.lines = lines.filter { !$0.desc.isEmpty || $0.price != 0 }
         if est == nil { context.insert(e) }
+        dismiss()
+    }
+}
+
+
+// MARK: - Edit job
+
+struct EditJobSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("bpDark") private var dark = true
+    @Bindable var job: Job
+    @State private var name = ""
+    @State private var address = ""
+    @State private var client = ""
+    @State private var email = ""
+    @State private var cell = ""
+    @State private var contract = ""
+    @State private var status = "Active"
+    @State private var hasStart = false
+    @State private var start = Date()
+    @State private var hasEnd = false
+    @State private var end = Date()
+    @State private var notes = ""
+    @State private var loaded = false
+
+    var body: some View {
+        SheetFrame(title: "Edit Job") {
+            FField(title: "Job name *", text: $name, prompt: "e.g. Smith Kitchen Reno")
+            FField(title: "Job address", text: $address, prompt: "Street, City, State Zip")
+            FField(title: "Client name", text: $client, prompt: "Client name")
+            FField(title: "Client email", text: $email, prompt: "client@example.com")
+            FField(title: "Client cell", text: $cell, prompt: "(123)-456-7890")
+            FField(title: "Contract value ($)", text: $contract, prompt: "0.00")
+            FMenu(title: "Status", value: $status, options: ["Active", "Pending", "On hold", "Complete"])
+            Toggle("Start date", isOn: $hasStart).font(.title3)
+            if hasStart { DatePicker("", selection: $start, displayedComponents: .date).labelsHidden() }
+            Toggle("Completion date", isOn: $hasEnd).font(.title3)
+            if hasEnd { DatePicker("", selection: $end, displayedComponents: .date).labelsHidden() }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("NOTES").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                TextEditor(text: $notes).font(.title3).scrollContentBackground(.hidden).padding(8).frame(height: 110)
+                    .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark), lineWidth: 1))
+            }
+            FBigButton(title: "Save Changes", enabled: !name.trimmingCharacters(in: .whitespaces).isEmpty) { save() }
+        }
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            name = job.name; address = job.address; client = job.client; email = job.clientEmail; cell = job.clientPhone
+            contract = job.contract == 0 ? "" : String(format: "%g", job.contract)
+            status = job.status.isEmpty ? (job.isActive ? "Active" : "Complete") : job.status
+            if let s = job.startDate { hasStart = true; start = s }
+            if let e = job.completionDate { hasEnd = true; end = e }
+            notes = job.jobNotes
+        }
+    }
+
+    private func save() {
+        job.name = name.trimmingCharacters(in: .whitespaces)
+        job.address = address; job.client = client; job.clientEmail = email; job.clientPhone = cell
+        job.contract = Double(contract.replacingOccurrences(of: ",", with: "").replacingOccurrences(of: "$", with: "")) ?? 0
+        job.status = status; job.isActive = status != "Complete"
+        job.startDate = hasStart ? start : nil; job.completionDate = hasEnd ? end : nil
+        job.jobNotes = notes
         dismiss()
     }
 }

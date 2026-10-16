@@ -114,6 +114,7 @@ struct JobDetailView: View {
                         }
                     }
                 }
+            case .editJob: EditJobSheet(job: job)
             case .spaces: AddSpacesSheet(job: job)
             case .expense: ExpenseSheet(job: job)
             case .contractor: ContractorSheet(job: job)
@@ -136,6 +137,10 @@ struct JobDetailView: View {
                         .foregroundStyle(Theme.blue)
                 }.buttonStyle(.plain)
                 Spacer()
+                Button { sheet = .editJob } label: {
+                    HStack(spacing: 6) { Image(systemName: "pencil"); Text("Edit").font(.title3.weight(.semibold)) }
+                        .foregroundStyle(Theme.blue)
+                }.buttonStyle(.plain)
             }
             Text(job.name).font(.system(size: 38, weight: .heavy)).lineLimit(2).minimumScaleFactor(0.6)
             HStack(spacing: 6) {
@@ -1191,4 +1196,4 @@ extension View {
 
 
 enum JobSheet: String, Identifiable {
-    case picker, spaces, expense, contractor, invoice, appointment, changeOrder, permit, delivery; var id: String { rawValue } }
+    case picker, editJob, spaces, expense, contractor, invoice, appointment, changeOrder, permit, delivery; var id: String { rawValue } }
