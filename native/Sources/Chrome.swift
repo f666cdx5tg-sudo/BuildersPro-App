@@ -9,6 +9,7 @@ final class ShellState: ObservableObject {
     @Published var addSymbol = "plus"
     @Published var addAction: (() -> Void)?
     var owner: UUID?
+    @Published var barHidden = false
     var goHome: () -> Void = {}
 }
 
@@ -54,6 +55,9 @@ struct FloatBar: View {
             }
         }
         .padding(.trailing, 18).padding(.bottom, 14)
+        .offset(y: shell.barHidden && !voice.listening ? 140 : 0)
+        .opacity(shell.barHidden && !voice.listening ? 0 : 1)
+        .animation(.easeOut(duration: 0.2), value: shell.barHidden)
     }
 
     private var banner: some View {

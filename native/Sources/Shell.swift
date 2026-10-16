@@ -73,7 +73,13 @@ struct RootShell: View {
                     .environment(\.openMenu, { withAnimation(.easeOut(duration: 0.25)) { menu = true } })
                     .environmentObject(shell)
             }
-            .onAppear { shell.goHome = { screen = .home } }
+            .onAppear { shell.goHome = { screen = .home }; installScrollWatch() }
+            .onChange(of: screen) { _, _ in shell.barHidden = false }
+            .simultaneousGesture(DragGesture(minimumDistance: 14).onChanged { v in
+                // finger moving up = scrolling down: hide; finger moving down: show
+                if v.translation.height < -24 { if !shell.barHidden { shell.barHidden = true } }
+                else if v.translation.height > 24 { if shell.barHidden { shell.barHidden = false } }
+            })
 
             if menu {
                 Color.black.opacity(0.5).ignoresSafeArea()
@@ -88,6 +94,20 @@ struct RootShell: View {
         .alert("Sync", isPresented: $syncNote) { Button("OK", role: .cancel) {} } message: { Text("Your jobs sync through iCloud automatically on every device signed in to your Apple ID.") }
         .alert("Send feedback", isPresented: $feedbackNote) { Button("OK", role: .cancel) {} } message: { Text("The feedback form is not set up yet.") }
     }
+
+    #if os(macOS)
+    @State private var scrollMonitor: Any?
+    private func installScrollWatch() {
+        guard scrollMonitor == nil else { return }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { e in
+            // natural scrolling: negative deltaY = content moving up = scrolling down the page
+            if e.scrollingDeltaY < -2 { shell.barHidden = true } else if e.scrollingDeltaY > 2 { shell.barHidden = false }
+            return e
+        }
+    }
+    #else
+    private func installScrollWatch() {}
+    #endif
 
     private var drawer: some View {
         VStack(alignment: .leading, spacing: 8) {
