@@ -113,7 +113,7 @@ struct PhotoThumb: View {
 // MARK: - Viewer, markup, camera
 
 enum MarkTool: String, CaseIterable, Identifiable {
-    case pen = "Pen", text = "Text", circle = "Circle", arrow = "Arrow", square = "Square"
+    case pen = "Pen", text = "Text", circle = "Circle", arrow = "Arrow", square = "Square", move = "Move"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -122,6 +122,7 @@ enum MarkTool: String, CaseIterable, Identifiable {
         case .circle: return "circle"
         case .arrow: return "arrow.up.right"
         case .square: return "square"
+        case .move: return "arrow.up.and.down.and.arrow.left.and.right"
         }
     }
 }
@@ -145,6 +146,9 @@ struct MarkupView: View {
     @State private var color: Color = .red
     @State private var width: CGFloat = 0.008
     @State private var tool: MarkTool = .pen
+    @State private var moveActive = false
+    @State private var movingIndex: Int?
+    @State private var lastPoint: CGPoint = .zero
     @State private var textSpot: CGPoint?
     @State private var textValue = ""
     private let palette: [Color] = [.red, .yellow, .blue, .green, .white, .black]
@@ -162,6 +166,18 @@ struct MarkupView: View {
                                     if tool == .text { return }
                                     let pt = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
                                                      y: min(max(v.location.y / g.size.height, 0), 1))
+                                    if tool == .move {
+                                        if !moveActive {
+                                            moveActive = true
+                                            movingIndex = MarkupView.hit(strokes, at: v.location, size: g.size)
+                                            lastPoint = pt
+                                        } else if let i = movingIndex, strokes.indices.contains(i) {
+                                            let dx = pt.x - lastPoint.x, dy = pt.y - lastPoint.y
+                                            strokes[i].points = strokes[i].points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
+                                            lastPoint = pt
+                                        }
+                                        return
+                                    }
                                     if v.translation == .zero {
                                         strokes.append(Stroke(tool: tool, points: [pt], color: color, width: width))
                                     } else if !strokes.isEmpty {
@@ -169,6 +185,7 @@ struct MarkupView: View {
                                         else { strokes[strokes.count - 1].points = [strokes[strokes.count - 1].points[0], pt] }
                                     }
                                 }.onEnded { v in
+                                    if tool == .move { moveActive = false; movingIndex = nil; return }
                                     guard tool == .text else { return }
                                     textSpot = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
                                                        y: min(max(v.location.y / g.size.height, 0), 1))
@@ -230,6 +247,39 @@ struct MarkupView: View {
         .padding(.horizontal).padding(.top, 8)
     }
 
+    /// Which mark is under this point (topmost first)? Used by the Move tool.
+    static func hit(_ strokes: [Stroke], at p: CGPoint, size: CGSize) -> Int? {
+        let tol: CGFloat = 24
+        func px(_ q: CGPoint) -> CGPoint { CGPoint(x: q.x * size.width, y: q.y * size.height) }
+        func dist(_ p: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat {
+            let dx = b.x - a.x, dy = b.y - a.y
+            let l2 = dx * dx + dy * dy
+            if l2 == 0 { return hypot(p.x - a.x, p.y - a.y) }
+            let t = max(0, min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2))
+            return hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
+        }
+        for i in strokes.indices.reversed() {
+            let s = strokes[i]
+            let pts = s.points.map(px)
+            guard let a = pts.first else { continue }
+            switch s.tool {
+            case .pen, .arrow:
+                if pts.count == 1 { if hypot(p.x - a.x, p.y - a.y) < tol { return i } }
+                for k in 1..<max(pts.count, 1) where dist(p, pts[k - 1], pts[k]) < tol { return i }
+            case .circle, .square:
+                guard let b = pts.last else { continue }
+                let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y)).insetBy(dx: -tol, dy: -tol)
+                if r.contains(p) { return i }
+            case .text:
+                let fs = max(14, min(size.width, size.height) * s.width * 4)
+                let r = CGRect(x: a.x, y: a.y, width: CGFloat(s.text.count) * fs * 0.62, height: fs * 1.3).insetBy(dx: -tol / 2, dy: -tol / 2)
+                if r.contains(p) { return i }
+            case .move: break
+            }
+        }
+        return nil
+    }
+
     static func draw(_ strokes: [Stroke], in ctx: inout GraphicsContext, size: CGSize) {
         for s in strokes {
             let w = max(3, min(size.width, size.height) * s.width)
@@ -249,10 +299,12 @@ struct MarkupView: View {
                 let fs = max(14, min(size.width, size.height) * s.width * 4)
                 let resolved = ctx.resolve(Text(s.text).font(.system(size: fs, weight: .bold)).foregroundColor(s.color))
                 let box = resolved.measure(in: CGSize(width: size.width * 0.9, height: size.height))
-                let origin = CGPoint(x: min(a.x, max(0, size.width - box.width - 8)), y: min(a.y, max(0, size.height - box.height - 6)))
-                let back = CGRect(x: origin.x - 4, y: origin.y - 2, width: box.width + 8, height: box.height + 4)
-                ctx.fill(Path(roundedRect: back, cornerRadius: 5), with: .color((s.color == .black ? Color.white : Color.black).opacity(0.5)))
-                ctx.draw(resolved, at: origin, anchor: .topLeading)
+                let origin = CGPoint(x: min(a.x, max(0, size.width - box.width)), y: min(a.y, max(0, size.height - box.height)))
+                ctx.drawLayer { layer in
+                    layer.addFilter(.shadow(color: .black.opacity(0.7), radius: 2, x: 0, y: 1))
+                    layer.draw(resolved, at: origin, anchor: .topLeading)
+                }
+            case .move: break
             case .circle, .square:
                 guard pts.count > 1, let b = pts.last else { continue }
                 let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
