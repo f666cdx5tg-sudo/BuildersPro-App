@@ -453,6 +453,7 @@ struct AllPunchView: View {
                                     .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
                                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark), lineWidth: 1))
                             }
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).buttonStyle(.plain)
                             NavigationLink { JobDetailView(job: job) } label: {
                                 Label("Areas", systemImage: "square.grid.2x2").font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
                                     .padding(.horizontal, 18).frame(height: 56)
@@ -487,6 +488,7 @@ struct AllPunchView: View {
                                 .background(Theme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.blue.opacity(0.6), lineWidth: 1))
                         }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).buttonStyle(.plain)
                         Text("Showing \(shown.count) of \(items.count)").font(.headline.weight(.semibold)).foregroundStyle(Theme.blue)
                         ForEach(groups) { g in group(g, job) }
                         if shown.isEmpty { Text("Nothing matches these filters.").foregroundStyle(.secondary).padding(.top, 20) }
@@ -536,6 +538,7 @@ struct AllPunchView: View {
             .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark), lineWidth: 1))
         }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).buttonStyle(.plain)
     }
 
     private func group(_ g: Group, _ job: Job) -> some View {
