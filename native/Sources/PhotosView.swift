@@ -112,8 +112,22 @@ struct PhotoThumb: View {
 
 // MARK: - Viewer, markup, camera
 
+enum MarkTool: String, CaseIterable, Identifiable {
+    case pen = "Pen", circle = "Circle", arrow = "Arrow", square = "Square"
+    var id: String { rawValue }
+    var symbol: String {
+        switch self {
+        case .pen: return "pencil.tip"
+        case .circle: return "circle"
+        case .arrow: return "arrow.up.right"
+        case .square: return "square"
+        }
+    }
+}
+
 struct Stroke: Identifiable {
     let id = UUID()
+    var tool: MarkTool = .pen
     var points: [CGPoint]            // 0...1 of the picture's width/height
     var color: Color
     var width: CGFloat               // fraction of the picture's short side
@@ -128,6 +142,7 @@ struct MarkupView: View {
     @State private var strokes: [Stroke] = []
     @State private var color: Color = .red
     @State private var width: CGFloat = 0.008
+    @State private var tool: MarkTool = .pen
     private let palette: [Color] = [.red, .yellow, .blue, .green, .white, .black]
     private let widths: [(String, CGFloat)] = [("Thin", 0.004), ("Medium", 0.008), ("Thick", 0.016)]
 
@@ -142,8 +157,12 @@ struct MarkupView: View {
                                 .gesture(DragGesture(minimumDistance: 0).onChanged { v in
                                     let pt = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
                                                      y: min(max(v.location.y / g.size.height, 0), 1))
-                                    if v.translation == .zero { strokes.append(Stroke(points: [pt], color: color, width: width)) }
-                                    else if !strokes.isEmpty { strokes[strokes.count - 1].points.append(pt) }
+                                    if v.translation == .zero {
+                                        strokes.append(Stroke(tool: tool, points: [pt], color: color, width: width))
+                                    } else if !strokes.isEmpty {
+                                        if tool == .pen { strokes[strokes.count - 1].points.append(pt) }
+                                        else { strokes[strokes.count - 1].points = [strokes[strokes.count - 1].points[0], pt] }
+                                    }
                                 })
                         }
                     }
@@ -158,6 +177,13 @@ struct MarkupView: View {
 
     private var toolbar: some View {
         VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                ForEach(MarkTool.allCases) { t in
+                    Button { tool = t } label: { Label(t.rawValue, systemImage: t.symbol) }
+                        .buttonStyle(.bordered).tint(tool == t ? .accentColor : .gray)
+                }
+                Spacer()
+            }
             HStack(spacing: 12) {
                 ForEach(palette, id: \.self) { c in
                     Circle().fill(c).frame(width: 34, height: 34)
@@ -186,16 +212,32 @@ struct MarkupView: View {
     static func draw(_ strokes: [Stroke], in ctx: inout GraphicsContext, size: CGSize) {
         for s in strokes {
             let w = max(3, min(size.width, size.height) * s.width)
-            var path = Path()
-            for (i, p) in s.points.enumerated() {
-                let q = CGPoint(x: p.x * size.width, y: p.y * size.height)
-                if i == 0 { path.move(to: q) } else { path.addLine(to: q) }
-            }
-            if s.points.count == 1, let p = s.points.first {
-                let q = CGPoint(x: p.x * size.width, y: p.y * size.height)
-                ctx.fill(Path(ellipseIn: CGRect(x: q.x - w / 2, y: q.y - w / 2, width: w, height: w)), with: .color(s.color))
-            } else {
-                ctx.stroke(path, with: .color(s.color), style: StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round))
+            let pts = s.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+            guard let a = pts.first else { continue }
+            let style = StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round)
+            switch s.tool {
+            case .pen:
+                if pts.count == 1 {
+                    ctx.fill(Path(ellipseIn: CGRect(x: a.x - w / 2, y: a.y - w / 2, width: w, height: w)), with: .color(s.color))
+                } else {
+                    var path = Path(); path.move(to: a)
+                    for q in pts.dropFirst() { path.addLine(to: q) }
+                    ctx.stroke(path, with: .color(s.color), style: style)
+                }
+            case .circle, .square:
+                guard pts.count > 1, let b = pts.last else { continue }
+                let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+                ctx.stroke(s.tool == .circle ? Path(ellipseIn: r) : Path(r), with: .color(s.color), style: style)
+            case .arrow:
+                guard pts.count > 1, let b = pts.last else { continue }
+                var path = Path(); path.move(to: a); path.addLine(to: b)
+                let ang = atan2(b.y - a.y, b.x - a.x)
+                let head = max(14, w * 5)
+                for d in [CGFloat.pi * 0.85, -CGFloat.pi * 0.85] {
+                    path.move(to: b)
+                    path.addLine(to: CGPoint(x: b.x + cos(ang + d) * head, y: b.y + sin(ang + d) * head))
+                }
+                ctx.stroke(path, with: .color(s.color), style: style)
             }
         }
     }
