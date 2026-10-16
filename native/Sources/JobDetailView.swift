@@ -89,21 +89,30 @@ struct JobDetailView: View {
         .onAppear { if tab != .spaces { section = tab; tab = .spaces } }
         .onChange(of: tab) { _, new in if new != .spaces { section = new; tab = .spaces } }
         .shellAdd { addMenu = true }
-        .confirmationDialog("Add to this job", isPresented: $addMenu) {
-            Button("Space") { sheet = .spaces }
-            Button("Expense") { sheet = .expense }
-            Button("Contractor") { sheet = .contractor }
-            Button("Change order") { addChangeOrder() }
-            Button("Invoice") { sheet = .invoice }
-            Button("Permit") { addPermit() }
-            Button("Clock in (labor)") { clockIn() }
-            Button("Daily report") { addReport() }
-            Button("Appointment") { sheet = .appointment }
-            Button("Note") { addNote() }
-            Button("Shopping item") { addShopping() }
-        }
+        .onChange(of: addMenu) { _, v in if v { addMenu = false; sheet = .picker } }
         .sheet(item: $sheet) { s in
             switch s {
+            case .picker:
+                AddPickerSheet { choice in
+                    switch choice {
+                    case "Space": sheet = .spaces
+                    case "Expense": sheet = .expense
+                    case "Contractor": sheet = .contractor
+                    case "Invoice": sheet = .invoice
+                    case "Appointment": sheet = .appointment
+                    default:
+                        sheet = nil
+                        switch choice {
+                        case "Change order": addChangeOrder()
+                        case "Permit": addPermit()
+                        case "Clock in (labor)": clockIn()
+                        case "Daily report": addReport()
+                        case "Note": addNote()
+                        case "Shopping item": addShopping()
+                        default: break
+                        }
+                    }
+                }
             case .spaces: AddSpacesSheet(job: job)
             case .expense: ExpenseSheet(job: job)
             case .contractor: ContractorSheet(job: job)
@@ -1177,4 +1186,5 @@ extension View {
 }
 
 
-enum JobSheet: String, Identifiable { case spaces, expense, contractor, invoice, appointment; var id: String { rawValue } }
+enum JobSheet: String, Identifiable {
+    case picker, spaces, expense, contractor, invoice, appointment; var id: String { rawValue } }

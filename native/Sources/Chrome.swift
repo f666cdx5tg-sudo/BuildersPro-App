@@ -876,3 +876,32 @@ struct AddSpacesSheet: View {
         }.buttonStyle(.plain)
     }
 }
+
+
+// MARK: - "Add to this job" picker (full list; native alerts clip long lists on Mac)
+struct AddPickerSheet: View {
+    let pick: (String) -> Void
+    private let items: [(String, String)] = [
+        ("Space", "square.grid.2x2"), ("Expense", "receipt"), ("Contractor", "person.badge.plus"),
+        ("Change order", "arrow.triangle.2.circlepath"), ("Invoice", "doc.text"), ("Permit", "checkmark.seal"),
+        ("Clock in (labor)", "clock"), ("Daily report", "doc.plaintext"), ("Appointment", "calendar.badge.plus"),
+        ("Note", "note.text"), ("Shopping item", "cart")]
+    var body: some View {
+        SheetFrame(title: "Add to this job") {
+            VStack(spacing: 10) {
+                ForEach(items, id: \.0) { it in
+                    Button { pick(it.0) } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: it.1).font(.title3).frame(width: 30)
+                            Text(it.0).font(.headline)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 16).frame(height: 54)
+                        .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                    }.buttonStyle(.plain)
+                }
+            }.padding(.horizontal, 20).padding(.bottom, 20)
+        }
+    }
+}
