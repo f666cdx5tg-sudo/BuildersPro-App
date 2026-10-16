@@ -4,6 +4,8 @@ This is the starter ("scaffold") for the real iPhone / iPad / Mac app. It alread
 Jobs → Spaces (grouped by level, press-and-hold to drag between levels) → Punch lists and Photos,
 progress "20/22 · 2 left", and iCloud sync built in. Your web app (index.html) is untouched.
 
+## Fastest way: double-click **Setup.command** in this folder (it does steps 1–3 for you), then continue at step 4.
+
 ## One-time setup (about 10 minutes, on your Mac)
 1. Open **Terminal** (Spotlight → type Terminal).
 2. Install the project maker (one line): `brew install xcodegen`
@@ -26,3 +28,8 @@ In CloudKit Dashboard (icloud.developer.apple.com), press **Deploy Schema to Pro
 Money/expenses, daily report + PDF, markup on photos, importing your data from the web app,
 Command Center layout for Mac, widgets. Nothing here was compiled by me — I can't run Xcode —
 so expect to send me any red errors Xcode shows and I'll fix them.
+
+
+## Putting it on your iPhone
+Plug the iPhone into the Mac (or use Wi-Fi pairing), unlock it, choose it at the top of Xcode, press Play.
+First time only: on the iPhone go to Settings → Privacy & Security → turn on **Developer Mode**, and trust your developer certificate (Settings → General → VPN & Device Management).
