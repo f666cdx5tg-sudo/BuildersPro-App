@@ -730,7 +730,7 @@ struct AppointmentSheet: View {
                 Button { if voice.listening { let h = voice.stop(); if !h.isEmpty { title = h } } else { voice.start() } } label: {
                     Label(voice.listening ? "Stop" : "Speak", systemImage: "mic.fill").font(.title3.weight(.bold)).foregroundStyle(.white)
                         .padding(.horizontal, 18).frame(height: 44).background(voice.listening ? Theme.red : Theme.blue, in: Capsule())
-                }.buttonStyle(.plain).offset(y: 38)
+                }.buttonStyle(.plain).offset(y: -4)
             }
             HStack(alignment: .top, spacing: 12) {
                 FMenu(title: "Type", value: $kind, options: Money.appointmentKinds)
