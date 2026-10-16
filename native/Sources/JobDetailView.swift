@@ -59,6 +59,10 @@ struct JobDetailView: View {
                 Button("Add a space", systemImage: "plus.square") { addingSpace = true }
                 Button("Add an expense", systemImage: "dollarsign.circle") { addExpense() }
                 Button("Add a contractor", systemImage: "person.badge.plus") { addContractor() }
+                Button("Add a change order", systemImage: "arrow.triangle.2.circlepath") { addChangeOrder() }
+                Button("Add an invoice", systemImage: "doc.plaintext") { addInvoice() }
+                Button("Add a permit", systemImage: "checkmark.seal") { addPermit() }
+                Button("Clock in (labor)", systemImage: "clock") { clockIn() }
                 Button("Add a daily report", systemImage: "doc.text") { addReport() }
             } label: { Image(systemName: "line.3.horizontal") }
         }
@@ -89,6 +93,30 @@ struct JobDetailView: View {
         context.insert(c); c.job = job
         tab = .money
     }
+    private func addChangeOrder() {
+        let n = ((job.changeOrders ?? []).count) + 1
+        let c = ChangeOrder(number: String(format: "CO-%03d", n))
+        c.title = "New change order"
+        context.insert(c); c.job = job
+        tab = .money
+    }
+    private func addInvoice() {
+        let i = Invoice(title: "New invoice", amount: 0)
+        context.insert(i); i.job = job
+        tab = .money
+    }
+    private func addPermit() {
+        let p = Permit(trade: "General")
+        context.insert(p); p.job = job
+        tab = .money
+    }
+    private func clockIn() {
+        if (job.timeEntries ?? []).contains(where: { $0.isOpen }) { tab = .money; return }   // already clocked in
+        let t = TimeEntry(worker: "")
+        t.clockIn = Date(); t.isOpen = true
+        context.insert(t); t.job = job
+        tab = .money
+    }
     private func addReport() {
         let n = (job.reports ?? []).count + 1
         let r = DailyReport(number: String(format: "DPR-%03d", n))
@@ -103,28 +131,91 @@ struct MoneyView: View {
     @Environment(\.modelContext) private var context
     @Bindable var job: Job
 
+    private var changeOrders: [ChangeOrder] { (job.changeOrders ?? []).sorted { $0.number < $1.number } }
+    private var invoices: [Invoice] { (job.invoices ?? []).sorted { $0.date > $1.date } }
     private var expenses: [Expense] { (job.expenses ?? []).sorted { $0.date > $1.date } }
     private var contractors: [Contractor] { (job.contractors ?? []).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending } }
+    private var permits: [Permit] { (job.permits ?? []).sorted { $0.expirationDate < $1.expirationDate } }
+    private var timeEntries: [TimeEntry] { (job.timeEntries ?? []).sorted { $0.clockIn > $1.clockIn } }
 
     var body: some View {
         List {
-            Section("Summary") {
+            if job.revisedContract > 0 && job.remaining < 0 {
+                Text("Over budget by \(Money.text(-job.remaining)) (costs \(Money.text(job.totalCost)) vs contract \(Money.text(job.revisedContract)))")
+                    .font(.subheadline.weight(.bold)).foregroundStyle(Color.red)
+            }
+
+            Section("Contract") {
                 HStack {
-                    Text("Contract")
+                    Text("Original contract")
                     Spacer()
                     TextField("0", value: $job.contract, format: .number)
                         .multilineTextAlignment(.trailing)
                         .frame(maxWidth: 140)
                 }
+                line("Approved change orders", job.approvedChangeOrders, job.approvedChangeOrders < 0 ? .orange : .green)
+                line("Revised contract", job.revisedContract, .blue)
+                if job.pendingChangeOrders != 0 { line("Pending change orders (not counted)", job.pendingChangeOrders, .secondary) }
+            }
+
+            Section("Profit") {
                 line("Expenses", job.expenseTotal, .orange)
                 line("Contractors (agreed)", job.contractorTotal, .orange)
-                line("Spent in total", job.totalCost, .red)
+                line("Total cost", job.totalCost, .red)
                 line(job.remaining >= 0 ? "Remaining" : "Over budget", job.remaining, job.remaining >= 0 ? .blue : .red)
-                if job.contract > 0 {
+                if job.revisedContract > 0 {
                     HStack { Text("Profit margin"); Spacer(); Text("\(job.marginPercent)%").bold() }
                 }
-                line("Paid to contractors so far", job.contractorPaid, .secondary)
+            }
+
+            Section("Billing") {
+                line("Invoiced", job.invoiced, .primary)
+                line("Collected", job.collected, .green)
+                line("Waiting to be paid", job.outstanding, .orange)
+            }
+
+            Section("Cash out the door") {
+                line("Expenses", job.expenseTotal, .secondary)
+                line("Paid to contractors", job.contractorPaid, .secondary)
+                line("Permits", job.permitTotal, .secondary)
+                line("Time-clock labor (\(String(format: "%.1f", job.laborHours)) h)", job.laborTotal, .secondary)
+                line("Total spent", job.cashSpent, .red)
                 line("Still owed to contractors", job.contractorTotal - job.contractorPaid, .secondary)
+            }
+
+            Section("Change orders · \(changeOrders.count)") {
+                if changeOrders.isEmpty { Text("None. Use ≡ → Add a change order.").foregroundStyle(.secondary) }
+                ForEach(changeOrders) { c in
+                    NavigationLink { ChangeOrderDetail(order: c) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(c.number) · \(c.title)").lineLimit(1)
+                                Text(c.status).font(.caption).foregroundStyle(c.status == "Approved" ? Color.green : Color.secondary)
+                            }
+                            Spacer()
+                            Text(Money.text(c.amount)).bold()
+                        }
+                    }
+                }
+                .onDelete { idx in idx.forEach { context.delete(changeOrders[$0]) } }
+            }
+
+            Section("Invoices · \(Money.text(job.invoiced))") {
+                if invoices.isEmpty { Text("None. Use ≡ → Add an invoice.").foregroundStyle(.secondary) }
+                ForEach(invoices) { i in
+                    NavigationLink { InvoiceDetail(invoice: i) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(i.title.isEmpty ? "Invoice" : i.title).lineLimit(1)
+                                Text("\(i.status) · \(i.date.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(.caption).foregroundStyle(i.status == "Paid" ? Color.green : (i.status == "Overdue" ? Color.red : Color.secondary))
+                            }
+                            Spacer()
+                            Text(Money.text(i.amount)).bold()
+                        }
+                    }
+                }
+                .onDelete { idx in idx.forEach { context.delete(invoices[$0]) } }
             }
 
             Section("Expenses · \(Money.text(job.expenseTotal))") {
@@ -167,11 +258,150 @@ struct MoneyView: View {
                 }
                 .onDelete { idx in idx.forEach { context.delete(contractors[$0]) } }
             }
+
+            Section("Permits · \(Money.text(job.permitTotal))") {
+                if permits.isEmpty { Text("None. Use ≡ → Add a permit.").foregroundStyle(.secondary) }
+                ForEach(permits) { p in
+                    NavigationLink { PermitDetail(permit: p) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(p.trade) \(p.number)").lineLimit(1)
+                                Text("\(p.status) · expires \(p.expirationDate.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(.caption).foregroundStyle(p.status != "Closed" && p.expirationDate < Date() ? Color.red : Color.secondary)
+                            }
+                            Spacer()
+                            Text(Money.text(p.cost)).bold()
+                        }
+                    }
+                }
+                .onDelete { idx in idx.forEach { context.delete(permits[$0]) } }
+            }
+
+            Section("Time clock · \(String(format: "%.1f", job.laborHours)) h · \(Money.text(job.laborTotal))") {
+                if timeEntries.isEmpty { Text("None. Use ≡ → Clock in (labor).").foregroundStyle(.secondary) }
+                ForEach(timeEntries) { t in
+                    NavigationLink { TimeEntryDetail(entry: t) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(t.worker.isEmpty ? "Worker" : t.worker).lineLimit(1)
+                                Text(t.clockIn.formatted(date: .abbreviated, time: .shortened) + (t.isOpen ? " · clocked in" : ""))
+                                    .font(.caption).foregroundStyle(t.isOpen ? Color.green : Color.secondary)
+                            }
+                            Spacer()
+                            Text("\(String(format: "%.2f", t.hours)) h").bold()
+                        }
+                    }
+                }
+                .onDelete { idx in idx.forEach { context.delete(timeEntries[$0]) } }
+            }
         }
     }
 
     private func line(_ label: String, _ value: Double, _ color: Color) -> some View {
         HStack { Text(label); Spacer(); Text(Money.text(value)).bold().foregroundStyle(color) }
+    }
+}
+
+struct ChangeOrderDetail: View {
+    @Bindable var order: ChangeOrder
+
+    var body: some View {
+        Form {
+            Section("Change order") {
+                TextField("Number", text: $order.number)
+                TextField("Title", text: $order.title)
+                Picker("Status", selection: $order.status) {
+                    ForEach(Money.coStatuses, id: \.self) { Text($0).tag($0) }
+                }
+                .onChange(of: order.status) { _, new in order.approvedAt = (new == "Approved") ? (order.approvedAt ?? Date()) : nil }
+                Picker("Reason", selection: $order.reason) {
+                    if !Money.coReasons.contains(order.reason) { Text(order.reason).tag(order.reason) }
+                    ForEach(Money.coReasons, id: \.self) { Text($0).tag($0) }
+                }
+                TextField("Amount (negative = credit)", value: $order.amount, format: .number)
+                Stepper("Days added: \(order.daysAdded)", value: $order.daysAdded, in: -365...365)
+                DatePicker("Date", selection: $order.date, displayedComponents: .date)
+                TextField("Approved by", text: $order.approvedBy)
+            }
+            Section("Scope of the change") { TextEditor(text: $order.details).frame(minHeight: 90) }
+            Section {
+                Text(order.status == "Approved" ? "Counted in the revised contract." : "Not counted until it is Approved.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(order.number)
+    }
+}
+
+struct InvoiceDetail: View {
+    @Bindable var invoice: Invoice
+
+    var body: some View {
+        Form {
+            Section("Invoice") {
+                TextField("Description", text: $invoice.title)
+                TextField("Amount", value: $invoice.amount, format: .number)
+                Picker("Status", selection: $invoice.status) {
+                    ForEach(Money.invoiceStatuses, id: \.self) { Text($0).tag($0) }
+                }
+                DatePicker("Date", selection: $invoice.date, displayedComponents: .date)
+            }
+            Section("Notes") { TextEditor(text: $invoice.notes).frame(minHeight: 70) }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(invoice.title.isEmpty ? "Invoice" : invoice.title)
+    }
+}
+
+struct PermitDetail: View {
+    @Bindable var permit: Permit
+
+    var body: some View {
+        Form {
+            Section("Permit") {
+                Picker("Trade", selection: $permit.trade) {
+                    if !Money.permitTrades.contains(permit.trade) { Text(permit.trade).tag(permit.trade) }
+                    ForEach(Money.permitTrades, id: \.self) { Text($0).tag($0) }
+                }
+                TextField("Permit number", text: $permit.number)
+                TextField("Cost", value: $permit.cost, format: .number)
+                Picker("Status", selection: $permit.status) {
+                    ForEach(Money.permitStatuses, id: \.self) { Text($0).tag($0) }
+                }
+                DatePicker("Issued", selection: $permit.issueDate, displayedComponents: .date)
+                DatePicker("Expires", selection: $permit.expirationDate, displayedComponents: .date)
+            }
+            Section("Notes") { TextEditor(text: $permit.notes).frame(minHeight: 70) }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("\(permit.trade) permit")
+    }
+}
+
+struct TimeEntryDetail: View {
+    @Bindable var entry: TimeEntry
+
+    var body: some View {
+        Form {
+            Section("Time entry") {
+                TextField("Worker", text: $entry.worker)
+                TextField("Hourly rate", value: $entry.rate, format: .number)
+                DatePicker("Clock in", selection: $entry.clockIn)
+                Toggle("Still clocked in", isOn: $entry.isOpen)
+                if !entry.isOpen { DatePicker("Clock out", selection: $entry.clockOut) }
+                if entry.isOpen {
+                    Button("Clock out now", systemImage: "stop.circle") { entry.clockOut = Date(); entry.isOpen = false }
+                }
+            }
+            Section("Totals") {
+                HStack { Text("Hours"); Spacer(); Text(String(format: "%.2f", entry.hours)).bold() }
+                HStack { Text("Labor cost"); Spacer(); Text(Money.text(entry.hours * entry.rate)).bold() }
+            }
+            Section("Notes") { TextEditor(text: $entry.notes).frame(minHeight: 60) }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(entry.worker.isEmpty ? "Time entry" : entry.worker)
     }
 }
 

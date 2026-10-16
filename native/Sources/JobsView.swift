@@ -81,11 +81,15 @@ enum BackupImporter {
     struct Summary {
         var jobs = 0, spaces = 0, punch = 0, photos = 0
         var expenses = 0, contractors = 0, payments = 0, reports = 0
+        var changeOrders = 0, invoices = 0, permits = 0, timeEntries = 0
         var text: String {
             var parts: [String] = []
             if jobs > 0 { parts.append("\(jobs) new job(s): \(spaces) spaces, \(punch) punch items, \(photos) photos") }
             if expenses + contractors + payments + reports > 0 {
                 parts.append("\(expenses) expenses, \(contractors) contractors, \(payments) payments, \(reports) daily reports")
+            }
+            if changeOrders + invoices + permits + timeEntries > 0 {
+                parts.append("\(changeOrders) change orders, \(invoices) invoices, \(permits) permits, \(timeEntries) time entries")
             }
             return parts.isEmpty ? "Nothing new to import. Everything in that file is already here."
                                  : "Imported " + parts.joined(separator: "; ") + "."
@@ -153,6 +157,10 @@ enum BackupImporter {
         let contractorList = db["contractors"] as? [[String: Any]] ?? []
         let paymentList = db["payments"] as? [[String: Any]] ?? []
         let reportList = db["reports"] as? [[String: Any]] ?? []
+        let changeOrderList = db["changeOrders"] as? [[String: Any]] ?? []
+        let invoiceList = db["invoices"] as? [[String: Any]] ?? []
+        let permitList = db["permits"] as? [[String: Any]] ?? []
+        let timeList = db["timeEntries"] as? [[String: Any]] ?? []
 
         // What is already here, so importing the same file twice never duplicates anything.
         var jobBySource: [String: Job] = [:]
@@ -160,6 +168,10 @@ enum BackupImporter {
         let haveExpense = Set(((try? context.fetch(FetchDescriptor<Expense>())) ?? []).map { $0.sourceID })
         let haveContractor = Set(((try? context.fetch(FetchDescriptor<Contractor>())) ?? []).map { $0.sourceID })
         let haveReport = Set(((try? context.fetch(FetchDescriptor<DailyReport>())) ?? []).map { $0.sourceID })
+        let haveCO = Set(((try? context.fetch(FetchDescriptor<ChangeOrder>())) ?? []).map { $0.sourceID })
+        let haveInvoice = Set(((try? context.fetch(FetchDescriptor<Invoice>())) ?? []).map { $0.sourceID })
+        let havePermit = Set(((try? context.fetch(FetchDescriptor<Permit>())) ?? []).map { $0.sourceID })
+        let haveTime = Set(((try? context.fetch(FetchDescriptor<TimeEntry>())) ?? []).map { $0.sourceID })
 
         var out = Summary()
         for j in jobList {
@@ -291,6 +303,68 @@ enum BackupImporter {
                 context.insert(rep)
                 rep.job = job
                 out.reports += 1
+            }
+
+            for c in changeOrderList where (c["jobId"] as? String) == jid {
+                let sid = (c["id"] as? String) ?? ""
+                if sid.isEmpty || haveCO.contains(sid) { continue }
+                let co = ChangeOrder(number: str(c["number"]))
+                co.sourceID = sid
+                co.title = str(c["title"])
+                co.details = str(c["description"])
+                co.amount = num(c["amount"])
+                co.daysAdded = Int(num(c["daysAdded"]))
+                co.status = str(c["status"]).isEmpty ? "Draft" : str(c["status"])
+                co.reason = str(c["reason"]).isEmpty ? "Other" : str(c["reason"])
+                co.date = date(c["date"]) ?? date(c["created"]) ?? Date()
+                co.approvedBy = str(c["approvedBy"])
+                co.approvedAt = date(c["approvedAt"])
+                context.insert(co)
+                co.job = job
+                out.changeOrders += 1
+            }
+
+            for i in invoiceList where (i["jobId"] as? String) == jid {
+                let sid = (i["id"] as? String) ?? ""
+                if sid.isEmpty || haveInvoice.contains(sid) { continue }
+                let inv = Invoice(title: str(i["desc"]), amount: num(i["amount"]))
+                inv.sourceID = sid
+                inv.date = date(i["date"]) ?? date(i["created"]) ?? Date()
+                inv.status = str(i["status"]).isEmpty ? "Draft" : str(i["status"])
+                inv.notes = str(i["notes"])
+                context.insert(inv)
+                inv.job = job
+                out.invoices += 1
+            }
+
+            for p in permitList where (p["jobId"] as? String) == jid {
+                let sid = (p["id"] as? String) ?? ""
+                if sid.isEmpty || havePermit.contains(sid) { continue }
+                let pm = Permit(trade: str(p["trade"]).isEmpty ? "General" : str(p["trade"]))
+                pm.sourceID = sid
+                pm.number = str(p["permitNumber"])
+                pm.cost = num(p["cost"])
+                pm.issueDate = date(p["issueDate"]) ?? date(p["created"]) ?? Date()
+                pm.expirationDate = date(p["expirationDate"]) ?? pm.issueDate
+                pm.status = str(p["status"]).isEmpty ? "Active" : str(p["status"])
+                pm.notes = str(p["notes"])
+                context.insert(pm)
+                pm.job = job
+                out.permits += 1
+            }
+
+            for t in timeList where (t["jobId"] as? String) == jid {
+                let sid = (t["id"] as? String) ?? ""
+                if sid.isEmpty || haveTime.contains(sid) { continue }
+                let te = TimeEntry(worker: str(t["userName"]))
+                te.sourceID = sid
+                te.clockIn = date(t["clockIn"]) ?? Date()
+                if let outAt = date(t["clockOut"]) { te.clockOut = outAt; te.isOpen = false } else { te.isOpen = true }
+                te.rate = num(t["rate"])
+                te.notes = str(t["notes"])
+                context.insert(te)
+                te.job = job
+                out.timeEntries += 1
             }
             try context.save()
         }

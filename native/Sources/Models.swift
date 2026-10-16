@@ -19,16 +19,32 @@ final class Job {
     @Relationship(deleteRule: .cascade, inverse: \Expense.job) var expenses: [Expense]? = []
     @Relationship(deleteRule: .cascade, inverse: \Contractor.job) var contractors: [Contractor]? = []
     @Relationship(deleteRule: .cascade, inverse: \DailyReport.job) var reports: [DailyReport]? = []
+    @Relationship(deleteRule: .cascade, inverse: \ChangeOrder.job) var changeOrders: [ChangeOrder]? = []
+    @Relationship(deleteRule: .cascade, inverse: \Invoice.job) var invoices: [Invoice]? = []
+    @Relationship(deleteRule: .cascade, inverse: \Permit.job) var permits: [Permit]? = []
+    @Relationship(deleteRule: .cascade, inverse: \TimeEntry.job) var timeEntries: [TimeEntry]? = []
 
     init(name: String) { self.name = name }
 
-    // Money — same math as the web app: remaining = contract − (expenses + what you agreed to pay contractors)
+    // Money — same math as the web app:
+    // revised contract = contract + approved change orders; remaining = revised − (expenses + what you agreed to pay contractors)
     var expenseTotal: Double { (expenses ?? []).reduce(0) { $0 + $1.amount } }
     var contractorTotal: Double { (contractors ?? []).reduce(0) { $0 + $1.value } }
     var contractorPaid: Double { (contractors ?? []).reduce(0) { $0 + $1.paid } }
+    var approvedChangeOrders: Double { (changeOrders ?? []).filter { $0.status == "Approved" }.reduce(0) { $0 + $1.amount } }
+    var pendingChangeOrders: Double { (changeOrders ?? []).filter { $0.status == "Draft" || $0.status == "Submitted" }.reduce(0) { $0 + $1.amount } }
+    var revisedContract: Double { contract + approvedChangeOrders }
     var totalCost: Double { expenseTotal + contractorTotal }
-    var remaining: Double { contract - totalCost }
-    var marginPercent: Int { contract > 0 ? Int((remaining / contract * 100).rounded()) : 0 }
+    var remaining: Double { revisedContract - totalCost }
+    var marginPercent: Int { revisedContract > 0 ? Int((remaining / revisedContract * 100).rounded()) : 0 }
+    var invoiced: Double { (invoices ?? []).reduce(0) { $0 + $1.amount } }
+    var collected: Double { (invoices ?? []).filter { $0.status == "Paid" }.reduce(0) { $0 + $1.amount } }
+    var outstanding: Double { (invoices ?? []).filter { $0.status == "Sent" || $0.status == "Overdue" }.reduce(0) { $0 + $1.amount } }
+    var permitTotal: Double { (permits ?? []).reduce(0) { $0 + $1.cost } }
+    var laborTotal: Double { (timeEntries ?? []).reduce(0) { $0 + $1.hours * $1.rate } }
+    var laborHours: Double { (timeEntries ?? []).reduce(0) { $0 + $1.hours } }
+    /// Cash actually gone out: expenses + payments made + permits + time-clock labor ("Total Spent" in the web app's Spending tab)
+    var cashSpent: Double { expenseTotal + contractorPaid + permitTotal + laborTotal }
 
     var doneCount: Int { (punchItems ?? []).filter { $0.done }.count }
     var totalCount: Int { (punchItems ?? []).count }
@@ -146,6 +162,72 @@ final class DailyReport {
     init(number: String) { self.number = number }
 }
 
+@Model
+final class ChangeOrder {
+    var number: String = ""                          // "CO-001"
+    var title: String = ""
+    var details: String = ""
+    var amount: Double = 0                           // can be negative (a credit)
+    var daysAdded: Int = 0
+    var status: String = "Draft"                     // Draft, Submitted, Approved, Rejected, Void
+    var reason: String = "Other"
+    var date: Date = Date()
+    var approvedBy: String = ""
+    var approvedAt: Date?
+    var sourceID: String = ""
+    var job: Job?
+
+    init(number: String) { self.number = number }
+}
+
+@Model
+final class Invoice {
+    var title: String = ""
+    var amount: Double = 0
+    var date: Date = Date()
+    var status: String = "Draft"                     // Draft, Sent, Paid, Overdue
+    var notes: String = ""
+    var sourceID: String = ""
+    var job: Job?
+
+    init(title: String, amount: Double) { self.title = title; self.amount = amount }
+}
+
+@Model
+final class Permit {
+    var trade: String = "General"
+    var number: String = ""
+    var cost: Double = 0
+    var issueDate: Date = Date()
+    var expirationDate: Date = Date()
+    var status: String = "Active"                    // Active, Pending, Closed
+    var notes: String = ""
+    var sourceID: String = ""
+    var job: Job?
+
+    init(trade: String) { self.trade = trade }
+}
+
+@Model
+final class TimeEntry {
+    var worker: String = ""
+    var clockIn: Date = Date()
+    var clockOut: Date = Date()
+    var isOpen: Bool = false                         // still clocked in
+    var rate: Double = 0                             // dollars per hour
+    var notes: String = ""
+    var sourceID: String = ""
+    var job: Job?
+
+    init(worker: String) { self.worker = worker }
+
+    var hours: Double {
+        let end = isOpen ? Date() : clockOut
+        let h = end.timeIntervalSince(clockIn) / 3600
+        return h > 0 ? (h * 100).rounded() / 100 : 0
+    }
+}
+
 enum Money {
     static func text(_ n: Double) -> String {
         let sign = n < 0 ? "-" : ""
@@ -153,6 +235,12 @@ enum Money {
     }
     static let categories = ["Materials", "Labor", "Permits", "Equipment", "Other"]
     static let methods = ["Check", "Zelle", "Cash", "Credit Card", "Other"]
+    static let coStatuses = ["Draft", "Submitted", "Approved", "Rejected", "Void"]
+    static let coReasons = ["Owner request", "Field condition", "Design change", "Code / inspector",
+                            "Hidden condition", "Scope clarification", "Other"]
+    static let invoiceStatuses = ["Draft", "Sent", "Paid", "Overdue"]
+    static let permitTrades = ["General", "Electrical", "Plumbing", "HVAC", "Framing", "Roofing", "Masonry", "Building", "Other"]
+    static let permitStatuses = ["Active", "Pending", "Closed"]
 }
 
 enum Levels {
