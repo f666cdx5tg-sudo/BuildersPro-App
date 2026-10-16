@@ -7,6 +7,8 @@ struct SpaceGrid: View {
     @Environment(\.modelContext) private var context
     let job: Job
     let mode: Section3
+    var scroll = true
+    var showExtras = true
 
     private var spaces: [Space] { job.spaces ?? [] }
     private var levels: [String] {
@@ -18,10 +20,13 @@ struct SpaceGrid: View {
     private let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     var body: some View {
-        ScrollView {
+        if scroll { ScrollView { content } } else { content }
+    }
+
+    private var content: some View {
             LazyVStack(alignment: .leading, spacing: 10, pinnedViews: []) {
-                if mode == .punch { generalTile }
-                if mode == .photos { unfiledTile }
+                if showExtras && mode == .punch { generalTile }
+                if showExtras && mode == .photos { unfiledTile }
                 ForEach(levels, id: \.self) { level in
                     header(level)
                     LazyVGrid(columns: cols, spacing: 10) {
@@ -40,8 +45,7 @@ struct SpaceGrid: View {
                                            description: Text("Use the ≡ button above to add one."))
                 }
             }
-            .padding(.horizontal, 16).padding(.bottom, 100)    // room so nothing hides behind buttons
-        }
+            .padding(.horizontal, scroll ? 16 : 0).padding(.bottom, scroll ? 100 : 0)    // room so nothing hides behind buttons
     }
 
     private func header(_ level: String) -> some View {

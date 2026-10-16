@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import SwiftData
 
 // MARK: - Look (same colors as the web field app)
@@ -597,24 +598,163 @@ struct AllPunchView: View {
 // MARK: - Photos (recent across all jobs)
 
 struct AllPhotosView: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @Query(sort: \SitePhoto.created, order: .reverse) private var photos: [SitePhoto]
     @AppStorage("bpDark") private var dark = true
-    private let cols = [GridItem(.adaptive(minimum: 110), spacing: 4)]
+    @AppStorage("bpStamp") private var stamp = true
+    @State private var pick = ""                       // "" = All Jobs
+    @State private var picking = false
+    @State private var picked: [PhotosPickerItem] = []
+
+    private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
+    private var shownJobs: [Job] { pick.isEmpty ? jobs : jobs.filter { key($0) == pick } }
+    private var unfiled: [SitePhoto] { photos.filter { $0.space == nil && shownJobs.contains { j in j.created == $0.job?.created } } }
+    private var target: Job? { shownJobs.first }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVGrid(columns: cols, spacing: 4) {
-                    ForEach(photos.prefix(300)) { p in
-                        NavigationLink { if let j = p.job { JobDetailView(job: j) } } label: { PhotoThumb(photo: p) }
-                            .buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 14) {
+                    TopBar(title: "Photos", sub: "\(photos.count) photos · \(photos.filter { $0.space == nil }.count) unfiled")
+                    HStack(spacing: 12) {
+                        NavigationLink { PhotoTimeline(photos: photos) } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "camera")
+                                Text("BuildersCam Timeline").multilineTextAlignment(.center)
+                            }.font(.title3.weight(.bold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).frame(height: 72).background(Theme.blue, in: RoundedRectangle(cornerRadius: 18))
+                        }.buttonStyle(.plain)
+                        NavigationLink { BeforeAfterView(jobs: shownJobs) } label: {
+                            HStack(spacing: 10) { Image(systemName: "rectangle.split.2x1"); Text("Before / After") }
+                                .font(.title3.weight(.bold)).foregroundStyle(Theme.green)
+                                .frame(maxWidth: .infinity).frame(height: 72)
+                                .background(Theme.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+                                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.green, lineWidth: 1.5))
+                        }.buttonStyle(.plain)
                     }
-                }.padding(4)
+                    Button { stamp.toggle() } label: {
+                        HStack(spacing: 14) {
+                            RoundedRectangle(cornerRadius: 8).fill(stamp ? Theme.blue : Color.clear)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(stamp ? Theme.blue : Color.secondary, lineWidth: 2))
+                                .overlay { if stamp { Image(systemName: "checkmark").font(.headline.weight(.bold)).foregroundStyle(.white) } }
+                                .frame(width: 34, height: 34)
+                            Text("Stamp date, time & address on new photos").font(.title3.weight(.semibold)).foregroundStyle(.primary)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }.buttonStyle(.plain)
+                    Menu {
+                        Button("All Jobs") { pick = "" }
+                        ForEach(jobs) { j in Button(j.name) { pick = key(j) } }
+                    } label: {
+                        HStack { Text(pick.isEmpty ? "All Jobs" : (jobs.first { key($0) == pick }?.name ?? "")).font(.title3); Spacer(); Image(systemName: "chevron.down").font(.footnote.weight(.bold)) }
+                            .foregroundStyle(.primary).padding(.horizontal, 18).frame(height: 56)
+                            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark), lineWidth: 1))
+                    }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
+                    ForEach(shownJobs) { j in
+                        if shownJobs.count > 1 { Text(j.name).font(.title2.weight(.heavy)).padding(.top, 10) }
+                        let n = (j.photos ?? []).filter { $0.space == nil }.count
+                        NavigationLink { PhotosView(job: j, space: nil) } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Image(systemName: "questionmark.circle").font(.system(size: 34))
+                                Text("Unfiled").font(.title2.weight(.heavy))
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text("\(n)").font(.system(size: 36, weight: .heavy)).foregroundStyle(n > 0 ? Theme.red : Color.secondary)
+                                    Text("TO FILE").font(.headline.weight(.bold)).foregroundStyle(.secondary)
+                                }
+                            }
+                            .foregroundStyle(.primary).padding(16).frame(width: 190, alignment: .leading)
+                            .background(Theme.red.opacity(0.06), in: RoundedRectangle(cornerRadius: 22))
+                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.red.opacity(0.6), lineWidth: 1.5))
+                        }.buttonStyle(.plain)
+                        SpaceGrid(job: j, mode: .photos, scroll: false, showExtras: false)
+                    }
+                    Color.clear.frame(height: 110)
+                }
+                .padding(.horizontal, 16).padding(.top, 8)
             }
             .background(Theme.bg(dark))
-            .overlay { if photos.isEmpty { ContentUnavailableView("No photos yet", systemImage: "camera") } }
-            .navigationTitle("Photos")
-            .navigationSubtitleCompat("\(photos.count) photos")
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+            .shellAdd(symbol: "camera") { picking = true }
+            .photosPicker(isPresented: $picking, selection: $picked, matching: .images)
+            .onChange(of: picked) { _, items in
+                Task {
+                    for it in items {
+                        if let d = try? await it.loadTransferable(type: Data.self), let j = target {
+                            let p = SitePhoto(data: d); p.job = j; context.insert(p)
+                        }
+                    }
+                    picked = []
+                }
+            }
+        }
+    }
+}
+
+struct PhotoTimeline: View {
+    let photos: [SitePhoto]
+    @AppStorage("bpDark") private var dark = true
+    @State private var open: SitePhoto?
+    private let cols = [GridItem(.adaptive(minimum: 100), spacing: 4)]
+    private var days: [(Date, [SitePhoto])] {
+        let g = Dictionary(grouping: photos) { Calendar.current.startOfDay(for: $0.created) }
+        return g.keys.sorted(by: >).map { ($0, g[$0]!) }
+    }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Timeline").font(.system(size: 40, weight: .heavy))
+                ForEach(days, id: \.0) { d, list in
+                    Text(d.formatted(.dateTime.weekday(.wide).month().day().year())).font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
+                    LazyVGrid(columns: cols, spacing: 4) {
+                        ForEach(list) { p in PhotoThumb(photo: p).onTapGesture { open = p } }
+                    }
+                }
+                if photos.isEmpty { Text("No photos yet.").foregroundStyle(.secondary) }
+                Color.clear.frame(height: 110)
+            }.padding(.horizontal, 16).padding(.top, 8)
+        }
+        .background(Theme.bg(dark))
+        .navigationDestination(item: $open) { p in MarkupView(data: p.data ?? Data()) { p.data = $0 } }
+    }
+}
+
+struct BeforeAfterView: View {
+    let jobs: [Job]
+    @AppStorage("bpDark") private var dark = true
+    private var pairs: [(PunchItem, PunchPhoto, PunchPhoto)] {
+        jobs.flatMap { $0.punchItems ?? [] }.compactMap { it in
+            let ph = (it.photos ?? [])
+            guard let b = ph.first(where: { $0.kind == "Before" }), let a = ph.last(where: { $0.kind == "After" || $0.kind == "Completion" }) else { return nil }
+            return (it, b, a)
+        }
+    }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Before / After").font(.system(size: 36, weight: .heavy))
+                ForEach(Array(pairs.enumerated()), id: \.offset) { _, t in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(t.0.text).font(.title3.weight(.bold))
+                        HStack(spacing: 6) {
+                            side("BEFORE", t.1, Theme.red); side("AFTER", t.2, Theme.green)
+                        }
+                    }
+                }
+                if pairs.isEmpty { Text("No before/after pairs yet. Add a Before and an After photo to a punch item.").foregroundStyle(.secondary) }
+                Color.clear.frame(height: 110)
+            }.padding(.horizontal, 16).padding(.top, 8)
+        }.background(Theme.bg(dark))
+    }
+    private func side(_ t: String, _ p: PunchPhoto, _ c: Color) -> some View {
+        VStack(spacing: 4) {
+            Group {
+                if let d = p.data, let img = PhotoThumb.image(d) { img.resizable().scaledToFill() } else { Color.gray.opacity(0.3) }
+            }.frame(height: 200).frame(maxWidth: .infinity).clipped().clipShape(RoundedRectangle(cornerRadius: 12))
+            Text(t).font(.caption.weight(.heavy)).tracking(1.5).foregroundStyle(c)
         }
     }
 }
