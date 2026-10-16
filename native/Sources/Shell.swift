@@ -372,30 +372,105 @@ struct SearchView: View {
     }
 }
 
-// MARK: - Calendar (every job's appointments)
+// MARK: - Calendar (every job's appointments, month grid like the web app)
 
 struct AllCalendarView: View {
-    @Query(sort: \Appointment.date) private var items: [Appointment]
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Appointment.date) private var all: [Appointment]
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
-    private var upcoming: [Appointment] { items.filter { $0.date >= Calendar.current.startOfDay(for: Date()) } }
+    @State private var month = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
+    @State private var picked: Date? = Calendar.current.startOfDay(for: Date())
+
+    private var cal: Calendar { Calendar.current }
+    private func count(on day: Date) -> Int { all.filter { cal.isDate($0.date, inSameDayAs: day) }.count }
+
+    private var cells: [Date?] {
+        guard let range = cal.range(of: .day, in: .month, for: month) else { return [] }
+        let blanks = (cal.component(.weekday, from: month) - cal.firstWeekday + 7) % 7
+        var out: [Date?] = Array(repeating: nil, count: blanks)
+        for d in range { out.append(cal.date(byAdding: .day, value: d - 1, to: month)) }
+        return out
+    }
+    private var shown: [Appointment] {
+        guard let d = picked else { return all.filter { $0.date >= cal.startOfDay(for: Date()) } }
+        return all.filter { cal.isDate($0.date, inSameDayAs: d) }
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(upcoming.prefix(200)) { a in
-                    NavigationLink { if let j = a.job { JobDetailView(job: j) } } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(a.title).font(.headline).lineLimit(1)
-                            Text("\(a.date.formatted(date: .abbreviated, time: .shortened)) · \(a.job?.name ?? "")")
-                                .font(.subheadline).foregroundStyle(.secondary)
+                Section { header; grid }
+                Section(picked.map { $0.formatted(date: .complete, time: .omitted) } ?? "Upcoming") {
+                    if shown.isEmpty { Text(picked == nil ? "Nothing upcoming." : "Nothing this day. Tap the day again to see upcoming.").foregroundStyle(.secondary) }
+                    ForEach(shown) { a in
+                        NavigationLink { AppointmentDetail(item: a) } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(a.title.isEmpty ? "Appointment" : a.title).font(.headline).lineLimit(1)
+                                Text(a.date.formatted(date: picked == nil ? .abbreviated : .omitted, time: .shortened) + " · " + a.kind + (a.job.map { " · " + $0.name } ?? ""))
+                                    .font(.callout).foregroundStyle(.secondary)
+                            }
                         }
                     }
+                    .onDelete { idx in idx.forEach { context.delete(shown[$0]) } }
                 }
             }
             .scrollContentBackground(.hidden).background(Theme.bg(dark))
-            .overlay { if upcoming.isEmpty { ContentUnavailableView("Nothing scheduled", systemImage: "calendar") } }
             .navigationTitle("Calendar")
-            .toolbar { ToolbarItem(placement: .navigation) { MenuButton() } }
+            .toolbar {
+                ToolbarItem(placement: .navigation) { MenuButton() }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        ForEach(jobs) { j in Button(j.name) { add(to: j) } }
+                    } label: { Image(systemName: "plus") }
+                }
+            }
         }
+    }
+
+    private var header: some View {
+        HStack {
+            Button { shift(-1) } label: { Image(systemName: "chevron.left") }.buttonStyle(.plain)
+            Spacer()
+            Text(month.formatted(.dateTime.month(.wide).year())).font(.title3.bold())
+            Spacer()
+            Button { shift(1) } label: { Image(systemName: "chevron.right") }.buttonStyle(.plain)
+        }
+    }
+
+    private var grid: some View {
+        let cols = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
+        return LazyVGrid(columns: cols, spacing: 4) {
+            ForEach(Array(cal.veryShortWeekdaySymbols.enumerated()), id: \.offset) { _, d in
+                Text(d).font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(Array(cells.enumerated()), id: \.offset) { _, day in
+                if let day { dayCell(day) } else { Color.clear.frame(height: 44) }
+            }
+        }
+    }
+
+    private func dayCell(_ day: Date) -> some View {
+        let n = count(on: day)
+        let isPicked = picked.map { cal.isDate($0, inSameDayAs: day) } ?? false
+        return Button { picked = isPicked ? nil : cal.startOfDay(for: day) } label: {
+            VStack(spacing: 2) {
+                Text("\(cal.component(.day, from: day))").font(.body.weight(cal.isDateInToday(day) ? .bold : .regular))
+                Circle().fill(n > 0 ? Theme.orange : Color.clear).frame(width: 7, height: 7)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(isPicked ? Theme.blue.opacity(0.35) : (cal.isDateInToday(day) ? Color.gray.opacity(0.2) : Color.clear),
+                        in: RoundedRectangle(cornerRadius: 8))
+        }.buttonStyle(.plain)
+    }
+
+    private func shift(_ by: Int) { if let m = cal.date(byAdding: .month, value: by, to: month) { month = m } }
+
+    private func add(to job: Job) {
+        let a = Appointment(title: "New appointment")
+        let base = picked ?? cal.startOfDay(for: Date())
+        a.date = cal.date(bySettingHour: 9, minute: 0, second: 0, of: base) ?? base
+        a.job = job
+        context.insert(a)
     }
 }
