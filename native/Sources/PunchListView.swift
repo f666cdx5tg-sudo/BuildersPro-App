@@ -4,74 +4,199 @@ import PhotosUI
 
 struct PunchListView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("bpDark") private var dark = true
     let job: Job
     let space: Space?              // nil = General
-    @State private var trade = ""
-    @State private var text = ""
+    @State private var tradeFilter = ""
+    @State private var status = "All"
+    @State private var addOpen = false
+    @State private var newText = ""
+    @State private var newTrade = "Other"
+    @State private var pick: [PhotosPickerItem] = []
+    @State private var toDelete: PunchItem?
+    @State private var renameOpen = false
+    @State private var nameText = ""
 
-    private var all: [PunchItem] {
-        (job.punchItems ?? []).filter { $0.space?.uid == space?.uid }.sorted { $0.created > $1.created }
+    private var all: [PunchItem] { (job.punchItems ?? []).filter { $0.space?.uid == space?.uid }.sorted { $0.created < $1.created } }
+    private var shown: [PunchItem] {
+        all.filter { (tradeFilter.isEmpty || $0.trade == tradeFilter) && (status == "All" || (status == "Open" ? !$0.done : $0.done)) }
     }
-    private var open: [PunchItem] { all.filter { !$0.done } }
-    private var done: [PunchItem] { all.filter { $0.done } }
+    private var doneN: Int { all.filter { $0.done }.count }
+    private var pct: Int { all.isEmpty ? 0 : Int((Double(doneN) / Double(all.count) * 100).rounded()) }
+    private var trades: [String] { Array(Set(all.map { $0.trade.isEmpty ? "Other" : $0.trade })).sorted() }
 
     var body: some View {
-        List {
-            Section {
-                // Category is a single button that holds the options
-                Menu {
-                    ForEach(Trades.all, id: \.self) { t in
-                        Button { trade = t } label: { Label(t, systemImage: Trades.symbol(t)) }
-                    }
-                } label: {
-                    HStack {
-                        Text(trade.isEmpty ? "Choose a category" : trade).fontWeight(.bold)
-                        Spacer(); Image(systemName: "line.3.horizontal")
-                    }
-                }
-                TextField("Note (optional)", text: $text)
-                Button("Add punch item") { add() }.disabled(trade.isEmpty)
-            }
-            Section("Open · \(open.count)") {
-                if open.isEmpty { Text("Nothing open here.").foregroundStyle(.secondary) }
-                rows(open)
-            }
-            Section("Done · \(done.count)") {
-                if done.isEmpty { Text("Nothing done yet.").foregroundStyle(.secondary) }
-                rows(done)
-            }
-        }
-        .navigationTitle(space?.name ?? "General")
-    }
-
-    @ViewBuilder private func rows(_ items: [PunchItem]) -> some View {
-        ForEach(items) { item in
-            HStack {
-                Button {
-                    item.done.toggle(); item.completed = item.done ? Date() : nil
-                } label: {
-                    Image(systemName: item.done ? "checkmark.circle.fill" : "circle").font(.title3)
-                        .foregroundStyle(item.done ? Color.green : Color.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Button { dismiss() } label: {
+                    HStack(spacing: 6) { Image(systemName: "chevron.left").font(.title3.weight(.semibold)); Text(space == nil ? "Punch" : "Spaces").font(.title3.weight(.semibold)) }
+                        .foregroundStyle(Theme.blue)
                 }.buttonStyle(.plain)
-                NavigationLink { PunchDetail(item: item) } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.text.isEmpty ? "Punch item" : item.text).strikethrough(item.done)
-                        let n = (item.photos ?? []).count
-                        let bits = [item.priority, n > 0 ? "\(n) photo\(n == 1 ? "" : "s")" : ""].filter { !$0.isEmpty }
-                        if !bits.isEmpty { Text(bits.joined(separator: " · ")).font(.callout).foregroundStyle(.secondary) }
+                HStack(spacing: 16) {
+                    RoundedRectangle(cornerRadius: 20).fill(Theme.card(dark)).frame(width: 74, height: 74)
+                        .overlay(Image(systemName: space?.symbol ?? "door.left.hand.closed").font(.system(size: 32)))
+                        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.border(dark), lineWidth: 1))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(space?.name ?? "General").font(.system(size: 34, weight: .heavy)).minimumScaleFactor(0.6).lineLimit(1)
+                        Text(((space?.level.isEmpty ?? true) ? "Other" : space!.level) + " · " + job.name).font(.title3).foregroundStyle(.secondary)
                     }
                 }
+                if let space {
+                    HStack(spacing: 10) {
+                        pill("Room", on: !space.isExterior, check: !space.isExterior) { space.isExterior = false }
+                        pill("Area", on: space.isExterior, check: space.isExterior) { space.isExterior = true }
+                        Spacer()
+                        Menu {
+                            Button("Rename") { nameText = space.name; renameOpen = true }
+                            Button("Mark all done") { all.forEach { $0.done = true; $0.completed = Date() } }
+                            Button("Reopen all") { all.forEach { $0.done = false; $0.completed = nil } }
+                        } label: {
+                            Image(systemName: "line.3.horizontal").font(.title2.weight(.bold)).foregroundStyle(.primary)
+                                .frame(width: 54, height: 54)
+                                .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark), lineWidth: 1))
+                        }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
+                    }
+                }
+                HStack {
+                    Text("Progress").font(.title3).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(pct)% (\(doneN)/\(all.count))").font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
+                }
+                ProgressView(value: Double(pct) / 100).tint(Theme.blue)
+                Divider()
+                HStack(spacing: 12) {
+                    Button { addOpen = true } label: {
+                        Image(systemName: "plus").font(.title.weight(.semibold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).frame(height: 66).background(Theme.blue, in: RoundedRectangle(cornerRadius: 18))
+                    }.buttonStyle(.plain)
+                    Menu {
+                        ForEach(Trades.all, id: \.self) { t in
+                            Button { addTrade(t) } label: { Label(t, systemImage: Trades.symbol(t)) }
+                        }
+                    } label: { sq("checklist") }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
+                    PhotosPicker(selection: $pick, matching: .images) { sq("camera") }.buttonStyle(.plain)
+                }
+                Text("CHECKLIST (\(all.count))").font(.title3.weight(.heavy)).tracking(2).foregroundStyle(.secondary).padding(.top, 10)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        chip("All \(all.count)", on: tradeFilter.isEmpty, sym: nil) { tradeFilter = "" }
+                        ForEach(trades, id: \.self) { t in
+                            chip("\(t) \(all.filter { ($0.trade.isEmpty ? "Other" : $0.trade) == t }.count)", on: tradeFilter == t, sym: Trades.symbol(t)) { tradeFilter = t }
+                        }
+                    }
+                }
+                Menu {
+                    ForEach(["All", "Open", "Done"], id: \.self) { v in Button(v) { status = v } }
+                } label: {
+                    Label("Filter ▾", systemImage: "line.3.horizontal.decrease").font(.title3.weight(.bold)).foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity).frame(height: 54)
+                        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark), lineWidth: 1))
+                }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
+                ForEach(shown) { it in card(it) }
+                if shown.isEmpty { Text("Nothing here yet.").foregroundStyle(.secondary) }
+                Color.clear.frame(height: 110)
+            }
+            .padding(.horizontal, 16).padding(.top, 8)
+        }
+        .background(Theme.bg(dark))
+        .navigationTitle(space?.name ?? "General")
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
+        .shellAdd { addOpen = true }
+        .alert("Add item", isPresented: $addOpen) {
+            TextField("What needs doing", text: $newText)
+            Button("Add") {
+                let t = newText.trimmingCharacters(in: .whitespaces)
+                if !t.isEmpty {
+                    let it = PunchItem(text: t, trade: tradeFilter.isEmpty ? "Other" : tradeFilter)
+                    it.job = job; it.space = space; context.insert(it)
+                }
+                newText = ""
+            }
+            Button("Cancel", role: .cancel) { newText = "" }
+        }
+        .alert("Rename", isPresented: $renameOpen) {
+            TextField("Name", text: $nameText)
+            Button("Save") { let n = nameText.trimmingCharacters(in: .whitespaces); if !n.isEmpty { space?.name = n } }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog("Delete this item?", isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } }), titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { if let t = toDelete { context.delete(t) }; toDelete = nil }
+            Button("Cancel", role: .cancel) { toDelete = nil }
+        }
+        .onChange(of: pick) { _, new in
+            Task {
+                for it in new {
+                    if let d = try? await it.loadTransferable(type: Data.self) {
+                        let p = SitePhoto(data: d); p.job = job; p.space = space; context.insert(p)
+                    }
+                }
+                pick = []
             }
         }
-        .onDelete { idx in idx.forEach { context.delete(items[$0]) } }
     }
 
-    private func add() {
-        let note = text.trimmingCharacters(in: .whitespaces)
-        let item = PunchItem(text: note.isEmpty ? trade : "\(trade) – \(note)", trade: trade)
-        item.job = job; item.space = space
-        context.insert(item)
-        text = ""
+    private func addTrade(_ t: String) {
+        let it = PunchItem(text: t, trade: t); it.job = job; it.space = space; context.insert(it)
+    }
+
+    private func sq(_ sym: String) -> some View {
+        Image(systemName: sym).font(.title).foregroundStyle(.primary)
+            .frame(maxWidth: .infinity).frame(height: 66)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark), lineWidth: 1))
+    }
+
+    private func pill(_ t: String, on: Bool, check: Bool, _ f: @escaping () -> Void) -> some View {
+        Button(action: f) {
+            HStack(spacing: 6) { if check { Image(systemName: "checkmark").font(.headline.weight(.bold)) }; Text(t).font(.title3.weight(.bold)) }
+                .foregroundStyle(on ? Theme.purple : .secondary).padding(.horizontal, 20).frame(height: 48)
+                .background(on ? Theme.purple.opacity(0.15) : Color.clear, in: Capsule())
+                .overlay(Capsule().stroke(on ? Theme.purple : Theme.border(dark), lineWidth: 1.5))
+        }.buttonStyle(.plain)
+    }
+
+    private func chip(_ t: String, on: Bool, sym: String?, _ f: @escaping () -> Void) -> some View {
+        Button(action: f) {
+            HStack(spacing: 6) { if let sym { Image(systemName: sym) }; Text(t).font(.title3.weight(.bold)) }
+                .foregroundStyle(on ? Theme.blue : .primary).padding(.horizontal, 18).frame(height: 54)
+                .background(on ? Theme.blue.opacity(0.14) : Color.clear, in: Capsule())
+                .overlay(Capsule().stroke(on ? Theme.blue : Theme.border(dark), lineWidth: 1.5))
+        }.buttonStyle(.plain)
+    }
+
+    private func card(_ it: PunchItem) -> some View {
+        HStack(spacing: 14) {
+            Button { it.done.toggle(); it.completed = it.done ? Date() : nil } label: {
+                RoundedRectangle(cornerRadius: 12).stroke(it.done ? Theme.green : Color.secondary.opacity(0.7), lineWidth: 3)
+                    .frame(width: 38, height: 38)
+                    .overlay { if it.done { Image(systemName: "checkmark").font(.headline.weight(.bold)).foregroundStyle(Theme.green) } }
+            }.buttonStyle(.plain)
+            NavigationLink { PunchDetail(item: it) } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(it.text.isEmpty ? "Punch item" : it.text).font(.title3.weight(.semibold)).foregroundStyle(.primary)
+                        .strikethrough(it.done).multilineTextAlignment(.leading)
+                    Text("Added " + it.created.formatted(.dateTime.month(.twoDigits).day(.twoDigits))).font(.headline).foregroundStyle(.secondary)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.buttonStyle(.plain)
+            NavigationLink { PunchDetail(item: it) } label: {
+                let n = (it.photos ?? []).count
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 14).stroke(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                        .frame(width: 56, height: 56)
+                        .overlay(Image(systemName: "camera").font(.title3).foregroundStyle(.secondary))
+                    if n > 0 { Text("\(n)").font(.caption2.weight(.bold)).foregroundStyle(.white).padding(4).background(Theme.blue, in: Circle()).offset(x: 6, y: -6) }
+                }
+            }.buttonStyle(.plain)
+            Button { toDelete = it } label: { Image(systemName: "xmark").font(.headline).foregroundStyle(.secondary).frame(width: 30, height: 40) }.buttonStyle(.plain)
+        }
+        .padding(.vertical, 14).padding(.horizontal, 16)
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark), lineWidth: 1))
     }
 }
 
