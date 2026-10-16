@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '4.31';
+var APP_VERSION = '4.32';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -20710,6 +20710,22 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
   var wrap = document.createElement('div'); wrap.id = 'bp-master';
   wrap.innerHTML = '<button type="button" id="bp-master-btn" aria-label="Options" aria-haspopup="true"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2.1"/><circle cx="12" cy="12" r="2.1"/><circle cx="19" cy="12" r="2.1"/></svg></button><div id="bp-master-pop" role="menu"></div>';
   document.body.appendChild(wrap);
+  /* v4.32: solid and on top of everything — inline !important so no other rule/overlay can wash it out */
+  (function(){
+    var bt = wrap.querySelector('#bp-master-btn');
+    wrap.style.setProperty('z-index', '2147483000', 'important');
+    wrap.style.setProperty('opacity', '1', 'important');
+    wrap.style.setProperty('isolation', 'isolate', 'important');
+    bt.style.setProperty('background', '#1c1c1e', 'important');
+    bt.style.setProperty('background-image', 'none', 'important');
+    bt.style.setProperty('opacity', '1', 'important');
+    bt.style.setProperty('filter', 'none', 'important');
+    bt.style.setProperty('-webkit-backdrop-filter', 'none', 'important');
+    bt.style.setProperty('backdrop-filter', 'none', 'important');
+    bt.style.setProperty('border', '2px solid #fff', 'important');
+    bt.style.setProperty('box-shadow', '0 0 0 2px #1c1c1e, 0 6px 18px rgba(0,0,0,.5)', 'important');
+    bt.querySelectorAll('circle').forEach(function(c){ c.setAttribute('fill', '#ffffff'); });
+  })();
   function label(el){ var c = el.cloneNode(true); [].forEach.call(c.querySelectorAll('svg,img'), function(x){ x.remove(); }); return c.textContent.replace(/\s+/g,' ').trim(); }
   function item(el){
     var t = label(el); if (!t) return '';
