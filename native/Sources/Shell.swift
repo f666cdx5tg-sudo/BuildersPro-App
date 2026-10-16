@@ -491,7 +491,7 @@ struct AllPunchView: View {
                                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark), lineWidth: 1))
                             }
                             .menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
-                            NavigationLink { JobDetailView(job: job) } label: {
+                            NavigationLink { AllSpacesView(startJob: job) } label: {
                                 Label("Areas", systemImage: "square.grid.2x2").font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
                                     .padding(.horizontal, 18).frame(height: 56)
                                     .background(Theme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
@@ -1247,5 +1247,238 @@ struct FeatherPin: Shape {
         path.closeSubpath()
         path.addEllipse(in: CGRect(x: r.minX + 9 * k, y: r.minY + 7 * k, width: 6 * k, height: 6 * k))
         return path
+    }
+}
+
+// MARK: - Spaces (all jobs) — Area / Trade views, opened from Punch → Areas
+
+private func tradeColor(_ t: String) -> Color {
+    switch t {
+    case "Plumbing": return Theme.blue
+    case "Electrical": return Theme.yellow
+    case "Carpentry": return Theme.brown
+    case "HVAC": return Theme.teal
+    case "Masonry": return Theme.orange
+    case "Drywall": return Theme.lightBlue
+    case "Painting": return Theme.purple
+    case "Tile/Flooring": return Theme.green
+    case "Roofing": return Theme.red
+    default: return .gray
+    }
+}
+
+struct AllSpacesView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @AppStorage("bpDark") private var dark = true
+    var startJob: Job? = nil
+    @State private var jobKey = ""          // "" = All Jobs
+    @State private var mode = "area"        // area | trade
+    @State private var inOut = "All"        // All | Inside | Outside
+    @State private var addJob: Job?
+    @State private var needJob = false
+    @State private var tradeSheet: TradeRef?
+    @State private var started = false
+
+    struct TradeRef: Identifiable { let id: String }
+
+    private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
+    private var scopeJobs: [Job] { jobs.filter { jobKey.isEmpty || key($0) == jobKey } }
+    private var jobTitle: String { jobs.first { key($0) == jobKey }?.name ?? "All Jobs" }
+    private func inScope(_ exterior: Bool) -> Bool {
+        inOut == "All" || (inOut == "Outside") == exterior
+    }
+    private var spaces: [Space] {
+        scopeJobs.flatMap { $0.spaces ?? [] }.filter { inScope($0.isExterior) }
+            .sorted { $0.openCount != $1.openCount ? $0.openCount > $1.openCount : $0.name.localizedCompare($1.name) == .orderedAscending }
+    }
+    private var items: [PunchItem] {
+        scopeJobs.flatMap { $0.punchItems ?? [] }.filter { inScope($0.space?.isExterior ?? false) }
+    }
+    private var byTrade: [(trade: String, items: [PunchItem])] {
+        Dictionary(grouping: items) { $0.trade.isEmpty ? "Other" : $0.trade }
+            .map { (trade: $0.key, items: $0.value) }
+            .sorted { a, b in
+                let ao = a.items.filter { !$0.done }.count, bo = b.items.filter { !$0.done }.count
+                return ao != bo ? ao > bo : a.trade < b.trade
+            }
+    }
+    private var subtitle: String {
+        if mode == "trade" { return "\(byTrade.count) trade\(byTrade.count == 1 ? "" : "s") · \(items.count) items" }
+        let open = spaces.reduce(0) { $0 + $1.openCount }
+        return "\(spaces.count) area\(spaces.count == 1 ? "" : "s") · \(open) open"
+    }
+    private let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Button { dismiss() } label: {
+                    HStack(spacing: 6) { Image(systemName: "chevron.left").font(.title3.weight(.semibold)); Text("Punch").font(.title3.weight(.semibold)) }
+                        .foregroundStyle(Theme.blue)
+                }.buttonStyle(.plain)
+                TopBar(title: "Spaces", sub: subtitle)
+                controls
+                if mode == "trade" { tradeGrid } else { areaGrid }
+                Color.clear.frame(height: 110)
+            }
+            .padding(.horizontal, 16).padding(.top, 8)
+        }
+        .background(Theme.bg(dark))
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
+        .onAppear { if !started { started = true; if let startJob { jobKey = key(startJob) } } }
+        .shellAdd { startAdd() }
+        .sheet(item: $addJob) { AddSpacesSheet(job: $0) }
+        .sheet(item: $tradeSheet) { t in TradeCallSheet(trade: t.id, items: byTrade.first { $0.trade == t.id }?.items ?? []) }
+        .alert("Pick a job first", isPresented: $needJob) { Button("OK", role: .cancel) {} } message: { Text("Choose a job in the filter above, then tap + to add spaces.") }
+    }
+
+    private func startAdd() {
+        if let j = jobs.first(where: { key($0) == jobKey }) { addJob = j }
+        else if jobs.count == 1 { addJob = jobs.first }
+        else if jobs.isEmpty { needJob = true }
+        else { needJob = true }
+    }
+
+    private var controls: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Menu {
+                    Button("All Jobs") { jobKey = "" }
+                    ForEach(jobs) { j in Button(j.name) { jobKey = key(j) } }
+                } label: {
+                    HStack { Text(jobTitle).font(.headline.weight(.semibold)).lineLimit(1); Spacer(); Image(systemName: "chevron.down").font(.footnote.weight(.bold)) }
+                        .foregroundStyle(.primary).padding(.horizontal, 14).frame(height: 46)
+                        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark), lineWidth: 1))
+                }
+                .menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
+                HStack(spacing: 3) { seg("Area", "area"); seg("Trade", "trade") }
+                    .padding(3).background(Theme.border(dark).opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+            }
+            HStack(spacing: 8) { tab("All", "All"); tab("Inside", "Inside"); tab("Outside", "Outside") }
+        }
+    }
+
+    private func seg(_ label: String, _ v: String) -> some View {
+        Button { mode = v } label: {
+            Text(label).font(.subheadline.weight(.heavy)).foregroundStyle(mode == v ? Color.primary : .secondary)
+                .padding(.horizontal, 14).frame(height: 38)
+                .background(mode == v ? Theme.card(dark) : .clear, in: RoundedRectangle(cornerRadius: 9))
+        }.buttonStyle(.plain)
+    }
+    private func tab(_ label: String, _ v: String) -> some View {
+        Button { inOut = v } label: {
+            Text(label).font(.headline.weight(.heavy)).foregroundStyle(inOut == v ? Theme.blue : .secondary)
+                .frame(maxWidth: .infinity).frame(height: 42)
+                .background(inOut == v ? Theme.blue.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(inOut == v ? Theme.blue : Theme.border(dark), lineWidth: 1.5))
+        }.buttonStyle(.plain)
+    }
+
+    private var areaGrid: some View {
+        Group {
+            if spaces.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "house").font(.system(size: 40)).foregroundStyle(.secondary)
+                    Text("No \(inOut == "All" ? "areas" : inOut.lowercased() + " areas") yet").font(.title3.weight(.bold))
+                    Text("Tap + to pick from the preset list").foregroundStyle(.secondary)
+                    Button { startAdd() } label: {
+                        Text("+ Add Spaces").font(.headline.weight(.heavy)).foregroundStyle(.white)
+                            .padding(.horizontal, 22).frame(height: 48).background(Theme.blue, in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain)
+                }.frame(maxWidth: .infinity).padding(.top, 30)
+            } else {
+                LazyVGrid(columns: cols, spacing: 10) {
+                    ForEach(spaces) { s in
+                        if let j = s.job {
+                            NavigationLink { PunchListView(job: j, space: s) } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    SpaceTile(space: s, mode: .punch)
+                                    if jobKey.isEmpty { Text(j.name).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1).padding(.leading, 6) }
+                                }
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    Button { startAdd() } label: {
+                        RoundedRectangle(cornerRadius: 22).strokeBorder(Theme.blue.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+                            .frame(minHeight: 150)
+                            .overlay(Image(systemName: "plus").font(.system(size: 34, weight: .light)).foregroundStyle(Theme.blue))
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var tradeGrid: some View {
+        Group {
+            if byTrade.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "wrench.and.screwdriver").font(.system(size: 40)).foregroundStyle(.secondary)
+                    Text("No items yet").font(.title3.weight(.bold))
+                    Text("Add punch items and they group by trade here").foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }.frame(maxWidth: .infinity).padding(.top, 30)
+            } else {
+                LazyVGrid(columns: cols, spacing: 10) {
+                    ForEach(byTrade, id: \.trade) { g in
+                        let done = g.items.filter { $0.done }.count, open = g.items.count - done
+                        let col = tradeColor(g.trade)
+                        Button { tradeSheet = TradeRef(id: g.trade) } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Image(systemName: Trades.symbol(g.trade)).font(.system(size: 28)).foregroundStyle(col)
+                                Text(g.trade).font(.headline.weight(.heavy)).foregroundStyle(col).lineLimit(1).minimumScaleFactor(0.8)
+                                Spacer(minLength: 0)
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text("\(open)").font(.system(size: 28, weight: .black)).foregroundStyle(open == 0 ? Color.secondary : Theme.red)
+                                    Text("OPEN").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text("\(done)").font(.system(size: 28, weight: .black)).foregroundStyle(done == 0 ? Color.secondary : Theme.green)
+                                    Text("DONE").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                                }.lineLimit(1).minimumScaleFactor(0.7)
+                                Capsule().fill(Color.primary.opacity(0.12)).frame(height: 5)
+                                    .overlay(alignment: .leading) {
+                                        GeometryReader { p in Capsule().fill(col).frame(width: p.size.width * (g.items.isEmpty ? 0 : Double(done) / Double(g.items.count))) }
+                                    }
+                            }
+                            .padding(14).frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
+                            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 22))
+                            .overlay(alignment: .leading) { Rectangle().fill(col).frame(width: 4).clipShape(RoundedRectangle(cornerRadius: 2)).padding(.vertical, 18) }
+                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.border(dark), lineWidth: 1.5))
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The "sub call sheet": every punch item for one trade, with the job and space it belongs to.
+struct TradeCallSheet: View {
+    @AppStorage("bpDark") private var dark = true
+    let trade: String
+    let items: [PunchItem]
+    var body: some View {
+        SheetFrame(title: trade) {
+            let open = items.filter { !$0.done }.count
+            Text("\(open) open · \(items.count - open) done").foregroundStyle(.secondary)
+            ForEach(items.sorted { !$0.done && $1.done }) { it in
+                HStack(alignment: .top, spacing: 12) {
+                    Button { it.done.toggle(); it.completed = it.done ? Date() : nil } label: {
+                        Image(systemName: it.done ? "checkmark.square.fill" : "square").font(.title2)
+                            .foregroundStyle(it.done ? Theme.green : .secondary)
+                    }.buttonStyle(.plain)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(it.text).font(.headline).strikethrough(it.done).foregroundStyle(it.done ? .secondary : .primary)
+                        Text((it.job?.name ?? "") + " · " + (it.space?.name ?? "General")).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+            }
+            if items.isEmpty { Text("Nothing here.").foregroundStyle(.secondary) }
+        }
     }
 }
