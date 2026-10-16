@@ -45,6 +45,7 @@ struct RootShell: View {
     @AppStorage("bpTextSize") private var textSize = 0          // 0 Normal, 1 Large, 2 Extra large
     @State private var screen: AppScreen = .home
     @State private var menu = false
+    @StateObject private var shell = ShellState()
 
     private var dynamicSize: DynamicTypeSize { [DynamicTypeSize.large, .xLarge, .xxxLarge][min(max(textSize, 0), 2)] }
     private let sizeNames = ["Normal", "Large", "Extra large"]
@@ -63,6 +64,13 @@ struct RootShell: View {
                 }
             }
             .environment(\.openMenu, { withAnimation(.easeOut(duration: 0.25)) { menu = true } })
+            .environmentObject(shell)
+            .overlay(alignment: .bottomTrailing) {
+                FloatBar(showBack: screen != .home)
+                    .environment(\.openMenu, { withAnimation(.easeOut(duration: 0.25)) { menu = true } })
+                    .environmentObject(shell)
+            }
+            .onAppear { shell.goHome = { screen = .home } }
 
             if menu {
                 Color.black.opacity(0.5).ignoresSafeArea()
@@ -179,10 +187,8 @@ struct HomeView: View {
             }
             .background(Theme.bg(dark))
             .navigationDestination(for: Route.self) { JobDetailView(job: $0.job, start: $0.tab) }
-            .toolbar { ToolbarItem(placement: .navigation) { MenuButton() } }
-            .navigationTitle("")
             #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             #endif
             .onAppear { info.start() }
         }
@@ -404,7 +410,6 @@ struct AllPunchView: View {
             .scrollContentBackground(.hidden).background(Theme.bg(dark))
             .overlay { if open == 0 { ContentUnavailableView("Nothing open", systemImage: "checkmark.circle", description: Text("Every punch item is done.")) } }
             .navigationTitle("Punch")
-            .toolbar { ToolbarItem(placement: .navigation) { MenuButton() } }
         }
     }
 }
@@ -429,7 +434,6 @@ struct AllPhotosView: View {
             .background(Theme.bg(dark))
             .overlay { if photos.isEmpty { ContentUnavailableView("No photos yet", systemImage: "camera") } }
             .navigationTitle("Photos")
-            .toolbar { ToolbarItem(placement: .navigation) { MenuButton() } }
             .navigationSubtitleCompat("\(photos.count) photos")
         }
     }
@@ -445,47 +449,110 @@ private extension View {
     }
 }
 
-// MARK: - Money (every job at a glance)
+// MARK: - Finance (matches the web Finance screen)
 
 struct AllMoneyView: View {
-    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @Query(sort: \Job.created, order: .reverse) private var allJobs: [Job]
     @AppStorage("bpDark") private var dark = true
+    @State private var pick: String = ""          // "" = All Jobs
+    @State private var path: [Route] = []
+    struct Route: Hashable { let job: Job }
 
-    private func usd(_ v: Double) -> String { v.formatted(.currency(code: "USD").precision(.fractionLength(0))) }
+    private var jobs: [Job] { pick.isEmpty ? allJobs : allJobs.filter { String($0.created.timeIntervalSince1970) == pick } }
+    private func sum(_ f: (Job) -> Double) -> Double { jobs.reduce(0) { $0 + f($1) } }
+    private func usd(_ v: Double) -> String { (v < 0 ? "-" : "") + abs(v).formatted(.currency(code: "USD").precision(.fractionLength(0))) }
+
+    private var contract: Double { sum { $0.revisedContract } }
+    private var costs: Double { sum { $0.totalCost } }
+    private var invoiced: Double { sum { $0.invoiced } }
+    private var expenses: Double { sum { $0.expenseTotal } }
+    private var subs: Double { sum { $0.contractorTotal } }
+    private var left: Double { contract - costs }
+    private var margin: Int { contract > 0 ? Int((left / contract * 100).rounded()) : 0 }
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("All jobs") {
-                    line("Contracts", usd(jobs.reduce(0) { $0 + $1.revisedContract }))
-                    line("Invoiced", usd(jobs.reduce(0) { $0 + $1.invoiced }))
-                    line("Collected", usd(jobs.reduce(0) { $0 + $1.collected }), Theme.blue)
-                    line("Outstanding", usd(jobs.reduce(0) { $0 + $1.outstanding }), Theme.orange)
-                    line("Costs", usd(jobs.reduce(0) { $0 + $1.totalCost }))
-                }
-                Section("By job") {
-                    ForEach(jobs) { job in
-                        NavigationLink { JobDetailView(job: job) } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(job.name).font(.headline).lineLimit(1)
-                                HStack {
-                                    Text("Contract \(usd(job.revisedContract))")
-                                    Spacer()
-                                    Text("Margin \(job.marginPercent)%").foregroundStyle(job.remaining >= 0 ? .green : .red)
-                                }.font(.subheadline).foregroundStyle(.secondary)
-                            }
-                        }
+        NavigationStack(path: $path) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Finance").font(.system(size: 40, weight: .heavy)).padding(.top, 4)
+                    picker
+                    Divider()
+                    if costs > contract && contract > 0 {
+                        banner("Over budget by \(usd(costs - contract)) (costs \(usd(costs)) vs contract \(usd(contract)))", Theme.red)
                     }
+                    if invoiced == 0 && costs > 0 {
+                        banner("Nothing invoiced yet — \(usd(costs)) in costs, $0 billed", Theme.orange)
+                    }
+                    HStack(spacing: 12) {
+                        tile(usd(contract), "CONTRACT VALUE", Theme.blue)
+                        tile(usd(abs(left)), left < 0 ? "OVER BUDGET" : "UNDER BUDGET", left < 0 ? Theme.red : Theme.green, minus: left < 0)
+                    }
+                    HStack(spacing: 12) {
+                        tile(usd(invoiced), "INVOICED", Theme.blue)
+                        tile(usd(sum { $0.collected }), "COLLECTED", Theme.blue)
+                    }
+                    HStack(spacing: 12) {
+                        tile(usd(expenses), "EXPENSES", Theme.red)
+                        tile(usd(subs), "SUB COSTS", Theme.orange)
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Profit Margin").font(.title3).foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(margin)%").font(.title3.weight(.heavy)).foregroundStyle(margin < 0 ? Theme.red : Theme.green)
+                        }
+                        ProgressView(value: Double(max(0, min(100, margin))), total: 100).tint(Theme.green)
+                    }
+                    .padding(16).background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
+                    Text("Tap a tile to see what's behind the number.").font(.callout).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity).multilineTextAlignment(.center).padding(.top, 10)
+                    Spacer(minLength: 90)
                 }
+                .padding(.horizontal, 16)
             }
-            .scrollContentBackground(.hidden).background(Theme.bg(dark))
-            .navigationTitle("Money")
-            .toolbar { ToolbarItem(placement: .navigation) { MenuButton() } }
+            .background(Theme.bg(dark))
+            .navigationDestination(for: Route.self) { JobDetailView(job: $0.job, start: .money) }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
         }
     }
 
-    private func line(_ a: String, _ b: String, _ c: Color = .primary) -> some View {
-        HStack { Text(a); Spacer(); Text(b).bold().foregroundStyle(c) }
+    private var picker: some View {
+        Menu {
+            Button("All Jobs") { pick = "" }
+            ForEach(allJobs) { j in Button(j.name) { pick = String(j.created.timeIntervalSince1970) } }
+        } label: {
+            HStack {
+                Text(pick.isEmpty ? "All Jobs" : (jobs.first?.name ?? "All Jobs")).font(.title3.weight(.semibold))
+                Spacer(); Image(systemName: "chevron.down").font(.headline)
+            }
+            .padding(.horizontal, 18).frame(minHeight: 54)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark)))
+        }.buttonStyle(.plain)
+    }
+
+    private func banner(_ text: String, _ color: Color) -> some View {
+        Text(text).font(.title3.weight(.bold)).foregroundStyle(color)
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(color.opacity(0.7)))
+    }
+
+    private func tile(_ value: String, _ label: String, _ color: Color, minus: Bool = false) -> some View {
+        Button {
+            if let j = jobs.count == 1 ? jobs.first : nil { path.append(Route(job: j)) }
+        } label: {
+            VStack(spacing: 6) {
+                Text((minus ? "-" : "") + value).font(.system(size: 28, weight: .heavy)).foregroundStyle(color).minimumScaleFactor(0.6).lineLimit(1)
+                Text(label + " ›").font(.callout.weight(.bold)).tracking(1).foregroundStyle(.secondary).minimumScaleFactor(0.7).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 84)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
+        }.buttonStyle(.plain)
     }
 }
 
@@ -515,23 +582,67 @@ struct SearchView: View {
             .overlay { if term.isEmpty { ContentUnavailableView("Search", systemImage: "magnifyingglass", description: Text("Type to search every job.")) }
                        else if jobHits.isEmpty && punchHits.isEmpty && noteHits.isEmpty { ContentUnavailableView.search(text: q) } }
             .navigationTitle("Search")
-            .toolbar { ToolbarItem(placement: .navigation) { MenuButton() } }
         }
     }
 }
 
-// MARK: - Calendar (every job's appointments, month grid like the web app)
+// MARK: - Calendar (matches the web Calendar screen)
+
+struct CalEvent: Identifiable {
+    let id = UUID()
+    let date: Date
+    let title: String
+    let job: String
+    let kind: String
+    let color: Color
+    var time: String = ""
+    var appointment: Appointment?
+}
 
 struct AllCalendarView: View {
     @Environment(\.modelContext) private var context
-    @Query(sort: \Appointment.date) private var all: [Appointment]
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
     @State private var month = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
-    @State private var picked: Date? = Calendar.current.startOfDay(for: Date())
+    @State private var picked: Date?
+    @State private var editing: Appointment?
 
     private var cal: Calendar { Calendar.current }
-    private func count(on day: Date) -> Int { all.filter { cal.isDate($0.date, inSameDayAs: day) }.count }
+
+    static func color(for kind: String) -> Color {
+        switch kind {
+        case "Due Date": return Theme.red
+        case "Delivery": return Theme.orange
+        case "Job Start": return Theme.green
+        case "Job Due": return Theme.yellow
+        case "Contractor": return Theme.purple
+        case "Permit": return Theme.brown
+        case "Invoice": return Theme.teal
+        default: return Theme.lightBlue
+        }
+    }
+
+    static func hhmm(_ d: Date) -> String {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+        if (c.hour ?? 0) == 0 && (c.minute ?? 0) == 0 { return "" }
+        return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+    }
+
+    private var events: [CalEvent] {
+        var out: [CalEvent] = []
+        for j in jobs {
+            for a in j.appointments ?? [] {
+                out.append(CalEvent(date: a.date, title: a.title.isEmpty ? "Appointment" : a.title, job: j.name, kind: a.kind,
+                                    color: Self.color(for: a.kind), time: Self.hhmm(a.date), appointment: a))
+            }
+            if let d = j.startDate { out.append(CalEvent(date: d, title: "Job Starts: \(j.name)", job: j.name, kind: "Job Start", color: Self.color(for: "Job Start"))) }
+            if let d = j.completionDate { out.append(CalEvent(date: d, title: "Job Due: \(j.name)", job: j.name, kind: "Job Due", color: Self.color(for: "Job Due"))) }
+            for k in j.contractors ?? [] { if let d = k.startDate { out.append(CalEvent(date: d, title: "\(k.name) Starts", job: j.name, kind: "Contractor", color: Self.color(for: "Contractor"))) } }
+            for p in j.permits ?? [] { out.append(CalEvent(date: p.expirationDate, title: "\(p.trade) permit expires", job: j.name, kind: "Permit", color: Self.color(for: "Permit"))) }
+            for i in j.invoices ?? [] { out.append(CalEvent(date: i.date, title: i.title.isEmpty ? "Invoice" : i.title, job: j.name, kind: "Invoice", color: Self.color(for: "Invoice"))) }
+        }
+        return out.sorted { $0.date < $1.date }
+    }
 
     private var cells: [Date?] {
         guard let range = cal.range(of: .day, in: .month, for: month) else { return [] }
@@ -540,85 +651,141 @@ struct AllCalendarView: View {
         for d in range { out.append(cal.date(byAdding: .day, value: d - 1, to: month)) }
         return out
     }
-    private var shown: [Appointment] {
-        guard let d = picked else { return all.filter { $0.date >= cal.startOfDay(for: Date()) } }
-        return all.filter { cal.isDate($0.date, inSameDayAs: d) }
+
+    private func dayEvents(_ day: Date) -> [CalEvent] { events.filter { cal.isDate($0.date, inSameDayAs: day) } }
+    private var shown: [CalEvent] {
+        if let d = picked { return dayEvents(d) }
+        return events.filter { cal.isDate($0.date, equalTo: month, toGranularity: .month) }
     }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section { header; grid }
-                Section(picked.map { $0.formatted(date: .complete, time: .omitted) } ?? "Upcoming") {
-                    if shown.isEmpty { Text(picked == nil ? "Nothing upcoming." : "Nothing this day. Tap the day again to see upcoming.").foregroundStyle(.secondary) }
-                    ForEach(shown) { a in
-                        NavigationLink { AppointmentDetail(item: a) } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(a.title.isEmpty ? "Appointment" : a.title).font(.headline).lineLimit(1)
-                                Text(a.date.formatted(date: picked == nil ? .abbreviated : .omitted, time: .shortened) + " · " + a.kind + (a.job.map { " · " + $0.name } ?? ""))
-                                    .font(.callout).foregroundStyle(.secondary)
-                            }
-                        }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Calendar").font(.system(size: 40, weight: .heavy))
+                    monthBar
+                    HStack(spacing: 12) {
+                        addButton("+ Appointment", Theme.lightBlue, "Appointment")
+                        addButton("+ Due Date", Theme.red, "Due Date")
                     }
-                    .onDelete { idx in idx.forEach { context.delete(shown[$0]) } }
+                    Divider()
+                    legend
+                    grid
+                    Text(picked == nil ? "THIS MONTH" : (picked!.formatted(date: .complete, time: .omitted)).uppercased())
+                        .font(.title3.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary).padding(.top, 8)
+                    if shown.isEmpty { Text("Nothing here.").foregroundStyle(.secondary) }
+                    ForEach(shown) { e in eventCard(e) }
+                    Spacer(minLength: 90)
                 }
+                .padding(.horizontal, 16).padding(.top, 8)
             }
-            .scrollContentBackground(.hidden).background(Theme.bg(dark))
-            .navigationTitle("Calendar")
-            .toolbar {
-                ToolbarItem(placement: .navigation) { MenuButton() }
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        ForEach(jobs) { j in Button(j.name) { add(to: j) } }
-                    } label: { Image(systemName: "plus") }
-                }
-            }
+            .background(Theme.bg(dark))
+            .navigationDestination(item: $editing) { AppointmentDetail(item: $0) }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
         }
     }
 
-    private var header: some View {
+    private var monthBar: some View {
         HStack {
-            Button { shift(-1) } label: { Image(systemName: "chevron.left") }.buttonStyle(.plain)
+            square("chevron.left") { shift(-1) }
             Spacer()
-            Text(month.formatted(.dateTime.month(.wide).year())).font(.title3.bold())
+            Text(month.formatted(.dateTime.month(.wide).year())).font(.title.weight(.heavy))
             Spacer()
-            Button { shift(1) } label: { Image(systemName: "chevron.right") }.buttonStyle(.plain)
+            square("chevron.right") { shift(1) }
+        }
+    }
+
+    private func square(_ symbol: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Image(systemName: symbol).font(.headline).frame(width: 44, height: 44)
+                .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+        }.buttonStyle(.plain)
+    }
+
+    @ViewBuilder private func addButton(_ title: String, _ color: Color, _ kind: String) -> some View {
+        let label = Text(title).font(.headline.weight(.heavy)).foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 46).background(color, in: RoundedRectangle(cornerRadius: 14))
+        if jobs.count == 1, let only = jobs.first {
+            Button { add(kind, to: only) } label: { label }.buttonStyle(.plain)
+        } else {
+            Menu { ForEach(jobs) { j in Button(j.name) { add(kind, to: j) } } } label: { label }
+        }
+    }
+
+    private var legend: some View {
+        let items = ["Appointment", "Due Date", "Delivery", "Job Start", "Job Due", "Contractor", "Permit", "Invoice"]
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), alignment: .leading)], alignment: .leading, spacing: 8) {
+            ForEach(items, id: \.self) { k in
+                HStack(spacing: 8) { Circle().fill(Self.color(for: k)).frame(width: 14, height: 14); Text(k).font(.callout.weight(.semibold)).foregroundStyle(.secondary) }
+            }
         }
     }
 
     private var grid: some View {
-        let cols = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
-        return LazyVGrid(columns: cols, spacing: 4) {
+        let cols = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+        return LazyVGrid(columns: cols, spacing: 6) {
             ForEach(Array(cal.veryShortWeekdaySymbols.enumerated()), id: \.offset) { _, d in
-                Text(d).font(.callout).foregroundStyle(.secondary)
+                Text(d).font(.callout.weight(.bold)).foregroundStyle(.secondary)
             }
             ForEach(Array(cells.enumerated()), id: \.offset) { _, day in
-                if let day { dayCell(day) } else { Color.clear.frame(height: 44) }
+                if let day { cell(day) } else { Color.clear.frame(height: 54) }
             }
         }
     }
 
-    private func dayCell(_ day: Date) -> some View {
-        let n = count(on: day)
+    private func cell(_ day: Date) -> some View {
+        let evs = dayEvents(day)
+        let kinds = Array(Set(evs.map { $0.kind })).sorted().prefix(4)
+        let isToday = cal.isDateInToday(day)
         let isPicked = picked.map { cal.isDate($0, inSameDayAs: day) } ?? false
         return Button { picked = isPicked ? nil : cal.startOfDay(for: day) } label: {
-            VStack(spacing: 2) {
-                Text("\(cal.component(.day, from: day))").font(.body.weight(cal.isDateInToday(day) ? .bold : .regular))
-                Circle().fill(n > 0 ? Theme.orange : Color.clear).frame(width: 7, height: 7)
+            VStack(spacing: 4) {
+                Text("\(cal.component(.day, from: day))").font(.headline.weight(.heavy)).foregroundStyle(isToday ? Theme.blue : Color.primary)
+                HStack(spacing: 3) { ForEach(Array(kinds), id: \.self) { k in Circle().fill(Self.color(for: k)).frame(width: 8, height: 8) } }.frame(height: 8)
             }
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(isPicked ? Theme.blue.opacity(0.35) : (cal.isDateInToday(day) ? Color.gray.opacity(0.2) : Color.clear),
-                        in: RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(isPicked || isToday ? Theme.blue : Theme.border(dark), lineWidth: isPicked || isToday ? 1.5 : 1))
         }.buttonStyle(.plain)
+    }
+
+    private func eventCard(_ e: CalEvent) -> some View {
+        HStack(spacing: 0) {
+            Rectangle().fill(e.color).frame(width: 5)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(e.title).font(.title3.weight(.heavy)).lineLimit(2)
+                Text(e.date.formatted(.dateTime.month(.twoDigits).day(.twoDigits).year()) + (e.time.isEmpty ? "" : " · " + e.time) + " · " + e.job)
+                    .font(.callout).foregroundStyle(.secondary)
+                if let a = e.appointment {
+                    HStack(spacing: 14) {
+                        Button { editing = a } label: {
+                            Label("Edit", systemImage: "pencil").font(.callout.weight(.bold))
+                                .padding(.horizontal, 14).padding(.vertical, 10)
+                                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                        }.buttonStyle(.plain)
+                        Button { context.delete(a) } label: { Image(systemName: "xmark").foregroundStyle(.secondary) }.buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Theme.card(dark))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
     }
 
     private func shift(_ by: Int) { if let m = cal.date(byAdding: .month, value: by, to: month) { month = m } }
 
-    private func add(to job: Job) {
-        let a = Appointment(title: "New appointment")
+    private func add(_ kind: String, to job: Job) {
+        let a = Appointment(title: kind == "Due Date" ? "New due date" : "New appointment")
+        a.kind = kind
         let base = picked ?? cal.startOfDay(for: Date())
         a.date = cal.date(bySettingHour: 9, minute: 0, second: 0, of: base) ?? base
-        a.job = job
         context.insert(a)
+        a.job = job
+        editing = a
     }
 }

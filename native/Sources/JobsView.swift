@@ -2,96 +2,6 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
-struct JobsView: View {
-    @Environment(\.modelContext) private var context
-    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
-    @State private var newName = ""
-    @State private var adding = false
-    @State private var picking = false
-    @State private var importing = false
-    @State private var report = ""
-    @State private var showReport = false
-
-    var body: some View {
-        NavigationStack {
-            List {
-                ForEach(jobs) { job in
-                    NavigationLink(value: job) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(job.name).font(.headline).lineLimit(1)      // names never wrap
-                            HStack {
-                                ProgressView(value: Double(job.percent), total: 100)
-                                Text("\(job.percent)%").font(.callout.bold())
-                            }
-                            Text("\(job.doneCount)/\(job.totalCount) done" +
-                                 (job.totalCount > job.doneCount ? " · \(job.totalCount - job.doneCount) left" : ""))
-                                .font(.callout).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .onDelete { idx in idx.forEach { context.delete(jobs[$0]) } }
-            }
-            .navigationTitle("Jobs")
-            .navigationDestination(for: Job.self) { JobDetailView(job: $0) }
-            .toolbar { bar }
-            .alert("New job", isPresented: $adding) {
-                TextField("Job name", text: $newName)
-                Button("Add") {
-                    let n = newName.trimmingCharacters(in: .whitespaces)
-                    if !n.isEmpty { context.insert(Job(name: n)) }
-                    newName = ""
-                }
-                Button("Cancel", role: .cancel) { newName = "" }
-            }
-            .fileImporter(isPresented: $picking, allowedContentTypes: [.json]) { result in
-                switch result {
-                case .success(let url): runImport(url)
-                case .failure(let error): report = error.localizedDescription; showReport = true
-                }
-            }
-            .alert("Import", isPresented: $showReport) {
-                Button("OK", role: .cancel) {}
-            } message: { Text(report) }
-            .overlay { emptyOverlay }
-            .overlay { importOverlay }
-        }
-    }
-
-
-    @ToolbarContentBuilder private var bar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) { MenuButton() }
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button("Add a job", systemImage: "plus") { adding = true }
-                Button("Import backup file…", systemImage: "square.and.arrow.down") { picking = true }
-            } label: { Image(systemName: "plus") }
-        }
-    }
-
-    @ViewBuilder private var emptyOverlay: some View {
-        if jobs.isEmpty && !importing {
-            ContentUnavailableView("No jobs yet", systemImage: "hammer", description: Text("Use the + button to add a job or import your backup."))
-        }
-    }
-
-    @ViewBuilder private var importOverlay: some View {
-        if importing {
-            ProgressView("Importing your jobs…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-        }
-    }
-
-    private func runImport(_ url: URL) {
-        importing = true
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 300_000_000)      // let the spinner draw first
-            do { report = try BackupImporter.run(url: url, context: context).text }
-            catch { report = "Could not import: \(error.localizedDescription)" }
-            importing = false
-            showReport = true
-        }
-    }
-}
-
 // MARK: - Import from the web app's "Full backup" file (BuildersPro-….json)
 
 enum BackupImporter {
@@ -134,6 +44,15 @@ enum BackupImporter {
     private static func date(_ value: Any?) -> Date? {
         guard let s = value as? String, !s.isEmpty else { return nil }
         return isoFraction.date(from: s) ?? isoPlain.date(from: s) ?? dayOnly.date(from: s)
+    }
+
+    private static func fillExtras(_ job: Job, _ j: [String: Any]) {
+        if job.clientEmail.isEmpty { job.clientEmail = str(j["clientEmail"]) }
+        if job.clientPhone.isEmpty { job.clientPhone = str(j["clientPhone"]) }
+        let st = str(j["status"]); if !st.isEmpty { job.status = st }
+        if job.startDate == nil { job.startDate = date(j["startDate"]) }
+        if job.completionDate == nil { job.completionDate = date(j["completionDate"]) }
+        if job.jobNotes.isEmpty { job.jobNotes = str(j["notes"]) }
     }
 
     private static func num(_ value: Any?) -> Double { (value as? NSNumber)?.doubleValue ?? Double((value as? String) ?? "") ?? 0 }
@@ -224,6 +143,7 @@ enum BackupImporter {
             if let existing = jobBySource[jid] {
                 job = existing
                 if job.contract == 0 { job.contract = num(j["contract"]) }
+                fillExtras(job, j)
             } else {
                 job = Job(name: (j["name"] as? String) ?? "Untitled job")
                 job.sourceID = jid
@@ -233,6 +153,7 @@ enum BackupImporter {
                 job.isActive = ((j["status"] as? String) ?? "") != "Complete"
                 job.created = date(j["created"]) ?? date(j["startDate"]) ?? Date()
                 job.contract = num(j["contract"])
+                fillExtras(job, j)
                 context.insert(job)
                 jobBySource[jid] = job
                 out.jobs += 1
@@ -346,6 +267,7 @@ enum BackupImporter {
                 k.scope = str(c["scope"])
                 k.phone = str(c["phone"])
                 k.status = str(c["status"]).isEmpty ? "Active" : str(c["status"])
+                k.startDate = date(c["startDate"]) ?? date(c["created"])
                 context.insert(k)
                 k.job = job
                 contractorBySource[sid] = k
@@ -494,6 +416,13 @@ enum BackupImporter {
                 context.insert(doc)
                 doc.job = job
                 out.documents += 1
+            }
+            for c in contractorList {
+                let sid = (c["id"] as? String) ?? ""
+                if sid.isEmpty { continue }
+                if let k = ((try? context.fetch(FetchDescriptor<Contractor>())) ?? []).first(where: { $0.sourceID == sid }), k.startDate == nil {
+                    k.startDate = date(c["startDate"]) ?? date(c["created"])
+                }
             }
             try context.save()
         }

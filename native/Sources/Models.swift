@@ -12,6 +12,12 @@ final class Job {
     var created: Date = Date()
     var sourceID: String = ""        // id from the old web app backup, so importing twice never duplicates
     var contract: Double = 0         // contract value in dollars
+    var clientEmail: String = ""
+    var clientPhone: String = ""
+    var status: String = "Active"    // Active, Complete…
+    var startDate: Date?
+    var completionDate: Date?
+    var jobNotes: String = ""
 
     @Relationship(deleteRule: .cascade, inverse: \Space.job) var spaces: [Space]? = []
     @Relationship(deleteRule: .cascade, inverse: \PunchItem.job) var punchItems: [PunchItem]? = []
@@ -140,6 +146,7 @@ final class Contractor {
     var phone: String = ""
     var status: String = "Active"
     var sourceID: String = ""
+    var startDate: Date?
     var job: Job?
 
     @Relationship(deleteRule: .cascade, inverse: \Payment.contractor) var payments: [Payment]? = []
@@ -326,7 +333,7 @@ enum Money {
     static let invoiceStatuses = ["Draft", "Sent", "Paid", "Overdue"]
     static let permitTrades = ["General", "Electrical", "Plumbing", "HVAC", "Framing", "Roofing", "Masonry", "Building", "Other"]
     static let permitStatuses = ["Active", "Pending", "Closed"]
-    static let appointmentKinds = ["Appointment", "Delivery", "Inspection", "Meeting", "Other"]
+    static let appointmentKinds = ["Appointment", "Due Date", "Delivery", "Inspection", "Meeting", "Other"]
     static let documentCategories = ["Contract", "License", "Insurance", "Inspection Report", "Permit", "Plans", "Other"]
 }
 
