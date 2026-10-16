@@ -45,6 +45,8 @@ struct RootShell: View {
     @AppStorage("bpTextSize") private var textSize = 0          // 0 Normal, 1 Large, 2 Extra large
     @State private var screen: AppScreen = .home
     @State private var menu = false
+    @State private var syncNote = false
+    @State private var feedbackNote = false
     @StateObject private var shell = ShellState()
 
     private var dynamicSize: DynamicTypeSize { [DynamicTypeSize.large, .xLarge, .xxxLarge][min(max(textSize, 0), 2)] }
@@ -82,10 +84,12 @@ struct RootShell: View {
         .tint(Theme.blue)
         .preferredColorScheme(dark ? .dark : .light)
         .dynamicTypeSize(dynamicSize)
+        .alert("Sync", isPresented: $syncNote) { Button("OK", role: .cancel) {} } message: { Text("Your jobs sync through iCloud automatically on every device signed in to your Apple ID.") }
+        .alert("Send feedback", isPresented: $feedbackNote) { Button("OK", role: .cancel) {} } message: { Text("The feedback form is not set up yet.") }
     }
 
     private var drawer: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("BuildersPro").font(.title2.weight(.black))
                 Spacer()
@@ -106,6 +110,8 @@ struct RootShell: View {
             }.buttonStyle(.plain)
             row(.search)
             row(.calendar)
+            Button { syncNote = true } label: { tool(icon: "arrow.triangle.2.circlepath", aa: false, title: "Sync", sub: "iCloud · automatic") }.buttonStyle(.plain)
+            Button { feedbackNote = true } label: { tool(icon: "bubble.left", aa: false, title: "Send feedback", sub: "") }.buttonStyle(.plain)
             Spacer()
         }
         .padding(12)
@@ -121,28 +127,28 @@ struct RootShell: View {
             screen = s
             withAnimation(.easeOut(duration: 0.25)) { menu = false }
         } label: {
-            HStack(spacing: 16) {
-                Image(systemName: s.symbol).font(.title3).frame(width: 28)
+            HStack(spacing: 18) {
+                Image(systemName: s.symbol).font(.title2).frame(width: 36)
                 Text(s.rawValue).font(.title3.weight(.heavy))
                 Spacer()
             }
-            .padding(.horizontal, 16).frame(minHeight: 56)
+            .padding(.horizontal, 12).frame(minHeight: 64)
             .foregroundStyle(on ? Theme.blue : Color.primary)
             .background(on ? Theme.blue.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 14))
         }.buttonStyle(.plain)
     }
 
     private func tool(icon: String?, aa: Bool, title: String, sub: String) -> some View {
-        HStack(spacing: 16) {
-            if aa { Text("Aa").font(.title3.weight(.black)).frame(width: 28) }
-            else if let icon { Image(systemName: icon).font(.title3).frame(width: 28) }
+        HStack(spacing: 18) {
+            if aa { Text("Aa").font(.title2.weight(.black)).frame(width: 36) }
+            else if let icon { Image(systemName: icon).font(.title2).frame(width: 36) }
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.headline.weight(.heavy))
                 Text(sub).font(.footnote.weight(.bold)).foregroundStyle(.secondary)
             }
             Spacer()
         }
-        .padding(.horizontal, 16).frame(minHeight: 52).contentShape(Rectangle())
+        .padding(.horizontal, 12).frame(minHeight: 64).contentShape(Rectangle())
     }
 }
 
@@ -197,7 +203,7 @@ struct HomeView: View {
     // MARK: header
 
     private var top: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(spacing: 2) {
                     ZStack {
@@ -228,7 +234,7 @@ struct HomeView: View {
                 }
             }
             HStack(spacing: 10) {
-                Image(systemName: info.icon).font(.title3).foregroundStyle(Color.primary).frame(width: 20)
+                Image(systemName: info.icon).font(.title3).foregroundStyle(Color.primary).frame(width: 20).padding(.leading, 0)
                 Text(info.weather).font(.callout.weight(.bold)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             }
         }
