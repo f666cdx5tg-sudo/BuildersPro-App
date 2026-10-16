@@ -1413,7 +1413,14 @@ struct NoteSheet: View {
             FBigButton(title: "Save Note", enabled: ready) {
                 let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 var t = title.trimmingCharacters(in: .whitespaces)
-                if t.isEmpty { t = String((body.components(separatedBy: .newlines).first ?? "Note").prefix(40)) }
+                if t.isEmpty {
+                    let first = body.components(separatedBy: .newlines).first ?? "Note"
+                    if first.count <= 40 { t = first }
+                    else {
+                        let cut = String(first.prefix(40))
+                        t = (cut.lastIndex(of: " ").map { String(cut[..<$0]) } ?? cut) + "…"
+                    }
+                }
                 let n = JobNote(title: t); n.text = body
                 context.insert(n); n.job = job
                 dismiss()
