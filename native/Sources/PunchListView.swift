@@ -91,7 +91,7 @@ struct PunchDetail: View {
                 TextField("What needs doing", text: $item.text, axis: .vertical)
                 Picker("Priority", selection: $item.priority) {
                     Text("None").tag("")
-                    ForEach(["High", "Medium", "Low"], id: \.self) { Text($0).tag($0) }
+                    ForEach(["Normal", "High", "Critical"], id: \.self) { Text($0).tag($0) }
                 }
                 HStack { Text("Value"); Spacer(); TextField("0", value: $item.value, format: .number).multilineTextAlignment(.trailing).frame(width: 110) }
                 Toggle("Done", isOn: $item.done)
