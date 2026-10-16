@@ -27,20 +27,57 @@ extension View {
     func shellAdd(symbol: String = "plus", _ action: @escaping () -> Void) -> some View { modifier(ShellAdd(symbol: symbol, action: action)) }
 }
 
-/// The floating row in the bottom-right corner: back · + · ☰
+/// The floating row in the bottom-right corner: back · + · ••• · 🎤
 struct FloatBar: View {
     @EnvironmentObject var shell: ShellState
     @Environment(\.openMenu) private var openMenu
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @AppStorage("bpActiveJob") private var activeKey = ""
+    @StateObject private var voice = Dictation()
+    @State private var saved = ""
     let showBack: Bool
     @AppStorage("bpDark") private var dark = true
 
+    private var activeJob: Job? { jobs.first { String($0.created.timeIntervalSince1970) == activeKey } ?? jobs.first { $0.isActive } ?? jobs.first }
+
     var body: some View {
-        HStack(spacing: 14) {
-            if showBack { circle("chevron.left", filled: nil) { shell.goHome() } }
-            if let add = shell.addAction { circle(shell.addSymbol, filled: Theme.blue) { add() } }
-            circle("line.3.horizontal", filled: nil) { openMenu() }
+        VStack(alignment: .trailing, spacing: 10) {
+            if voice.listening || !voice.message.isEmpty || !saved.isEmpty { banner }
+            HStack(spacing: 14) {
+                if showBack { circle("chevron.left", filled: nil) { shell.goHome() } }
+                if let add = shell.addAction { circle(shell.addSymbol, filled: Theme.blue) { add() } }
+                circle("ellipsis", filled: nil) { openMenu() }
+                circle(voice.listening ? "stop.fill" : "mic.fill", filled: Theme.red) { toggleVoice() }
+            }
         }
         .padding(.trailing, 18).padding(.bottom, 14)
+    }
+
+    private var banner: some View {
+        Text(voice.listening ? (voice.text.isEmpty ? "Listening… tap ■ to save a note" : voice.text)
+                             : (voice.message.isEmpty ? saved : voice.message))
+            .font(.callout.weight(.semibold)).multilineTextAlignment(.leading)
+            .padding(12).frame(maxWidth: 300, alignment: .leading)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark)))
+            .lineLimit(5)
+    }
+
+    private func toggleVoice() {
+        saved = ""
+        if voice.listening {
+            let heard = voice.stop()
+            guard !heard.isEmpty else { return }
+            guard let job = activeJob else { saved = "Heard: \(heard) — add a job first to save it."; return }
+            let n = JobNote(title: "Voice note")
+            n.text = heard
+            context.insert(n)
+            n.job = job
+            saved = "Saved to \(job.name) → Project Notes"
+        } else {
+            voice.start()
+        }
     }
 
     private func circle(_ symbol: String, filled: Color?, _ tap: @escaping () -> Void) -> some View {
