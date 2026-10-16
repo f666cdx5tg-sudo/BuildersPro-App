@@ -138,48 +138,39 @@ struct RootShell: View {
     }
 }
 
-// MARK: - Home (greeting, four counters, recent jobs)
+// MARK: - Home (matches the web field app's Home screen)
 
 struct HomeView: View {
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @Query private var photos: [SitePhoto]
     @AppStorage("bpDark") private var dark = true
+    @AppStorage("bpActiveJob") private var activeKey = ""
     @StateObject private var info = HeaderInfo()
     let go: (AppScreen) -> Void
+    @State private var path: [Route] = []
+
+    struct Route: Hashable { let job: Job; let tab: JobTab }
 
     private var greeting: String {
         let h = Calendar.current.component(.hour, from: Date())
-        return h < 12 ? "Good morning" : (h < 17 ? "Good afternoon" : "Good evening")
+        return h < 12 ? "Good Morning" : (h < 17 ? "Good Afternoon" : "Good Evening")
     }
-    private var active: [Job] { jobs.filter { $0.isActive } }
-    private var openPunch: Int { active.reduce(0) { $0 + ($1.totalCount - $1.doneCount) } }
-    private var photosToday: Int { photos.filter { Calendar.current.isDateInToday($0.created) }.count }
-    private var spaces: Int { active.reduce(0) { $0 + ($1.spaces ?? []).count } }
+    private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
+    private var active: Job? { jobs.first { key($0) == activeKey } ?? jobs.first { $0.isActive } ?? jobs.first }
+    private var version: String { "v" + ((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "") }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(greeting)
-                        .font(.system(size: 30, weight: .black))
-                        .foregroundStyle(LinearGradient(colors: [Theme.blue, Theme.orange], startPoint: .leading, endPoint: .trailing))
-                    headerInfo.padding(.bottom, 6)
-
-                    HStack(spacing: 10) {
-                        kpi("\(active.count)", "Active Jobs", Theme.orange) { go(.jobs) }
-                        kpi("\(openPunch)", "Open Punch Items", .primary) { go(.punch) }
-                    }
-                    HStack(spacing: 10) {
-                        kpi("\(photosToday)", "Photos Today", Theme.blue) { go(.photos) }
-                        kpi("\(spaces)", "Spaces", .primary) { go(.jobs) }
-                    }
-
-                    Text("RECENT JOBS").font(.footnote.weight(.bold)).tracking(1).foregroundStyle(.secondary)
-                        .padding(.top, 14).padding(.leading, 2)
-                    ForEach(jobs.prefix(5)) { job in
-                        NavigationLink(value: job) { JobCard(job: job) }.buttonStyle(.plain)
-                    }
-                    if jobs.isEmpty {
+                VStack(alignment: .leading, spacing: 14) {
+                    top
+                    if let job = active {
+                        picker(job)
+                        Divider().padding(.horizontal, -16)
+                        siteCard(job)
+                        quickTiles(job)
+                        attention(job)
+                    } else {
                         Text("No jobs yet. Open the menu → Jobs to add one or import your backup.")
                             .foregroundStyle(.secondary).padding(.top, 8)
                     }
@@ -187,47 +178,184 @@ struct HomeView: View {
                 .padding(16)
             }
             .background(Theme.bg(dark))
-            .navigationDestination(for: Job.self) { JobDetailView(job: $0) }
+            .navigationDestination(for: Route.self) { JobDetailView(job: $0.job, start: $0.tab) }
             .toolbar { ToolbarItem(placement: .navigation) { MenuButton() } }
-            .navigationTitle("Home")
+            .navigationTitle("")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
+            .onAppear { info.start() }
         }
     }
 
-    private var headerInfo: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
-                Text(info.place).font(.subheadline.weight(.bold)).lineLimit(1)
-                Spacer(minLength: 8)
+    // MARK: header
+
+    private var top: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(spacing: 2) {
+                    ZStack {
+                        Circle().stroke(Color.primary, lineWidth: 3).frame(width: 58, height: 58)
+                        Text("B").font(.system(size: 32, weight: .bold, design: .serif))
+                        Capsule().fill(Color.red).frame(width: 22, height: 3).offset(y: 14)
+                    }
+                    Text(version).font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                }
+                Text(greeting)
+                    .font(.system(size: 40, weight: .regular))
+                    .minimumScaleFactor(0.5).lineLimit(1)
+                    .foregroundStyle(LinearGradient(colors: [Theme.blue, Theme.orange], startPoint: .leading, endPoint: .trailing))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "mappin.and.ellipse").font(.title3).foregroundStyle(Theme.blue).padding(.top, 2)
+                Text(info.place).font(.headline).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 6)
                 TimelineView(.everyMinute) { ctx in
                     Text(ctx.date.formatted(.dateTime.hour().minute()))
-                        .font(.title3.weight(.black)).foregroundStyle(Theme.blue)
+                        .font(.system(size: 36, weight: .regular)).foregroundStyle(Theme.blue)
+                        .minimumScaleFactor(0.6).lineLimit(1)
                 }
             }
-            Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
-                .font(.callout.weight(.semibold)).foregroundStyle(.secondary).padding(.leading, 22)
-            HStack(spacing: 6) {
-                Text(info.icon)
-                Text(info.weather).font(.callout.weight(.bold)).foregroundStyle(.secondary).lineLimit(1)
+            Text(Date.now.formatted(.dateTime.weekday(.abbreviated).month(.twoDigits).day(.twoDigits).year()))
+                .font(.title3).foregroundStyle(.secondary).padding(.leading, 30)
+            HStack(spacing: 10) {
+                Text(info.icon).font(.title2)
+                Text(info.weather).font(.title3.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             }
         }
-        .onAppear { info.start() }
     }
 
-    private func kpi(_ value: String, _ label: String, _ color: Color, _ tap: @escaping () -> Void) -> some View {
+    private func picker(_ job: Job) -> some View {
+        Menu {
+            ForEach(jobs) { j in Button(j.name) { activeKey = key(j) } }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "mappin.and.ellipse").font(.title3).foregroundStyle(Theme.blue)
+                Text("ON SITE").font(.subheadline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                Text(job.name).font(.title3.weight(.bold)).foregroundStyle(Theme.blue).lineLimit(1)
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16).frame(minHeight: 60)
+            .background(Theme.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.blue.opacity(0.55), lineWidth: 1.5))
+        }.buttonStyle(.plain)
+    }
+
+    // MARK: active job card
+
+    private func siteCard(_ job: Job) -> some View {
+        let open = job.totalCount - job.doneCount
+        let today = (job.photos ?? []).filter { Calendar.current.isDateInToday($0.created) }.count
+        let next = (job.appointments ?? []).filter { $0.date >= Date() }.sorted { $0.date < $1.date }.first
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("ON SITE NOW").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(Theme.blue)
+                Spacer()
+                Button { path.append(Route(job: job, tab: .spaces)) } label: {
+                    Text("Open job ›").font(.headline.weight(.bold)).foregroundStyle(Theme.blue)
+                }.buttonStyle(.plain)
+            }
+            Text(job.name).font(.system(size: 32, weight: .heavy)).lineLimit(2).minimumScaleFactor(0.7)
+            if !job.client.isEmpty { Text(job.client).font(.title3).foregroundStyle(.secondary) }
+            if !job.address.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
+                    Text(job.address).font(.callout.weight(.semibold))
+                }
+            }
+            HStack {
+                Text("Progress").font(.title3).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(job.percent)%").font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
+            }
+            ProgressView(value: Double(job.percent), total: 100).tint(Theme.blue).scaleEffect(x: 1, y: 2.4, anchor: .center)
+            HStack(spacing: 10) {
+                stat("\(open)", "OPEN PUNCH", Theme.orange) { path.append(Route(job: job, tab: .punch)) }
+                stat("\(today)", "PHOTOS TODAY", Theme.blue) { path.append(Route(job: job, tab: .photos)) }
+                stat((job.remaining < 0 ? "−" : "") + Money.text(abs(job.remaining)).replacingOccurrences(of: ".00", with: ""),
+                     "MONEY LEFT", job.remaining < 0 ? .red : .green) { path.append(Route(job: job, tab: .money)) }
+            }
+            HStack(spacing: 10) {
+                Text("NEXT").font(.subheadline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                Text(next.map { "\($0.title.isEmpty ? "Appointment" : $0.title) · " + $0.date.formatted(date: .abbreviated, time: .shortened) } ?? "Nothing scheduled")
+                    .font(.title3.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+            }
+        }
+        .padding(18)
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 26))
+        .overlay(RoundedRectangle(cornerRadius: 26).stroke(Theme.blue.opacity(0.55), lineWidth: 1.5))
+    }
+
+    private func stat(_ value: String, _ label: String, _ color: Color, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             VStack(spacing: 6) {
-                Text(value).font(.system(size: 34, weight: .black)).foregroundStyle(color)
-                Text(label.uppercased()).font(.caption.weight(.semibold)).tracking(0.6).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                Text(value).font(.system(size: 30, weight: .heavy)).foregroundStyle(color).minimumScaleFactor(0.5).lineLimit(1)
+                Text(label).font(.subheadline.weight(.heavy)).tracking(1).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).minimumScaleFactor(0.7)
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 16)
-            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark)))
+            .frame(maxWidth: .infinity, minHeight: 112)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
         }.buttonStyle(.plain)
+    }
+
+    // MARK: quick tiles + attention
+
+    private func quickTiles(_ job: Job) -> some View {
+        HStack(spacing: 12) {
+            tile("cart", Theme.orange) { path.append(Route(job: job, tab: .shopping)) }
+            tile("list.clipboard", Theme.blue) { path.append(Route(job: job, tab: .notes)) }
+            tile("doc.text", .green) { path.append(Route(job: job, tab: .reports)) }
+        }
+    }
+
+    private func tile(_ symbol: String, _ color: Color, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Image(systemName: symbol).font(.system(size: 34)).foregroundStyle(color)
+                .frame(maxWidth: .infinity, minHeight: 92)
+                .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(color.opacity(0.7), lineWidth: 1.5))
+        }.buttonStyle(.plain)
+    }
+
+    private struct Flag: Identifiable { let id = UUID(); let text: String; let symbol: String; let color: Color; let tab: JobTab }
+
+    private func flags(_ job: Job) -> [Flag] {
+        var out: [Flag] = []
+        let urgent = (job.punchItems ?? []).filter { !$0.done && ($0.priority == "High" || $0.priority == "Critical") }.count
+        if urgent > 0 { out.append(Flag(text: "\(urgent) high-priority punch item\(urgent == 1 ? "" : "s") open", symbol: "exclamationmark.triangle.fill", color: Theme.orange, tab: .punch)) }
+        let late = (job.invoices ?? []).filter { $0.status == "Overdue" }.count
+        if late > 0 { out.append(Flag(text: "\(late) overdue invoice\(late == 1 ? "" : "s")", symbol: "dollarsign.circle.fill", color: .red, tab: .money)) }
+        let cos = (job.changeOrders ?? []).filter { $0.status == "Submitted" }.count
+        if cos > 0 { out.append(Flag(text: "\(cos) change order\(cos == 1 ? "" : "s") waiting for approval", symbol: "doc.badge.clock.fill", color: Theme.blue, tab: .money)) }
+        let soon = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+        let permits = (job.permits ?? []).filter { $0.status == "Active" && $0.expirationDate < soon }.count
+        if permits > 0 { out.append(Flag(text: "\(permits) permit\(permits == 1 ? "" : "s") expiring within 30 days", symbol: "clock.badge.exclamationmark.fill", color: Theme.orange, tab: .money)) }
+        return out
+    }
+
+    private func attention(_ job: Job) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("NEEDS YOUR ATTENTION").font(.headline.weight(.heavy)).tracking(2).foregroundStyle(.secondary).padding(.top, 6)
+            let list = flags(job)
+            if list.isEmpty {
+                Label("All clear on this job", systemImage: "checkmark.seal.fill").foregroundStyle(.green).font(.title3.weight(.semibold))
+            }
+            ForEach(list) { f in
+                Button { path.append(Route(job: job, tab: f.tab)) } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: f.symbol).foregroundStyle(f.color).font(.title3)
+                        Text(f.text).font(.headline).multilineTextAlignment(.leading)
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                    }
+                    .padding(14)
+                    .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark)))
+                }.buttonStyle(.plain)
+            }
+        }
     }
 }
 

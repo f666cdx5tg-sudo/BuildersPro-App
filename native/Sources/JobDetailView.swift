@@ -27,9 +27,14 @@ enum JobTab: String, CaseIterable, Identifiable {
 struct JobDetailView: View {
     @Environment(\.modelContext) private var context
     @Bindable var job: Job
-    @State private var tab: JobTab = .spaces
+    @State private var tab: JobTab
     @State private var addingSpace = false
     @State private var newSpace = ""
+
+    init(job: Job, start: JobTab = .spaces) {
+        _job = Bindable(job)
+        _tab = State(initialValue: start)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
