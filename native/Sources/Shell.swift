@@ -812,9 +812,9 @@ struct AllMoneyView: View {
     @State private var pick: String = ""          // "" = All Jobs
     @State private var path: [Route] = []
     struct Route: Hashable { let job: Job }
-    enum FinKind: String, Identifiable { case picker, expense, contractor, invoice; var id: String { rawValue } }
-    @State private var fin: FinKind?
-    @State private var target: Job?
+    struct FinItem: Identifiable { let kind: String; let job: Job?; var id: String { kind } }
+    @AppStorage("bpActiveJob") private var activeKey = ""
+    @State private var fin: FinItem?
 
     private var jobs: [Job] { pick.isEmpty ? allJobs : allJobs.filter { String($0.created.timeIntervalSince1970) == pick } }
     private func sum(_ f: (Job) -> Double) -> Double { jobs.reduce(0) { $0 + f($1) } }
@@ -871,17 +871,16 @@ struct AllMoneyView: View {
             }
             .background(Theme.bg(dark))
             .navigationDestination(for: Route.self) { JobDetailView(job: $0.job, start: .money) }
-            .shellAdd { fin = .picker }
+            .shellAdd { fin = FinItem(kind: "picker", job: nil) }
             .sheet(item: $fin) { k in
-                switch k {
-                case .picker:
-                    FinanceAddSheet(jobs: allJobs, initial: jobs.count == 1 ? jobs.first : nil) { j, what in
-                        target = j
-                        fin = what == "Expense" ? .expense : what == "Contractor" ? .contractor : .invoice
+                switch k.kind {
+                case "picker":
+                    FinanceAddSheet(jobs: allJobs, initial: jobs.count == 1 ? jobs.first : (allJobs.first { String($0.created.timeIntervalSince1970) == activeKey } ?? allJobs.first { $0.isActive })) { j, what in
+                        fin = FinItem(kind: what, job: j)
                     }
-                case .expense: if let t = target { ExpenseSheet(job: t) }
-                case .contractor: if let t = target { ContractorSheet(job: t) }
-                case .invoice: if let t = target { InvoiceSheet(job: t) }
+                case "Expense": if let t = k.job { ExpenseSheet(job: t) }
+                case "Contractor": if let t = k.job { ContractorSheet(job: t) }
+                default: if let t = k.job { InvoiceSheet(job: t) }
                 }
             }
             #if os(iOS)
