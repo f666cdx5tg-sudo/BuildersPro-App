@@ -33,14 +33,7 @@ struct JobsView: View {
             }
             .navigationTitle("Jobs")
             .navigationDestination(for: Job.self) { JobDetailView(job: $0) }
-            .toolbar {
-                ToolbarItem(placement: .navigation) { MenuButton() }
-                // one button holds the options (standing rule)
-                Menu {
-                    Button("Add a job", systemImage: "plus") { adding = true }
-                    Button("Import backup file…", systemImage: "square.and.arrow.down") { picking = true }
-                } label: { Image(systemName: "plus") }
-            }
+            .toolbar { bar }
             .alert("New job", isPresented: $adding) {
                 TextField("Job name", text: $newName)
                 Button("Add") {
@@ -59,8 +52,31 @@ struct JobsView: View {
             .alert("Import", isPresented: $showReport) {
                 Button("OK", role: .cancel) {}
             } message: { Text(report) }
-            .overlay { if jobs.isEmpty && !importing { ContentUnavailableView("No jobs yet", systemImage: "hammer", description: Text("Use the + button to add a job or import your backup.")) } }
-            .overlay { if importing { ProgressView("Importing your jobs…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14)) } }
+            .overlay { emptyOverlay }
+            .overlay { importOverlay }
+        }
+    }
+
+
+    @ToolbarContentBuilder private var bar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) { MenuButton() }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button("Add a job", systemImage: "plus") { adding = true }
+                Button("Import backup file…", systemImage: "square.and.arrow.down") { picking = true }
+            } label: { Image(systemName: "plus") }
+        }
+    }
+
+    @ViewBuilder private var emptyOverlay: some View {
+        if jobs.isEmpty && !importing {
+            ContentUnavailableView("No jobs yet", systemImage: "hammer", description: Text("Use the + button to add a job or import your backup."))
+        }
+    }
+
+    @ViewBuilder private var importOverlay: some View {
+        if importing {
+            ProgressView("Importing your jobs…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         }
     }
 
