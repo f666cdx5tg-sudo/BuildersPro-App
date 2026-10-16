@@ -1,0 +1,30 @@
+name: BuildersPro
+options:
+  bundleIdPrefix: com.stanrobinson
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "5.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  BuildersPro:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.stanrobinson.builderspro
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: BuildersPro
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of job sites and punch items."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Attach photos to your jobs and punch items."
+        CODE_SIGN_ENTITLEMENTS: Config/BuildersPro.entitlements
+        ENABLE_PREVIEWS: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
