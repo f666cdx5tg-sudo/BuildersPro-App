@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import SwiftData
 
 // MARK: - Shared screen chrome (same bones as the web field app)
@@ -503,5 +504,375 @@ struct FlowLayout: Layout {
             v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
             x += s.width + spacing; row = max(row, s.height)
         }
+    }
+}
+
+
+// MARK: - Shared form pieces
+
+struct SheetFrame<Content: View>: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("bpDark") private var dark = true
+    let title: String
+    @ViewBuilder var content: Content
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title).font(.title.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.6)
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").font(.headline).foregroundStyle(.primary).frame(width: 40, height: 40)
+                        .background(Theme.border(dark).opacity(0.6), in: Circle())
+                }.buttonStyle(.plain)
+            }.padding(.horizontal, 20).padding(.vertical, 14)
+            Divider()
+            ScrollView { VStack(alignment: .leading, spacing: 18) { content }.padding(20) }
+        }
+        .background(Theme.bg(dark))
+        #if os(macOS)
+        .frame(minWidth: 460, minHeight: 600)
+        #endif
+    }
+}
+
+struct FField: View {
+    @AppStorage("bpDark") private var dark = true
+    let title: String
+    @Binding var text: String
+    let prompt: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+            TextField(prompt, text: $text).textFieldStyle(.plain).font(.title3)
+                .padding(.horizontal, 16).frame(height: 54)
+                .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark), lineWidth: 1))
+        }
+    }
+}
+
+struct FMenu: View {
+    @AppStorage("bpDark") private var dark = true
+    let title: String
+    @Binding var value: String
+    let options: [String]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+            Menu {
+                ForEach(options, id: \.self) { o in Button(o) { value = o } }
+            } label: {
+                HStack { Text(value.isEmpty ? "—" : value).font(.title3); Spacer(); Image(systemName: "chevron.down").font(.footnote.weight(.bold)) }
+                    .foregroundStyle(.primary).padding(.horizontal, 16).frame(height: 54)
+                    .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark), lineWidth: 1))
+            }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
+        }
+    }
+}
+
+struct FBigButton: View {
+    let title: String
+    var enabled = true
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(title).font(.title3.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 58)
+                .background(Theme.blue.opacity(enabled ? 1 : 0.4), in: RoundedRectangle(cornerRadius: 16))
+        }.buttonStyle(.plain).disabled(!enabled)
+    }
+}
+
+private func money(_ s: String) -> Double { Double(s.replacingOccurrences(of: ",", with: "").replacingOccurrences(of: "$", with: "")) ?? 0 }
+
+// MARK: - Expense / Receipt
+
+struct ExpenseSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    let job: Job
+    @State private var desc = ""
+    @State private var amount = ""
+    @State private var date = Date()
+    @State private var category = "Materials"
+    @State private var vendor = ""
+    @State private var items = ""
+    @State private var pick: [PhotosPickerItem] = []
+    @State private var receipt: Data?
+    @StateObject private var voice = Dictation()
+
+    var body: some View {
+        SheetFrame(title: "New Expense / Receipt") {
+            HStack(alignment: .bottom, spacing: 10) {
+                FField(title: "Description *", text: $desc, prompt: "What was purchased?")
+                Button { if voice.listening { let h = voice.stop(); if !h.isEmpty { desc = h } } else { voice.start() } } label: {
+                    Image(systemName: voice.listening ? "stop.fill" : "mic.fill").font(.title2).foregroundStyle(Theme.blue)
+                        .frame(width: 60, height: 54).background(Theme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                }.buttonStyle(.plain)
+            }
+            HStack(alignment: .top, spacing: 12) {
+                FField(title: "Amount ($) *", text: $amount, prompt: "0.00")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("DATE").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                    DatePicker("", selection: $date, displayedComponents: .date).labelsHidden().frame(height: 54)
+                }
+            }
+            FMenu(title: "Category", value: $category, options: ["Materials", "Labor", "Equipment", "Permits", "Fees", "Subcontractor", "Fuel", "Other"])
+            FField(title: "Vendor / Supplier", text: $vendor, prompt: "Home Depot, supplier name…")
+            Text("RECEIPT / SCAN").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+            PhotosPicker(selection: $pick, matching: .images) {
+                Label(receipt == nil ? "Library" : "Receipt added", systemImage: "photo").font(.title3.weight(.bold)).foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity).frame(height: 54).background(Theme.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+            }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ITEMS (FOR A MATERIALS SPREADSHEET)").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                TextEditor(text: $items).font(.title3).scrollContentBackground(.hidden).padding(8).frame(height: 90)
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+            }
+            FBigButton(title: "Save Expense", enabled: !desc.trimmingCharacters(in: .whitespaces).isEmpty && money(amount) > 0) {
+                let e = Expense(title: desc.trimmingCharacters(in: .whitespaces), amount: money(amount))
+                e.date = date; e.category = category; e.vendor = vendor; e.itemsText = items; e.receipt = receipt
+                context.insert(e); e.job = job
+                dismiss()
+            }
+        }
+        .onChange(of: pick) { _, new in Task { if let d = try? await new.first?.loadTransferable(type: Data.self) { receipt = d } } }
+    }
+}
+
+// MARK: - Contractor
+
+struct ContractorSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    let job: Job
+    @State private var name = ""
+    @State private var trade = "Plumbing"
+    @State private var value = ""
+    @State private var phone = ""
+    @State private var scope = ""
+    @State private var hasStart = false
+    @State private var start = Date()
+    var body: some View {
+        SheetFrame(title: "New Contractor") {
+            FField(title: "Name *", text: $name, prompt: "Contractor or company")
+            FMenu(title: "Trade", value: $trade, options: Trades.all)
+            FField(title: "Contract value ($)", text: $value, prompt: "0.00")
+            FField(title: "Phone", text: $phone, prompt: "(123)-456-7890")
+            FField(title: "Scope of work", text: $scope, prompt: "What they are doing")
+            Toggle("Start date", isOn: $hasStart).font(.title3)
+            if hasStart { DatePicker("", selection: $start, displayedComponents: .date).labelsHidden() }
+            FBigButton(title: "Save Contractor", enabled: !name.trimmingCharacters(in: .whitespaces).isEmpty) {
+                let c = Contractor(name: name.trimmingCharacters(in: .whitespaces))
+                c.trade = trade; c.value = money(value); c.phone = phone; c.scope = scope; c.startDate = hasStart ? start : nil
+                context.insert(c); c.job = job
+                dismiss()
+            }
+        }
+    }
+}
+
+// MARK: - Invoice
+
+struct InvoiceSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    let job: Job
+    @State private var title = ""
+    @State private var amount = ""
+    @State private var date = Date()
+    @State private var status = "Draft"
+    @State private var notes = ""
+    var body: some View {
+        SheetFrame(title: "New Invoice") {
+            FField(title: "Title *", text: $title, prompt: "Deposit, Progress billing…")
+            HStack(alignment: .top, spacing: 12) {
+                FField(title: "Amount ($) *", text: $amount, prompt: "0.00")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("DATE").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                    DatePicker("", selection: $date, displayedComponents: .date).labelsHidden().frame(height: 54)
+                }
+            }
+            FMenu(title: "Status", value: $status, options: ["Draft", "Sent", "Paid", "Overdue"])
+            FField(title: "Notes", text: $notes, prompt: "Optional")
+            FBigButton(title: "Save Invoice", enabled: !title.trimmingCharacters(in: .whitespaces).isEmpty && money(amount) > 0) {
+                let i = Invoice(title: title.trimmingCharacters(in: .whitespaces), amount: money(amount))
+                i.date = date; i.status = status; i.notes = notes
+                context.insert(i); i.job = job
+                dismiss()
+            }
+        }
+    }
+}
+
+// MARK: - Appointment (also Due Date)
+
+struct ApptRequest: Identifiable { let id = UUID(); let kind: String; let date: Date; let job: Job? }
+
+struct AppointmentSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    let req: ApptRequest
+    @State private var title = ""
+    @State private var kind = ""
+    @State private var date = Date()
+    @State private var hasTime = false
+    @State private var time = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+    @State private var jobName = ""
+    @State private var notes = ""
+    @StateObject private var voice = Dictation()
+
+    var body: some View {
+        SheetFrame(title: "New Appointment") {
+            ZStack(alignment: .topTrailing) {
+                FField(title: "Title *", text: $title, prompt: "Site visit, inspection, permit review…")
+                Button { if voice.listening { let h = voice.stop(); if !h.isEmpty { title = h } } else { voice.start() } } label: {
+                    Label(voice.listening ? "Stop" : "Speak", systemImage: "mic.fill").font(.title3.weight(.bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 18).frame(height: 44).background(voice.listening ? Theme.red : Theme.blue, in: Capsule())
+                }.buttonStyle(.plain).offset(y: 38)
+            }
+            HStack(alignment: .top, spacing: 12) {
+                FMenu(title: "Type", value: $kind, options: Money.appointmentKinds)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("DATE *").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                    DatePicker("", selection: $date, displayedComponents: .date).labelsHidden().frame(height: 54)
+                }
+            }
+            Toggle("Time (optional)", isOn: $hasTime).font(.title3)
+            if hasTime { DatePicker("", selection: $time, displayedComponents: .hourAndMinute).labelsHidden() }
+            FMenu(title: "Job (optional)", value: $jobName, options: ["No job"] + jobs.map(\.name))
+            FField(title: "Notes", text: $notes, prompt: "")
+            HStack(spacing: 12) {
+                Button { dismiss() } label: {
+                    Text("Cancel").font(.title3.weight(.bold)).foregroundStyle(.secondary).frame(maxWidth: .infinity).frame(height: 58)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.secondary.opacity(0.5), lineWidth: 1))
+                }.buttonStyle(.plain)
+                Button { save() } label: {
+                    Text("Save").font(.title3.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 58)
+                        .background(Theme.blue.opacity(title.trimmingCharacters(in: .whitespaces).isEmpty ? 0.4 : 1), in: RoundedRectangle(cornerRadius: 16))
+                }.buttonStyle(.plain).disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .onAppear { kind = req.kind; date = req.date; jobName = req.job?.name ?? "No job" }
+    }
+
+    private func save() {
+        let a = Appointment(title: title.trimmingCharacters(in: .whitespaces))
+        a.kind = kind; a.notes = notes
+        let cal = Calendar.current
+        let t = hasTime ? cal.dateComponents([.hour, .minute], from: time) : DateComponents(hour: 9, minute: 0)
+        a.date = cal.date(bySettingHour: t.hour ?? 9, minute: t.minute ?? 0, second: 0, of: date) ?? date
+        context.insert(a)
+        a.job = jobs.first { $0.name == jobName }
+        dismiss()
+    }
+}
+
+// MARK: - Add Spaces (rooms / areas by level)
+
+struct AddSpacesSheet: View {
+    @Environment(\.modelContext) private var context
+    @AppStorage("bpDark") private var dark = true
+    let job: Job
+    @State private var mode = "Rooms"
+    @State private var level = "Level 1"
+    @State private var extraLevels: [String] = []
+    @State private var custom = ""
+
+    private let rooms = ["Kitchen", "Bathroom", "Basement Bath", "Master Bath", "Half Bath", "Bedroom 1", "Bedroom 2", "Bedroom 3",
+                         "Living Room", "Dining Room", "Basement", "Attic", "Garage", "Office", "Foyer", "Hallway", "Stairs",
+                         "Laundry", "Utility Room", "Boiler Room", "Closet"]
+    private let areas = ["Front Yard", "Backyard", "Driveway", "Porch", "Deck", "Patio", "Roof", "Fence", "Walkway", "Parking Lot", "Garden", "Shed"]
+    private var levels: [String] { ["Basement", "Level 1", "Level 2", "Level 3", "Roof", "Outside"] + extraLevels }
+
+    private func existing(_ n: String) -> Space? { (job.spaces ?? []).first { $0.name == n && $0.level == level } }
+
+    private func symbol(_ n: String) -> String {
+        let l = n.lowercased()
+        if l.contains("bath") { return "bathtub" }
+        if l.contains("bed") { return "bed.double" }
+        if l.contains("kitchen") { return "cooktop" }
+        if l.contains("living") || l.contains("dining") { return "sofa" }
+        if l.contains("garage") { return "car" }
+        if l.contains("office") { return "briefcase" }
+        if l.contains("stair") { return "stairs" }
+        if l.contains("laundry") { return "basket" }
+        if l.contains("boiler") { return "flame" }
+        if l.contains("attic") { return "triangle" }
+        if l.contains("basement") { return "house.lodge" }
+        return "door.left.hand.closed"
+    }
+
+    private func toggle(_ n: String) {
+        let name = n.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        if let s = existing(name) {
+            if (s.punchItems ?? []).isEmpty && (s.photos ?? []).isEmpty { context.delete(s) }
+        } else {
+            let order = (job.spaces ?? []).filter { $0.level == level }.count
+            let s = Space(name: name, level: level, order: order, isExterior: mode == "Areas" || level == "Outside")
+            s.symbol = symbol(name)
+            s.job = job; context.insert(s)
+        }
+    }
+
+    var body: some View {
+        SheetFrame(title: "Add Spaces") {
+            Text("\(job.name) · pick the level, then tap to add (tap again to remove)").foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                modeButton("Rooms", "door.left.hand.closed", Theme.purple)
+                modeButton("Areas", "mappin.and.ellipse", Theme.purple)
+            }
+            Text("LEVEL").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+            FlowLayout(spacing: 10) {
+                ForEach(levels, id: \.self) { l in
+                    Button { level = l } label: {
+                        Text(l).font(.title3.weight(.bold)).foregroundStyle(level == l ? Theme.blue : .primary)
+                            .padding(.horizontal, 20).frame(height: 52)
+                            .background(level == l ? Theme.blue.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 16))
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(level == l ? Theme.blue : Theme.border(dark), lineWidth: 1.5))
+                    }.buttonStyle(.plain)
+                }
+                Button { let n = "Level \(levels.filter { $0.hasPrefix("Level") }.count + 1)"; extraLevels.append(n); level = n } label: {
+                    Text("+ Level").font(.title3.weight(.bold)).foregroundStyle(Theme.blue).padding(.horizontal, 20).frame(height: 52)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.blue, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+                }.buttonStyle(.plain)
+            }
+            Text("\(mode.uppercased()) ON \(level.uppercased())").font(.title3.weight(.heavy)).tracking(1.5).foregroundStyle(Theme.blue)
+            FlowLayout(spacing: 10) {
+                ForEach(mode == "Rooms" ? rooms : areas, id: \.self) { r in
+                    let on = existing(r) != nil
+                    Button { toggle(r) } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: symbol(r))
+                            if on { Image(systemName: "checkmark") } else { Text("+") }
+                            Text(r)
+                        }.font(.title3.weight(.bold)).foregroundStyle(on ? Theme.blue : .primary)
+                        .padding(.horizontal, 18).frame(height: 52)
+                        .background(on ? Theme.blue.opacity(0.15) : Color.clear, in: Capsule())
+                        .overlay(Capsule().stroke(on ? Theme.blue : Theme.border(dark), lineWidth: 1.5))
+                    }.buttonStyle(.plain)
+                }
+            }
+            HStack(spacing: 12) {
+                TextField("Type your own on \(level)…", text: $custom).textFieldStyle(.plain).font(.title3)
+                    .padding(.horizontal, 14).frame(height: 54)
+                    .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark), lineWidth: 1))
+                    .onSubmit { toggle(custom); custom = "" }
+                Button("Add") { toggle(custom); custom = "" }.font(.title3.weight(.bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 22).frame(height: 54).background(Theme.blue, in: RoundedRectangle(cornerRadius: 14)).buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func modeButton(_ t: String, _ sym: String, _ c: Color) -> some View {
+        Button { mode = t } label: {
+            Label(t, systemImage: sym).font(.title2.weight(.bold)).foregroundStyle(mode == t ? c : .secondary)
+                .frame(maxWidth: .infinity).frame(height: 70)
+                .background(mode == t ? c.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(mode == t ? c : Theme.border(dark), lineWidth: 2))
+        }.buttonStyle(.plain)
     }
 }

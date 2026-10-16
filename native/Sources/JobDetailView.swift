@@ -50,6 +50,7 @@ struct JobDetailView: View {
     @Bindable var job: Job
     @State private var tab: JobTab
     @State private var addingSpace = false
+    @State private var sheet: JobSheet?
     @State private var newSpace = ""
 
     init(job: Job, start: JobTab = .spaces) {
@@ -89,22 +90,26 @@ struct JobDetailView: View {
         .onChange(of: tab) { _, new in if new != .spaces { section = new; tab = .spaces } }
         .shellAdd { addMenu = true }
         .confirmationDialog("Add to this job", isPresented: $addMenu) {
-            Button("Space") { addingSpace = true }
-            Button("Expense") { addExpense() }
-            Button("Contractor") { addContractor() }
+            Button("Space") { sheet = .spaces }
+            Button("Expense") { sheet = .expense }
+            Button("Contractor") { sheet = .contractor }
             Button("Change order") { addChangeOrder() }
-            Button("Invoice") { addInvoice() }
+            Button("Invoice") { sheet = .invoice }
             Button("Permit") { addPermit() }
             Button("Clock in (labor)") { clockIn() }
             Button("Daily report") { addReport() }
-            Button("Appointment") { addAppointment() }
+            Button("Appointment") { sheet = .appointment }
             Button("Note") { addNote() }
             Button("Shopping item") { addShopping() }
         }
-        .alert("New space", isPresented: $addingSpace) {
-            TextField("Name (Kitchen, Roof…)", text: $newSpace)
-            Button("Add") { addSpace() }
-            Button("Cancel", role: .cancel) { newSpace = "" }
+        .sheet(item: $sheet) { s in
+            switch s {
+            case .spaces: AddSpacesSheet(job: job)
+            case .expense: ExpenseSheet(job: job)
+            case .contractor: ContractorSheet(job: job)
+            case .invoice: InvoiceSheet(job: job)
+            case .appointment: AppointmentSheet(req: ApptRequest(kind: "Appointment", date: Date(), job: job))
+            }
         }
     }
 
@@ -1170,3 +1175,6 @@ extension View {
         modifier(PDFExportModifier(name: name, sheet: sheet))
     }
 }
+
+
+enum JobSheet: String, Identifiable { case spaces, expense, contractor, invoice, appointment; var id: String { rawValue } }

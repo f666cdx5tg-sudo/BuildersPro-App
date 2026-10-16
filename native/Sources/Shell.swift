@@ -945,6 +945,7 @@ struct AllCalendarView: View {
     @State private var month = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
     @State private var picked: Date?
     @State private var editing: Appointment?
+    @State private var request: ApptRequest?
 
     private var cal: Calendar { Calendar.current }
 
@@ -1020,6 +1021,7 @@ struct AllCalendarView: View {
             }
             .background(Theme.bg(dark))
             .navigationDestination(item: $editing) { AppointmentDetail(item: $0) }
+            .sheet(item: $request) { AppointmentSheet(req: $0) }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
@@ -1047,11 +1049,7 @@ struct AllCalendarView: View {
     @ViewBuilder private func addButton(_ title: String, _ color: Color, _ kind: String) -> some View {
         let label = Text(title).font(.headline.weight(.heavy)).foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 46).background(color, in: RoundedRectangle(cornerRadius: 14))
-        if jobs.count == 1, let only = jobs.first {
-            Button { add(kind, to: only) } label: { label }.buttonStyle(.plain)
-        } else {
-            Menu { ForEach(jobs) { j in Button(j.name) { add(kind, to: j) } } } label: { label }
-        }
+        Button { request = ApptRequest(kind: kind, date: picked ?? Calendar.current.startOfDay(for: Date()), job: jobs.first) } label: { label }.buttonStyle(.plain)
     }
 
     private var legend: some View {
