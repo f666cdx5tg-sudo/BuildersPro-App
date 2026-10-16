@@ -164,12 +164,15 @@ struct JobsView: View {
     @State private var report = ""
     @State private var showReport = false
     @State private var tab = 0
+    @Query(sort: \Estimate.created, order: .reverse) private var estimates: [Estimate]
+    @State private var estSheet: EstimateRequest?
+    @State private var openJob: Job?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    TopBar(title: "Jobs", sub: "\(jobs.filter { $0.isActive }.count) active · \(jobs.count) total")
+                    TopBar(title: "Jobs", sub: tab == 1 ? "\(estimates.count) estimate\(estimates.count == 1 ? "" : "s")" : "\(jobs.filter { $0.isActive }.count) active · \(jobs.count) total")
                     tabs
                     if tab == 0 {
                         ForEach(jobs) { job in
@@ -180,7 +183,14 @@ struct JobsView: View {
                             ContentUnavailableView("No jobs yet", systemImage: "hammer", description: Text("Tap + to add a job or import your backup."))
                         }
                     } else {
-                        ContentUnavailableView("No estimates yet", systemImage: "doc.text", description: Text("Estimates are coming to the native app."))
+                        ForEach(estimates) { e in
+                            EstimateCard(est: e, edit: { estSheet = EstimateRequest(est: e) }, open: { key in
+                                if let j = jobs.first(where: { String($0.created.timeIntervalSince1970) == key }) { openJob = j }
+                            })
+                        }
+                        if estimates.isEmpty {
+                            ContentUnavailableView("No estimates yet", systemImage: "doc.text", description: Text("Tap + to build one."))
+                        }
                     }
                     Spacer(minLength: 90)
                 }
@@ -191,7 +201,9 @@ struct JobsView: View {
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
-            .shellAdd { asking = true }
+            .shellAdd { if tab == 1 { estSheet = EstimateRequest(est: nil) } else { asking = true } }
+            .sheet(item: $estSheet) { EstimateSheet(est: $0.est) }
+            .navigationDestination(item: $openJob) { JobDetailView(job: $0) }
             .confirmationDialog("Jobs", isPresented: $asking) {
                 Button("Add a job") { adding = true }
                 Button("Import backup file…") { picking = true }
@@ -1056,5 +1068,159 @@ struct DeliverySheet: View {
                 dismiss()
             }
         }
+    }
+}
+
+
+// MARK: - Estimates UI
+
+struct EstimateRequest: Identifiable { let id = UUID(); let est: Estimate? }
+
+struct EstimateCard: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
+    @AppStorage("bpDark") private var dark = true
+    let est: Estimate
+    let edit: () -> Void
+    let open: (String) -> Void
+    @State private var confirmDelete = false
+
+    private var statusColor: Color {
+        switch est.status { case "Sent": return Theme.lightBlue; case "Accepted": return Theme.blue; case "Declined": return Theme.red; default: return .secondary }
+    }
+    private func usd2(_ v: Double) -> String { v.formatted(.currency(code: "USD")) }
+
+    var body: some View {
+        CardBox {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(est.title).font(.title2.weight(.bold)).lineLimit(2)
+                        if !est.client.isEmpty { Label(est.client, systemImage: "person").font(.callout).foregroundStyle(.secondary) }
+                    }
+                    Spacer()
+                    Text(est.status).font(.callout.weight(.bold)).foregroundStyle(statusColor)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .overlay(Capsule().stroke(statusColor.opacity(0.5)))
+                }
+                Text(usd2(est.total)).font(.system(size: 30, weight: .heavy)).foregroundStyle(Theme.blue)
+                HStack(spacing: 8) {
+                    pill("Edit", "pencil", Theme.card(dark), .primary, action: edit)
+                    pill(nil, "envelope", Theme.card(dark), Theme.blue, action: email)
+                    if est.convertedJobKey.isEmpty {
+                        pill("Convert to Job", nil, Theme.orange, .white, grow: true, action: convert)
+                    } else {
+                        pill("View Job →", nil, Theme.blue, .white, grow: true) { open(est.convertedJobKey) }
+                    }
+                    pill(nil, "trash", Theme.card(dark), .secondary) { confirmDelete = true }
+                }
+            }
+        }
+        .confirmationDialog("Delete this estimate?", isPresented: $confirmDelete) {
+            Button("Delete", role: .destructive) { context.delete(est) }
+        }
+    }
+
+    private func pill(_ title: String?, _ symbol: String?, _ bg: Color, _ fg: Color, grow: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let symbol { Image(systemName: symbol) }
+                if let title { Text(title).font(.headline.weight(.bold)) }
+            }
+            .foregroundStyle(fg).padding(.horizontal, 14).frame(maxWidth: grow || title != nil ? .infinity : nil).frame(height: 46)
+            .background(bg, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+        }.buttonStyle(.plain)
+    }
+
+    private func convert() {
+        let j = Job(name: est.title)
+        j.client = est.client; j.clientEmail = est.clientEmail; j.contract = est.total; j.status = "Pending"
+        context.insert(j)
+        est.convertedJobKey = String(j.created.timeIntervalSince1970)
+        est.status = "Accepted"
+        open(est.convertedJobKey)
+    }
+
+    private func email() {
+        let money = { (v: Double) in v.formatted(.currency(code: "USD")) }
+        let lines = est.lines.filter { !$0.desc.isEmpty || $0.price != 0 }
+            .map { "  • \($0.desc.isEmpty ? "Item" : $0.desc)  x\(Int($0.qty))  \(money($0.price))" }.joined(separator: "\n")
+        let body = "Hi\(est.client.isEmpty ? "" : " " + est.client),\n\nHere is the estimate for \(est.title):\n\n" + (lines.isEmpty ? "" : lines + "\n\n")
+            + "Total: \(money(est.total))\n" + (est.notes.isEmpty ? "" : "\n" + est.notes + "\n") + "\nThanks,\n"
+        var comps = URLComponents(); comps.scheme = "mailto"; comps.path = est.clientEmail
+        comps.queryItems = [URLQueryItem(name: "subject", value: "Estimate: \(est.title) – \(money(est.total))"), URLQueryItem(name: "body", value: body)]
+        if let u = comps.url { openURL(u) }
+    }
+}
+
+struct EstimateSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("bpDark") private var dark = true
+    let est: Estimate?
+    @State private var title = ""
+    @State private var client = ""
+    @State private var email = ""
+    @State private var status = "Draft"
+    @State private var notes = ""
+    @State private var lines: [EstimateLine] = [EstimateLine()]
+    @State private var loaded = false
+
+    private var total: Double { lines.reduce(0) { $0 + $1.qty * $1.price } }
+
+    var body: some View {
+        SheetFrame(title: est == nil ? "New Estimate" : "Edit Estimate") {
+            FField(title: "Title *", text: $title, prompt: "e.g. Kitchen Remodel")
+            FField(title: "Client", text: $client, prompt: "")
+            FField(title: "Client Email", text: $email, prompt: "client@example.com")
+            FMenu(title: "Status", value: $status, options: ["Draft", "Sent", "Accepted", "Declined"])
+            Text("LINE ITEMS").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+            ForEach($lines) { $l in
+                HStack(spacing: 8) {
+                    TextField("Description", text: $l.desc).textFieldStyle(.plain).padding(12).frame(height: 48)
+                        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
+                    TextField("Qty", value: $l.qty, format: .number).textFieldStyle(.plain).padding(12).frame(width: 70, height: 48)
+                        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
+                    TextField("Price", value: $l.price, format: .number).textFieldStyle(.plain).padding(12).frame(width: 100, height: 48)
+                        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
+                    Button { removeLine(l.id) } label: { Image(systemName: "xmark").foregroundStyle(.secondary) }.buttonStyle(.plain)
+                }
+            }
+            Button { lines.append(EstimateLine()) } label: {
+                Text("+ Add Line Item").font(.headline.weight(.bold)).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 48)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(style: StrokeStyle(lineWidth: 1.5, dash: [6])).foregroundStyle(.secondary))
+            }.buttonStyle(.plain)
+            HStack {
+                Text("Total").font(.headline).foregroundStyle(.secondary)
+                Spacer()
+                Text(total.formatted(.currency(code: "USD"))).font(.title.weight(.heavy)).foregroundStyle(Theme.blue)
+            }
+            .padding(16).background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+            FField(title: "Notes", text: $notes, prompt: "")
+            FBigButton(title: "Save Estimate", enabled: !title.trimmingCharacters(in: .whitespaces).isEmpty) { save() }
+        }
+        .onAppear {
+            guard !loaded, let e = est else { return }
+            loaded = true
+            title = e.title; client = e.client; email = e.clientEmail; status = e.status; notes = e.notes
+            lines = e.lines.isEmpty ? [EstimateLine()] : e.lines
+        }
+    }
+
+    private func removeLine(_ id: UUID) {
+        if lines.count <= 1 { lines = [EstimateLine()] } else { lines.removeAll { $0.id == id } }
+    }
+
+    private func save() {
+        let e = est ?? Estimate(title: "")
+        e.title = title.trimmingCharacters(in: .whitespaces); e.client = client; e.clientEmail = email
+        e.status = status; e.notes = notes; e.updated = Date()
+        e.lines = lines.filter { !$0.desc.isEmpty || $0.price != 0 }
+        if est == nil { context.insert(e) }
+        dismiss()
     }
 }

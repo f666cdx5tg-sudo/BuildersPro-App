@@ -363,3 +363,35 @@ enum Trades {
         }
     }
 }
+
+
+// MARK: - Estimates (pre-job quotes; convert to a Job when accepted)
+
+struct EstimateLine: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var desc: String = ""
+    var qty: Double = 1
+    var price: Double = 0
+}
+
+@Model
+final class Estimate {
+    var title: String = ""
+    var client: String = ""
+    var clientEmail: String = ""
+    var status: String = "Draft"                     // Draft, Sent, Accepted, Declined
+    var notes: String = ""
+    var itemsJSON: String = "[]"                     // [EstimateLine] as JSON (one string keeps CloudKit happy)
+    var created: Date = Date()
+    var updated: Date = Date()
+    var convertedJobKey: String = ""                 // Job.created timeIntervalSince1970, once converted
+    var sourceID: String = ""
+
+    init(title: String) { self.title = title }
+
+    var lines: [EstimateLine] {
+        get { (try? JSONDecoder().decode([EstimateLine].self, from: Data(itemsJSON.utf8))) ?? [] }
+        set { itemsJSON = (try? String(data: JSONEncoder().encode(newValue), encoding: .utf8)) ?? "[]" }
+    }
+    var total: Double { lines.reduce(0) { $0 + $1.qty * $1.price } }
+}
