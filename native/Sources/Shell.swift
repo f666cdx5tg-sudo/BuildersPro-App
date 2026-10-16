@@ -218,13 +218,21 @@ struct HomeView: View {
                     .minimumScaleFactor(0.5).lineLimit(1)
                     .foregroundStyle(LinearGradient(colors: [Theme.blue, Theme.orange], startPoint: .leading, endPoint: .trailing))
             }
-            HStack(alignment: .top, spacing: 10) {
-                FeatherPin().stroke(Theme.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                    .frame(width: 20, height: 20).padding(.top, 2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(info.place).font(.headline.weight(.bold)).fixedSize(horizontal: false, vertical: true)
-                    Text(Date.now.formatted(.dateTime.weekday(.abbreviated).month(.twoDigits).day(.twoDigits).year()))
-                        .font(.callout.weight(.semibold)).foregroundStyle(.secondary)
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .top, spacing: 10) {
+                        FeatherPin().stroke(Theme.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                            .frame(width: 20, height: 20).padding(.top, 2)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(info.place).font(.headline.weight(.bold)).fixedSize(horizontal: false, vertical: true)
+                            Text(Date.now.formatted(.dateTime.weekday(.abbreviated).month(.twoDigits).day(.twoDigits).year()))
+                                .font(.callout.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        Image(systemName: info.icon).font(.title3).foregroundStyle(Color.primary).frame(width: 20)
+                        Text(info.weather).font(.callout.weight(.bold)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+                    }
                 }
                 Spacer(minLength: 6)
                 TimelineView(.everyMinute) { ctx in
@@ -232,10 +240,6 @@ struct HomeView: View {
                         .font(.system(size: 36, weight: .regular)).foregroundStyle(Theme.blue)
                         .minimumScaleFactor(0.6).lineLimit(1)
                 }
-            }
-            HStack(spacing: 10) {
-                Image(systemName: info.icon).font(.title3).foregroundStyle(Color.primary).frame(width: 20).padding(.leading, 0)
-                Text(info.weather).font(.callout.weight(.bold)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             }
         }
     }
