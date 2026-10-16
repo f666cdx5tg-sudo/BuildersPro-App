@@ -609,7 +609,6 @@ struct AllPhotosView: View {
 
     private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
     private var shownJobs: [Job] { pick.isEmpty ? jobs : jobs.filter { key($0) == pick } }
-    private var unfiled: [SitePhoto] { photos.filter { $0.space == nil && shownJobs.contains { j in j.created == $0.job?.created } } }
     private var target: Job? { shownJobs.first }
 
     var body: some View {
