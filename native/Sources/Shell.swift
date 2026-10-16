@@ -400,30 +400,194 @@ struct JobCard: View {
 // MARK: - Punch (open items across all jobs)
 
 struct AllPunchView: View {
+    @Environment(\.modelContext) private var context
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
-    private var open: Int { jobs.reduce(0) { $0 + ($1.totalCount - $1.doneCount) } }
+    @AppStorage("bpActiveJob") private var activeKey = ""
+    @State private var status = "Open"            // Open, Done, All
+    @State private var spaceName = "All"           // All, General, or a space name
+    @State private var trade = ""                  // "" = any
+    @State private var addSheet = false
+    @State private var newText = ""
+    @State private var toDelete: PunchItem?
+
+    private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
+    private var job: Job? { jobs.first { key($0) == activeKey } ?? jobs.first }
+    private var items: [PunchItem] { job?.punchItems ?? [] }
+    private var openCount: Int { items.filter { !$0.done }.count }
+    private var doneCount: Int { items.filter { $0.done }.count }
+    private var filterCount: Int { (status != "All" ? 1 : 0) + (spaceName != "All" ? 1 : 0) + (trade.isEmpty ? 0 : 1) }
+
+    private var shown: [PunchItem] {
+        items.filter { i in
+            (status == "All" || (status == "Open" ? !i.done : i.done)) &&
+            (spaceName == "All" || (spaceName == "General" ? i.space == nil : i.space?.name == spaceName)) &&
+            (trade.isEmpty || i.trade == trade)
+        }
+    }
+    private struct Group: Identifiable { let id: String; let space: Space?; let items: [PunchItem] }
+    private var groups: [Group] {
+        var out: [Group] = []
+        let general = shown.filter { $0.space == nil }
+        if !general.isEmpty { out.append(Group(id: "general", space: nil, items: general.sorted { $0.created < $1.created })) }
+        let spaces = (job?.spaces ?? []).sorted { ($0.level, $0.order) < ($1.level, $1.order) }
+        for sp in spaces {
+            let list = shown.filter { $0.space?.uid == sp.uid }
+            if !list.isEmpty { out.append(Group(id: sp.uid.uuidString, space: sp, items: list.sorted { $0.created < $1.created })) }
+        }
+        return out
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(jobs.filter { $0.totalCount > $0.doneCount }) { job in
-                    Section(job.name) {
-                        ForEach((job.punchItems ?? []).filter { !$0.done }.sorted { $0.created > $1.created }) { item in
-                            NavigationLink { PunchDetail(item: item) } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.text).font(.headline).lineLimit(2)
-                                    Text(item.space?.name ?? "General").font(.subheadline).foregroundStyle(.secondary)
-                                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    TopBar(title: "Punch", sub: "\(openCount) open · \(doneCount) done")
+                    if let job {
+                        HStack(spacing: 12) {
+                            Menu {
+                                ForEach(jobs) { j in Button(j.name) { activeKey = key(j); spaceName = "All" } }
+                            } label: {
+                                HStack { Text(job.name).font(.title3.weight(.semibold)); Spacer(); Image(systemName: "chevron.down").font(.footnote.weight(.bold)) }
+                                    .foregroundStyle(.primary).padding(.horizontal, 18).frame(height: 56)
+                                    .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
+                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark), lineWidth: 1))
+                            }
+                            NavigationLink { JobDetailView(job: job) } label: {
+                                Label("Areas", systemImage: "square.grid.2x2").font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
+                                    .padding(.horizontal, 18).frame(height: 56)
+                                    .background(Theme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.blue.opacity(0.5), lineWidth: 1))
+                            }.buttonStyle(.plain)
+                        }
+                        NavigationLink { PunchListView(job: job, space: nil) } label: {
+                            let g = items.filter { $0.space == nil }
+                            Text("General \(g.filter { $0.done }.count)/\(g.count)").font(.headline.weight(.semibold)).foregroundStyle(Theme.red)
+                                .padding(.horizontal, 20).frame(height: 46)
+                                .overlay(Capsule().stroke(Theme.border(dark), lineWidth: 1))
+                        }.buttonStyle(.plain)
+                        HStack(spacing: 12) {
+                            filterMenu("Status", status) {
+                                ForEach(["Open", "Done", "All"], id: \.self) { v in Button(v) { status = v } }
+                            }
+                            filterMenu("Space", spaceName) {
+                                Button("All") { spaceName = "All" }
+                                Button("General") { spaceName = "General" }
+                                ForEach(job.spaces ?? []) { sp in Button(sp.name) { spaceName = sp.name } }
                             }
                         }
+                        Menu {
+                            Button("Any trade") { trade = "" }
+                            ForEach(Trades.all, id: \.self) { t in Button(t) { trade = t } }
+                            Divider()
+                            Button("Reset filters") { status = "Open"; spaceName = "All"; trade = "" }
+                        } label: {
+                            Label("Filter (\(filterCount)) ▾", systemImage: "line.3.horizontal.decrease").font(.title3.weight(.bold))
+                                .foregroundStyle(Theme.blue).frame(maxWidth: .infinity).frame(height: 54)
+                                .background(Theme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.blue.opacity(0.6), lineWidth: 1))
+                        }
+                        Text("Showing \(shown.count) of \(items.count)").font(.headline.weight(.semibold)).foregroundStyle(Theme.blue)
+                        ForEach(groups) { g in group(g, job) }
+                        if shown.isEmpty { Text("Nothing matches these filters.").foregroundStyle(.secondary).padding(.top, 20) }
+                    } else {
+                        Text("Add a job first.").foregroundStyle(.secondary)
                     }
+                    Color.clear.frame(height: 110)
                 }
+                .padding(.horizontal, 16).padding(.top, 8)
             }
-            .scrollContentBackground(.hidden).background(Theme.bg(dark))
-            .overlay { if open == 0 { ContentUnavailableView("Nothing open", systemImage: "checkmark.circle", description: Text("Every punch item is done.")) } }
-            .navigationTitle("Punch")
+            .background(Theme.bg(dark))
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+            .shellAdd { addSheet = true }
+            .alert("Add punch item", isPresented: $addSheet) {
+                TextField("What needs doing", text: $newText)
+                Button("Add") {
+                    let t = newText.trimmingCharacters(in: .whitespaces)
+                    if let job, !t.isEmpty {
+                        let it = PunchItem(text: t, trade: ""); it.job = job
+                        if spaceName != "All" && spaceName != "General" { it.space = (job.spaces ?? []).first { $0.name == spaceName } }
+                        context.insert(it)
+                    }
+                    newText = ""
+                }
+                Button("Cancel", role: .cancel) { newText = "" }
+            }
+            .confirmationDialog("Delete this punch item?", isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } }), titleVisibility: .visible) {
+                Button("Delete", role: .destructive) { if let t = toDelete { context.delete(t) }; toDelete = nil }
+                Button("Cancel", role: .cancel) { toDelete = nil }
+            }
         }
+    }
+
+    private func filterMenu<C: View>(_ title: String, _ value: String, @ViewBuilder _ content: () -> C) -> some View {
+        Menu { content() } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.headline.weight(.semibold)).foregroundStyle(.secondary)
+                    Text(value).font(.title3.weight(.bold)).foregroundStyle(.primary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "line.3.horizontal").font(.title3.weight(.bold)).foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 16).frame(height: 64)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark), lineWidth: 1))
+        }
+    }
+
+    private func group(_ g: Group, _ job: Job) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                NavigationLink { PunchListView(job: job, space: g.space) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "door.left.hand.closed")
+                        Text(g.space?.name ?? "General")
+                        Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+                    }.font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
+                }.buttonStyle(.plain)
+                Spacer()
+                let all = items.filter { $0.space?.uid == g.space?.uid }
+                Text("\(all.filter { $0.done }.count)/\(all.count)").font(.headline.weight(.bold)).foregroundStyle(Theme.red)
+            }.padding(.top, 8)
+            ForEach(g.items) { it in card(it) }
+        }
+    }
+
+    private func card(_ it: PunchItem) -> some View {
+        HStack(spacing: 14) {
+            Button { it.done.toggle(); it.completed = it.done ? Date() : nil } label: {
+                RoundedRectangle(cornerRadius: 12).stroke(it.done ? Theme.green : Theme.red, lineWidth: 3)
+                    .frame(width: 38, height: 38)
+                    .overlay { if it.done { Image(systemName: "checkmark").font(.headline.weight(.bold)).foregroundStyle(Theme.green) } }
+            }.buttonStyle(.plain)
+            NavigationLink { PunchDetail(item: it) } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(it.text.isEmpty ? "Punch item" : it.text).font(.title3.weight(.semibold)).foregroundStyle(.primary)
+                        .strikethrough(it.done).multilineTextAlignment(.leading)
+                    Text("Added " + it.created.formatted(.dateTime.month(.twoDigits).day(.twoDigits))).font(.headline).foregroundStyle(.secondary)
+                    Text("· " + (it.done ? "done" : "open")).font(.headline.weight(.bold)).foregroundStyle(it.done ? Theme.green : Theme.red)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.buttonStyle(.plain)
+            NavigationLink { PunchDetail(item: it) } label: {
+                let n = (it.photos ?? []).count
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 14).stroke(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                        .frame(width: 56, height: 56)
+                        .overlay(Image(systemName: "camera").font(.title3).foregroundStyle(.secondary))
+                    if n > 0 { Text("\(n)").font(.caption2.weight(.bold)).foregroundStyle(.white).padding(4).background(Theme.blue, in: Circle()).offset(x: 6, y: -6) }
+                }
+            }.buttonStyle(.plain)
+            Button { toDelete = it } label: { Image(systemName: "xmark").font(.headline).foregroundStyle(.secondary).frame(width: 30, height: 40) }.buttonStyle(.plain)
+        }
+        .padding(.vertical, 14).padding(.leading, 18).padding(.trailing, 10)
+        .background((it.done ? Theme.green : Theme.red).opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(alignment: .leading) {
+            UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 18).fill(it.done ? Theme.green : Theme.red).frame(width: 5)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark), lineWidth: 1))
     }
 }
 
