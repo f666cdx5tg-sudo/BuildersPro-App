@@ -365,6 +365,17 @@ struct ChangeOrderDetail: View {
         }
         .formStyle(.grouped)
         .navigationTitle(order.number)
+        .pdfExport(name: "\(order.number) change order") {
+            let j = order.job
+            return DocSheet(heading: "Change order \(order.number)", sub: order.title, job: j,
+                rows: [("Status", order.status), ("Reason", order.reason),
+                       ("Date", order.date.formatted(date: .long, time: .omitted)),
+                       ("Amount", Money.text(order.amount)), ("Days added", "\(order.daysAdded)"),
+                       ("Approved by", order.approvedBy),
+                       ("Original contract", Money.text(j?.contract ?? 0)),
+                       ("Revised contract", Money.text(j?.revisedContract ?? 0))],
+                sections: [("Scope of the change", order.details)])
+        }
     }
 }
 
@@ -385,6 +396,17 @@ struct InvoiceDetail: View {
         }
         .formStyle(.grouped)
         .navigationTitle(invoice.title.isEmpty ? "Invoice" : invoice.title)
+        .pdfExport(name: "Invoice " + (invoice.title.isEmpty ? "" : invoice.title)) {
+            let j = invoice.job
+            return DocSheet(heading: "Invoice", sub: invoice.title, job: j,
+                rows: [("Date", invoice.date.formatted(date: .long, time: .omitted)),
+                       ("Status", invoice.status), ("Amount due", Money.text(invoice.amount)),
+                       ("Revised contract", Money.text(j?.revisedContract ?? 0)),
+                       ("Invoiced to date", Money.text(j?.invoiced ?? 0)),
+                       ("Collected", Money.text(j?.collected ?? 0)),
+                       ("Outstanding", Money.text(j?.outstanding ?? 0))],
+                sections: [("Notes", invoice.notes)])
+        }
     }
 }
 
@@ -572,6 +594,14 @@ struct ReportDetail: View {
         }
         .formStyle(.grouped)
         .navigationTitle(report.number.isEmpty ? "Daily report" : report.number)
+        .pdfExport(name: "Daily report " + report.number) {
+            DocSheet(heading: "Daily report " + report.number, sub: report.date.formatted(date: .complete, time: .omitted), job: report.job,
+                rows: [("Workers on site", "\(report.workers)"), ("Hours", report.hours), ("Weather", report.weather),
+                       ("Job progress", "\(report.progress)%")],
+                sections: [("Work completed", report.completed), ("Not finished", report.incomplete),
+                           ("Planned for tomorrow", report.tomorrow), ("Visitors", report.visitors),
+                           ("Safety", report.safety), ("Notes for the client", report.clientNotes)])
+        }
     }
 
     private func notes(_ title: String, _ text: Binding<String>) -> some View {
@@ -859,5 +889,107 @@ struct DocDetail: View {
         }
         .formStyle(.grouped)
         .navigationTitle(item.name.isEmpty ? "Document" : item.name)
+    }
+}
+
+
+// MARK: - PDF export (daily report, invoice, change order)
+
+struct PDFFile: FileDocument {
+    static var readableContentTypes: [UTType] { [.pdf] }
+    var data: Data
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
+}
+
+/// One printable page: company line, title, job, a table of facts, then written sections.
+struct DocSheet: View {
+    let heading: String
+    let sub: String
+    let job: Job?
+    let rows: [(String, String)]
+    let sections: [(String, String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("BuildersPro").font(.system(size: 11, weight: .heavy)).foregroundStyle(.gray)
+                Spacer()
+                Text(Date().formatted(date: .abbreviated, time: .omitted)).font(.system(size: 11)).foregroundStyle(.gray)
+            }
+            Text(heading).font(.system(size: 26, weight: .heavy))
+            if !sub.isEmpty { Text(sub).font(.system(size: 15)).foregroundStyle(.gray) }
+            if let job {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(job.name).font(.system(size: 14, weight: .bold))
+                    if !job.address.isEmpty { Text(job.address).font(.system(size: 12)).foregroundStyle(.gray) }
+                    if !job.client.isEmpty { Text("Client: " + job.client).font(.system(size: 12)).foregroundStyle(.gray) }
+                }
+            }
+            Divider()
+            VStack(spacing: 6) {
+                ForEach(Array(rows.filter { !$0.1.isEmpty }.enumerated()), id: \.offset) { _, r in
+                    HStack(alignment: .top) {
+                        Text(r.0).font(.system(size: 12, weight: .semibold)).frame(width: 150, alignment: .leading)
+                        Text(r.1).font(.system(size: 12))
+                        Spacer()
+                    }
+                }
+            }
+            ForEach(Array(sections.filter { !$0.1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.enumerated()), id: \.offset) { _, sec in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(sec.0.uppercased()).font(.system(size: 10, weight: .heavy)).foregroundStyle(.gray)
+                    Text(sec.1).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(40)
+        .frame(width: 612, alignment: .topLeading)
+        .foregroundStyle(Color.black)
+        .background(Color.white)
+        .environment(\.colorScheme, .light)
+    }
+}
+
+@MainActor func makePDF<V: View>(_ view: V) -> Data? {
+    let renderer = ImageRenderer(content: view)
+    let out = NSMutableData()
+    var ok = false
+    renderer.render { size, draw in
+        var box = CGRect(origin: .zero, size: CGSize(width: max(size.width, 612), height: max(size.height, 792)))
+        guard let consumer = CGDataConsumer(data: out as CFMutableData),
+              let ctx = CGContext(consumer: consumer, mediaBox: &box, nil) else { return }
+        ctx.beginPDFPage(nil)
+        ctx.translateBy(x: 0, y: box.height - size.height)      // keep the content at the top of the page
+        draw(ctx)
+        ctx.endPDFPage(); ctx.closePDF()
+        ok = true
+    }
+    return ok ? out as Data : nil
+}
+
+struct PDFExportModifier: ViewModifier {
+    let name: String
+    let sheet: @MainActor () -> DocSheet
+    @State private var exporting = false
+    @State private var file = PDFFile(data: Data())
+
+    func body(content: Content) -> some View {
+        content
+            .toolbar {
+                Button {
+                    file = PDFFile(data: makePDF(sheet()) ?? Data())
+                    exporting = true
+                } label: { Label("Make PDF", systemImage: "arrow.down.doc") }
+            }
+            .fileExporter(isPresented: $exporting, document: file, contentType: .pdf,
+                          defaultFilename: name.trimmingCharacters(in: .whitespaces)) { _ in }
+    }
+}
+
+extension View {
+    func pdfExport(name: String, sheet: @escaping @MainActor () -> DocSheet) -> some View {
+        modifier(PDFExportModifier(name: name, sheet: sheet))
     }
 }

@@ -80,6 +80,7 @@ struct PunchDetail: View {
     @Bindable var item: PunchItem
     @State private var pickBefore: [PhotosPickerItem] = []
     @State private var pickAfter: [PhotosPickerItem] = []
+    @State private var cameraKind: String?
 
     private func photos(_ kind: String) -> [PunchPhoto] {
         (item.photos ?? []).filter { $0.kind == kind }.sorted { $0.created < $1.created }
@@ -104,14 +105,31 @@ struct PunchDetail: View {
         }
         .formStyle(.grouped)
         .navigationTitle(item.text.isEmpty ? "Punch item" : item.text)
+        #if os(iOS)
+        .fullScreenCover(isPresented: Binding(get: { cameraKind != nil }, set: { if !$0 { cameraKind = nil } })) {
+            CameraPicker { d in
+                let pp = PunchPhoto(data: d, kind: cameraKind ?? "Before")
+                context.insert(pp); pp.item = item
+            }.ignoresSafeArea()
+        }
+        #endif
     }
 
     @ViewBuilder private func gallery(_ kind: String, _ picks: Binding<[PhotosPickerItem]>?) -> some View {
         Section("\(kind) photos · \(photos(kind).count)") {
             ForEach(photos(kind)) { p in
-                if let d = p.data, let img = PhotoThumb.image(d) { img.resizable().scaledToFit().frame(maxHeight: 340) }
+                if let d = p.data, let img = PhotoThumb.image(d) {
+                    NavigationLink { MarkupView(data: d) { p.data = $0 } } label: {
+                        img.resizable().scaledToFit().frame(maxHeight: 340)
+                    }.buttonStyle(.plain)
+                }
             }
             .onDelete { idx in let l = photos(kind); idx.forEach { context.delete(l[$0]) } }
+            if picks != nil {
+                #if os(iOS)
+                if CameraPicker.available { Button { cameraKind = kind } label: { Label("Take \(kind.lowercased()) photo", systemImage: "camera") } }
+                #endif
+            }
             if let picks {
                 PhotosPicker(selection: picks, matching: .images) { Label("Add \(kind.lowercased()) photo", systemImage: "photo.badge.plus") }
                     .onChange(of: picks.wrappedValue) { _, new in
