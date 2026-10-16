@@ -6,11 +6,22 @@ import SwiftData
 /// What the floating "+" does on the screen you're looking at.
 @MainActor
 final class ShellState: ObservableObject {
+    struct Entry { let token: UUID; let symbol: String; let action: () -> Void }
+    private var stack: [Entry] = []
     @Published var addSymbol = "plus"
     @Published var addAction: (() -> Void)?
-    var owner: UUID?
     @Published var barHidden = false
     var goHome: () -> Void = {}
+
+    func register(_ e: Entry) {
+        stack.removeAll { $0.token == e.token }
+        stack.append(e); refresh()
+    }
+    func unregister(_ t: UUID) { stack.removeAll { $0.token == t }; refresh() }
+    private func refresh() {
+        addSymbol = stack.last?.symbol ?? "plus"
+        addAction = stack.last?.action
+    }
 }
 
 private struct ShellAdd: ViewModifier {
@@ -20,8 +31,8 @@ private struct ShellAdd: ViewModifier {
     @State private var token = UUID()
     func body(content: Content) -> some View {
         content
-            .onAppear { shell.owner = token; shell.addSymbol = symbol; shell.addAction = action }
-            .onDisappear { if shell.owner == token { shell.owner = nil; shell.addAction = nil } }
+            .onAppear { shell.register(.init(token: token, symbol: symbol, action: action)) }
+            .onDisappear { shell.unregister(token) }
     }
 }
 
