@@ -82,7 +82,7 @@ enum BackupImporter {
         var jobs = 0, spaces = 0, punch = 0, photos = 0
         var expenses = 0, contractors = 0, payments = 0, reports = 0
         var changeOrders = 0, invoices = 0, permits = 0, timeEntries = 0
-        var appointments = 0, shopping = 0, vendors = 0, documents = 0
+        var appointments = 0, shopping = 0, vendors = 0, documents = 0, punchPhotos = 0
         var text: String {
             var parts: [String] = []
             if jobs > 0 { parts.append("\(jobs) new job(s): \(spaces) spaces, \(punch) punch items, \(photos) photos") }
@@ -95,6 +95,7 @@ enum BackupImporter {
             if appointments + shopping + vendors + documents > 0 {
                 parts.append("\(appointments) appointments, \(shopping) shopping items, \(vendors) vendors, \(documents) documents")
             }
+            if punchPhotos > 0 { parts.append("\(punchPhotos) punch-item photos") }
             return parts.isEmpty ? "Nothing new to import. Everything in that file is already here."
                                  : "Imported " + parts.joined(separator: "; ") + "."
         }
@@ -239,6 +240,7 @@ enum BackupImporter {
                     let item = PunchItem(text: (p["text"] as? String) ?? "", trade: (p["trade"] as? String) ?? "")
                     item.done = (p["done"] as? Bool) ?? false
                     item.created = date(p["created"]) ?? Date()
+                    item.sourceID = (p["id"] as? String) ?? ""
                     if item.done { item.completed = date(p["completedAt"]) ?? item.created }
                     context.insert(item)
                     item.job = job
@@ -256,6 +258,42 @@ enum BackupImporter {
                     pic.job = job
                     if let rid = ph["roomId"] as? String { pic.space = spaceByRoom[rid] }
                     out.photos += 1
+                }
+            }
+
+            // Punch details (priority, notes, value) and before/after photos — also added to jobs imported earlier.
+            do {
+                let mine = job.punchItems ?? []
+                var bySID: [String: PunchItem] = [:]
+                for it in mine where !it.sourceID.isEmpty { bySID[it.sourceID] = it }
+                for p in punch where (p["jobId"] as? String) == jid {
+                    let sid = str(p["id"])
+                    if sid.isEmpty { continue }
+                    var found = bySID[sid]
+                    if found == nil {
+                        let when = date(p["created"])
+                        found = mine.first { $0.sourceID.isEmpty && $0.text == str(p["text"]) &&
+                            (when == nil || abs($0.created.timeIntervalSince(when!)) < 2) }
+                        if let f = found { f.sourceID = sid; bySID[sid] = f }
+                    }
+                    guard let item = found else { continue }
+                    if item.priority.isEmpty { item.priority = str(p["priority"]) }
+                    if item.extraNotes.isEmpty { item.extraNotes = str(p["extraNotes"]) }
+                    if item.value == 0 { item.value = num(p["value"]) }
+                    if !(item.photos ?? []).isEmpty { continue }
+                    func add(_ list: Any?, _ kind: String) {
+                        for e in (list as? [Any]) ?? [] {
+                            let src = (e as? [String: Any])?["src"] ?? e
+                            guard let bytes = photoData(src) else { continue }
+                            let pp = PunchPhoto(data: bytes, kind: kind)
+                            context.insert(pp)
+                            pp.item = item
+                            out.punchPhotos += 1
+                        }
+                    }
+                    add(p["photosBefore"], "Before")
+                    add(p["photosAfter"], "After")
+                    if let c = p["completionPhoto"], !(c is NSNull) { add([c], "Completion") }
                 }
             }
 

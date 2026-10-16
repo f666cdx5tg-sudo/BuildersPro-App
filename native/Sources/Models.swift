@@ -86,8 +86,23 @@ final class PunchItem {
     var completed: Date?
     var space: Space?               // nil = "General"
     var job: Job?
+    var priority: String = ""       // High, Medium, Low or ""
+    var extraNotes: String = ""
+    var value: Double = 0
+    var sourceID: String = ""
+    @Relationship(deleteRule: .cascade, inverse: \PunchPhoto.item) var photos: [PunchPhoto]? = []
 
     init(text: String, trade: String) { self.text = text; self.trade = trade }
+}
+
+@Model
+final class PunchPhoto {
+    @Attribute(.externalStorage) var data: Data?
+    var kind: String = "Before"      // Before, After, Completion
+    var created: Date = Date()
+    var item: PunchItem?
+
+    init(data: Data?, kind: String) { self.data = data; self.kind = kind }
 }
 
 @Model
