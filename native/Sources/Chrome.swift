@@ -927,7 +927,7 @@ struct AddPickerSheet: View {
     private let items: [(String, String)] = [
         ("Space", "square.grid.2x2"), ("Expense", "receipt"), ("Contractor", "person.badge.plus"),
         ("Change order", "arrow.triangle.2.circlepath"), ("Invoice", "doc.text"), ("Permit", "checkmark.seal"),
-        ("Delivery", "shippingbox"), ("Clock in (labor)", "clock"), ("Daily report", "doc.plaintext"), ("Appointment", "calendar.badge.plus"),
+        ("Delivery", "shippingbox"), ("Daily report", "doc.plaintext"), ("Appointment", "calendar.badge.plus"),
         ("Note", "note.text"), ("Shopping item", "cart")]
     var body: some View {
         SheetFrame(title: "Add to this job") {
@@ -1318,5 +1318,250 @@ struct EditJobSheet: View {
         job.startDate = hasStart ? start : nil; job.completionDate = hasEnd ? end : nil
         job.jobNotes = notes
         dismiss()
+    }
+}
+
+// MARK: - Multi-line field
+
+struct FArea: View {
+    @AppStorage("bpDark") private var dark = true
+    let title: String
+    @Binding var text: String
+    let prompt: String
+    var height: CGFloat = 90
+    var tint: Color = .secondary
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(tint)
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $text).font(.title3).scrollContentBackground(.hidden).padding(8).frame(height: height)
+                if text.isEmpty {
+                    Text(prompt).font(.title3).foregroundStyle(.secondary.opacity(0.7))
+                        .padding(.horizontal, 13).padding(.top, 16).allowsHitTesting(false)
+                }
+            }
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark), lineWidth: 1))
+        }
+    }
+}
+
+// MARK: - Shopping item (Qty | Item | Cost)
+
+struct ShoppingSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("bpDark") private var dark = true
+    let job: Job
+    @State private var qty = "1"
+    @State private var text = ""
+    @State private var price = ""
+    @State private var added = 0
+
+    private var ready: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
+    private func save() {
+        let it = ShoppingItem(text: text.trimmingCharacters(in: .whitespaces))
+        let q = money(qty); it.qty = q > 0 ? q : 1; it.price = money(price)
+        context.insert(it); it.job = job
+        added += 1
+    }
+
+    var body: some View {
+        SheetFrame(title: "Add item") {
+            HStack(alignment: .top, spacing: 10) {
+                FField(title: "Qty", text: $qty, prompt: "1").frame(width: 90)
+                FField(title: "Item name / description", text: $text, prompt: "1/2\" PEX elbow")
+                FField(title: "Cost $", text: $price, prompt: "0.00").frame(width: 110)
+            }
+            Text("Cost is per item. Tap the item afterwards to add store, notes and more.").font(.callout).foregroundStyle(.secondary)
+            if added > 0 { Label("\(added) added", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).font(.headline) }
+            Button {
+                guard ready else { return }
+                save(); text = ""; price = ""; qty = "1"
+            } label: {
+                Text("Add + next").font(.title3.weight(.bold)).foregroundStyle(ready ? Theme.blue : .secondary)
+                    .frame(maxWidth: .infinity).frame(height: 54)
+                    .background(Theme.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+            }.buttonStyle(.plain).disabled(!ready)
+            FBigButton(title: "Add item", enabled: ready) { save(); dismiss() }
+        }
+    }
+}
+
+// MARK: - Note
+
+struct NoteSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    let job: Job
+    @State private var title = ""
+    @State private var text = ""
+    @StateObject private var voice = Dictation()
+
+    private var ready: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var body: some View {
+        SheetFrame(title: "New Note") {
+            Text(job.name).foregroundStyle(.secondary)
+            FField(title: "Title", text: $title, prompt: "Optional — uses the first line if blank")
+            HStack(alignment: .bottom, spacing: 10) {
+                FArea(title: "Note", text: $text, prompt: "What do you want to remember?", height: 220)
+                Button { if voice.listening { let h = voice.stop(); if !h.isEmpty { text += (text.isEmpty ? "" : "\n") + h } } else { voice.start() } } label: {
+                    Image(systemName: voice.listening ? "stop.fill" : "mic.fill").font(.title2).foregroundStyle(Theme.blue)
+                        .frame(width: 60, height: 54).background(Theme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                }.buttonStyle(.plain)
+            }
+            FBigButton(title: "Save Note", enabled: ready) {
+                let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                var t = title.trimmingCharacters(in: .whitespaces)
+                if t.isEmpty { t = String((body.components(separatedBy: .newlines).first ?? "Note").prefix(40)) }
+                let n = JobNote(title: t); n.text = body
+                context.insert(n); n.job = job
+                dismiss()
+            }
+        }
+    }
+}
+
+// MARK: - Daily Log (one per job per day)
+
+struct DailyLogSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("bpDark") private var dark = true
+    let job: Job
+    @State private var day = Calendar.current.startOfDay(for: Date())
+    @State private var completed = ""
+    @State private var workers = "1"
+    @State private var hours = ""
+    @State private var weather = ""
+    @State private var incomplete = ""
+    @State private var visitors = ""
+    @State private var safety = ""
+    @State private var tomorrow = ""
+    @State private var clientNotes = ""
+    @State private var loaded = false
+
+    private var cal: Calendar { .current }
+    private func same(_ d: Date) -> Bool { cal.isDate(d, inSameDayAs: day) }
+    private var isToday: Bool { cal.isDateInToday(day) }
+    private var existing: DailyReport? { (job.reports ?? []).filter { same($0.date) }.first }
+
+    // What the app recorded that day
+    private var photos: Int { (job.photos ?? []).filter { same($0.created) }.count }
+    private var doneItems: [PunchItem] { (job.punchItems ?? []).filter { $0.done && $0.completed.map(same) == true } }
+    private var addedItems: Int { (job.punchItems ?? []).filter { same($0.created) }.count }
+    private var clockHours: Double { ((job.timeEntries ?? []).filter { same($0.clockIn) }.reduce(0) { $0 + $1.hours } * 10).rounded() / 10 }
+    private var dayExpenses: [Expense] { (job.expenses ?? []).filter { same($0.date) && $0.deliveryStatus.isEmpty } }
+    private var dayDeliveries: Int { (job.expenses ?? []).filter { same($0.date) && !$0.deliveryStatus.isEmpty }.count }
+    private var dayAppts: [Appointment] { (job.appointments ?? []).filter { same($0.date) } }
+    private var dayCOs: Int { (job.changeOrders ?? []).filter { same($0.date) }.count }
+    private var pct: Int { job.percent }
+
+    private func usd(_ v: Double) -> String { v.formatted(.currency(code: "USD")) }
+    private func num(_ v: Double) -> String { v == v.rounded() ? String(Int(v)) : String(v) }
+
+    private func load() {
+        if let r = existing {
+            completed = r.completed; workers = String(r.workers); hours = r.hours; weather = r.weather
+            incomplete = r.incomplete; visitors = r.visitors; safety = r.safety; tomorrow = r.tomorrow; clientNotes = r.clientNotes
+        } else {
+            completed = ""; workers = "1"; hours = clockHours > 0 ? num(clockHours) : ""; weather = ""
+            incomplete = ""; visitors = ""; safety = ""; tomorrow = ""; clientNotes = ""
+        }
+    }
+    private func step(_ n: Int) {
+        guard let d = cal.date(byAdding: .day, value: n, to: day), d <= cal.startOfDay(for: Date()) else { return }
+        day = d; load()
+    }
+    private func fill() {
+        let lines = doneItems.map { "• " + (($0.space?.name).map { $0 + ": " } ?? "") + $0.text }
+        let add = lines.filter { !completed.contains($0) }
+        guard !add.isEmpty else { return }
+        completed = (completed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : completed.trimmingCharacters(in: .whitespacesAndNewlines) + "\n") + add.joined(separator: "\n")
+    }
+    private func save() {
+        let r: DailyReport
+        if let e = existing { r = e } else {
+            r = DailyReport(number: String(format: "DPR-%03d", (job.reports ?? []).count + 1))
+            r.date = day; context.insert(r); r.job = job
+        }
+        r.completed = completed.trimmingCharacters(in: .whitespacesAndNewlines)
+        r.workers = Int(workers) ?? 0
+        r.hours = hours.trimmingCharacters(in: .whitespaces)
+        r.weather = weather.trimmingCharacters(in: .whitespaces)
+        r.incomplete = incomplete.trimmingCharacters(in: .whitespacesAndNewlines)
+        r.visitors = visitors.trimmingCharacters(in: .whitespacesAndNewlines)
+        r.safety = safety.trimmingCharacters(in: .whitespacesAndNewlines)
+        r.tomorrow = tomorrow.trimmingCharacters(in: .whitespacesAndNewlines)
+        r.clientNotes = clientNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        r.progress = pct
+        dismiss()
+    }
+
+    private func fact(_ label: String, _ value: String, _ color: Color? = nil) -> some View {
+        HStack { Text(label).foregroundStyle(.secondary); Spacer(); Text(value).fontWeight(.heavy).foregroundStyle(color ?? .primary).multilineTextAlignment(.trailing) }
+            .font(.body).padding(.vertical, 8)
+            .overlay(alignment: .bottom) { Divider() }
+    }
+
+    var body: some View {
+        SheetFrame(title: "Daily Log") {
+            Text(job.name).font(.title3.weight(.heavy))
+            HStack(spacing: 10) {
+                Button { step(-1) } label: { Image(systemName: "chevron.left").font(.title2.weight(.bold)).frame(width: 54, height: 50)
+                    .background(Theme.border(dark).opacity(0.5), in: RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
+                HStack(spacing: 6) {
+                    Text((isToday ? "Today · " : cal.isDateInYesterday(day) ? "Yesterday · " : "") + day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()))
+                        .font(.headline.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.7)
+                    if existing != nil { Image(systemName: "checkmark").foregroundStyle(Theme.green).font(.headline.weight(.heavy)) }
+                }.frame(maxWidth: .infinity)
+                Button { step(1) } label: { Image(systemName: "chevron.right").font(.title2.weight(.bold)).frame(width: 54, height: 50)
+                    .background(Theme.border(dark).opacity(0.5), in: RoundedRectangle(cornerRadius: 12)) }
+                    .buttonStyle(.plain).opacity(isToday ? 0.35 : 1).disabled(isToday)
+            }
+            if !isToday {
+                Button { day = cal.startOfDay(for: Date()); load() } label: {
+                    Text("Jump to today").font(.headline).foregroundStyle(Theme.blue).frame(maxWidth: .infinity).frame(height: 42)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark), lineWidth: 1))
+                }.buttonStyle(.plain)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                Text("WHAT THE APP RECORDED THIS DAY").font(.subheadline.weight(.heavy)).tracking(1).foregroundStyle(.secondary).padding(.bottom, 4)
+                fact("Photos", String(photos), photos > 0 ? Theme.blue : nil)
+                fact("Checklist finished", String(doneItems.count), doneItems.isEmpty ? nil : Theme.green)
+                fact("Checklist added", String(addedItems))
+                fact("Time clock", clockHours > 0 ? num(clockHours) + " hr" : "0 hr")
+                if !dayExpenses.isEmpty { fact("Expenses", "\(dayExpenses.count) · " + usd(dayExpenses.reduce(0) { $0 + $1.amount })) }
+                if dayDeliveries > 0 { fact("Deliveries", String(dayDeliveries), Theme.orange) }
+                if !dayAppts.isEmpty { fact("Appointments", dayAppts.map(\.title).joined(separator: ", ")) }
+                if dayCOs > 0 { fact("Change orders", String(dayCOs), Theme.purple) }
+                if !doneItems.isEmpty {
+                    Button { fill() } label: {
+                        Text("Fill \"Work done\" from \(doneItems.count) finished item\(doneItems.count == 1 ? "" : "s")").font(.headline.weight(.bold))
+                            .foregroundStyle(Theme.green).frame(maxWidth: .infinity).frame(height: 48)
+                            .background(Theme.green.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.green, lineWidth: 1.5))
+                    }.buttonStyle(.plain).padding(.top, 10)
+                }
+            }
+            .padding(14).background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark), lineWidth: 1))
+
+            FArea(title: "Work done", text: $completed, prompt: "What got done today", height: 120)
+            HStack(alignment: .top, spacing: 12) {
+                FField(title: "Crew on site", text: $workers, prompt: "1")
+                FField(title: "Hours worked", text: $hours, prompt: clockHours > 0 ? num(clockHours) : "8")
+            }
+            FField(title: "Weather", text: $weather, prompt: "Sunny 72°")
+            FArea(title: "Problems / delays", text: $incomplete, prompt: "Waiting on parts, rain, access…")
+            FArea(title: "Visitors & inspections", text: $visitors, prompt: "Inspector, client walk-through, supplier…")
+            FArea(title: "Safety", text: $safety, prompt: "Anything to note")
+            FArea(title: "Tomorrow's plan", text: $tomorrow, prompt: "What's next")
+            FArea(title: "Note for the client", text: $clientNotes, prompt: "Goes in what you send the client", tint: Theme.orange)
+            Text("Hours, visitors and problems stay in your log. The client gets the work done, what's still open, tomorrow's plan, your note and the day's photos.")
+                .font(.callout).foregroundStyle(.secondary)
+            FBigButton(title: existing == nil ? "Save log" : "Save changes", enabled: true) { save() }
+        }
+        .onAppear { if !loaded { loaded = true; load() } }
     }
 }

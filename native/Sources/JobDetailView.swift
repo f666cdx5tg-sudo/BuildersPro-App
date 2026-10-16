@@ -103,15 +103,10 @@ struct JobDetailView: View {
                     case "Permit": sheet = .permit
                     case "Delivery": sheet = .delivery
                     case "Appointment": sheet = .appointment
-                    default:
-                        sheet = nil
-                        switch choice {
-                        case "Clock in (labor)": clockIn()
-                        case "Daily report": addReport()
-                        case "Note": addNote()
-                        case "Shopping item": addShopping()
-                        default: break
-                        }
+                    case "Daily report": sheet = .dailyLog
+                    case "Note": sheet = .note
+                    case "Shopping item": sheet = .shopping
+                    default: sheet = nil
                     }
                 }
             case .editJob: EditJobSheet(job: job)
@@ -123,6 +118,9 @@ struct JobDetailView: View {
             case .permit: PermitSheet(job: job)
             case .delivery: DeliverySheet(job: job)
             case .appointment: AppointmentSheet(req: ApptRequest(kind: "Appointment", date: Date(), job: job))
+            case .dailyLog: DailyLogSheet(job: job)
+            case .note: NoteSheet(job: job)
+            case .shopping: ShoppingSheet(job: job)
             }
         }
     }
@@ -512,7 +510,7 @@ struct MoneyView: View {
             }
 
             Section("Time clock · \(String(format: "%.1f", job.laborHours)) h · \(Money.text(job.laborTotal))") {
-                if timeEntries.isEmpty { Text("None. Use ≡ → Clock in (labor).").foregroundStyle(.secondary) }
+                if timeEntries.isEmpty { Text("No time entries.").foregroundStyle(.secondary) }
                 ForEach(timeEntries) { t in
                     NavigationLink { TimeEntryDetail(entry: t) } label: {
                         HStack {
@@ -1196,4 +1194,4 @@ extension View {
 
 
 enum JobSheet: String, Identifiable {
-    case picker, editJob, spaces, expense, contractor, invoice, appointment, changeOrder, permit, delivery; var id: String { rawValue } }
+    case picker, editJob, spaces, expense, contractor, invoice, appointment, changeOrder, permit, delivery, dailyLog, note, shopping; var id: String { rawValue } }
