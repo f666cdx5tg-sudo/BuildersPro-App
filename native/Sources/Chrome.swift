@@ -184,15 +184,7 @@ struct JobsView: View {
                 Button("Add a job") { adding = true }
                 Button("Import backup file…") { picking = true }
             }
-            .alert("New job", isPresented: $adding) {
-                TextField("Job name", text: $newName)
-                Button("Add") {
-                    let n = newName.trimmingCharacters(in: .whitespaces)
-                    if !n.isEmpty { context.insert(Job(name: n)) }
-                    newName = ""
-                }
-                Button("Cancel", role: .cancel) { newName = "" }
-            }
+            .sheet(isPresented: $adding) { NewJobSheet() }
             .fileImporter(isPresented: $picking, allowedContentTypes: [.json]) { result in
                 switch result {
                 case .success(let url): runImport(url)
@@ -302,5 +294,203 @@ struct JobCardFull: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(color.opacity(0.10), in: Capsule())
         .overlay(Capsule().stroke(color.opacity(0.55)))
+    }
+}
+
+
+// MARK: - New Job sheet (matches the web "New Job" form)
+
+struct NewJobSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("bpDark") private var dark = true
+    @State private var name = ""
+    @State private var street = ""
+    @State private var city = ""
+    @State private var state = "NJ"
+    @State private var zip = ""
+    @State private var client = ""
+    @State private var email = ""
+    @State private var cell = ""
+    @State private var contract = ""
+    @State private var status = "Active"
+    @State private var hasStart = false
+    @State private var start = Date()
+    @State private var hasEnd = false
+    @State private var end = Date()
+    @State private var notes = ""
+    @State private var level = "Level 1"
+    @State private var picked: [(String, String)] = []     // (room, level)
+    @State private var custom = ""
+    @StateObject private var voice = Dictation()
+
+    private let quick = ["Kitchen", "Bathroom", "Basement Bath", "Master Bath", "Half Bath", "Bedroom 1", "Bedroom 2", "Bedroom 3",
+                         "Living Room", "Dining Room", "Basement", "Attic", "Garage", "Office", "Foyer", "Hallway", "Stairs",
+                         "Laundry", "Utility Room", "Boiler Room", "Closet"]
+
+    private func field(_ title: String, _ text: Binding<String>, _ prompt: String, keyboard: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+            TextField(prompt, text: text).textFieldStyle(.plain).font(.title3)
+                .padding(.horizontal, 16).frame(height: 54)
+                .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark), lineWidth: 1))
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("New Job").font(.title.weight(.heavy))
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").font(.headline).foregroundStyle(.primary).frame(width: 40, height: 40)
+                        .background(Theme.border(dark).opacity(0.6), in: Circle())
+                }.buttonStyle(.plain)
+            }.padding(.horizontal, 20).padding(.vertical, 14)
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ZStack(alignment: .topTrailing) {
+                        field("Job name *", $name, "e.g. Smith Kitchen Reno")
+                        Button { toggleVoice() } label: {
+                            Label(voice.listening ? "Stop" : "Speak", systemImage: "mic.fill").font(.title3.weight(.bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 18).frame(height: 44).background(voice.listening ? Theme.red : Theme.blue, in: Capsule())
+                        }.buttonStyle(.plain).offset(y: -4)
+                    }
+                    field("Job address", $street, "Street address")
+                    HStack(alignment: .top, spacing: 12) {
+                        field("City", $city, "City")
+                        field("State", $state, "NJ").frame(width: 80)
+                        field("Zip code", $zip, "Zip").frame(width: 110)
+                    }
+                    field("Client name", $client, "Client name")
+                    field("Client email", $email, "client@example.com")
+                    field("Client cell", $cell, "(123)-456-7890")
+                    field("Contract value ($)", $contract, "0.00")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("STATUS").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                        Picker("", selection: $status) { ForEach(["Active", "On hold", "Complete"], id: \.self) { Text($0) } }
+                            .pickerStyle(.segmented).labelsHidden()
+                    }
+                    Toggle("Start date", isOn: $hasStart).font(.title3)
+                    if hasStart { DatePicker("", selection: $start, displayedComponents: .date).labelsHidden() }
+                    Toggle("Completion date", isOn: $hasEnd).font(.title3)
+                    if hasEnd { DatePicker("", selection: $end, displayedComponents: .date).labelsHidden() }
+                    Text("ROOMS").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary).padding(.top, 6)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack { ForEach(["Basement", "Level 1", "Level 2", "Level 3", "Roof", "Outside"], id: \.self) { l in
+                            Button(l) { level = l }.font(.headline.weight(.bold))
+                                .foregroundStyle(level == l ? Theme.blue : .primary).padding(.horizontal, 14).frame(height: 40)
+                                .background(level == l ? Theme.blue.opacity(0.15) : Color.clear, in: Capsule())
+                                .overlay(Capsule().stroke(level == l ? Theme.blue : Theme.border(dark), lineWidth: 1.5)).buttonStyle(.plain)
+                        } }
+                    }
+                    FlowChips(items: quick) { r in add(r) }
+                    HStack(spacing: 12) {
+                        TextField("Type your own on \(level)…", text: $custom).textFieldStyle(.plain).font(.title3)
+                            .padding(.horizontal, 14).frame(height: 54)
+                            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark), lineWidth: 1))
+                            .onSubmit { add(custom); custom = "" }
+                        Button("Add") { add(custom); custom = "" }.font(.title3.weight(.bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 22).frame(height: 54).background(Theme.blue, in: RoundedRectangle(cornerRadius: 14)).buttonStyle(.plain)
+                    }
+                    if picked.isEmpty { Text("Nothing picked yet. You can always add rooms later.").foregroundStyle(.secondary) }
+                    else {
+                        ForEach(Array(picked.enumerated()), id: \.offset) { i, p in
+                            HStack { Text("\(p.1) · \(p.0)").font(.headline); Spacer()
+                                Button { picked.remove(at: i) } label: { Image(systemName: "xmark").foregroundStyle(.secondary) }.buttonStyle(.plain) }
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("NOTES").font(.headline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
+                        TextEditor(text: $notes).font(.title3).scrollContentBackground(.hidden).padding(8).frame(height: 110)
+                            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark), lineWidth: 1))
+                    }
+                    Button { create() } label: {
+                        Text("Create Job").font(.title3.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 58)
+                            .background(name.trimmingCharacters(in: .whitespaces).isEmpty ? Theme.blue.opacity(0.4) : Theme.blue, in: RoundedRectangle(cornerRadius: 16))
+                    }.buttonStyle(.plain).disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .padding(20)
+            }
+        }
+        .background(Theme.bg(dark))
+        #if os(macOS)
+        .frame(minWidth: 460, minHeight: 640)
+        #endif
+        .onChange(of: voice.text) { _, t in if voice.listening { name = t } }
+    }
+
+    private func toggleVoice() {
+        if voice.listening { let h = voice.stop(); if !h.isEmpty { name = h } } else { voice.start() }
+    }
+
+    private func add(_ room: String) {
+        let r = room.trimmingCharacters(in: .whitespaces)
+        guard !r.isEmpty, !picked.contains(where: { $0.0 == r && $0.1 == level }) else { return }
+        picked.append((r, level))
+    }
+
+    private func create() {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty else { return }
+        let j = Job(name: n)
+        let cityLine = [city, [state, zip].filter { !$0.isEmpty }.joined(separator: " ")].filter { !$0.isEmpty }.joined(separator: ", ")
+        j.address = [street, cityLine].filter { !$0.isEmpty }.joined(separator: ", ")
+        j.client = client; j.clientEmail = email; j.clientPhone = cell
+        j.contract = Double(contract.replacingOccurrences(of: ",", with: "")) ?? 0
+        j.status = status; j.isActive = status != "Complete"
+        j.startDate = hasStart ? start : nil; j.completionDate = hasEnd ? end : nil
+        j.jobNotes = notes
+        context.insert(j)
+        for (i, p) in picked.enumerated() {
+            let sp = Space(name: p.0, level: p.1, order: i, isExterior: p.1 == "Outside")
+            sp.job = j; context.insert(sp)
+        }
+        dismiss()
+    }
+}
+
+/// Wrapping row of "+ Name" pills.
+struct FlowChips: View {
+    let items: [String]
+    let tap: (String) -> Void
+    @AppStorage("bpDark") private var dark = true
+    var body: some View {
+        FlowLayout(spacing: 10) {
+            ForEach(items, id: \.self) { t in
+                Button { tap(t) } label: {
+                    Text("+ " + t).font(.title3.weight(.bold)).foregroundStyle(.primary)
+                        .padding(.horizontal, 18).frame(height: 48)
+                        .overlay(Capsule().stroke(Theme.border(dark), lineWidth: 1.5))
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let w = proposal.width ?? 400
+        var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > w { x = 0; y += row + spacing; row = 0 }
+            x += s.width + spacing; row = max(row, s.height)
+        }
+        return CGSize(width: w, height: y + row)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > bounds.maxX { x = bounds.minX; y += row + spacing; row = 0 }
+            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
+            x += s.width + spacing; row = max(row, s.height)
+        }
     }
 }
