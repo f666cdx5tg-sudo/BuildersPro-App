@@ -113,11 +113,12 @@ struct PhotoThumb: View {
 // MARK: - Viewer, markup, camera
 
 enum MarkTool: String, CaseIterable, Identifiable {
-    case pen = "Pen", circle = "Circle", arrow = "Arrow", square = "Square"
+    case pen = "Pen", text = "Text", circle = "Circle", arrow = "Arrow", square = "Square"
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .pen: return "pencil.tip"
+        case .text: return "textformat"
         case .circle: return "circle"
         case .arrow: return "arrow.up.right"
         case .square: return "square"
@@ -129,6 +130,7 @@ struct Stroke: Identifiable {
     let id = UUID()
     var tool: MarkTool = .pen
     var points: [CGPoint]            // 0...1 of the picture's width/height
+    var text: String = ""
     var color: Color
     var width: CGFloat               // fraction of the picture's short side
 }
@@ -143,6 +145,8 @@ struct MarkupView: View {
     @State private var color: Color = .red
     @State private var width: CGFloat = 0.008
     @State private var tool: MarkTool = .pen
+    @State private var textSpot: CGPoint?
+    @State private var textValue = ""
     private let palette: [Color] = [.red, .yellow, .blue, .green, .white, .black]
     private let widths: [(String, CGFloat)] = [("Thin", 0.004), ("Medium", 0.008), ("Thick", 0.016)]
 
@@ -155,6 +159,7 @@ struct MarkupView: View {
                         GeometryReader { g in
                             Canvas { ctx, size in MarkupView.draw(strokes, in: &ctx, size: size) }
                                 .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                                    if tool == .text { return }
                                     let pt = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
                                                      y: min(max(v.location.y / g.size.height, 0), 1))
                                     if v.translation == .zero {
@@ -163,6 +168,11 @@ struct MarkupView: View {
                                         if tool == .pen { strokes[strokes.count - 1].points.append(pt) }
                                         else { strokes[strokes.count - 1].points = [strokes[strokes.count - 1].points[0], pt] }
                                     }
+                                }.onEnded { v in
+                                    guard tool == .text else { return }
+                                    textSpot = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
+                                                       y: min(max(v.location.y / g.size.height, 0), 1))
+                                    textValue = ""
                                 })
                         }
                     }
@@ -173,6 +183,17 @@ struct MarkupView: View {
         }
         .padding(.bottom, 8)
         .navigationTitle("Mark up")
+        .alert("Add text", isPresented: Binding(get: { textSpot != nil }, set: { if !$0 { textSpot = nil } })) {
+            TextField("Type here", text: $textValue)
+            Button("Add") {
+                let t = textValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let spot = textSpot, !t.isEmpty {
+                    strokes.append(Stroke(tool: .text, points: [spot], text: t, color: color, width: width))
+                }
+                textSpot = nil
+            }
+            Button("Cancel", role: .cancel) { textSpot = nil }
+        }
     }
 
     private var toolbar: some View {
@@ -224,6 +245,14 @@ struct MarkupView: View {
                     for q in pts.dropFirst() { path.addLine(to: q) }
                     ctx.stroke(path, with: .color(s.color), style: style)
                 }
+            case .text:
+                let fs = max(14, min(size.width, size.height) * s.width * 4)
+                let resolved = ctx.resolve(Text(s.text).font(.system(size: fs, weight: .bold)).foregroundColor(s.color))
+                let box = resolved.measure(in: CGSize(width: size.width * 0.9, height: size.height))
+                let origin = CGPoint(x: min(a.x, max(0, size.width - box.width - 8)), y: min(a.y, max(0, size.height - box.height - 6)))
+                let back = CGRect(x: origin.x - 4, y: origin.y - 2, width: box.width + 8, height: box.height + 4)
+                ctx.fill(Path(roundedRect: back, cornerRadius: 5), with: .color((s.color == .black ? Color.white : Color.black).opacity(0.5)))
+                ctx.draw(resolved, at: origin, anchor: .topLeading)
             case .circle, .square:
                 guard pts.count > 1, let b = pts.last else { continue }
                 let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
