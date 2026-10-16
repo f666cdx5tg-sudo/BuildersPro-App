@@ -51,6 +51,7 @@ struct JobDetailView: View {
     @State private var tab: JobTab
     @State private var addingSpace = false
     @State private var sheet: JobSheet?
+    @State private var secSheet: JobSheet?
     @State private var newSpace = ""
 
     init(job: Job, start: JobTab = .spaces) {
@@ -90,38 +91,40 @@ struct JobDetailView: View {
         .onChange(of: tab) { _, new in if new != .spaces { section = new; tab = .spaces } }
         .shellAdd { addMenu = true }
         .onChange(of: addMenu) { _, v in if v { addMenu = false; sheet = .picker } }
-        .sheet(item: $sheet) { s in
-            switch s {
-            case .picker:
-                AddPickerSheet { choice in
-                    switch choice {
-                    case "Space": sheet = .spaces
-                    case "Expense": sheet = .expense
-                    case "Contractor": sheet = .contractor
-                    case "Invoice": sheet = .invoice
-                    case "Change order": sheet = .changeOrder
-                    case "Permit": sheet = .permit
-                    case "Delivery": sheet = .delivery
-                    case "Appointment": sheet = .appointment
-                    case "Daily report": sheet = .dailyLog
-                    case "Note": sheet = .note
-                    case "Shopping item": sheet = .shopping
-                    default: sheet = nil
-                    }
+        .sheet(item: $sheet) { s in sheetBody(s) { sheet = $0 } }
+    }
+
+    @ViewBuilder private func sheetBody(_ s: JobSheet, set: @escaping (JobSheet?) -> Void) -> some View {
+        switch s {
+        case .picker:
+            AddPickerSheet { choice in
+                switch choice {
+                case "Space": set(.spaces)
+                case "Expense": set(.expense)
+                case "Contractor": set(.contractor)
+                case "Invoice": set(.invoice)
+                case "Change order": set(.changeOrder)
+                case "Permit": set(.permit)
+                case "Delivery": set(.delivery)
+                case "Appointment": set(.appointment)
+                case "Daily report": set(.dailyLog)
+                case "Note": set(.note)
+                case "Shopping item": set(.shopping)
+                default: set(nil)
                 }
-            case .editJob: EditJobSheet(job: job)
-            case .spaces: AddSpacesSheet(job: job)
-            case .expense: ExpenseSheet(job: job)
-            case .contractor: ContractorSheet(job: job)
-            case .invoice: InvoiceSheet(job: job)
-            case .changeOrder: ChangeOrderSheet(job: job)
-            case .permit: PermitSheet(job: job)
-            case .delivery: DeliverySheet(job: job)
-            case .appointment: AppointmentSheet(req: ApptRequest(kind: "Appointment", date: Date(), job: job))
-            case .dailyLog: DailyLogSheet(job: job)
-            case .note: NoteSheet(job: job)
-            case .shopping: ShoppingSheet(job: job)
             }
+        case .editJob: EditJobSheet(job: job)
+        case .spaces: AddSpacesSheet(job: job)
+        case .expense: ExpenseSheet(job: job)
+        case .contractor: ContractorSheet(job: job)
+        case .invoice: InvoiceSheet(job: job)
+        case .changeOrder: ChangeOrderSheet(job: job)
+        case .permit: PermitSheet(job: job)
+        case .delivery: DeliverySheet(job: job)
+        case .appointment: AppointmentSheet(req: ApptRequest(kind: "Appointment", date: Date(), job: job))
+        case .dailyLog: DailyLogSheet(job: job)
+        case .note: NoteSheet(job: job)
+        case .shopping: ShoppingSheet(job: job)
         }
     }
 
@@ -288,6 +291,8 @@ struct JobDetailView: View {
             }
         }
         .navigationTitle(t.menuTitle)
+        .shellAdd { secSheet = .picker }
+        .sheet(item: $secSheet) { s in sheetBody(s) { secSheet = $0 } }
     }
 
     private func addSpace() {
