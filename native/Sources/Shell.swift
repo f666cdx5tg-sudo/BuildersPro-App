@@ -10,9 +10,17 @@ import UIKit
 enum Theme {
     static let blue = Color(red: 0.039, green: 0.518, blue: 1.0)        // #0A84FF
     static let orange = Color(red: 1.0, green: 0.667, blue: 0.2)        // #FFAA33
-    static func bg(_ dark: Bool) -> Color { dark ? Color(red: 0.059, green: 0.059, blue: 0.059) : Color(red: 0.949, green: 0.969, blue: 1.0) }
-    static func card(_ dark: Bool) -> Color { dark ? Color(red: 0.102, green: 0.102, blue: 0.102) : .white }
-    static func border(_ dark: Bool) -> Color { dark ? Color(red: 0.165, green: 0.165, blue: 0.165) : Color(red: 0.878, green: 0.878, blue: 0.878) }
+    /// On iPad/Mac the Command Center uses the web Command Center's navy palette.
+    nonisolated(unsafe) static var desk = false
+    @discardableResult static func setDesk(_ on: Bool) -> Bool { desk = on; return on }
+    private static func hex(_ v: UInt32) -> Color { Color(red: Double((v >> 16) & 255) / 255, green: Double((v >> 8) & 255) / 255, blue: Double(v & 255) / 255) }
+    static func bg(_ dark: Bool) -> Color { desk ? hex(dark ? 0x0A0E1E : 0xF0F4FF) : (dark ? Color(red: 0.059, green: 0.059, blue: 0.059) : Color(red: 0.949, green: 0.969, blue: 1.0)) }
+    static func card(_ dark: Bool) -> Color { desk ? hex(dark ? 0x111630 : 0xFFFFFF) : (dark ? Color(red: 0.102, green: 0.102, blue: 0.102) : .white) }
+    static func card2(_ dark: Bool) -> Color { hex(dark ? 0x161D38 : 0xE8EEFF) }
+    static func border(_ dark: Bool) -> Color { desk ? hex(dark ? 0x1E2845 : 0xCBD5F0) : (dark ? Color(red: 0.165, green: 0.165, blue: 0.165) : Color(red: 0.878, green: 0.878, blue: 0.878)) }
+    static func muted(_ dark: Bool) -> Color { hex(dark ? 0x6B7DB3 : 0x5060A0) }
+    static func faint(_ dark: Bool) -> Color { hex(dark ? 0x8494C8 : 0x5C6B9E) }
+    static let gold = hex(0xC8935A), purple = hex(0xBF5AF2), sky = hex(0x42A5F5), yellow = hex(0xFFD60A), deskRed = hex(0xEF5350)
 }
 
 private struct OpenMenuKey: EnvironmentKey { static let defaultValue: () -> Void = {} }
@@ -80,6 +88,7 @@ struct RootShell: View {
 
     private var content: some View {
         Group {
+            let _ = Theme.setDesk(wide)
             if wide {
                 CommandCenterView().environmentObject(shell)
                     .tint(Theme.blue)
@@ -1535,144 +1544,313 @@ final class ScrollWatcher: NSObject, UIGestureRecognizerDelegate {
 #endif
 
 
-// MARK: - Command Center (iPad + Mac): sidebar + big dashboard, same data and screens as the phone
+// MARK: - Command Center (iPad + Mac) — laid out like the web Command Center
 
 enum CCScreen: String, CaseIterable, Identifiable {
-    case dashboard = "Dashboard", jobs = "Jobs", calendar = "Calendar", photos = "Photos", punch = "Punch list", finance = "Finance", search = "Search"
+    case dashboard = "Dashboard", calendar = "Calendar"
+    case jobs = "Jobs", estimates = "Estimates", time = "Time Clock", spaces = "Spaces", photos = "Photos", punch = "Punchlist", documents = "Documents"
+    case eod = "EOD Reports", finance = "Finance", contacts = "Contacts"
+    case archive = "Archived Jobs", sync = "Sync Settings", search = "Search"
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .dashboard: return "square.grid.2x2"
-        case .jobs: return "briefcase"
         case .calendar: return "calendar"
+        case .jobs: return "briefcase"
+        case .estimates: return "doc.text"
+        case .time: return "clock"
+        case .spaces: return "square.grid.2x2"
         case .photos: return "camera"
         case .punch: return "checkmark.square"
-        case .finance: return "dollarsign.circle"
+        case .documents: return "doc"
+        case .eod: return "doc.text"
+        case .finance: return "dollarsign"
+        case .contacts: return "person"
+        case .archive: return "archivebox"
+        case .sync: return "arrow.triangle.2.circlepath"
         case .search: return "magnifyingglass"
         }
     }
+    /// Same highlight colors as the web sidebar.
+    var tint: Color {
+        switch self {
+        case .dashboard, .estimates: return Theme.blue
+        case .calendar, .photos, .contacts: return Theme.sky
+        case .jobs, .punch: return Theme.gold
+        case .time, .documents, .finance: return Theme.purple
+        case .spaces, .eod: return Theme.orange
+        default: return Theme.blue
+        }
+    }
+    static let groups: [(String, [CCScreen])] = [
+        ("Overview", [.dashboard, .calendar]),
+        ("Field Work", [.jobs, .estimates, .time, .spaces, .photos, .punch, .documents]),
+        ("Reports", [.eod]),
+        ("Finance", [.finance]),
+        ("Directory", [.contacts]),
+        ("Settings", [.archive, .sync]),
+    ]
 }
 
 struct CommandCenterView: View {
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
     @AppStorage("bpTextSize") private var textSize = 0
+    @AppStorage("bpActiveJob") private var activeKey = ""
     @EnvironmentObject private var shell: ShellState
-    @State private var sel: CCScreen? = .dashboard
-    private let sizeNames = ["Normal", "Large", "Extra large"]
+    @StateObject private var info = HeaderInfo()
+    @State private var sel: CCScreen = .dashboard
+    @State private var searchText = ""
+    private let sizeLabels = ["100%", "115%", "132%"]
+
+    private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
+    private var active: Job? { activeKey.isEmpty ? nil : jobs.first { key($0) == activeKey } }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-                .frame(width: 270)
-                .background(Theme.card(dark).ignoresSafeArea())
-            Rectangle().fill(Theme.border(dark)).frame(width: 1).ignoresSafeArea()
-            detail
-                .environmentObject(shell)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .bottomTrailing) { FloatBar(showBack: false).environmentObject(shell) }
+        VStack(spacing: 0) {
+            topbar
+            Rectangle().fill(Theme.border(dark)).frame(height: 1)
+            HStack(spacing: 0) {
+                sidebar.frame(width: 240).background(Theme.card(dark))
+                Rectangle().fill(Theme.border(dark)).frame(width: 1)
+                detail
+                    .environmentObject(shell)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.bg(dark))
+                    .overlay(alignment: .bottomTrailing) { FloatBar(showBack: false).environmentObject(shell) }
+            }
         }
-        .onAppear { shell.goHome = { sel = .dashboard } }
+        .background(Theme.bg(dark).ignoresSafeArea())
+        .onAppear { shell.goHome = { sel = .dashboard }; info.start() }
     }
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().stroke(Color.primary, lineWidth: 2.5).frame(width: 44, height: 44)
-                    Text("B").font(.system(size: 24, weight: .bold, design: .serif))
-                    Capsule().fill(Color.red).frame(width: 16, height: 2.5).offset(y: 10)
+    // MARK: top bar (logo · place / weather / date / time · Sync · Theme · size · New EOD Report)
+
+    private var topbar: some View {
+        HStack(spacing: 18) {
+            ZStack {
+                Circle().stroke(Color.primary, lineWidth: 4).frame(width: 92, height: 92)
+                Text("B").font(.system(size: 52, weight: .bold, design: .serif))
+                Capsule().fill(Color.red).frame(width: 34, height: 5).offset(y: 24)
+            }
+            Rectangle().fill(Theme.border(dark)).frame(width: 1, height: 60)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 7) {
+                    Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
+                    Text(info.place).font(.system(size: 21, weight: .medium)).lineLimit(1)
                 }
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("BuildersPro").font(.title3.weight(.black))
-                    Text("COMMAND CENTER").font(.caption2.weight(.heavy)).tracking(1.2).foregroundStyle(.secondary)
+                HStack(spacing: 7) {
+                    Image(systemName: info.icon).foregroundStyle(Theme.muted(dark))
+                    Text(info.weather).font(.system(size: 18)).foregroundStyle(Theme.muted(dark)).lineLimit(1)
+                }
+                Text(Date.now.formatted(.dateTime.weekday(.abbreviated).month(.twoDigits).day(.twoDigits).year()))
+                    .font(.system(size: 16)).foregroundStyle(Theme.muted(dark))
+                TimelineView(.everyMinute) { ctx in
+                    Text(ctx.date.formatted(.dateTime.hour().minute()))
+                        .font(.system(size: 42, weight: .light)).foregroundStyle(Theme.blue)
                 }
             }
-            .padding(.horizontal, 10).padding(.top, 18).padding(.bottom, 14)
-            ForEach(CCScreen.allCases) { s in navRow(s) }
-            Spacer(minLength: 12)
-            Divider()
-            sidebarTools
+            Spacer(minLength: 8)
+            HStack(spacing: 8) {
+                tbButton("arrow.triangle.2.circlepath", "Sync") { sel = .sync }
+                tbButton("circle.lefthalf.filled", "Theme") { dark.toggle() }
+                Button { textSize = (textSize + 1) % 3 } label: {
+                    HStack(spacing: 4) {
+                        Text("A").font(.system(size: 11, weight: .heavy)); Text("A").font(.system(size: 17, weight: .heavy))
+                        Text(sizeLabels[min(max(textSize, 0), 2)]).font(.system(size: 14, weight: .bold)).monospacedDigit()
+                    }
+                    .padding(.horizontal, 14).frame(height: 40)
+                    .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
+                }.buttonStyle(.plain)
+                Button { sel = .eod } label: {
+                    HStack(spacing: 6) { Image(systemName: "doc.badge.plus"); Text("New EOD Report").font(.system(size: 14, weight: .bold)) }
+                        .padding(.horizontal, 16).frame(height: 40).foregroundStyle(.white)
+                        .background(Theme.orange, in: RoundedRectangle(cornerRadius: 9))
+                }.buttonStyle(.plain)
+            }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 20).frame(height: 128)
+        .background(Theme.card(dark))
     }
 
-    private func navRow(_ s: CCScreen) -> some View {
-        let on = (sel ?? .dashboard) == s
-        return Button { sel = s } label: {
-            HStack(spacing: 16) {
-                Image(systemName: s.symbol).font(.title3).frame(width: 30)
-                Text(s.rawValue).font(.title3.weight(.heavy))
-                Spacer()
-            }
-            .padding(.horizontal, 14).frame(minHeight: 54).contentShape(Rectangle())
-            .foregroundStyle(on ? Theme.blue : Color.primary)
-            .background(on ? Theme.blue.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 14))
+    private func tbButton(_ icon: String, _ title: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 14, weight: .semibold)); Text(title).font(.system(size: 14, weight: .bold)) }
+                .padding(.horizontal, 16).frame(height: 40)
+                .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
         }.buttonStyle(.plain)
     }
 
+    // MARK: sidebar
+
+    private var sidebar: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 2) {
+                Menu {
+                    Button("No job selected") { activeKey = "" }
+                    ForEach(jobs) { j in Button(j.name) { activeKey = key(j) } }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
+                        Text(active?.name ?? "Select a job").font(.system(size: 14, weight: .bold)).foregroundStyle(active == nil ? Theme.muted(dark) : Theme.blue).lineLimit(1)
+                        Spacer(); Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(Theme.muted(dark))
+                    }
+                    .padding(.horizontal, 12).frame(height: 40)
+                    .background(Theme.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.blue.opacity(0.5)))
+                }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain).padding(.bottom, 8)
+                TextField("SEARCH", text: $searchText)
+                    .textFieldStyle(.plain).font(.system(size: 14, weight: .semibold))
+                    .padding(.horizontal, 12).frame(height: 40)
+                    .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
+                    .onSubmit { sel = .search }
+                    .padding(.bottom, 4)
+                ForEach(CCScreen.groups, id: \.0) { g in
+                    Text(g.0.uppercased()).font(.system(size: 12, weight: .heavy)).tracking(1.2).foregroundStyle(Theme.faint(dark))
+                        .padding(.horizontal, 10).padding(.top, 14).padding(.bottom, 4)
+                    ForEach(g.1) { navRow($0) }
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 12)
+        }
+    }
+
+    private func navRow(_ s: CCScreen) -> some View {
+        let on = sel == s
+        return Button { sel = s } label: {
+            HStack(spacing: 10) {
+                Image(systemName: s.symbol).font(.system(size: 15, weight: .semibold)).frame(width: 20)
+                Text(s.rawValue).font(.system(size: 15, weight: on ? .bold : .semibold))
+                Spacer()
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10).contentShape(Rectangle())
+            .foregroundStyle(on ? s.tint : Theme.muted(dark))
+            .background(on ? s.tint.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 10))
+        }.buttonStyle(.plain)
+    }
+
+    // MARK: detail
+
     @ViewBuilder private var detail: some View {
-        switch sel ?? .dashboard {
+        switch sel {
         case .dashboard: CCDashboard(open: { sel = $0 })
-        case .jobs: JobsView()
         case .calendar: AllCalendarView()
+        case .jobs: JobsView()
         case .photos: AllPhotosView()
         case .punch: AllPunchView()
         case .finance: AllMoneyView()
         case .search: SearchView()
+        case .spaces: AllSpacesView(startJob: active)
+        case .documents: jobScoped("Documents") { DocsView(job: $0) }
+        case .eod: jobScoped("EOD Reports") { ReportsView(job: $0) }
+        case .time: soon("Time Clock", "Time clock entries are in Finance → Time clock for now.")
+        case .estimates: soon("Estimates", "The estimates screen is next.")
+        case .contacts: soon("Contacts", "Contacts is next.")
+        case .archive: soon("Archived Jobs", "Archiving is next.")
+        case .sync: soon("Sync Settings", "Your jobs sync through iCloud automatically on every device signed in to your Apple ID.")
         }
     }
 
-    private var sidebarTools: some View {
-        VStack(spacing: 8) {
-            Divider()
-            Button { textSize = (textSize + 1) % 3 } label: {
-                HStack { Text("Aa").font(.headline.weight(.black)).frame(width: 30); Text("Text size").font(.subheadline.weight(.semibold)); Spacer()
-                    Text(sizeNames[min(max(textSize, 0), 2)]).font(.footnote.weight(.bold)).foregroundStyle(.secondary) }
-            }.buttonStyle(.plain)
-            Button { dark.toggle() } label: {
-                HStack { Image(systemName: "circle.lefthalf.filled").frame(width: 30); Text("Light / Dark").font(.subheadline.weight(.semibold)); Spacer()
-                    Text(dark ? "Dark" : "Light").font(.footnote.weight(.bold)).foregroundStyle(.secondary) }
-            }.buttonStyle(.plain)
-            HStack { Image(systemName: "arrow.triangle.2.circlepath").frame(width: 30); Text("iCloud sync · automatic").font(.footnote.weight(.semibold)).foregroundStyle(.secondary); Spacer() }
+    @ViewBuilder private func jobScoped<V: View>(_ title: String, @ViewBuilder _ make: (Job) -> V) -> some View {
+        if let j = active {
+            NavigationStack { make(j).navigationTitle(title) }
+        } else {
+            soon(title, "Pick a job in the box at the top of the menu.")
         }
-        .padding(.horizontal, 4).padding(.bottom, 14)
+    }
+
+    private func soon(_ title: String, _ note: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 36, weight: .black))
+            Text(note).font(.system(size: 15)).foregroundStyle(Theme.muted(dark))
+            Spacer()
+        }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
-// MARK: - Dashboard
+// MARK: - Dashboard (same blocks as the web Dashboard)
 
 struct CCDashboard: View {
+    @Environment(\.modelContext) private var context
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @Query private var photos: [SitePhoto]
+    @Query(sort: \DailyReport.date, order: .reverse) private var reports: [DailyReport]
     @AppStorage("bpDark") private var dark = true
     let open: (CCScreen) -> Void
 
-    private var active: [Job] { jobs.filter { $0.isActive } }
-    private var openItems: Int { active.reduce(0) { $0 + ($1.totalCount - $1.doneCount) } }
-    private var unfiled: Int { active.reduce(0) { $0 + ($1.photos ?? []).filter { $0.space == nil }.count } }
-    private var outstanding: Double { active.reduce(0) { $0 + $1.outstanding } }
-    private var remaining: Double { active.reduce(0) { $0 + $1.remaining } }
-
+    private var activeCount: Int { jobs.filter { $0.status == "Active" }.count }
+    private var openItems: Int { jobs.reduce(0) { $0 + ($1.totalCount - $1.doneCount) } }
+    private var contractValue: Double { jobs.reduce(0) { $0 + $1.revisedContract } }
     private func money(_ v: Double) -> String { v.formatted(.currency(code: "USD").precision(.fractionLength(0))) }
+
+    /// "Needs your attention" rows — same idea as the web panel.
+    private var attention: [(String, String, Color, CCScreen)] {
+        var r: [(String, String, Color, CCScreen)] = []
+        for j in jobs where j.contract > 0 && j.cashSpent > j.revisedContract {
+            r.append(("exclamationmark.triangle.fill", "\(j.name) is \(money(j.cashSpent - j.revisedContract)) over budget", Theme.deskRed, .finance))
+        }
+        if openItems > 0 { r.append(("checkmark.square", "\(openItems) open punchlist item\(openItems > 1 ? "s" : "")", Theme.orange, .punch)) }
+        let unfiled = photos.filter { $0.space == nil }.count
+        if unfiled > 0 { r.append(("camera", "\(unfiled) unfiled photo\(unfiled > 1 ? "s" : "")", Theme.sky, .photos)) }
+        return r
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    Text("Command Center").font(.system(size: 34, weight: .heavy))
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 14)], spacing: 14) {
-                        kpi("Active jobs", "\(active.count)", "briefcase", Theme.blue) { open(.jobs) }
-                        kpi("Open items", "\(openItems)", "checkmark.square", Theme.orange) { open(.punch) }
-                        kpi("Unfiled photos", "\(unfiled)", "camera", unfiled > 0 ? .red : .secondary) { open(.photos) }
-                        kpi("Outstanding", money(outstanding), "doc.text", outstanding > 0 ? .red : .secondary) { open(.finance) }
-                        kpi("Remaining budget", money(remaining), "dollarsign.circle", remaining >= 0 ? .green : .red) { open(.finance) }
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Dashboard").font(.system(size: 36, weight: .semibold))
+                            Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
+                                .font(.system(size: 15)).foregroundStyle(Theme.muted(dark))
+                        }
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Button { open(.jobs) } label: { pill("+ New Job", fill: Theme.card2(dark), fg: .primary) }.buttonStyle(.plain)
+                            Button { open(.eod) } label: { pill("+ EOD Report", fill: Theme.orange, fg: .white) }.buttonStyle(.plain)
+                        }
                     }
-                    Text("Active jobs").font(.title2.weight(.heavy))
-                    if active.isEmpty {
-                        Text("No active jobs yet.").foregroundStyle(.secondary)
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 14)], spacing: 14) {
-                            ForEach(active) { j in
-                                NavigationLink { JobDetailView(job: j) } label: { card(j) }.buttonStyle(.plain)
+                    if !attention.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("NEEDS YOUR ATTENTION").font(.system(size: 12, weight: .heavy)).tracking(1).foregroundStyle(Theme.muted(dark))
+                            ForEach(attention.indices, id: \.self) { i in
+                                let a = attention[i]
+                                Button { open(a.3) } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: a.0).foregroundStyle(a.2)
+                                        Text(a.1).font(.system(size: 13, weight: .bold)).foregroundStyle(a.2)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 16).padding(.vertical, 12)
+                                    .background(a.2.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(a.2.opacity(0.35)))
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14)], spacing: 14) {
+                        kpi("\(activeCount)", "Active Jobs", Theme.gold) { open(.jobs) }
+                        kpi("\(openItems)", "Open Punchlist Items", Theme.yellow) { open(.punch) }
+                        kpi("\(photos.count)", "Total Photos", Theme.sky) { open(.photos) }
+                        kpi(money(contractValue), "Contract Value", Theme.blue) { open(.finance) }
+                    }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), alignment: .top)], alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            sec("Recent Jobs")
+                            if jobs.isEmpty { empty("No jobs yet") }
+                            ForEach(Array(jobs.prefix(5))) { j in
+                                NavigationLink { JobDetailView(job: j) } label: { jobCard(j) }.buttonStyle(.plain)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 10) {
+                            sec("Recent EOD Reports")
+                            if reports.isEmpty { empty("No reports yet") }
+                            ForEach(Array(reports.prefix(5))) { r in
+                                Button { open(.eod) } label: { reportCard(r) }.buttonStyle(.plain)
                             }
                         }
                     }
@@ -1680,52 +1858,74 @@ struct CCDashboard: View {
                 }
                 .padding(24)
             }
-            .background(Theme.bg(dark))
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
     }
 
-    private func kpi(_ title: String, _ value: String, _ icon: String, _ color: Color, tap: @escaping () -> Void) -> some View {
+    private func pill(_ t: String, fill: Color, fg: Color) -> some View {
+        Text(t).font(.system(size: 14, weight: .bold)).foregroundStyle(fg)
+            .padding(.horizontal, 16).frame(height: 40)
+            .background(fill, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
+    }
+    private func sec(_ t: String) -> some View {
+        Text(t.uppercased()).font(.system(size: 13, weight: .heavy)).tracking(1.2).foregroundStyle(Theme.muted(dark))
+    }
+    private func empty(_ t: String) -> some View {
+        Text(t).foregroundStyle(Theme.muted(dark)).frame(maxWidth: .infinity).padding(.vertical, 24)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+    }
+    private func kpi(_ value: String, _ label: String, _ color: Color, tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: icon).font(.title2).foregroundStyle(color)
-                Text(value).font(.system(size: 32, weight: .heavy)).minimumScaleFactor(0.6).lineLimit(1).foregroundStyle(color)
-                Text(title.uppercased()).font(.subheadline.weight(.bold)).tracking(1).foregroundStyle(.secondary)
+            VStack(spacing: 6) {
+                Text(value).font(.system(size: 36, weight: .semibold)).foregroundStyle(color).minimumScaleFactor(0.6).lineLimit(1)
+                Text(label.uppercased()).font(.system(size: 12, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted(dark)).lineLimit(1).minimumScaleFactor(0.7)
             }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(18)
-            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
+            .frame(maxWidth: .infinity).padding(.vertical, 22)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
         }.buttonStyle(.plain)
     }
-
-    private func card(_ j: Job) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private func jobCard(_ j: Job) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(j.name).font(.title3.weight(.heavy)).lineLimit(1)
+                Text(j.name).font(.system(size: 14, weight: .bold)).lineLimit(1)
                 Spacer()
-                Text("\(j.percent)%").font(.title3.weight(.heavy)).foregroundStyle(Theme.blue)
+                Text(j.status).font(.system(size: 12, weight: .bold)).padding(.horizontal, 10).padding(.vertical, 3)
+                    .foregroundStyle(j.status == "Active" ? Color.green : Theme.muted(dark))
+                    .background((j.status == "Active" ? Color.green : Theme.muted(dark)).opacity(0.15), in: Capsule())
             }
-            if !j.client.isEmpty || !j.address.isEmpty {
-                Text([j.client, j.address].filter { !$0.isEmpty }.joined(separator: " · ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            if !j.client.isEmpty { Text("👤 " + j.client).font(.system(size: 12)).foregroundStyle(Theme.muted(dark)) }
+            if j.contract > 0 {
+                (Text("Contract \(money(j.contract)) · ").foregroundStyle(Theme.muted(dark))
+                 + Text("Balance \(j.remaining < 0 ? "-" : "")\(money(abs(j.remaining)))").foregroundStyle(j.remaining >= 0 ? Theme.blue : Theme.deskRed))
+                    .font(.system(size: 12))
             }
-            ProgressView(value: Double(j.percent), total: 100).tint(Theme.blue)
-            HStack {
-                stat("Contract", money(j.revisedContract), .primary)
-                stat("Remaining", money(j.remaining), j.remaining >= 0 ? .green : .red)
-                stat("Open items", "\(j.totalCount - j.doneCount)", Theme.orange)
+            if j.totalCount > 0 {
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.border(dark))
+                        Capsule().fill(Theme.blue).frame(width: g.size.width * CGFloat(j.percent) / 100)
+                    }
+                }.frame(height: 5).padding(.top, 4)
             }
         }
-        .padding(18)
-        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
     }
-
-    private func stat(_ label: String, _ value: String, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.headline.weight(.heavy)).foregroundStyle(color).minimumScaleFactor(0.7).lineLimit(1)
-            Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-        }.frame(maxWidth: .infinity, alignment: .leading)
+    private func reportCard(_ r: DailyReport) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.job?.name ?? "Unknown").font(.system(size: 14, weight: .bold))
+                Text(r.date.formatted(.dateTime.month(.abbreviated).day().year())).font(.system(size: 12)).foregroundStyle(Theme.muted(dark))
+            }
+            Spacer()
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
     }
 }
