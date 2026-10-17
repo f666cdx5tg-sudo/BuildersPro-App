@@ -1507,8 +1507,8 @@ struct AllSpacesView: View {
 
     private func layoutSeg(_ icon: String, _ label: String, _ v: Bool) -> some View {
         Button { table = v } label: {
-            HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 15, weight: .bold)); Text(label).font(.system(size: 15, weight: .heavy)) }
-                .foregroundStyle(table == v ? Theme.sky : Theme.muted(dark))
+            HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 15, weight: .bold)); Text(label).font(.system(size: 15, weight: .heavy)).lineLimit(1) }
+                .fixedSize().foregroundStyle(table == v ? Theme.sky : Theme.muted(dark))
                 .padding(.horizontal, 14).frame(height: 38)
                 .background(table == v ? Theme.card(dark) : .clear, in: RoundedRectangle(cornerRadius: 9))
         }.buttonStyle(.plain)
@@ -1821,7 +1821,7 @@ struct CommandCenterView: View {
                 Capsule().fill(Color(red: 0.84, green: 0.13, blue: 0.13)).frame(width: 52, height: 7).offset(y: 27)
             }
             VStack(spacing: 4) {
-                Text("BuildersPro").font(.system(size: 26, weight: .heavy))
+                Text("BuildersPro").font(.system(size: 26, weight: .heavy)).lineLimit(1).fixedSize()
                     .foregroundStyle(LinearGradient(colors: [dark ? Color(white: 0.94) : Color(white: 0.78), Color(white: 0.55)], startPoint: .leading, endPoint: .trailing))
                 Text(versionText).font(.system(size: 12, weight: .heavy)).foregroundStyle(Theme.gold)
                     .padding(.horizontal, 10).padding(.vertical, 2)
