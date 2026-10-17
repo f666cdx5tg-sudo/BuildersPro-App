@@ -1686,8 +1686,8 @@ struct CommandCenterView: View {
     // MARK: sidebar
 
     private var sidebar: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
                 Menu {
                     Button("No job selected") { activeKey = "" }
                     ForEach(jobs) { j in Button(j.name) { activeKey = key(j) } }
@@ -1700,21 +1700,25 @@ struct CommandCenterView: View {
                     .padding(.horizontal, 12).frame(height: 40)
                     .background(Theme.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.blue.opacity(0.5)))
-                }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain).padding(.bottom, 8)
+                }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
                 TextField("SEARCH", text: $searchText)
                     .textFieldStyle(.plain).font(.system(size: 14, weight: .semibold))
                     .padding(.horizontal, 12).frame(height: 40)
                     .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
                     .onSubmit { sel = .search }
-                    .padding(.bottom, 4)
+            }
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 6)
+            ScrollView(showsIndicators: false) {
+              VStack(alignment: .leading, spacing: 2) {
                 ForEach(CCScreen.groups, id: \.0) { g in
                     Text(g.0.uppercased()).font(.system(size: 12, weight: .heavy)).tracking(1.2).foregroundStyle(Theme.faint(dark))
                         .padding(.horizontal, 10).padding(.top, 14).padding(.bottom, 4)
                     ForEach(g.1) { navRow($0) }
                 }
+              }
+              .padding(.horizontal, 8).padding(.bottom, 12)
             }
-            .padding(.horizontal, 8).padding(.vertical, 12)
         }
     }
 
