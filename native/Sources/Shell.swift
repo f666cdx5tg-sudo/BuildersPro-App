@@ -54,7 +54,8 @@ enum AppScreen: String, CaseIterable, Identifiable {
 
 struct RootShell: View {
     @AppStorage("bpDark") private var dark = true
-    @AppStorage("bpTextSize") private var textSize = 0          // 0 Normal, 1 Large, 2 Extra large
+    @AppStorage("bpZoomPct") private var zoomPct = 100          // 85–180, same as the web apps
+    @State private var sizeSheet = false
     @State private var screen: AppScreen = .home
     @State private var menu = false
     @State private var syncNote = false
@@ -67,23 +68,31 @@ struct RootShell: View {
     private var wide: Bool { true }
     #endif
 
-    private var dynamicSize: DynamicTypeSize { [DynamicTypeSize.large, .xLarge, .xxxLarge][min(max(textSize, 0), 2)] }
-    private let sizeNames = ["Normal", "Large", "Extra large"]
-
-    private var zoom: CGFloat { [1.0, 1.15, 1.32][min(max(textSize, 0), 2)] }
+    /// Phone: map the percentage onto Dynamic Type steps.
+    private var dynamicSize: DynamicTypeSize {
+        switch zoomPct {
+        case ..<108: return .large
+        case ..<123: return .xLarge
+        case ..<138: return .xxLarge
+        case ..<153: return .xxxLarge
+        case ..<168: return .accessibility1
+        default: return .accessibility2
+        }
+    }
+    private var zoom: CGFloat { CGFloat(min(max(zoomPct, 85), 180)) / 100 }
 
     var body: some View {
-        #if os(macOS)
-        // macOS ignores Dynamic Type, so Text size zooms the whole layout instead.
-        GeometryReader { g in
+        if wide {
+            // iPad / Mac Command Center: the whole screen scales, like the web Command Center.
+            GeometryReader { g in
+                content
+                    .frame(width: g.size.width / zoom, height: g.size.height / zoom)
+                    .scaleEffect(zoom, anchor: .topLeading)
+                    .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+            }
+        } else {
             content
-                .frame(width: g.size.width / zoom, height: g.size.height / zoom)
-                .scaleEffect(zoom, anchor: .topLeading)
-                .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
         }
-        #else
-        content
-        #endif
     }
 
     private var content: some View {
@@ -93,7 +102,7 @@ struct RootShell: View {
                 CommandCenterView().environmentObject(shell)
                     .tint(Theme.blue)
                     .preferredColorScheme(dark ? .dark : .light)
-                    .dynamicTypeSize(dynamicSize)
+                    .dynamicTypeSize(.large)
             } else { phoneContent }
         }
     }
@@ -133,6 +142,7 @@ struct RootShell: View {
         .tint(Theme.blue)
         .preferredColorScheme(dark ? .dark : .light)
         .dynamicTypeSize(dynamicSize)
+        .sheet(isPresented: $sizeSheet) { TextSizePanel(showDone: true).presentationDetents([.height(430)]).preferredColorScheme(dark ? .dark : .light) }
         .alert("Sync", isPresented: $syncNote) { Button("OK", role: .cancel) {} } message: { Text("Your jobs sync through iCloud automatically on every device signed in to your Apple ID.") }
         .alert("Send feedback", isPresented: $feedbackNote) { Button("OK", role: .cancel) {} } message: { Text("The feedback form is not set up yet.") }
     }
@@ -191,8 +201,8 @@ struct RootShell: View {
             Divider()
             ForEach([AppScreen.home, .jobs, .punch, .photos, .money]) { row($0) }
             Divider().padding(.vertical, 4)
-            Button { textSize = (textSize + 1) % 3 } label: {
-                tool(icon: nil, aa: true, title: "Text size", sub: sizeNames[min(max(textSize, 0), 2)])
+            Button { withAnimation(.easeOut(duration: 0.25)) { menu = false }; sizeSheet = true } label: {
+                tool(icon: nil, aa: true, title: "Text size", sub: "\(zoomPct)%")
             }.buttonStyle(.plain)
             Button { dark.toggle() } label: {
                 tool(icon: "circle.lefthalf.filled", aa: false, title: "Light / Dark", sub: dark ? "Dark" : "Light")
@@ -1597,13 +1607,13 @@ enum CCScreen: String, CaseIterable, Identifiable {
 struct CommandCenterView: View {
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
-    @AppStorage("bpTextSize") private var textSize = 0
+    @AppStorage("bpZoomPct") private var zoomPct = 100
+    @State private var sizePop = false
     @AppStorage("bpActiveJob") private var activeKey = ""
     @EnvironmentObject private var shell: ShellState
     @StateObject private var info = HeaderInfo()
     @State private var sel: CCScreen = .dashboard
     @State private var searchText = ""
-    private let sizeLabels = ["100%", "115%", "132%"]
 
     private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
     private var active: Job? { activeKey.isEmpty ? nil : jobs.first { key($0) == activeKey } }
@@ -1649,15 +1659,16 @@ struct CommandCenterView: View {
             HStack(spacing: 8) {
                 tbButton("arrow.triangle.2.circlepath", "Sync") { sel = .sync }
                 tbButton("circle.lefthalf.filled", "Theme") { dark.toggle() }
-                Button { textSize = (textSize + 1) % 3 } label: {
+                Button { sizePop = true } label: {
                     HStack(spacing: 4) {
                         Text("A").font(.system(size: 11, weight: .heavy)); Text("A").font(.system(size: 18, weight: .heavy))
-                        Text(sizeLabels[min(max(textSize, 0), 2)]).font(.system(size: 15, weight: .bold)).monospacedDigit().padding(.leading, 2)
+                        Text("\(zoomPct)%").font(.system(size: 15, weight: .bold)).monospacedDigit().padding(.leading, 2)
                     }
                     .padding(.horizontal, 16).frame(height: 44)
                     .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
                 }.buttonStyle(.plain)
+                .popover(isPresented: $sizePop, arrowEdge: .bottom) { TextSizePanel(showDone: true).frame(width: 440).preferredColorScheme(dark ? .dark : .light) }
                 Button { sel = .eod } label: {
                     HStack(spacing: 8) { Image(systemName: "doc.badge.plus").font(.system(size: 14, weight: .semibold)); Text("New EOD Report").font(.system(size: 15, weight: .bold)).lineLimit(1) }
                         .padding(.horizontal, 18).frame(height: 44).foregroundStyle(.white)
@@ -2340,5 +2351,71 @@ struct CCSyncView: View {
             Text(v).font(.system(size: 26, weight: .semibold)).foregroundStyle(Theme.blue)
             Text(l.uppercased()).font(.system(size: 11, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted(dark))
         }
+    }
+}
+
+
+// MARK: - Text & button size panel (same control as the web apps: 85–180%, A− / A+, six presets)
+
+struct TextSizePanel: View {
+    @AppStorage("bpZoomPct") private var pct = 100
+    @AppStorage("bpDark") private var dark = true
+    @Environment(\.dismiss) private var dismiss
+    var showDone = true
+    private let presets: [(Int, String)] = [(100, "Normal"), (115, "Large"), (130, "XL"), (145, "XXL"), (160, "Jumbo"), (180, "Max")]
+
+    private func clamp(_ v: Int) -> Int { min(180, max(85, Int((Double(v) / 5).rounded()) * 5)) }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack {
+                Text("Drag and watch the app change").font(.system(size: 13, weight: .bold)).foregroundStyle(.secondary)
+                Spacer()
+                if showDone {
+                    Button { dismiss() } label: {
+                        Text("Done").font(.system(size: 16, weight: .heavy)).foregroundStyle(.white)
+                            .padding(.horizontal, 26).frame(height: 40).background(Theme.blue, in: Capsule())
+                    }.buttonStyle(.plain)
+                }
+            }
+            VStack(spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Text & button size").font(.system(size: 15, weight: .bold)).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(pct)").font(.system(size: 40, weight: .heavy)) + Text("%").font(.system(size: 20, weight: .heavy)).foregroundColor(.secondary)
+                }
+                HStack(spacing: 12) {
+                    stepButton("A−") { pct = clamp(pct - 5) }
+                    Slider(value: Binding(get: { Double(pct) }, set: { pct = clamp(Int($0)) }), in: 85...180, step: 5)
+                    stepButton("A+") { pct = clamp(pct + 5) }
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                    ForEach(presets, id: \.0) { p in
+                        let on = pct == p.0
+                        Button { pct = p.0 } label: {
+                            VStack(spacing: 2) {
+                                Text(p.1).font(.system(size: 16, weight: .heavy))
+                                Text("\(p.0)%").font(.system(size: 12, weight: .bold)).opacity(0.7)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 56)
+                            .foregroundStyle(on ? Color.white : Color.primary)
+                            .background(on ? AnyShapeStyle(Theme.blue) : AnyShapeStyle(.thinMaterial), in: RoundedRectangle(cornerRadius: 16))
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(on ? 0 : 0.35)))
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(18)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.white.opacity(0.4)))
+        }
+        .padding(18)
+    }
+
+    private func stepButton(_ t: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(t).font(.system(size: 18, weight: .heavy)).frame(width: 52, height: 52)
+                .background(.thinMaterial, in: Circle()).overlay(Circle().stroke(Color.white.opacity(0.4)))
+        }.buttonStyle(.plain)
     }
 }
