@@ -1397,6 +1397,7 @@ struct AllSpacesView: View {
     @State private var needJob = false
     @State private var tradeSheet: TradeRef?
     @State private var started = false
+    @State private var table = false
 
     struct TradeRef: Identifiable { let id: String }
 
@@ -1494,8 +1495,58 @@ struct AllSpacesView: View {
                 HStack(spacing: 3) { seg("Area", "area"); seg("Trade", "trade") }
                     .padding(3).background(Theme.border(dark).opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
             }
-            HStack(spacing: 8) { tab("All", "All"); tab("Inside", "Inside"); tab("Outside", "Outside") }
+            HStack(spacing: 8) {
+                tab("All", "All"); tab("Inside", "Inside"); tab("Outside", "Outside")
+                if Theme.desk && mode == "area" {
+                    HStack(spacing: 3) { layoutSeg("square.grid.2x2", "Grid", false); layoutSeg("tablecells", "Table", true) }
+                        .padding(3).background(Theme.border(dark).opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
         }
+    }
+
+    private func layoutSeg(_ icon: String, _ label: String, _ v: Bool) -> some View {
+        Button { table = v } label: {
+            HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 15, weight: .bold)); Text(label).font(.system(size: 15, weight: .heavy)) }
+                .foregroundStyle(table == v ? Theme.sky : Theme.muted(dark))
+                .padding(.horizontal, 14).frame(height: 38)
+                .background(table == v ? Theme.card(dark) : .clear, in: RoundedRectangle(cornerRadius: 9))
+        }.buttonStyle(.plain)
+    }
+
+    /// Command Center table layout: one row per space.
+    private var spaceTable: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("SPACE").frame(maxWidth: .infinity, alignment: .leading)
+                Text("LEVEL").frame(width: 120, alignment: .leading)
+                Text("JOB").frame(width: 180, alignment: .leading)
+                Text("OPEN").frame(width: 70, alignment: .trailing)
+                Text("DONE").frame(width: 70, alignment: .trailing)
+                Text("PHOTOS").frame(width: 80, alignment: .trailing)
+            }
+            .font(.system(size: 13, weight: .heavy)).tracking(0.8).foregroundStyle(Theme.muted(dark)).padding(.horizontal, 16).padding(.vertical, 10)
+            Divider()
+            ForEach(spaces) { sp in
+                if let j = sp.job {
+                    NavigationLink { PunchListView(job: j, space: sp) } label: {
+                        HStack {
+                            HStack(spacing: 10) { SpaceIcon(name: sp.name, symbol: sp.symbol, size: 22).frame(width: 28); Text(sp.name).font(.system(size: 16, weight: .heavy)) }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(sp.level.isEmpty ? (sp.isExterior ? "Outside" : "—") : sp.level).frame(width: 120, alignment: .leading).foregroundStyle(Theme.sky)
+                            Text(j.name).lineLimit(1).frame(width: 180, alignment: .leading).foregroundStyle(Theme.muted(dark))
+                            Text("\(sp.openCount)").frame(width: 70, alignment: .trailing).foregroundStyle(sp.openCount == 0 ? Theme.muted(dark) : Theme.deskRed)
+                            Text("\(sp.doneCount)").frame(width: 70, alignment: .trailing).foregroundStyle(sp.doneCount == 0 ? Theme.muted(dark) : Theme.green)
+                            Text("\(sp.photoCount)").frame(width: 80, alignment: .trailing).foregroundStyle(Theme.sky)
+                        }
+                        .font(.system(size: 15, weight: .bold)).padding(.horizontal, 16).padding(.vertical, 12).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                    Divider()
+                }
+            }
+        }
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark)))
     }
 
     private func seg(_ label: String, _ v: String) -> some View {
@@ -1527,7 +1578,7 @@ struct AllSpacesView: View {
                     }.buttonStyle(.plain)
                 }.frame(maxWidth: .infinity).padding(.top, 30)
             } else {
-                if Theme.desk { levelSections } else {
+                if Theme.desk { if table { spaceTable } else { levelSections } } else {
                 LazyVGrid(columns: cols, spacing: 10) {
                     ForEach(spaces) { s in
                         if let j = s.job {
