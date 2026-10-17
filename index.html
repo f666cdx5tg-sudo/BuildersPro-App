@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.33';
+var APP_VERSION = '4.34';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -10148,6 +10148,22 @@ showScreen = function(id) {
 };
 
 /* ── Show finance balance in job detail ── */
+/* v4.34: tapping a Finance tile on the job page scrolls straight to its section
+   (Invoiced/Contract -> Invoices, Expenses/Balance -> Expenses, Sub Costs -> Contractors). */
+window.bpJdGoto = function(id) {
+  var el = document.getElementById(id);
+  if (!el) { if (typeof toast === 'function') toast('Nothing to show here yet'); return; }
+  el.scrollIntoView({behavior:'smooth', block:'start'});
+  el.style.transition = 'box-shadow .3s';
+  el.style.boxShadow = 'inset 0 0 0 2px rgba(10,132,255,.7)';
+  setTimeout(function(){ el.style.boxShadow = ''; }, 1200);
+};
+function mkJdKpi(label, val, color, targetId) {
+  return '<div onclick="bpJdGoto(\''+targetId+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 10px;text-align:center;cursor:pointer;min-width:0">'
+    + '<div class="bp-kpi-num" style="font-size:18px;font-weight:900;white-space:nowrap;overflow:hidden;color:'+color+'">'+val+'</div>'
+    + '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:3px">'+label+' <span style="color:var(--faint);font-weight:800">\u203A</span></div>'
+    + '</div>';
+}
 var _origRenderJobDetail2 = renderJobDetail;
 renderJobDetail = function(jobId) {
   _origRenderJobDetail2(jobId);
@@ -10174,11 +10190,11 @@ renderJobDetail = function(jobId) {
   section.innerHTML =
     '<div class="section-header">Finance</div>'
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 16px 14px">'
-    + mkKpi('Contract', '$'+(contractVal||0).toLocaleString(), '#0A84FF')
-    + mkKpi('Invoiced', '$'+invoiced.toLocaleString(), '#66BB6A')
-    + mkKpi('Balance', '$'+Math.max(0,balance).toLocaleString(), balance>=0?'#0A84FF':'var(--red)')
-    + mkKpi('Expenses', '$'+expenses.toLocaleString(), 'var(--red)')
-    + mkKpi('Sub Costs', '$'+subCosts.toLocaleString(), '#FFAA33')
+    + mkJdKpi('Contract', '$'+(contractVal||0).toLocaleString(), '#0A84FF', 'jd-invoices-section')
+    + mkJdKpi('Invoiced', '$'+invoiced.toLocaleString(), '#66BB6A', 'jd-invoices-section')
+    + mkJdKpi('Balance', '$'+Math.max(0,balance).toLocaleString(), balance>=0?'#0A84FF':'var(--red)', 'jd-expenses-section')
+    + mkJdKpi('Expenses', '$'+expenses.toLocaleString(), 'var(--red)', 'jd-expenses-section')
+    + mkJdKpi('Sub Costs', '$'+subCosts.toLocaleString(), '#FFAA33', 'jd-contractors-section')
     + (timeCost ? mkKpi('Time Logged', '$'+Math.round(timeCost).toLocaleString(), '#BF5AF2') : '')
     + '</div>';
 
