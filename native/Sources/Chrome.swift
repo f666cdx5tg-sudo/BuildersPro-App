@@ -70,6 +70,12 @@ struct FloatBar: View {
         .offset(y: shell.barHidden && !voice.listening ? 140 : 0)
         .opacity(shell.barHidden && !voice.listening ? 0 : 1)
         .animation(.easeOut(duration: 0.2), value: shell.barHidden)
+        // the "Saved to…" / error banner clears itself
+        .task(id: saved + "|" + voice.message) {
+            guard !saved.isEmpty || !voice.message.isEmpty else { return }
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            if !voice.listening { saved = ""; voice.message = "" }
+        }
     }
 
     private var banner: some View {
@@ -80,6 +86,7 @@ struct FloatBar: View {
             .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border(dark)))
             .lineLimit(5)
+            .onTapGesture { if !voice.listening { saved = ""; voice.message = "" } }
     }
 
     private func toggleVoice() {
