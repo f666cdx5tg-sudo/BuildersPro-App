@@ -82,8 +82,9 @@ struct RootShell: View {
     private var zoom: CGFloat { CGFloat(min(max(zoomPct, 85), 180)) / 100 }
 
     var body: some View {
-        if wide {
+        if wide && zoomPct != 100 {
             // iPad / Mac Command Center: the whole screen scales, like the web Command Center.
+            // At exactly 100% there is no scaling layer at all, so text and photos stay pixel-sharp while scrolling.
             GeometryReader { g in
                 content
                     .frame(width: g.size.width / zoom, height: g.size.height / zoom)
@@ -1608,11 +1609,11 @@ struct CommandCenterView: View {
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
     @AppStorage("bpZoomPct") private var zoomPct = 100
-    @State private var sizePop = false
+    @AppStorage("bpCCScreen") private var selRaw = CCScreen.dashboard.rawValue
+    private var sel: CCScreen { get { CCScreen(rawValue: selRaw) ?? .dashboard } nonmutating set { selRaw = newValue.rawValue } }
     @AppStorage("bpActiveJob") private var activeKey = ""
     @EnvironmentObject private var shell: ShellState
     @StateObject private var info = HeaderInfo()
-    @State private var sel: CCScreen = .dashboard
     @State private var searchText = ""
 
     private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
@@ -1659,7 +1660,7 @@ struct CommandCenterView: View {
             HStack(spacing: 8) {
                 tbButton("arrow.triangle.2.circlepath", "Sync") { sel = .sync }
                 tbButton("circle.lefthalf.filled", "Theme") { dark.toggle() }
-                Button { sizePop = true } label: {
+                Button { shell.sizePop = true } label: {
                     HStack(spacing: 4) {
                         Text("A").font(.system(size: 11, weight: .heavy)); Text("A").font(.system(size: 18, weight: .heavy))
                         Text("\(zoomPct)%").font(.system(size: 15, weight: .bold)).monospacedDigit().padding(.leading, 2)
@@ -1668,7 +1669,7 @@ struct CommandCenterView: View {
                     .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
                 }.buttonStyle(.plain)
-                .popover(isPresented: $sizePop, arrowEdge: .bottom) { TextSizePanel(showDone: true).frame(width: 440).preferredColorScheme(dark ? .dark : .light) }
+                .popover(isPresented: $shell.sizePop, arrowEdge: .bottom) { TextSizePanel(showDone: true).frame(width: 440).preferredColorScheme(dark ? .dark : .light) }
                 Button { sel = .eod } label: {
                     HStack(spacing: 8) { Image(systemName: "doc.badge.plus").font(.system(size: 19, weight: .bold)); Text("New EOD Report").font(.system(size: 15, weight: .bold)).lineLimit(1) }
                         .padding(.horizontal, 18).frame(height: 44).foregroundStyle(.white)

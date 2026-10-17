@@ -12,6 +12,7 @@ final class ShellState: ObservableObject {
     @Published var addSymbol = "plus"
     @Published var addAction: (() -> Void)?
     @Published var barHidden = false
+    @Published var sizePop = false
     var goHome: () -> Void = {}
 
     func register(_ e: Entry) {
