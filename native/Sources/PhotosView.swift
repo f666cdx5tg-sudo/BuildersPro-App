@@ -219,7 +219,10 @@ struct MarkupView: View {
             if let caption { TextField("Caption", text: caption).textFieldStyle(.roundedBorder).padding(.horizontal) }
         }
         .padding(.bottom, 8)
-        .navigationTitle("Mark up")
+        .navigationTitle("")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar { markupBar }
         .alert("Add text", isPresented: Binding(get: { textSpot != nil }, set: { if !$0 { textSpot = nil } })) {
             TextField("Type here", text: $textValue)
