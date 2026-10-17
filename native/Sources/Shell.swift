@@ -652,15 +652,8 @@ struct AllPhotosView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     TopBar(title: "Photos", sub: "\(photos.count) photos · \(photos.filter { $0.space == nil }.count) unfiled")
                     HStack(spacing: 12) {
-                        NavigationLink { PhotoTimeline(photos: photos) } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "camera")
-                                Text("BuildersCam Timeline").multilineTextAlignment(.center)
-                            }.font(.title3.weight(.bold)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity).frame(height: 72).background(Theme.blue, in: RoundedRectangle(cornerRadius: 18))
-                        }.buttonStyle(.plain)
                         NavigationLink { BeforeAfterView(jobs: shownJobs) } label: {
-                            HStack(spacing: 10) { Image(systemName: "rectangle.split.2x1"); Text("Before / After") }
+                            HStack(spacing: 10) { Image(systemName: "rectangle.split.2x1"); Text("Before / After").lineLimit(1).minimumScaleFactor(0.7) }
                                 .font(.title3.weight(.bold)).foregroundStyle(Theme.green)
                                 .frame(maxWidth: .infinity).frame(height: 72)
                                 .background(Theme.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
