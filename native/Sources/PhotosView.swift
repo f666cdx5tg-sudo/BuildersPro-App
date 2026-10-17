@@ -220,28 +220,28 @@ struct MarkupView: View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 ForEach(MarkTool.allCases) { t in
-                    Button { tool = t } label: { Label(t.rawValue, systemImage: t.symbol) }
-                        .buttonStyle(.bordered).tint(tool == t ? .accentColor : .gray)
+                    Button { tool = t } label: { Image(systemName: t.symbol).font(.title3).frame(width: 44, height: 34) }
+                        .buttonStyle(.bordered).tint(tool == t ? .accentColor : .gray).accessibilityLabel(t.rawValue)
                 }
                 Spacer()
             }
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 ForEach(palette, id: \.self) { c in
-                    Circle().fill(c).frame(width: 34, height: 34)
+                    Circle().fill(c).frame(width: 30, height: 30)
                         .overlay(Circle().stroke(Color.accentColor, lineWidth: color == c ? 4 : 0))
                         .overlay(Circle().stroke(Color.gray.opacity(0.6), lineWidth: 1))
                         .onTapGesture { color = c }
                 }
                 Divider().frame(height: 28)
                 ForEach(widths, id: \.0) { w in
-                    Button(w.0) { width = w.1 }
-                        .buttonStyle(.bordered).tint(width == w.1 ? .accentColor : .gray)
+                    Button { width = w.1 } label: { Text(String(w.0.prefix(1))).font(.callout.weight(.bold)).frame(width: 26, height: 30) }
+                        .buttonStyle(.bordered).tint(width == w.1 ? .accentColor : .gray).accessibilityLabel(w.0)
                 }
                 Spacer()
             }
             HStack(spacing: 12) {
-                Button("Undo", systemImage: "arrow.uturn.backward") { _ = strokes.popLast() }.disabled(strokes.isEmpty)
-                Button("Clear", systemImage: "trash") { strokes.removeAll() }.disabled(strokes.isEmpty)
+                Button { _ = strokes.popLast() } label: { Image(systemName: "arrow.uturn.backward") }.disabled(strokes.isEmpty).accessibilityLabel("Undo")
+                Button { strokes.removeAll() } label: { Image(systemName: "trash") }.disabled(strokes.isEmpty).accessibilityLabel("Clear")
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Save") { save() }.buttonStyle(.borderedProminent).disabled(strokes.isEmpty)
