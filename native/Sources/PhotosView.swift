@@ -216,36 +216,34 @@ struct MarkupView: View {
         }
     }
 
+    private let colorNames = ["Red", "Yellow", "Blue", "Green", "White", "Black"]
+
     private var toolbar: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                ForEach(MarkTool.allCases) { t in
-                    Button { tool = t } label: { Image(systemName: t.symbol).font(.title3).frame(width: 44, height: 34) }
-                        .buttonStyle(.bordered).tint(tool == t ? .accentColor : .gray).accessibilityLabel(t.rawValue)
+        HStack(spacing: 12) {
+            Menu {
+                Picker("Tool", selection: $tool) {
+                    ForEach(MarkTool.allCases) { t in Label(t.rawValue, systemImage: t.symbol).tag(t) }
                 }
-                Spacer()
-            }
-            HStack(spacing: 10) {
-                ForEach(palette, id: \.self) { c in
-                    Circle().fill(c).frame(width: 30, height: 30)
-                        .overlay(Circle().stroke(Color.accentColor, lineWidth: color == c ? 4 : 0))
-                        .overlay(Circle().stroke(Color.gray.opacity(0.6), lineWidth: 1))
-                        .onTapGesture { color = c }
+                Picker("Color", selection: $color) {
+                    ForEach(Array(palette.enumerated()), id: \.offset) { i, c in Label(colorNames[i], systemImage: "circle.fill").tint(c).tag(c) }
                 }
-                Divider().frame(height: 28)
-                ForEach(widths, id: \.0) { w in
-                    Button { width = w.1 } label: { Text(String(w.0.prefix(1))).font(.callout.weight(.bold)).frame(width: 26, height: 30) }
-                        .buttonStyle(.bordered).tint(width == w.1 ? .accentColor : .gray).accessibilityLabel(w.0)
+                Picker("Size", selection: $width) {
+                    ForEach(widths, id: \.0) { w in Text(w.0).tag(w.1) }
                 }
-                Spacer()
+                Divider()
+                Button { _ = strokes.popLast() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }.disabled(strokes.isEmpty)
+                Button(role: .destructive) { strokes.removeAll() } label: { Label("Clear", systemImage: "trash") }.disabled(strokes.isEmpty)
+            } label: {
+                Image(systemName: "line.3.horizontal").font(.title2).frame(width: 48, height: 40)
             }
-            HStack(spacing: 12) {
-                Button { _ = strokes.popLast() } label: { Image(systemName: "arrow.uturn.backward") }.disabled(strokes.isEmpty).accessibilityLabel("Undo")
-                Button { strokes.removeAll() } label: { Image(systemName: "trash") }.disabled(strokes.isEmpty).accessibilityLabel("Clear")
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Save") { save() }.buttonStyle(.borderedProminent).disabled(strokes.isEmpty)
+            // what's selected right now
+            HStack(spacing: 8) {
+                Image(systemName: tool.symbol).font(.title3)
+                Circle().fill(color).frame(width: 22, height: 22).overlay(Circle().stroke(Color.gray.opacity(0.6), lineWidth: 1))
             }
+            Spacer()
+            Button("Cancel") { dismiss() }
+            Button("Save") { save() }.buttonStyle(.borderedProminent).disabled(strokes.isEmpty)
         }
         .padding(.horizontal).padding(.top, 8)
     }
