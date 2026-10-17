@@ -806,7 +806,8 @@ struct AllMoneyView: View {
     @AppStorage("bpDark") private var dark = true
     @State private var pick: String = ""          // "" = All Jobs
     @State private var path: [Route] = []
-    struct Route: Hashable { let job: Job }
+    struct Route: Hashable { let job: Job; var page = "Overview" }
+    @State private var chooseFor: String?
     struct FinItem: Identifiable { let kind: String; let job: Job?; var id: String { kind } }
     @AppStorage("bpActiveJob") private var activeKey = ""
     @State private var fin: FinItem?
@@ -837,16 +838,16 @@ struct AllMoneyView: View {
                         banner("Nothing invoiced yet — \(usd(costs)) in costs, $0 billed", Theme.orange)
                     }
                     HStack(spacing: 12) {
-                        tile(usd(contract), "CONTRACT VALUE", Theme.blue)
-                        tile(usd(abs(left)), left < 0 ? "OVER BUDGET" : "UNDER BUDGET", left < 0 ? Theme.red : Theme.green, minus: left < 0)
+                        tile(usd(contract), "CONTRACT VALUE", Theme.blue, page: "Overview")
+                        tile(usd(abs(left)), left < 0 ? "OVER BUDGET" : "UNDER BUDGET", left < 0 ? Theme.red : Theme.green, minus: left < 0, page: "Overview")
                     }
                     HStack(spacing: 12) {
-                        tile(usd(invoiced), "INVOICED", Theme.blue)
-                        tile(usd(sum { $0.collected }), "COLLECTED", Theme.blue)
+                        tile(usd(invoiced), "INVOICED", Theme.blue, page: "Invoices")
+                        tile(usd(sum { $0.collected }), "COLLECTED", Theme.blue, page: "Invoices")
                     }
                     HStack(spacing: 12) {
-                        tile(usd(expenses), "EXPENSES", Theme.red)
-                        tile(usd(subs), "SUB COSTS", Theme.orange)
+                        tile(usd(expenses), "EXPENSES", Theme.red, page: "Expenses")
+                        tile(usd(subs), "SUB COSTS", Theme.orange, page: "Contractors")
                     }
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -865,7 +866,10 @@ struct AllMoneyView: View {
                 .padding(.horizontal, 16)
             }
             .background(Theme.bg(dark))
-            .navigationDestination(for: Route.self) { JobDetailView(job: $0.job, start: .money) }
+            .navigationDestination(for: Route.self) { JobDetailView(job: $0.job, start: .money, moneyPage: $0.page) }
+            .confirmationDialog("Open which job?", isPresented: Binding(get: { chooseFor != nil }, set: { if !$0 { chooseFor = nil } }), titleVisibility: .visible) {
+                ForEach(allJobs) { j in Button(j.name) { path.append(Route(job: j, page: chooseFor ?? "Overview")); chooseFor = nil } }
+            }
             .shellAdd { fin = FinItem(kind: "picker", job: nil) }
             .sheet(item: $fin) { k in
                 switch k.kind {
@@ -909,13 +913,14 @@ struct AllMoneyView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(color.opacity(0.7)))
     }
 
-    private func tile(_ value: String, _ label: String, _ color: Color, minus: Bool = false) -> some View {
+    private func tile(_ value: String, _ label: String, _ color: Color, minus: Bool = false, page: String = "Overview") -> some View {
         Button {
-            if let j = jobs.count == 1 ? jobs.first : nil { path.append(Route(job: j)) }
+            if jobs.count == 1, let j = jobs.first { path.append(Route(job: j, page: page)) }
+            else if jobs.count > 1 { chooseFor = page }
         } label: {
             VStack(spacing: 6) {
                 Text((minus ? "-" : "") + value).font(.system(size: 28, weight: .heavy)).foregroundStyle(color).minimumScaleFactor(0.6).lineLimit(1)
-                Text(label + " ›").font(.callout.weight(.bold)).tracking(1).foregroundStyle(.secondary).minimumScaleFactor(0.7).lineLimit(1)
+                Text(label + " ›").font(.callout.weight(.bold)).tracking(0.3).foregroundStyle(.secondary).minimumScaleFactor(0.7).lineLimit(1)
             }
             .frame(maxWidth: .infinity, minHeight: 84)
             .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))

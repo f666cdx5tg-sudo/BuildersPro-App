@@ -54,7 +54,9 @@ struct JobDetailView: View {
     @State private var secSheet: JobSheet?
     @State private var newSpace = ""
 
-    init(job: Job, start: JobTab = .spaces) {
+    var moneyPage = "Overview"
+    init(job: Job, start: JobTab = .spaces, moneyPage: String = "Overview") {
+        self.moneyPage = moneyPage
         _job = Bindable(job)
         _tab = State(initialValue: start)
     }
@@ -287,7 +289,7 @@ struct JobDetailView: View {
     @ViewBuilder private func sectionPage(_ t: JobTab) -> some View {
         VStack(spacing: 0) {
             switch t {
-            case .money: MoneyView(job: job)
+            case .money: MoneyView(job: job, page: moneyPage)
             case .reports: ReportsView(job: job)
             case .schedule: ScheduleView(job: job)
             case .notes: NotesView(job: job)
@@ -381,7 +383,8 @@ struct MoneyView: View {
     private var permits: [Permit] { (job.permits ?? []).sorted { $0.expirationDate < $1.expirationDate } }
     private var timeEntries: [TimeEntry] { (job.timeEntries ?? []).sorted { $0.clockIn > $1.clockIn } }
 
-    @State private var page = "Overview"
+    @State private var page: String
+    init(job: Job, page: String = "Overview") { _job = Bindable(job); _page = State(initialValue: page) }
     private var pages: [String] { ["Overview", "Change orders", "Invoices", "Expenses", "Contractors", "Permits"] + (timeEntries.isEmpty ? [] : ["Time clock"]) }
     private func show(_ p: String) -> Bool { page == p }
 
