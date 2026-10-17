@@ -1548,8 +1548,8 @@ final class ScrollWatcher: NSObject, UIGestureRecognizerDelegate {
 
 enum CCScreen: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard", calendar = "Calendar"
-    case jobs = "Jobs", estimates = "Estimates", time = "Time Clock", spaces = "Spaces", photos = "Photos", punch = "Punchlist", documents = "Documents"
-    case eod = "EOD Reports", finance = "Finance", contacts = "Contacts"
+    case jobs = "Jobs", estimates = "Estimates", time = "Time Clock", spaces = "Spaces", photos = "Photos", punch = "Punchlist", documents = "Documents", shopping = "Shopping List"
+    case dailylog = "Daily Log", eod = "EOD Reports", finance = "Finance", contacts = "Contacts"
     case archive = "Archived Jobs", sync = "Sync Settings", search = "Search"
     var id: String { rawValue }
     var symbol: String {
@@ -1563,6 +1563,8 @@ enum CCScreen: String, CaseIterable, Identifiable {
         case .photos: return "camera"
         case .punch: return "checkmark.square"
         case .documents: return "doc"
+        case .shopping: return "cart"
+        case .dailylog: return "list.clipboard"
         case .eod: return "doc.text"
         case .finance: return "dollarsign"
         case .contacts: return "person"
@@ -1576,17 +1578,17 @@ enum CCScreen: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard, .estimates: return Theme.blue
         case .calendar, .photos, .contacts: return Theme.sky
-        case .jobs, .punch: return Theme.gold
+        case .jobs, .punch, .shopping: return Theme.gold
         case .time, .documents, .finance: return Theme.purple
-        case .spaces, .eod: return Theme.orange
+        case .spaces, .eod, .dailylog: return Theme.orange
         default: return Theme.blue
         }
     }
     static let groups: [(String, [CCScreen])] = [
         ("Overview", [.dashboard, .calendar]),
-        ("Field Work", [.jobs, .estimates, .time, .spaces, .photos, .punch, .documents]),
-        ("Reports", [.eod]),
-        ("Finance", [.finance]),
+        ("Field Work", [.jobs, .estimates, .spaces, .photos, .punch, .documents, .shopping]),
+        ("Reports", [.dailylog, .eod]),
+        ("Finance", [.finance, .time]),
         ("Directory", [.contacts]),
         ("Settings", [.archive, .sync]),
     ]
@@ -1701,19 +1703,6 @@ struct CommandCenterView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Menu {
-                    Button("No job selected") { activeKey = "" }
-                    ForEach(jobs) { j in Button(j.name) { activeKey = key(j) } }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
-                        Text(active?.name ?? "Select a job").font(.system(size: 14, weight: .bold)).foregroundStyle(active == nil ? Theme.muted(dark) : Theme.blue).lineLimit(1)
-                        Spacer(); Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(Theme.muted(dark))
-                    }
-                    .padding(.horizontal, 12).frame(height: 40)
-                    .background(Theme.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.blue.opacity(0.5)))
-                }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
                 TextField("SEARCH", text: $searchText)
                     .textFieldStyle(.plain).font(.system(size: 14, weight: .semibold))
                     .padding(.horizontal, 12).frame(height: 40)
@@ -1763,6 +1752,8 @@ struct CommandCenterView: View {
         case .spaces: AllSpacesView(startJob: active)
         case .documents: jobScoped("Documents") { DocsView(job: $0) }
         case .eod: jobScoped("EOD Reports") { ReportsView(job: $0) }
+        case .dailylog: jobScoped("Daily Log") { ReportsView(job: $0) }
+        case .shopping: jobScoped("Shopping List") { ShoppingView(job: $0) }
         case .time: CCTimeClockView()
         case .estimates: CCEstimatesView()
         case .contacts: CCContactsView()
@@ -1773,10 +1764,33 @@ struct CommandCenterView: View {
 
     @ViewBuilder private func jobScoped<V: View>(_ title: String, @ViewBuilder _ make: (Job) -> V) -> some View {
         if let j = active {
-            NavigationStack { make(j).navigationTitle(title) }
+            NavigationStack {
+                make(j).navigationTitle(title)
+                    .toolbar { ToolbarItem(placement: .automatic) { jobMenu(label: j.name) } }
+            }
         } else {
-            soon(title, "Pick a job in the box at the top of the menu.")
+            VStack(alignment: .leading, spacing: 14) {
+                Text(title).font(.system(size: 36, weight: .semibold))
+                Text("Pick a job to open it here.").font(.system(size: 15)).foregroundStyle(Theme.muted(dark))
+                jobMenu(label: "Select a job")
+                Spacer()
+            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+    }
+
+    private func jobMenu(label: String) -> some View {
+        Menu {
+            ForEach(jobs) { j in Button(j.name) { activeKey = key(j) } }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
+                Text(label).font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.blue).lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(Theme.muted(dark))
+            }
+            .padding(.horizontal, 12).frame(height: 38)
+            .background(Theme.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.blue.opacity(0.5)))
+        }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
     }
 
     private func soon(_ title: String, _ note: String) -> some View {
