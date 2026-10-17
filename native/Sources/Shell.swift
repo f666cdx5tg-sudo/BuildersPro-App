@@ -807,7 +807,6 @@ struct AllMoneyView: View {
     @State private var pick: String = ""          // "" = All Jobs
     @State private var path: [Route] = []
     struct Route: Hashable { let job: Job; var page = "Overview" }
-    @State private var chooseFor: String?
     struct FinItem: Identifiable { let kind: String; let job: Job?; var id: String { kind } }
     @AppStorage("bpActiveJob") private var activeKey = ""
     @State private var fin: FinItem?
@@ -816,14 +815,6 @@ struct AllMoneyView: View {
     private func sum(_ f: (Job) -> Double) -> Double { jobs.reduce(0) { $0 + f($1) } }
     private func usd(_ v: Double) -> String { (v < 0 ? "-" : "") + abs(v).formatted(.currency(code: "USD").precision(.fractionLength(0))) }
 
-    private var contract: Double { sum { $0.revisedContract } }
-    private var costs: Double { sum { $0.totalCost } }
-    private var invoiced: Double { sum { $0.invoiced } }
-    private var expenses: Double { sum { $0.expenseTotal } }
-    private var subs: Double { sum { $0.contractorTotal } }
-    private var left: Double { contract - costs }
-    private var margin: Int { contract > 0 ? Int((left / contract * 100).rounded()) : 0 }
-
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
@@ -831,34 +822,10 @@ struct AllMoneyView: View {
                     Text("Finance").font(.system(size: 40, weight: .heavy)).padding(.top, 4)
                     picker
                     Divider()
-                    if costs > contract && contract > 0 {
-                        banner("Over budget by \(usd(costs - contract)) (costs \(usd(costs)) vs contract \(usd(contract)))", Theme.red)
+                    ForEach(jobs) { j in
+                        if jobs.count > 1 { Text(j.name).font(.title2.weight(.heavy)).padding(.top, 10) }
+                        block(j)
                     }
-                    if invoiced == 0 && costs > 0 {
-                        banner("Nothing invoiced yet — \(usd(costs)) in costs, $0 billed", Theme.orange)
-                    }
-                    HStack(spacing: 12) {
-                        tile(usd(contract), "CONTRACT VALUE", Theme.blue, page: "Overview")
-                        tile(usd(abs(left)), left < 0 ? "OVER BUDGET" : "UNDER BUDGET", left < 0 ? Theme.red : Theme.green, minus: left < 0, page: "Overview")
-                    }
-                    HStack(spacing: 12) {
-                        tile(usd(invoiced), "INVOICED", Theme.blue, page: "Invoices")
-                        tile(usd(sum { $0.collected }), "COLLECTED", Theme.blue, page: "Invoices")
-                    }
-                    HStack(spacing: 12) {
-                        tile(usd(expenses), "EXPENSES", Theme.red, page: "Expenses")
-                        tile(usd(subs), "SUB COSTS", Theme.orange, page: "Contractors")
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("Profit Margin").font(.title3).foregroundStyle(.secondary)
-                            Spacer()
-                            Text("\(margin)%").font(.title3.weight(.heavy)).foregroundStyle(margin < 0 ? Theme.red : Theme.green)
-                        }
-                        ProgressView(value: Double(max(0, min(100, margin))), total: 100).tint(Theme.green)
-                    }
-                    .padding(16).background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
                     Text("Tap a tile to see what's behind the number.").font(.callout).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity).multilineTextAlignment(.center).padding(.top, 10)
                     Spacer(minLength: 90)
@@ -867,9 +834,6 @@ struct AllMoneyView: View {
             }
             .background(Theme.bg(dark))
             .navigationDestination(for: Route.self) { JobDetailView(job: $0.job, start: .money, moneyPage: $0.page) }
-            .confirmationDialog("Open which job?", isPresented: Binding(get: { chooseFor != nil }, set: { if !$0 { chooseFor = nil } }), titleVisibility: .visible) {
-                ForEach(allJobs) { j in Button(j.name) { path.append(Route(job: j, page: chooseFor ?? "Overview")); chooseFor = nil } }
-            }
             .shellAdd { fin = FinItem(kind: "picker", job: nil) }
             .sheet(item: $fin) { k in
                 switch k.kind {
@@ -888,6 +852,43 @@ struct AllMoneyView: View {
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
+        }
+    }
+
+    /// One job's finance tiles.
+    @ViewBuilder private func block(_ j: Job) -> some View {
+        let contract = j.revisedContract, costs = j.totalCost, invoiced = j.invoiced
+        let left = contract - costs
+        let margin = contract > 0 ? Int((left / contract * 100).rounded()) : 0
+        VStack(alignment: .leading, spacing: 12) {
+            if costs > contract && contract > 0 {
+                banner("Over budget by \(usd(costs - contract)) (costs \(usd(costs)) vs contract \(usd(contract)))", Theme.red)
+            }
+            if invoiced == 0 && costs > 0 {
+                banner("Nothing invoiced yet — \(usd(costs)) in costs, $0 billed", Theme.orange)
+            }
+            HStack(spacing: 12) {
+                tile(j, usd(contract), "CONTRACT VALUE", Theme.blue, page: "Overview")
+                tile(j, usd(abs(left)), left < 0 ? "OVER BUDGET" : "UNDER BUDGET", left < 0 ? Theme.red : Theme.green, minus: left < 0, page: "Overview")
+            }
+            HStack(spacing: 12) {
+                tile(j, usd(invoiced), "INVOICED", Theme.blue, page: "Invoices")
+                tile(j, usd(j.collected), "COLLECTED", Theme.blue, page: "Invoices")
+            }
+            HStack(spacing: 12) {
+                tile(j, usd(j.expenseTotal), "EXPENSES", Theme.red, page: "Expenses")
+                tile(j, usd(j.contractorTotal), "SUB COSTS", Theme.orange, page: "Contractors")
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Profit Margin").font(.title3).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(margin)%").font(.title3.weight(.heavy)).foregroundStyle(margin < 0 ? Theme.red : Theme.green)
+                }
+                ProgressView(value: Double(max(0, min(100, margin))), total: 100).tint(Theme.green)
+            }
+            .padding(16).background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
         }
     }
 
@@ -913,11 +914,8 @@ struct AllMoneyView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(color.opacity(0.7)))
     }
 
-    private func tile(_ value: String, _ label: String, _ color: Color, minus: Bool = false, page: String = "Overview") -> some View {
-        Button {
-            if jobs.count == 1, let j = jobs.first { path.append(Route(job: j, page: page)) }
-            else if jobs.count > 1 { chooseFor = page }
-        } label: {
+    private func tile(_ j: Job, _ value: String, _ label: String, _ color: Color, minus: Bool = false, page: String = "Overview") -> some View {
+        Button { path.append(Route(job: j, page: page)) } label: {
             VStack(spacing: 6) {
                 Text((minus ? "-" : "") + value).font(.system(size: 28, weight: .heavy)).foregroundStyle(color).minimumScaleFactor(0.6).lineLimit(1)
                 Text(label + " ›").font(.callout.weight(.bold)).tracking(0.3).foregroundStyle(.secondary).minimumScaleFactor(0.7).lineLimit(1)
