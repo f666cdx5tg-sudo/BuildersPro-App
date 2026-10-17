@@ -4,6 +4,8 @@ import SwiftData
 @main
 struct BuildersProApp: App {
     // iCloud sync: SwiftData mirrors this store to the private CloudKit container in the entitlements file.
+    init() { UserDefaults.standard.removeObject(forKey: "bpActiveJob") }   // no job preselected on launch
+
     var container: ModelContainer = {
         let schema = Schema([Job.self, Space.self, PunchItem.self, SitePhoto.self,
                               Expense.self, Contractor.self, Payment.self, DailyReport.self,

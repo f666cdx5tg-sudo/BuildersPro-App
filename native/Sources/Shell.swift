@@ -229,7 +229,7 @@ struct HomeView: View {
         return h < 12 ? "Good Morning" : (h < 17 ? "Good Afternoon" : "Good Evening")
     }
     private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
-    private var active: Job? { jobs.first { key($0) == activeKey } ?? jobs.first { $0.isActive } ?? jobs.first }
+    private var active: Job? { activeKey.isEmpty ? nil : jobs.first { key($0) == activeKey } }   // blank until you pick one
     private var version: String { "v" + ((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "") }
 
     var body: some View {
@@ -237,13 +237,13 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     top
+                    if !jobs.isEmpty { picker(active) }
                     if let job = active {
-                        picker(job)
                         Divider().padding(.horizontal, -16)
                         siteCard(job)
                         quickTiles(job)
                         attention(job)
-                    } else {
+                    } else if jobs.isEmpty {
                         Text("No jobs yet. Open the menu → Jobs to add one or import your backup.")
                             .foregroundStyle(.secondary).padding(.top, 8)
                     }
@@ -304,14 +304,14 @@ struct HomeView: View {
         }
     }
 
-    private func picker(_ job: Job) -> some View {
+    private func picker(_ job: Job?) -> some View {
         Menu {
             ForEach(jobs) { j in Button(j.name) { activeKey = key(j) } }
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "mappin.and.ellipse").font(.title3).foregroundStyle(Theme.blue)
                 Text("ON SITE").font(.subheadline.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
-                Text(job.name).font(.title3.weight(.bold)).foregroundStyle(Theme.blue).lineLimit(1)
+                Text(job?.name ?? "Select a job").font(.title3.weight(.bold)).foregroundStyle(job == nil ? Color.secondary : Theme.blue).lineLimit(1)
                 Spacer()
                 Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary)
             }
