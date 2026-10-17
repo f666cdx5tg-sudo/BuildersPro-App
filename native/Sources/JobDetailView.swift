@@ -381,13 +381,34 @@ struct MoneyView: View {
     private var permits: [Permit] { (job.permits ?? []).sorted { $0.expirationDate < $1.expirationDate } }
     private var timeEntries: [TimeEntry] { (job.timeEntries ?? []).sorted { $0.clockIn > $1.clockIn } }
 
+    @State private var page = "Overview"
+    private var pages: [String] { ["Overview", "Change orders", "Invoices", "Expenses", "Contractors", "Permits"] + (timeEntries.isEmpty ? [] : ["Time clock"]) }
+    private func show(_ p: String) -> Bool { page == p }
+
     var body: some View {
         List {
-            if job.revisedContract > 0 && job.remaining < 0 {
+            Section {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(pages, id: \.self) { p in
+                            Button { page = p } label: {
+                                Text(p).font(.headline.weight(.bold)).lineLimit(1)
+                                    .foregroundStyle(page == p ? Color.white : Color.primary)
+                                    .padding(.horizontal, 16).frame(height: 42)
+                                    .background(page == p ? Theme.blue : Color.secondary.opacity(0.18), in: Capsule())
+                            }.buttonStyle(.plain)
+                        }
+                    }.padding(.vertical, 2)
+                }
+                .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                .listRowBackground(Color.clear)
+            }
+            if job.revisedContract > 0 && job.remaining < 0 && page == "Overview" {
                 Text("Over budget by \(Money.text(-job.remaining)) (costs \(Money.text(job.totalCost)) vs contract \(Money.text(job.revisedContract)))")
                     .font(.subheadline.weight(.bold)).foregroundStyle(Color.red)
             }
 
+            if show("Overview") {
             Section("Contract") {
                 HStack {
                     Text("Original contract")
@@ -400,7 +421,9 @@ struct MoneyView: View {
                 line("Revised contract", job.revisedContract, .blue)
                 if job.pendingChangeOrders != 0 { line("Pending change orders (not counted)", job.pendingChangeOrders, .secondary) }
             }
+            }
 
+            if show("Overview") {
             Section("Profit") {
                 line("Expenses", job.expenseTotal, .orange)
                 line("Contractors (agreed)", job.contractorTotal, .orange)
@@ -410,13 +433,17 @@ struct MoneyView: View {
                     HStack { Text("Profit margin"); Spacer(); Text("\(job.marginPercent)%").bold() }
                 }
             }
+            }
 
+            if show("Overview") {
             Section("Billing") {
                 line("Invoiced", job.invoiced, .primary)
                 line("Collected", job.collected, .green)
                 line("Waiting to be paid", job.outstanding, .orange)
             }
+            }
 
+            if show("Overview") {
             Section("Cash out the door") {
                 line("Expenses", job.expenseTotal, .secondary)
                 line("Paid to contractors", job.contractorPaid, .secondary)
@@ -425,7 +452,9 @@ struct MoneyView: View {
                 line("Total spent", job.cashSpent, .red)
                 line("Still owed to contractors", job.contractorTotal - job.contractorPaid, .secondary)
             }
+            }
 
+            if show("Change orders") {
             Section("Change orders · \(changeOrders.count)") {
                 if changeOrders.isEmpty { Text("None. Use ≡ → Add a change order.").foregroundStyle(.secondary) }
                 ForEach(changeOrders) { c in
@@ -442,7 +471,9 @@ struct MoneyView: View {
                 }
                 .onDelete { idx in idx.forEach { context.delete(changeOrders[$0]) } }
             }
+            }
 
+            if show("Invoices") {
             Section("Invoices · \(Money.text(job.invoiced))") {
                 if invoices.isEmpty { Text("None. Use ≡ → Add an invoice.").foregroundStyle(.secondary) }
                 ForEach(invoices) { i in
@@ -460,7 +491,9 @@ struct MoneyView: View {
                 }
                 .onDelete { idx in idx.forEach { context.delete(invoices[$0]) } }
             }
+            }
 
+            if show("Expenses") {
             Section("Expenses · \(Money.text(job.expenseTotal))") {
                 if expenses.isEmpty { Text("No expenses yet. Use ≡ → Add an expense.").foregroundStyle(.secondary) }
                 ForEach(expenses) { e in
@@ -479,7 +512,9 @@ struct MoneyView: View {
                 }
                 .onDelete { idx in idx.forEach { context.delete(expenses[$0]) } }
             }
+            }
 
+            if show("Contractors") {
             Section("Contractors · \(Money.text(job.contractorTotal))") {
                 if contractors.isEmpty { Text("No contractors yet. Use ≡ → Add a contractor.").foregroundStyle(.secondary) }
                 ForEach(contractors) { c in
@@ -501,7 +536,9 @@ struct MoneyView: View {
                 }
                 .onDelete { idx in idx.forEach { context.delete(contractors[$0]) } }
             }
+            }
 
+            if show("Permits") {
             Section("Permits · \(Money.text(job.permitTotal))") {
                 if permits.isEmpty { Text("None. Use ≡ → Add a permit.").foregroundStyle(.secondary) }
                 ForEach(permits) { p in
@@ -519,8 +556,9 @@ struct MoneyView: View {
                 }
                 .onDelete { idx in idx.forEach { context.delete(permits[$0]) } }
             }
+            }
 
-            if !timeEntries.isEmpty { Section("Time clock · \(String(format: "%.1f", job.laborHours)) h · \(Money.text(job.laborTotal))") {
+            if show("Time clock") && !timeEntries.isEmpty { Section("Time clock · \(String(format: "%.1f", job.laborHours)) h · \(Money.text(job.laborTotal))") {
                 ForEach(timeEntries) { t in
                     NavigationLink { TimeEntryDetail(entry: t) } label: {
                         HStack {
