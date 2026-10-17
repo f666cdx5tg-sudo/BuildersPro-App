@@ -1626,60 +1626,73 @@ struct CommandCenterView: View {
 
     // MARK: top bar (logo · place / weather / date / time · Sync · Theme · size · New EOD Report)
 
+    private var versionText: String { "v" + ((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "") }
+
     private var topbar: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 16) {
             ZStack {
-                Circle().stroke(Color.primary, lineWidth: 4).frame(width: 92, height: 92)
-                Text("B").font(.system(size: 52, weight: .bold, design: .serif))
-                Capsule().fill(Color.red).frame(width: 34, height: 5).offset(y: 24)
+                Circle().stroke(Color.primary, lineWidth: 4.5).frame(width: 96, height: 96)
+                Text("B").font(.system(size: 56, weight: .bold, design: .serif))
+                Capsule().fill(Color(red: 0.84, green: 0.13, blue: 0.13)).frame(width: 52, height: 7).offset(y: 27)
             }
-            Rectangle().fill(Theme.border(dark)).frame(width: 1, height: 60)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 7) {
-                    Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
-                    Text(info.place).font(.system(size: 21, weight: .medium)).lineLimit(1)
-                }
-                HStack(spacing: 7) {
-                    Image(systemName: info.icon).foregroundStyle(Theme.muted(dark))
-                    Text(info.weather).font(.system(size: 18)).foregroundStyle(Theme.muted(dark)).lineLimit(1)
-                }
-                Text(Date.now.formatted(.dateTime.weekday(.abbreviated).month(.twoDigits).day(.twoDigits).year()))
-                    .font(.system(size: 16)).foregroundStyle(Theme.muted(dark))
-                TimelineView(.everyMinute) { ctx in
-                    Text(ctx.date.formatted(.dateTime.hour().minute()))
-                        .font(.system(size: 42, weight: .light)).foregroundStyle(Theme.blue)
-                }
+            VStack(spacing: 4) {
+                Text("BuildersPro").font(.system(size: 26, weight: .heavy))
+                    .foregroundStyle(LinearGradient(colors: [dark ? Color(white: 0.94) : Color(white: 0.78), Color(white: 0.55)], startPoint: .leading, endPoint: .trailing))
+                Text(versionText).font(.system(size: 12, weight: .heavy)).foregroundStyle(Theme.gold)
+                    .padding(.horizontal, 10).padding(.vertical, 2)
+                    .background(Theme.gold.opacity(0.14), in: Capsule())
+                    .overlay(Capsule().stroke(Theme.gold.opacity(0.35)))
             }
-            Spacer(minLength: 8)
+            Rectangle().fill(Theme.border(dark)).frame(width: 1, height: 34)
             HStack(spacing: 8) {
                 tbButton("arrow.triangle.2.circlepath", "Sync") { sel = .sync }
                 tbButton("circle.lefthalf.filled", "Theme") { dark.toggle() }
                 Button { textSize = (textSize + 1) % 3 } label: {
                     HStack(spacing: 4) {
-                        Text("A").font(.system(size: 11, weight: .heavy)); Text("A").font(.system(size: 17, weight: .heavy))
-                        Text(sizeLabels[min(max(textSize, 0), 2)]).font(.system(size: 14, weight: .bold)).monospacedDigit()
+                        Text("A").font(.system(size: 11, weight: .heavy)); Text("A").font(.system(size: 18, weight: .heavy))
+                        Text(sizeLabels[min(max(textSize, 0), 2)]).font(.system(size: 15, weight: .bold)).monospacedDigit().padding(.leading, 2)
                     }
-                    .padding(.horizontal, 14).frame(height: 40)
-                    .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
+                    .padding(.horizontal, 16).frame(height: 44)
+                    .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
                 }.buttonStyle(.plain)
                 Button { sel = .eod } label: {
-                    HStack(spacing: 6) { Image(systemName: "doc.badge.plus"); Text("New EOD Report").font(.system(size: 14, weight: .bold)) }
-                        .padding(.horizontal, 16).frame(height: 40).foregroundStyle(.white)
-                        .background(Theme.orange, in: RoundedRectangle(cornerRadius: 9))
+                    HStack(spacing: 8) { Image(systemName: "doc.badge.plus").font(.system(size: 14, weight: .semibold)); Text("New EOD Report").font(.system(size: 15, weight: .bold)).lineLimit(1) }
+                        .padding(.horizontal, 18).frame(height: 44).foregroundStyle(.white)
+                        .background(Theme.orange, in: RoundedRectangle(cornerRadius: 10))
                 }.buttonStyle(.plain)
             }
+            Spacer(minLength: 8)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
+                    Text(info.place).font(.system(size: 19, weight: .bold)).lineLimit(1)
+                }
+                HStack(spacing: 14) {
+                    HStack(spacing: 6) {
+                        Image(systemName: info.icon).foregroundStyle(Theme.muted(dark))
+                        Text(info.weather).font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.sky).lineLimit(1)
+                    }
+                    Text(Date.now.formatted(.dateTime.weekday(.abbreviated).month(.twoDigits).day(.twoDigits).year()))
+                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.muted(dark)).lineLimit(1)
+                }
+                TimelineView(.everyMinute) { ctx in
+                    Text(ctx.date.formatted(.dateTime.hour().minute()))
+                        .font(.system(size: 32, weight: .bold)).foregroundStyle(Theme.blue)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .padding(.horizontal, 20).frame(height: 128)
+        .padding(.horizontal, 20).frame(height: 118)
         .background(Theme.card(dark))
     }
 
     private func tbButton(_ icon: String, _ title: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 14, weight: .semibold)); Text(title).font(.system(size: 14, weight: .bold)) }
-                .padding(.horizontal, 16).frame(height: 40)
-                .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
+                .padding(.horizontal, 16).frame(height: 44)
+                .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
         }.buttonStyle(.plain)
     }
 
