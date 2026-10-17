@@ -20,7 +20,7 @@ enum Theme {
     static func border(_ dark: Bool) -> Color { desk ? hex(dark ? 0x1E2845 : 0xCBD5F0) : (dark ? Color(red: 0.165, green: 0.165, blue: 0.165) : Color(red: 0.878, green: 0.878, blue: 0.878)) }
     static func muted(_ dark: Bool) -> Color { hex(dark ? 0x6B7DB3 : 0x5060A0) }
     static func faint(_ dark: Bool) -> Color { hex(dark ? 0x8494C8 : 0x5C6B9E) }
-    static let gold = hex(0xC8935A), purple = hex(0xBF5AF2), sky = hex(0x42A5F5), yellow = hex(0xFFD60A), deskRed = hex(0xEF5350)
+    static let gold = hex(0xC8935A), sky = hex(0x42A5F5), deskRed = hex(0xEF5350)
 }
 
 private struct OpenMenuKey: EnvironmentKey { static let defaultValue: () -> Void = {} }
