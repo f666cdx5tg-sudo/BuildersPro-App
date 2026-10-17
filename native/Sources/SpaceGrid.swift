@@ -225,7 +225,7 @@ struct PhotoStack: View {
         ZStack {
             ForEach(Array(top.enumerated().reversed()), id: \.offset) { i, p in
                 Group {
-                    if let d = p, let img = Self.thumb(d) { img.resizable().scaledToFill() }
+                    if let d = p { ThumbImage(data: d, px: 120) }
                     else { Color.gray.opacity(0.4).overlay(Image(systemName: "photo").foregroundStyle(.secondary)) }
                 }
                 .frame(width: thumb, height: thumb).clipShape(RoundedRectangle(cornerRadius: 6))

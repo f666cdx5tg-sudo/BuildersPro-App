@@ -95,9 +95,7 @@ struct PhotoThumb: View {
         Color.gray.opacity(0.3)
             .aspectRatio(1, contentMode: .fit)          // square cell, never taller/wider than its slot
             .overlay {
-                if let d = photo.data, let img = Self.small(d, 500) {
-                    img.resizable().scaledToFill()
-                }
+                ThumbImage(data: photo.data, px: 400)
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -419,5 +417,46 @@ extension PhotoThumb {
         let o: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: maxPixels]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, o as CFDictionary) else { return nil }
         return Image(decorative: cg, scale: 1)
+    }
+}
+
+
+// MARK: - Cached, off-main-thread thumbnails (smooth scrolling)
+final class ThumbBox { let cg: CGImage; init(_ c: CGImage) { cg = c } }
+enum ThumbCache {
+    static let cache: NSCache<NSString, ThumbBox> = { let c = NSCache<NSString, ThumbBox>(); c.totalCostLimit = 60_000_000; return c }()
+    static func key(_ d: Data, _ px: CGFloat) -> NSString {
+        "\(d.count)-\(Int(px))-\(d.prefix(48).hashValue)-\(d.suffix(48).hashValue)" as NSString
+    }
+    static func cached(_ d: Data?, _ px: CGFloat) -> CGImage? {
+        guard let d else { return nil }
+        return cache.object(forKey: key(d, px))?.cg
+    }
+    static func make(_ d: Data, _ px: CGFloat) -> CGImage? {
+        let k = key(d, px)
+        if let b = cache.object(forKey: k) { return b.cg }
+        guard let src = CGImageSourceCreateWithData(d as CFData, nil) else { return nil }
+        let o: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                                  kCGImageSourceShouldCacheImmediately: true, kCGImageSourceThumbnailMaxPixelSize: px]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, o as CFDictionary) else { return nil }
+        cache.setObject(ThumbBox(cg), forKey: k, cost: cg.width * cg.height * 4)
+        return cg
+    }
+}
+struct ThumbImage: View {
+    let data: Data?
+    let px: CGFloat
+    @State private var img: CGImage?
+    init(data: Data?, px: CGFloat) { self.data = data; self.px = px; _img = State(initialValue: ThumbCache.cached(data, px)) }
+    var body: some View {
+        Group {
+            if let img { Image(decorative: img, scale: 1).resizable().scaledToFill() } else { Color.clear }
+        }
+        .task(id: data.map { ThumbCache.key($0, px) } ?? "") {
+            guard let d = data else { img = nil; return }
+            if let c = ThumbCache.cached(d, px) { img = c; return }
+            let px = px
+            img = await Task.detached(priority: .userInitiated) { ThumbCache.make(d, px) }.value
+        }
     }
 }

@@ -271,9 +271,10 @@ struct PunchDetail: View {
     @ViewBuilder private func gallery(_ kind: String, _ picks: Binding<[PhotosPickerItem]>?) -> some View {
         Section("\(kind) photos · \(photos(kind).count)") {
             ForEach(photos(kind)) { p in
-                if let d = p.data, let img = PhotoThumb.small(d, 1000) {
+                if let d = p.data {
                     NavigationLink { MarkupView(data: d) { p.data = $0 } } label: {
-                        img.resizable().scaledToFit().frame(maxHeight: 340)
+                        ThumbImage(data: d, px: 900).frame(height: 240).frame(maxWidth: .infinity).clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                     }.buttonStyle(.plain)
                 }
             }

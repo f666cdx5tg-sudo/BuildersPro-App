@@ -803,7 +803,7 @@ struct BeforeAfterView: View {
     private func side(_ t: String, _ p: PunchPhoto, _ c: Color) -> some View {
         VStack(spacing: 4) {
             Group {
-                if let d = p.data, let img = PhotoThumb.image(d) { img.resizable().scaledToFill() } else { Color.gray.opacity(0.3) }
+                if p.data != nil { ThumbImage(data: p.data, px: 700) } else { Color.gray.opacity(0.3) }
             }.frame(height: 200).frame(maxWidth: .infinity).clipped().clipShape(RoundedRectangle(cornerRadius: 12))
             Text(t).font(.caption.weight(.heavy)).tracking(1.5).foregroundStyle(c)
         }
