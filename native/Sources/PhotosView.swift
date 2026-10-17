@@ -145,6 +145,11 @@ struct MarkupView: View {
     @State private var strokes: [Stroke] = []
     @State private var color: Color = .red
     @State private var width: CGFloat = 0.008
+    @State private var zoom: CGFloat = 1
+    @State private var baseZoom: CGFloat = 1
+    @State private var pan: CGSize = .zero
+    @State private var panBase: CGSize = .zero
+    @State private var panning = false
     @State private var tool: MarkTool? = nil     // nothing selected until you pick a tool
     @State private var didMove = false
     @State private var moveActive = false
@@ -169,12 +174,14 @@ struct MarkupView: View {
                                         moveActive = true
                                         didMove = false
                                         movingIndex = MarkupView.hit(strokes, at: v.location, size: g.size)
+                                        panning = movingIndex == nil && tool == nil && zoom > 1
                                         lastPoint = pt
                                         if movingIndex == nil, let t = tool, t != .text {
                                             strokes.append(Stroke(tool: t, points: [pt], color: color, width: width))
                                         }
                                         return
                                     }
+                                    if panning { pan = CGSize(width: panBase.width + v.translation.width * zoom, height: panBase.height + v.translation.height * zoom); return }
                                     if v.translation != .zero { didMove = true }
                                     if let i = movingIndex, strokes.indices.contains(i) {
                                         let dx = pt.x - lastPoint.x, dy = pt.y - lastPoint.y
@@ -188,6 +195,7 @@ struct MarkupView: View {
                                     let hitSomething = movingIndex != nil
                                     let moved = didMove
                                     moveActive = false; movingIndex = nil
+                                    if panning { panBase = pan; panning = false; return }
                                     if tool == .text && !hitSomething && !moved {
                                         textSpot = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
                                                            y: min(max(v.location.y / g.size.height, 0), 1))
@@ -196,7 +204,16 @@ struct MarkupView: View {
                                 })
                         }
                     }
+                    .scaleEffect(zoom).offset(pan)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(MagnifyGesture().onChanged { v in
+                        zoom = min(6, max(1, baseZoom * v.magnification))
+                    }.onEnded { _ in
+                        baseZoom = zoom
+                        if zoom <= 1.01 { zoom = 1; baseZoom = 1; pan = .zero; panBase = .zero }
+                    })
                     .padding(.horizontal, 8)
             }
             if let caption { TextField("Caption", text: caption).textFieldStyle(.roundedBorder).padding(.horizontal) }
