@@ -84,6 +84,8 @@ struct RootShell: View {
             }
             .environment(\.openMenu, { withAnimation(.easeOut(duration: 0.25)) { menu = true } })
             .environmentObject(shell)
+            // keep the last rows of every screen scrollable clear of the floating buttons
+            .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: 84) }
             .overlay(alignment: .bottomTrailing) {
                 FloatBar(showBack: screen != .home)
                     .environment(\.openMenu, { withAnimation(.easeOut(duration: 0.25)) { menu = true } })
