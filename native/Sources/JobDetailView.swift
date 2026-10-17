@@ -64,6 +64,7 @@ struct JobDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("bpDark") private var dark = true
     @State private var section: JobTab?
+    @State private var spacesOpen = true
     @State private var showOpen = false
     @State private var addMenu = false
 
@@ -242,15 +243,17 @@ struct JobDetailView: View {
 
     private var spacesCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 14) {
-                Image(systemName: "door.left.hand.closed").font(.title2)
-                Text("Spaces").font(.title2.weight(.heavy))
-                Spacer()
-                Text("\((job.spaces ?? []).count)").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
-                Image(systemName: "chevron.down").foregroundStyle(.secondary)
-            }
-            .padding(20)
-            Divider()
+            Button { withAnimation(.easeInOut(duration: 0.2)) { spacesOpen.toggle() } } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "door.left.hand.closed").font(.title2)
+                    Text("Spaces").font(.title2.weight(.heavy))
+                    Spacer()
+                    Text("\((job.spaces ?? []).count)").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.down").foregroundStyle(.secondary).rotationEffect(.degrees(spacesOpen ? 0 : -90))
+                }
+                .padding(20).contentShape(Rectangle())
+            }.buttonStyle(.plain).foregroundStyle(Color.primary)
+            if spacesOpen { Divider()
             VStack(alignment: .leading, spacing: 12) {
                 Text("SPACES (\((job.spaces ?? []).count))").font(.title3.weight(.heavy)).tracking(1.5).foregroundStyle(.secondary)
                 ForEach(levels, id: \.self) { level in
@@ -261,7 +264,7 @@ struct JobDetailView: View {
                 }
                 if (job.spaces ?? []).isEmpty { Text("No spaces yet — tap + then Space.").foregroundStyle(.secondary) }
             }
-            .padding(16)
+            .padding(16) }
         }
         .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.border(dark)))
