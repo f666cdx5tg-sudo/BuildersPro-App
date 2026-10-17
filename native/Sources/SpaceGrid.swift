@@ -169,7 +169,7 @@ struct SpaceTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                Image(systemName: space.icon).font(.system(size: 30))
+                SpaceIcon(name: space.name, symbol: space.symbol, size: 30)
                 Spacer()
                 PhotoStack(photos: space.photos ?? []).padding(.trailing, 52)
             }
@@ -238,5 +238,85 @@ struct PhotoStack: View {
         let o: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 120]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, o as CFDictionary) else { return nil }
         return Image(decorative: cg, scale: 1)
+    }
+}
+
+// MARK: - Custom line drawings (same as the web app: steps, ramp, sidewalk, driveway)
+
+enum LocGlyph {
+    case stairs, ramp, walk, drive
+    static func match(_ name: String) -> LocGlyph? {
+        let n = name.lowercased()
+        func has(_ p: String) -> Bool { n.range(of: p, options: .regularExpression) != nil }
+        if has("\\bramps?\\b|handicap|wheelchair|\\bada\\b") { return .ramp }
+        if has("\\bstairs?\\b|\\bsteps?\\b|\\bstoops?\\b|stairway|staircase") { return .stairs }
+        if has("sidewalk|walkway|pathway|front walk") { return .walk }
+        if has("driveway|\\bapron\\b|curb cut") { return .drive }
+        return nil
+    }
+}
+
+struct LocGlyphView: View {
+    let glyph: LocGlyph
+    var size: CGFloat = 30
+    var body: some View {
+        Canvas { ctx, sz in
+            let vb: CGFloat = glyph == .ramp ? 24 : 32
+            let k = sz.width / vb
+            func P(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
+            func line(_ pts: [(CGFloat, CGFloat)], _ w: CGFloat) {
+                var p = Path(); p.move(to: P(pts[0].0, pts[0].1))
+                for q in pts.dropFirst() { p.addLine(to: P(q.0, q.1)) }
+                ctx.stroke(p, with: .foreground, style: StrokeStyle(lineWidth: w * k, lineCap: .round, lineJoin: .round))
+            }
+            func dot(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat, fill: Bool, w: CGFloat = 1.8) {
+                let rect = CGRect(x: (x - r) * k, y: (y - r) * k, width: 2 * r * k, height: 2 * r * k)
+                if fill { ctx.fill(Path(ellipseIn: rect), with: .foreground) }
+                else { ctx.stroke(Path(ellipseIn: rect), with: .foreground, style: StrokeStyle(lineWidth: w * k)) }
+            }
+            switch glyph {
+            case .stairs:
+                line([(2,30),(8,30),(8,25),(14,25),(14,20),(20,20),(20,15),(26,15),(26,10),(30,10)], 1.8)
+                line([(3,22.7),(28,1.9)], 1.8)
+                for (x, y0, y1) in [(5.0,30.0,21.0),(11,25,16),(17,20,11),(23,15,6)] { line([(CGFloat(x),CGFloat(y0)),(CGFloat(x),CGFloat(y1))], 1.8) }
+            case .ramp:
+                var tri = Path(); tri.move(to: P(1.5,23)); tri.addLine(to: P(22.5,23)); tri.addLine(to: P(22.5,17.8)); tri.closeSubpath()
+                ctx.fill(tri, with: .foreground)
+                dot(10.6, 2.9, 1.9, fill: true)
+                line([(10.2,6.3),(9.8,12.8),(14.9,12.8),(17.0,17.7)], 2.3)
+                line([(10.1,9.2),(14.3,9.2)], 2.3)
+                var arc: [(CGFloat, CGFloat)] = []
+                var a: CGFloat = 16
+                while a <= 248 { let r = a * .pi / 180; arc.append((8.88 + 4.4 * cos(r), 14.17 + 4.4 * sin(r))); a += 8 }
+                line(arc, 2.3)
+            case .walk:
+                dot(17, 3.6, 1.9, fill: true)
+                line([(11,22),(14.5,17)], 1.9)
+                line([(20.5,22),(18,17),(14.5,13.5),(15.7,7)], 1.9)
+                line([(10,14),(12.5,10.5),(17,9.3),(20.5,13),(24,14)], 1.9)
+                line([(1.5,25.5),(30.5,25.5),(30.5,30),(1.5,30),(1.5,25.5)], 1.9)
+                for x in [9.0, 16, 23] { line([(CGFloat(x),25.5),(CGFloat(x),30)], 1.9) }
+            case .drive:
+                line([(1,29.5),(31,29.5)], 1.8)
+                line([(18.5,29.5),(18.5,15.5),(24.5,10),(30.5,15.5),(30.5,29.5)], 1.8)
+                line([(21,29.5),(21,20.5),(28,20.5),(28,29.5)], 1.8)
+                line([(21,23.5),(28,23.5)], 1.8); line([(21,26.5),(28,26.5)], 1.8)
+                line([(3.5,26),(2,26),(2,21.8),(4.8,17),(11.7,17),(15,21.8),(16.3,21.8),(16.3,26),(14.9,26)], 1.8)
+                line([(7.4,26),(11.2,26)], 1.8); line([(4.3,21.8),(14.7,21.8)], 1.8)
+                dot(5.5, 26.4, 1.9, fill: false); dot(13.1, 26.4, 1.9, fill: false)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// One icon for a space everywhere: the web app's drawings when the name calls for it, else an SF Symbol.
+struct SpaceIcon: View {
+    let name: String
+    var symbol: String = ""
+    var size: CGFloat = 30
+    var body: some View {
+        if let g = LocGlyph.match(name) { LocGlyphView(glyph: g, size: size) }
+        else { Image(systemName: RoomIcon.first(RoomIcon.candidates(for: name, stored: symbol))).font(.system(size: size)) }
     }
 }

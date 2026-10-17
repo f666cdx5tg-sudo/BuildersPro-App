@@ -264,7 +264,7 @@ struct JobDetailView: View {
         let pct = total == 0 ? 0 : Int((Double(s.doneCount) / Double(total) * 100).rounded())
         let contractors = 0
         return HStack(spacing: 14) {
-            Image(systemName: s.icon).font(.system(size: 28)).frame(width: 46)
+            SpaceIcon(name: s.name, symbol: s.symbol, size: 28).frame(width: 46)
             VStack(alignment: .leading, spacing: 6) {
                 Text(s.name).font(.title3.weight(.heavy)).lineLimit(1)
                 Text("\(s.doneCount)/\(total) checklist items · \(pct)%" + (contractors > 0 ? " · \(contractors) contractors" : ""))
