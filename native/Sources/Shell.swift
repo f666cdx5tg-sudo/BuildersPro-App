@@ -1,6 +1,9 @@
 import SwiftUI
 import PhotosUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Look (same colors as the web field app)
 
