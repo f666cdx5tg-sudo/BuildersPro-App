@@ -205,7 +205,7 @@ struct JobDetailView: View {
 
     private func iconButton(_ symbol: String, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            Image(systemName: symbol).font(.system(size: 30)).foregroundStyle(Color.primary)
+            Image(systemName: symbol).font(.system(size: 40)).foregroundStyle(Color.primary)
                 .frame(maxWidth: .infinity, minHeight: 80)
                 .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 20))
                 .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.border(dark)))
@@ -264,7 +264,7 @@ struct JobDetailView: View {
         let pct = total == 0 ? 0 : Int((Double(s.doneCount) / Double(total) * 100).rounded())
         let contractors = 0
         return HStack(spacing: 14) {
-            SpaceIcon(name: s.name, symbol: s.symbol, size: 28).frame(width: 46)
+            SpaceIcon(name: s.name, symbol: s.symbol, size: 42).frame(width: 60)
             VStack(alignment: .leading, spacing: 6) {
                 Text(s.name).font(.title3.weight(.heavy)).lineLimit(1)
                 Text("\(s.doneCount)/\(total) checklist items · \(pct)%" + (contractors > 0 ? " · \(contractors) contractors" : ""))
