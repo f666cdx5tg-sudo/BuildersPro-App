@@ -706,7 +706,7 @@ struct AllPhotosView: View {
                     ForEach(shownJobs) { j in
                         if shownJobs.count > 1 { Text(j.name).font(.title2.weight(.heavy)).padding(.top, 10) }
                         let n = (j.photos ?? []).filter { $0.space == nil }.count
-                        NavigationLink { PhotosView(job: j, space: nil) } label: {
+                        if n > 0 { NavigationLink { PhotosView(job: j, space: nil) } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 Image(systemName: "questionmark.circle").font(.system(size: 34))
                                 Text("Unfiled").font(.title2.weight(.heavy))
@@ -718,7 +718,7 @@ struct AllPhotosView: View {
                             .foregroundStyle(.primary).padding(16).frame(width: 190, alignment: .leading)
                             .background(Theme.red.opacity(0.06), in: RoundedRectangle(cornerRadius: 22))
                             .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.red.opacity(0.6), lineWidth: 1.5))
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(.plain) }
                         SpaceGrid(job: j, mode: .photos, scroll: false, showExtras: false)
                     }
                     Color.clear.frame(height: 110)

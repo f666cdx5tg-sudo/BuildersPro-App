@@ -80,7 +80,7 @@ struct SpaceGrid: View {
     private var content: some View {
             LazyVStack(alignment: .leading, spacing: 10, pinnedViews: []) {
                 if showExtras && mode == .punch { generalTile }
-                if showExtras && mode == .photos { unfiledTile }
+                if showExtras && mode == .photos && (job.photos ?? []).contains(where: { $0.space == nil }) { unfiledTile }
                 ForEach(levels, id: \.self) { level in
                     header(level)
                     LazyVGrid(columns: cols, spacing: 10) {
