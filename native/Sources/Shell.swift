@@ -121,6 +121,14 @@ struct RootShell: View {
     #endif
 
     private var drawer: some View {
+        ScrollView(showsIndicators: false) { drawerRows }
+            .frame(width: 300)
+            .frame(maxHeight: .infinity)
+            .background(Theme.card(dark).ignoresSafeArea())
+            .overlay(alignment: .trailing) { Rectangle().fill(Theme.border(dark)).frame(width: 1).ignoresSafeArea() }
+    }
+
+    private var drawerRows: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("BuildersPro").font(.title2.weight(.black))
@@ -144,13 +152,9 @@ struct RootShell: View {
             row(.calendar)
             Button { syncNote = true } label: { tool(icon: "arrow.triangle.2.circlepath", aa: false, title: "Sync", sub: "iCloud · automatic") }.buttonStyle(.plain)
             Button { feedbackNote = true } label: { tool(icon: "bubble.left", aa: false, title: "Send feedback", sub: "") }.buttonStyle(.plain)
-            Spacer()
         }
         .padding(12)
-        .frame(width: 300)
-        .frame(maxHeight: .infinity)
-        .background(Theme.card(dark).ignoresSafeArea())
-        .overlay(alignment: .trailing) { Rectangle().fill(Theme.border(dark)).frame(width: 1).ignoresSafeArea() }
+        .frame(width: 300, alignment: .leading)
     }
 
     private func row(_ s: AppScreen) -> some View {
