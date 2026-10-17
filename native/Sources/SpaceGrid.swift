@@ -301,15 +301,16 @@ struct LocGlyphView: View {
                 line([(1.5,25.5),(30.5,25.5),(30.5,30),(1.5,30),(1.5,25.5)], 1.9)
                 for x in [9.0, 16, 23] { line([(CGFloat(x),25.5),(CGFloat(x),30)], 1.9) }
             case .water:
-                line([(2,15),(6.5,15)], 1.8); line([(17.5,15),(22,15)], 1.8)
-                dot(12, 15, 5.5, fill: false)
-                var d = Path(); d.move(to: P(12,12.2))
-                d.addCurve(to: P(9.8,16), control1: P(10.5,14.1), control2: P(9.8,15.1))
+                line([(2,12),(8,12)], 1.8); line([(16,12),(22,12)], 1.8)
+                let box = Path(roundedRect: CGRect(x: 8 * k, y: 9 * k, width: 8 * k, height: 6 * k), cornerRadius: 1.5 * k)
+                ctx.stroke(box, with: .foreground, style: StrokeStyle(lineWidth: 1.8 * k, lineJoin: .round))
+                line([(12,9),(12,5)], 1.8); line([(9,5),(15,5)], 1.8)
+                var d = Path(); d.move(to: P(12,18))
+                d.addCurve(to: P(10.2,21), control1: P(10.8,19.6), control2: P(10.2,20.3))
                 var a: CGFloat = 180
-                while a >= 0 { let r = a * .pi / 180; d.addLine(to: P(12 + 2.2 * cos(r), 16 + 2.2 * sin(r))); a -= 10 }
-                d.addCurve(to: P(12,12.2), control1: P(14.2,15.1), control2: P(13.5,14.1))
+                while a >= 0 { let r = a * .pi / 180; d.addLine(to: P(12 + 1.8 * cos(r), 21 + 1.8 * sin(r))); a -= 10 }
+                d.addCurve(to: P(12,18), control1: P(13.8,20.3), control2: P(13.2,19.6))
                 ctx.stroke(d, with: .foreground, style: StrokeStyle(lineWidth: 1.8 * k, lineCap: .round, lineJoin: .round))
-                line([(12,9.5),(12,5.5)], 1.8); line([(9,5.5),(15,5.5)], 1.8)
             case .drive:
                 line([(1,29.5),(31,29.5)], 1.8)
                 line([(18.5,29.5),(18.5,15.5),(24.5,10),(30.5,15.5),(30.5,29.5)], 1.8)
