@@ -1558,27 +1558,56 @@ struct CommandCenterView: View {
     @AppStorage("bpTextSize") private var textSize = 0
     @EnvironmentObject private var shell: ShellState
     @State private var sel: CCScreen? = .dashboard
-    @State private var column: NavigationSplitViewVisibility = .all
     private let sizeNames = ["Normal", "Large", "Extra large"]
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $column) {
-            List(selection: $sel) {
-                ForEach(CCScreen.allCases) { s in
-                    Label(s.rawValue, systemImage: s.symbol).font(.title3.weight(.semibold)).padding(.vertical, 6).tag(s)
-                }
-            }
-            .navigationTitle("BuildersPro")
-            .safeAreaInset(edge: .bottom) { sidebarTools }
-            #if os(macOS)
-            .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 300)
-            #endif
-        } detail: {
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 270)
+                .background(Theme.card(dark).ignoresSafeArea())
+            Rectangle().fill(Theme.border(dark)).frame(width: 1).ignoresSafeArea()
             detail
                 .environmentObject(shell)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(alignment: .bottomTrailing) { FloatBar(showBack: false).environmentObject(shell) }
         }
         .onAppear { shell.goHome = { sel = .dashboard } }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().stroke(Color.primary, lineWidth: 2.5).frame(width: 44, height: 44)
+                    Text("B").font(.system(size: 24, weight: .bold, design: .serif))
+                    Capsule().fill(Color.red).frame(width: 16, height: 2.5).offset(y: 10)
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("BuildersPro").font(.title3.weight(.black))
+                    Text("COMMAND CENTER").font(.caption2.weight(.heavy)).tracking(1.2).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 10).padding(.top, 18).padding(.bottom, 14)
+            ForEach(CCScreen.allCases) { s in navRow(s) }
+            Spacer(minLength: 12)
+            Divider()
+            sidebarTools
+        }
+        .padding(.horizontal, 12)
+    }
+
+    private func navRow(_ s: CCScreen) -> some View {
+        let on = (sel ?? .dashboard) == s
+        return Button { sel = s } label: {
+            HStack(spacing: 16) {
+                Image(systemName: s.symbol).font(.title3).frame(width: 30)
+                Text(s.rawValue).font(.title3.weight(.heavy))
+                Spacer()
+            }
+            .padding(.horizontal, 14).frame(minHeight: 54).contentShape(Rectangle())
+            .foregroundStyle(on ? Theme.blue : Color.primary)
+            .background(on ? Theme.blue.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 14))
+        }.buttonStyle(.plain)
     }
 
     @ViewBuilder private var detail: some View {
@@ -1606,7 +1635,7 @@ struct CommandCenterView: View {
             }.buttonStyle(.plain)
             HStack { Image(systemName: "arrow.triangle.2.circlepath").frame(width: 30); Text("iCloud sync · automatic").font(.footnote.weight(.semibold)).foregroundStyle(.secondary); Spacer() }
         }
-        .padding(.horizontal, 16).padding(.bottom, 10).background(.bar)
+        .padding(.horizontal, 4).padding(.bottom, 14)
     }
 }
 
