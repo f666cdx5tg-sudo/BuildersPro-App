@@ -1765,9 +1765,9 @@ struct CommandCenterView: View {
         case .eod: jobScoped("EOD Reports") { ReportsView(job: $0) }
         case .time: CCTimeClockView()
         case .estimates: CCEstimatesView()
-        case .contacts: soon("Contacts", "Contacts is next.")
-        case .archive: soon("Archived Jobs", "Archiving is next.")
-        case .sync: soon("Sync Settings", "Your jobs sync through iCloud automatically on every device signed in to your Apple ID.")
+        case .contacts: CCContactsView()
+        case .archive: CCArchiveView()
+        case .sync: CCSyncView()
         }
     }
 
@@ -2143,6 +2143,188 @@ struct CCEstimatesView: View {
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
+        }
+    }
+}
+
+
+// MARK: - Command Center · shared page pieces
+
+private struct CCPage<Content: View>: View {
+    let title: String, sub: String, tint: Color?
+    @ViewBuilder let content: Content
+    @AppStorage("bpDark") private var dark = true
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title).font(.system(size: 36, weight: .semibold)).foregroundStyle(tint ?? Color.primary)
+                        if !sub.isEmpty { Text(sub).font(.system(size: 15)).foregroundStyle(Theme.muted(dark)) }
+                    }
+                    content
+                    Color.clear.frame(height: 90)
+                }
+                .padding(24).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+        }
+    }
+}
+
+// MARK: - Command Center · Contacts (owners · clients · contractors · suppliers, built from your jobs)
+
+struct CCContactsView: View {
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @Query(sort: \Vendor.name) private var vendors: [Vendor]
+    @AppStorage("bpDark") private var dark = true
+    @State private var filter = "All Types"
+
+    struct Contact: Identifiable {
+        let id = UUID()
+        let name: String, type: String, detail: String, phone: String, email: String, job: String
+    }
+
+    private var contacts: [Contact] {
+        var out: [Contact] = []
+        var seen = Set<String>()
+        for j in jobs {
+            let c = j.client.trimmingCharacters(in: .whitespaces)
+            if !c.isEmpty, seen.insert("c|" + c.lowercased()).inserted {
+                out.append(Contact(name: c, type: "Client", detail: j.address, phone: j.clientPhone, email: j.clientEmail, job: j.name))
+            }
+            for k in j.contractors ?? [] where !k.name.isEmpty {
+                out.append(Contact(name: k.name, type: "Contractor", detail: k.trade, phone: k.phone, email: "", job: j.name))
+            }
+        }
+        for v in vendors where !v.name.isEmpty { out.append(Contact(name: v.name, type: "Supplier", detail: "", phone: "", email: "", job: "")) }
+        return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    private var shown: [Contact] { filter == "All Types" ? contacts : contacts.filter { $0.type == filter.dropLast() } }
+    private func tint(_ t: String) -> Color { t == "Client" ? Theme.sky : t == "Contractor" ? Theme.gold : Theme.purple }
+
+    var body: some View {
+        CCPage(title: "Contacts", sub: "Owners · Clients · Contractors", tint: Theme.sky) {
+            HStack {
+                Menu {
+                    ForEach(["All Types", "Clients", "Contractors", "Suppliers"], id: \.self) { t in Button(t) { filter = t } }
+                } label: {
+                    HStack { Text(filter); Image(systemName: "chevron.up.chevron.down").font(.caption) }
+                        .font(.system(size: 14, weight: .semibold)).padding(.horizontal, 14).frame(height: 40)
+                        .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
+                }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
+                Spacer()
+                Text("\(shown.count) contact\(shown.count == 1 ? "" : "s")").font(.system(size: 14)).foregroundStyle(Theme.muted(dark))
+            }
+            if shown.isEmpty {
+                Text("No contacts yet").foregroundStyle(Theme.muted(dark)).frame(maxWidth: .infinity).padding(.vertical, 40)
+                    .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14, alignment: .top)], alignment: .leading, spacing: 14) {
+                    ForEach(shown) { c in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text(c.name).font(.system(size: 16, weight: .bold)).lineLimit(1)
+                                Spacer()
+                                Text(c.type).font(.system(size: 12, weight: .bold)).foregroundStyle(tint(c.type))
+                                    .padding(.horizontal, 10).padding(.vertical, 3).background(tint(c.type).opacity(0.15), in: Capsule())
+                            }
+                            if !c.detail.isEmpty { Text(c.detail).font(.system(size: 13)).foregroundStyle(Theme.muted(dark)) }
+                            if !c.phone.isEmpty { Label(c.phone, systemImage: "phone").font(.system(size: 13)) }
+                            if !c.email.isEmpty { Label(c.email, systemImage: "envelope").font(.system(size: 13)) }
+                            if !c.job.isEmpty { Text(c.job).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted(dark)) }
+                        }
+                        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Command Center · Archived Jobs
+
+struct CCArchiveView: View {
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @AppStorage("bpDark") private var dark = true
+    private var archived: [Job] { jobs.filter { $0.status == "Archived" } }
+    private var finished: [Job] { jobs.filter { $0.status == "Complete" } }
+
+    var body: some View {
+        CCPage(title: "Archived Jobs", sub: "Completed jobs moved out of the active lists", tint: nil) {
+            section("Ready to archive", finished, "Archive") { $0.status = "Archived"; $0.isActive = false }
+            section("Archived", archived, "Restore") { $0.status = "Complete" }
+        }
+    }
+
+    @ViewBuilder private func section(_ title: String, _ list: [Job], _ action: String, _ run: @escaping (Job) -> Void) -> some View {
+        Text(title.uppercased()).font(.system(size: 13, weight: .heavy)).tracking(1.2).foregroundStyle(Theme.muted(dark))
+        if list.isEmpty {
+            Text(title == "Archived" ? "Nothing archived yet" : "No completed jobs").foregroundStyle(Theme.muted(dark)).frame(maxWidth: .infinity).padding(.vertical, 28)
+                .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+        } else {
+            ForEach(list) { j in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(j.name).font(.system(size: 15, weight: .bold))
+                        Text([j.client, j.address].filter { !$0.isEmpty }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(Theme.muted(dark))
+                    }
+                    Spacer()
+                    Button { run(j) } label: {
+                        Text(action).font(.system(size: 13, weight: .bold)).padding(.horizontal, 16).frame(height: 36)
+                            .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
+                    }.buttonStyle(.plain)
+                }
+                .padding(16).background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+            }
+        }
+    }
+}
+
+// MARK: - Command Center · Sync Settings (iCloud)
+
+struct CCSyncView: View {
+    @Query private var jobs: [Job]
+    @Query private var photos: [SitePhoto]
+    @Query private var items: [PunchItem]
+    @AppStorage("bpDark") private var dark = true
+    private var signedIn: Bool { FileManager.default.ubiquityIdentityToken != nil }
+
+    var body: some View {
+        CCPage(title: "Sync Settings", sub: "Your data syncs through iCloud — no setup, no tokens", tint: nil) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: signedIn ? "checkmark.icloud.fill" : "exclamationmark.icloud.fill").font(.title).foregroundStyle(signedIn ? Color.green : Theme.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(signedIn ? "iCloud is on" : "Not signed in to iCloud").font(.system(size: 17, weight: .bold))
+                        Text(signedIn ? "Jobs, photos and checklists sync to every device signed in to your Apple ID."
+                                      : "Sign in to iCloud in System Settings to sync with your iPhone and iPad.")
+                            .font(.system(size: 13)).foregroundStyle(Theme.muted(dark))
+                    }
+                }
+                Divider()
+                HStack(spacing: 28) {
+                    stat("\(jobs.count)", "Jobs"); stat("\(items.count)", "Checklist items"); stat("\(photos.count)", "Photos")
+                    Spacer()
+                }
+            }
+            .padding(18).frame(maxWidth: 560, alignment: .leading)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+        }
+    }
+
+    private func stat(_ v: String, _ l: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(v).font(.system(size: 26, weight: .semibold)).foregroundStyle(Theme.blue)
+            Text(l.uppercased()).font(.system(size: 11, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted(dark))
         }
     }
 }
