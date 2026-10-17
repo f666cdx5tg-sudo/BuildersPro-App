@@ -188,7 +188,10 @@ struct PunchListView: View {
                 ZStack(alignment: .topTrailing) {
                     RoundedRectangle(cornerRadius: 14).stroke(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                         .frame(width: 56, height: 56)
-                        .overlay(Image(systemName: "camera").font(.title3).foregroundStyle(.secondary))
+                        .overlay {
+                            if n > 0 { PhotoStack(datas: (it.photos ?? []).sorted { $0.created > $1.created }.map { $0.data }, thumb: 36) }
+                            else { Image(systemName: "camera").font(.title3).foregroundStyle(.secondary) }
+                        }
                     if n > 0 { Text("\(n)").font(.caption2.weight(.bold)).foregroundStyle(.white).padding(4).background(Theme.blue, in: Circle()).offset(x: 6, y: -6) }
                 }
             }.buttonStyle(.plain)

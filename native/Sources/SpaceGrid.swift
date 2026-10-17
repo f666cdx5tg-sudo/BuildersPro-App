@@ -216,21 +216,24 @@ struct SpaceTile: View {
 
 /// Little fanned stack of the newest photos for a space tile.
 struct PhotoStack: View {
-    let photos: [SitePhoto]
+    let datas: [Data?]
+    var thumb: CGFloat = 40
+    init(photos: [SitePhoto], thumb: CGFloat = 40) { datas = photos.sorted { $0.created > $1.created }.map { $0.data }; self.thumb = thumb }
+    init(datas: [Data?], thumb: CGFloat = 40) { self.datas = datas; self.thumb = thumb }
     var body: some View {
-        let top = Array(photos.sorted { $0.created > $1.created }.prefix(3))
+        let top = Array(datas.prefix(3))
         ZStack {
             ForEach(Array(top.enumerated().reversed()), id: \.offset) { i, p in
                 Group {
-                    if let d = p.data, let img = Self.thumb(d) { img.resizable().scaledToFill() }
+                    if let d = p, let img = Self.thumb(d) { img.resizable().scaledToFill() }
                     else { Color.gray.opacity(0.4).overlay(Image(systemName: "photo").foregroundStyle(.secondary)) }
                 }
-                .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 6))
+                .frame(width: thumb, height: thumb).clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white.opacity(0.85), lineWidth: 1.5))
                 .rotationEffect(.degrees(Double(i) * 8 - 6)).offset(x: CGFloat(i) * 5, y: CGFloat(i) * -2)
             }
         }
-        .frame(width: 52, height: 44)
+        .frame(width: thumb + 12, height: thumb + 4)
         .opacity(top.isEmpty ? 0 : 1)
     }
     static func thumb(_ d: Data) -> Image? {
