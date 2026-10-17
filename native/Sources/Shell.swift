@@ -1251,9 +1251,9 @@ struct AllCalendarView: View {
 
     private var legend: some View {
         let items = ["Appointment", "Due Date", "Delivery", "Job Start", "Job Due", "Contractor", "Permit", "Invoice"]
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: Theme.desk ? 110 : 140), alignment: .leading)], alignment: .leading, spacing: 8) {
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: Theme.desk ? 150 : 140), alignment: .leading)], alignment: .leading, spacing: 8) {
             ForEach(items, id: \.self) { k in
-                HStack(spacing: 8) { Circle().fill(Self.color(for: k)).frame(width: Theme.desk ? 13 : 14, height: Theme.desk ? 13 : 14); Text(k).font(Theme.desk ? .system(size: 15, weight: .heavy) : .callout.weight(.semibold)).foregroundStyle(Theme.desk ? Theme.muted(dark) : .secondary) }
+                HStack(spacing: 8) { Circle().fill(Self.color(for: k)).frame(width: Theme.desk ? 13 : 14, height: Theme.desk ? 13 : 14); Text(k).lineLimit(1).fixedSize().font(Theme.desk ? .system(size: 15, weight: .heavy) : .callout.weight(.semibold)).foregroundStyle(Theme.desk ? Theme.muted(dark) : .secondary) }
             }
         }
     }
