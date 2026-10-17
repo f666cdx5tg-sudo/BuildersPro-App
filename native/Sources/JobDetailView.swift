@@ -62,6 +62,7 @@ struct JobDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("bpDark") private var dark = true
     @State private var section: JobTab?
+    @State private var showOpen = false
     @State private var addMenu = false
 
     private func usd(_ v: Double) -> String { v.formatted(.currency(code: "USD").precision(.fractionLength(0))) }
@@ -87,6 +88,7 @@ struct JobDetailView: View {
         .toolbar(.hidden, for: .navigationBar)
         #endif
         .navigationDestination(item: $section) { t in sectionPage(t) }
+        .navigationDestination(isPresented: $showOpen) { OpenItemsView(job: job) }
         .onAppear { if tab != .spaces { section = tab; tab = .spaces } }
         .onChange(of: tab) { _, new in if new != .spaces { section = new; tab = .spaces } }
         .shellAdd { addMenu = true }
@@ -185,14 +187,18 @@ struct JobDetailView: View {
     }
 
     private var progress: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Progress").font(.title3).foregroundStyle(.secondary)
-                Spacer()
-                Text("\(job.percent)%").font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
+        Button { showOpen = true } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Progress").font(.title3).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(job.percent)%").font(.title3.weight(.bold)).foregroundStyle(Theme.blue)
+                    Image(systemName: "chevron.right").font(.footnote.weight(.bold)).foregroundStyle(.secondary)
+                }
+                ProgressView(value: Double(job.percent), total: 100).tint(Theme.blue).scaleEffect(x: 1, y: 2.2, anchor: .center)
             }
-            ProgressView(value: Double(job.percent), total: 100).tint(Theme.blue).scaleEffect(x: 1, y: 2.2, anchor: .center)
-        }
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
     }
 
     private var iconRow: some View {

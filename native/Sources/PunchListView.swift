@@ -305,3 +305,43 @@ struct PunchDetail: View {
             .padding(.horizontal, 10).padding(.vertical, 4).background(c.opacity(0.15), in: Capsule())
     }
 }
+
+
+/// Every open checklist item on the job, grouped by space — opened from the Progress bar.
+struct OpenItemsView: View {
+    let job: Job
+    @AppStorage("bpDark") private var dark = true
+    private var open: [PunchItem] { (job.punchItems ?? []).filter { !$0.done } }
+    private var groups: [(String, [PunchItem])] {
+        let d = Dictionary(grouping: open) { $0.space?.name ?? "General" }
+        return d.keys.sorted().map { ($0, (d[$0] ?? []).sorted { $0.created < $1.created }) }
+    }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("\(open.count) open item\(open.count == 1 ? "" : "s")").font(.title2.weight(.heavy))
+                if open.isEmpty {
+                    Text("Nothing open. Every checklist item is done.").foregroundStyle(.secondary).padding(.top, 20)
+                }
+                ForEach(groups, id: \.0) { name, items in
+                    Text(name.uppercased()).font(.subheadline.weight(.heavy)).foregroundStyle(.secondary).padding(.top, 8)
+                    ForEach(items) { it in
+                        HStack(spacing: 14) {
+                            Button { it.done = true; it.completed = Date() } label: {
+                                RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.7), lineWidth: 3).frame(width: 34, height: 34)
+                            }.buttonStyle(.plain)
+                            NavigationLink { PunchDetail(item: it) } label: {
+                                Text(it.text.isEmpty ? "Punch item" : it.text).font(.title3.weight(.semibold)).foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
+                            }.buttonStyle(.plain)
+                        }
+                        .padding(14)
+                        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.border(dark), lineWidth: 1))
+                    }
+                }
+            }.padding(16).padding(.bottom, 90)
+        }
+        .navigationTitle("Open items")
+    }
+}
