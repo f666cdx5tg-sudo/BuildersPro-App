@@ -214,25 +214,50 @@ struct PunchDetail: View {
         (item.photos ?? []).filter { $0.kind == kind }.sorted { $0.created < $1.created }
     }
 
+    @State private var valueAlert = false
+    @State private var valueText = ""
+
     var body: some View {
         Form {
-            Section("Item") {
-                TextField("What needs doing", text: $item.text, axis: .vertical)
-                Picker("Priority", selection: $item.priority) {
-                    Text("None").tag("")
-                    ForEach(["Normal", "High", "Critical"], id: \.self) { Text($0).tag($0) }
-                }
-                HStack { Text("Value"); Spacer(); TextField("0", value: $item.value, format: .number).multilineTextAlignment(.trailing).frame(width: 110) }
-                Toggle("Done", isOn: $item.done)
-                    .onChange(of: item.done) { _, now in item.completed = now ? Date() : nil }
-            }
-            Section("Notes") { TextEditor(text: $item.extraNotes).frame(minHeight: 70) }
+            // 1. Photos first
             gallery("Before", $pickBefore)
             gallery("After", $pickAfter)
             if !photos("Completion").isEmpty { gallery("Completion", nil) }
+            // 2. Name under the photos
+            Section {
+                TextField("What needs doing", text: $item.text, axis: .vertical).font(.title3.weight(.semibold))
+                HStack(spacing: 8) {
+                    if !item.priority.isEmpty { tag(item.priority, Theme.orange) }
+                    if item.value > 0 { tag("$" + item.value.formatted(.number.precision(.fractionLength(0...2))), Theme.blue) }
+                    if item.done { tag("Done", Theme.green) }
+                }
+            }
+            Section("Notes") { TextEditor(text: $item.extraNotes).frame(minHeight: 70) }
         }
         .formStyle(.grouped)
         .navigationTitle(item.text.isEmpty ? "Punch item" : item.text)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Picker("Priority", selection: $item.priority) {
+                        Text("None").tag("")
+                        ForEach(["Normal", "High", "Critical"], id: \.self) { Text($0).tag($0) }
+                    }
+                    Button { valueText = item.value == 0 ? "" : String(item.value); valueAlert = true } label: { Label("Value…", systemImage: "dollarsign.circle") }
+                    Toggle("Done", isOn: $item.done)
+                } label: { Image(systemName: "line.3.horizontal") }
+            }
+        }
+        .onChange(of: item.done) { _, now in item.completed = now ? Date() : nil }
+        .alert("Value", isPresented: $valueAlert) {
+            #if os(iOS)
+            TextField("0", text: $valueText).keyboardType(.decimalPad)
+            #else
+            TextField("0", text: $valueText)
+            #endif
+            Button("Save") { item.value = Double(valueText.replacingOccurrences(of: ",", with: "")) ?? 0 }
+            Button("Cancel", role: .cancel) {}
+        }
         #if os(iOS)
         .fullScreenCover(isPresented: Binding(get: { cameraKind != nil }, set: { if !$0 { cameraKind = nil } })) {
             CameraPicker { d in
@@ -246,7 +271,7 @@ struct PunchDetail: View {
     @ViewBuilder private func gallery(_ kind: String, _ picks: Binding<[PhotosPickerItem]>?) -> some View {
         Section("\(kind) photos · \(photos(kind).count)") {
             ForEach(photos(kind)) { p in
-                if let d = p.data, let img = PhotoThumb.image(d) {
+                if let d = p.data, let img = PhotoThumb.small(d, 1000) {
                     NavigationLink { MarkupView(data: d) { p.data = $0 } } label: {
                         img.resizable().scaledToFit().frame(maxHeight: 340)
                     }.buttonStyle(.plain)
@@ -273,5 +298,10 @@ struct PunchDetail: View {
                     }
             }
         }
+    }
+
+    private func tag(_ t: String, _ c: Color) -> some View {
+        Text(t).font(.subheadline.weight(.bold)).foregroundStyle(c)
+            .padding(.horizontal, 10).padding(.vertical, 4).background(c.opacity(0.15), in: Capsule())
     }
 }

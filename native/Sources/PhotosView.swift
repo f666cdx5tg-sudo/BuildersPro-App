@@ -93,7 +93,7 @@ struct PhotoThumb: View {
     let photo: SitePhoto
     var body: some View {
         Group {
-            if let d = photo.data, let img = Self.image(d) {
+            if let d = photo.data, let img = Self.small(d, 500) {
                 img.resizable().scaledToFill()
             } else { Color.gray.opacity(0.3) }
         }
@@ -398,5 +398,15 @@ extension PhotoThumb {
         guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return d }
         CGImageDestinationAddImage(dest, cg, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
         return CGImageDestinationFinalize(dest) ? out as Data : d
+    }
+}
+
+extension PhotoThumb {
+    /// Downsampled decode — keeps memory low when many photos are on screen (full-size decode was getting the app killed).
+    static func small(_ d: Data, _ maxPixels: CGFloat) -> Image? {
+        guard let src = CGImageSourceCreateWithData(d as CFData, nil) else { return nil }
+        let o: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: maxPixels]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, o as CFDictionary) else { return nil }
+        return Image(decorative: cg, scale: 1)
     }
 }
