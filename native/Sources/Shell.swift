@@ -249,9 +249,10 @@ struct HomeView: View {
                     }
                     Text(version).font(.caption.weight(.bold)).foregroundStyle(.secondary)
                 }
+                Spacer(minLength: 8)
                 Text(greeting)
                     .font(.system(size: 40, weight: .regular))
-                    .minimumScaleFactor(0.5).lineLimit(1)
+                    .minimumScaleFactor(0.5).lineLimit(1).multilineTextAlignment(.trailing)
                     .foregroundStyle(LinearGradient(colors: [Theme.blue, Theme.orange], startPoint: .leading, endPoint: .trailing))
             }
             HStack(alignment: .center, spacing: 10) {
