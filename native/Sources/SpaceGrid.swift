@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 import SwiftData
 #if canImport(UIKit)
 import UIKit
@@ -170,6 +171,7 @@ struct SpaceTile: View {
             HStack(alignment: .top) {
                 Image(systemName: space.icon).font(.system(size: 30))
                 Spacer()
+                PhotoStack(photos: space.photos ?? []).padding(.trailing, 52)
             }
             Text(space.name).font(.headline.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.8)
             switch mode {
@@ -209,5 +211,32 @@ struct SpaceTile: View {
             Text("\(n)").font(.system(size: 30, weight: .black)).foregroundStyle(n == 0 ? Color.secondary : color)
             Text(label).font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
         }.lineLimit(1).minimumScaleFactor(0.7)
+    }
+}
+
+/// Little fanned stack of the newest photos for a space tile.
+struct PhotoStack: View {
+    let photos: [SitePhoto]
+    var body: some View {
+        let top = Array(photos.sorted { $0.created > $1.created }.prefix(3))
+        ZStack {
+            ForEach(Array(top.enumerated().reversed()), id: \.offset) { i, p in
+                Group {
+                    if let d = p.data, let img = Self.thumb(d) { img.resizable().scaledToFill() }
+                    else { Color.gray.opacity(0.4).overlay(Image(systemName: "photo").foregroundStyle(.secondary)) }
+                }
+                .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white.opacity(0.85), lineWidth: 1.5))
+                .rotationEffect(.degrees(Double(i) * 8 - 6)).offset(x: CGFloat(i) * 5, y: CGFloat(i) * -2)
+            }
+        }
+        .frame(width: 52, height: 44)
+        .opacity(top.isEmpty ? 0 : 1)
+    }
+    static func thumb(_ d: Data) -> Image? {
+        guard let src = CGImageSourceCreateWithData(d as CFData, nil) else { return nil }
+        let o: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 120]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, o as CFDictionary) else { return nil }
+        return Image(decorative: cg, scale: 1)
     }
 }
