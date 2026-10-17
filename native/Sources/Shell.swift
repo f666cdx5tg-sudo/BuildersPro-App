@@ -1750,7 +1750,7 @@ struct CommandCenterView: View {
         case .spaces: AllSpacesView(startJob: active)
         case .documents: jobScoped("Documents") { DocsView(job: $0) }
         case .eod: jobScoped("EOD Reports") { ReportsView(job: $0) }
-        case .time: soon("Time Clock", "Time clock entries are in Finance → Time clock for now.")
+        case .time: CCTimeClockView()
         case .estimates: soon("Estimates", "The estimates screen is next.")
         case .contacts: soon("Contacts", "Contacts is next.")
         case .archive: soon("Archived Jobs", "Archiving is next.")
@@ -1931,5 +1931,155 @@ struct CCDashboard: View {
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+    }
+}
+
+
+// MARK: - Command Center · Time Clock
+
+struct CCTimeClockView: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @Query(sort: \TimeEntry.clockIn, order: .reverse) private var entries: [TimeEntry]
+    @AppStorage("bpDark") private var dark = true
+    @AppStorage("bpActiveJob") private var activeKey = ""
+    @AppStorage("bpWorker") private var worker = ""
+    @AppStorage("bpRate") private var rate = ""
+    @State private var pickKey = ""
+
+    private func key(_ j: Job) -> String { String(j.created.timeIntervalSince1970) }
+    private var pickJob: Job? {
+        let k = pickKey.isEmpty ? activeKey : pickKey
+        return jobs.first { key($0) == k }
+    }
+    private var openEntries: [TimeEntry] { entries.filter { $0.isOpen } }
+    private var todayHrs: Double { entries.filter { Calendar.current.isDateInToday($0.clockIn) }.reduce(0) { $0 + $1.hours } }
+    private var weekHrs: Double { entries.filter { $0.clockIn >= Date().addingTimeInterval(-6 * 86400) }.reduce(0) { $0 + $1.hours } }
+    private func hrs(_ v: Double) -> String { (v * 100).rounded() / 100 == v.rounded() ? "\(Int(v.rounded()))" : String(format: "%.2f", v) }
+    private func usd(_ v: Double) -> String { v.formatted(.currency(code: "USD").precision(.fractionLength(2))) }
+    private func hm(_ d: Date) -> String { d.formatted(.dateTime.hour().minute()) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Time Clock").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.purple)
+                        Text("\(entries.count) entr\(entries.count == 1 ? "y" : "ies")").font(.system(size: 15)).foregroundStyle(Theme.muted(dark))
+                    }
+                    clockCard
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14)], spacing: 14) {
+                        kpi("\(hrs(todayHrs)) hrs", "Today", Theme.blue)
+                        kpi("\(hrs(weekHrs)) hrs", "Last 7 Days", Theme.sky)
+                    }
+                    Text("LOG").font(.system(size: 13, weight: .heavy)).tracking(1.2).foregroundStyle(Theme.muted(dark))
+                    if entries.isEmpty {
+                        Text("No time logged yet").foregroundStyle(Theme.muted(dark)).frame(maxWidth: .infinity).padding(.vertical, 28)
+                            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+                    } else {
+                        VStack(spacing: 0) {
+                            headerRow
+                            ForEach(entries) { e in Divider(); row(e) }
+                        }
+                        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+                    }
+                    Color.clear.frame(height: 90)
+                }
+                .padding(24)
+            }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+        }
+    }
+
+    private var clockCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(openEntries) { e in
+                HStack(spacing: 12) {
+                    Image(systemName: "clock.badge.checkmark").font(.title2).foregroundStyle(.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Clocked in · \(e.job?.name ?? "Unknown job")").font(.system(size: 16, weight: .bold))
+                        Text("since \(hm(e.clockIn)) · \(hrs(e.hours)) hrs").font(.system(size: 13)).foregroundStyle(Theme.muted(dark))
+                    }
+                    Spacer()
+                    Button { e.clockOut = Date(); e.isOpen = false } label: {
+                        Text("Clock Out").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 18).frame(height: 40).background(Theme.deskRed, in: RoundedRectangle(cornerRadius: 10))
+                    }.buttonStyle(.plain)
+                }
+                Divider()
+            }
+            HStack(spacing: 10) {
+                Menu {
+                    ForEach(jobs) { j in Button(j.name) { pickKey = key(j) } }
+                } label: {
+                    HStack { Text(pickJob?.name ?? "Pick a job").lineLimit(1); Spacer(); Image(systemName: "chevron.up.chevron.down").font(.caption) }
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(pickJob == nil ? Theme.muted(dark) : Color.primary)
+                        .padding(.horizontal, 12).frame(height: 40).frame(minWidth: 220)
+                        .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
+                }.menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
+                field("Your name", $worker, 160)
+                field("$ / hr", $rate, 90)
+                Spacer()
+                Button { clockIn() } label: {
+                    Text("Clock In").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 22).frame(height: 40)
+                        .background(pickJob == nil ? Theme.muted(dark) : Theme.blue, in: RoundedRectangle(cornerRadius: 10))
+                }.buttonStyle(.plain).disabled(pickJob == nil)
+            }
+        }
+        .padding(18)
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+    }
+
+    private func field(_ ph: String, _ text: Binding<String>, _ w: CGFloat) -> some View {
+        TextField(ph, text: text).textFieldStyle(.plain).font(.system(size: 14, weight: .semibold))
+            .padding(.horizontal, 12).frame(width: w, height: 40)
+            .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border(dark)))
+    }
+
+    private func clockIn() {
+        guard let j = pickJob else { return }
+        let e = TimeEntry(worker: worker)
+        e.clockIn = Date(); e.clockOut = Date(); e.isOpen = true
+        e.rate = Double(rate.replacingOccurrences(of: "$", with: "")) ?? 0
+        e.job = j
+        context.insert(e)
+    }
+
+    private func kpi(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(spacing: 6) {
+            Text(value).font(.system(size: 36, weight: .semibold)).foregroundStyle(color)
+            Text(label.uppercased()).font(.system(size: 12, weight: .bold)).tracking(0.8).foregroundStyle(Theme.muted(dark))
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 22)
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: 8) {
+            ForEach([("JOB", 3.0), ("DATE", 1.4), ("CLOCK IN → OUT", 2.2), ("BY", 1.4), ("HOURS", 1.0), ("$", 1.2)], id: \.0) { h in
+                Text(h.0).font(.system(size: 12, weight: .heavy)).tracking(0.8).foregroundStyle(Theme.muted(dark)).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(h.1)
+            }
+            Spacer().frame(width: 34)
+        }.padding(.horizontal, 16).padding(.vertical, 12)
+    }
+
+    private func row(_ e: TimeEntry) -> some View {
+        HStack(spacing: 8) {
+            Text(e.job?.name ?? "Unknown job").font(.system(size: 14, weight: .bold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(3)
+            Text(e.clockIn.formatted(.dateTime.month(.twoDigits).day(.twoDigits).year())).font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1.4)
+            Text("\(hm(e.clockIn)) → \(e.isOpen ? "in progress" : hm(e.clockOut))").font(.system(size: 12)).foregroundStyle(Theme.muted(dark)).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(2.2)
+            Text(e.worker.isEmpty ? "—" : e.worker).font(.system(size: 12)).foregroundStyle(Theme.muted(dark)).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1.4)
+            Text(hrs(e.hours)).font(.system(size: 14, weight: .bold)).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
+            Text(e.rate > 0 ? usd(e.hours * e.rate) : "—").font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1.2)
+            Button { context.delete(e) } label: { Image(systemName: "trash").foregroundStyle(Theme.deskRed).frame(width: 34, height: 30) }.buttonStyle(.plain)
+        }.padding(.horizontal, 16).padding(.vertical, 12)
     }
 }
