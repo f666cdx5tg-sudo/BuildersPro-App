@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '4.32';
+var APP_VERSION = '4.33';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -9436,16 +9436,16 @@ console.log('[BP Desktop] Job Detail view loaded');
 
 /* ── Shared taxonomy (identical to the field app) ──────────────────── */
 window.BP_TRADES = ['Plumbing','Electrical','Carpentry','HVAC','Masonry','Drywall',
-                    'Painting','Tile/Flooring','Roofing','Concrete','Demo','Cleanup','Other'];
+                    'Painting','Tile/Flooring','Roofing','Concrete','Demo','Protection','Cleanup','Other'];
 window.BP_TRADE_ICON = {
   'Plumbing':'🔧','Electrical':'⚡','Carpentry':'🔨','HVAC':'❄️','Masonry':'🧱',
   'Drywall':'▤','Painting':'🎨','Tile/Flooring':'▦','Roofing':'🏠','Concrete':'⬜',
-  'Demo':'🔨','Cleanup':'🧹','Other':'📦'
+  'Demo':'🔨','Protection':'🛡️','Cleanup':'🧹','Other':'📦'
 };
 window.BP_TRADE_COLOR = {
   'Plumbing':'#0A84FF','Electrical':'#FFD60A','Carpentry':'#FF9F0A','HVAC':'#64D2FF',
   'Masonry':'#BF5AF2','Drywall':'#98989D','Painting':'#FF375F','Tile/Flooring':'#30D158',
-  'Roofing':'#FF6482','Concrete':'#AEAEB2','Demo':'#FF453A','Cleanup':'#5E5CE6','Other':'#8E8E93'
+  'Roofing':'#FF6482','Concrete':'#AEAEB2','Demo':'#FF453A','Protection':'#00C7BE','Cleanup':'#5E5CE6','Other':'#8E8E93'
 };
 window.BP_TRADE_SUBS = {
   'Plumbing':      ['Sprinkler','Gas','Drainage','Fixtures','Water Service'],
@@ -10106,12 +10106,12 @@ console.log('[BP Desktop] v2.35 Areas & Spaces ready');
 'use strict';
 
 window.TRADE_CATEGORY_ORDER = ['Plumbing','Electrical','Carpentry','HVAC','Masonry','Drywall',
-                               'Painting','Tile/Flooring','Roofing','Concrete','Demo','Cleanup','Other'];
+                               'Painting','Tile/Flooring','Roofing','Concrete','Demo','Protection','Cleanup','Other'];
 
 window.TRADE_CATEGORY_ICON = {
   'Plumbing':'🔧','Electrical':'⚡','Carpentry':'🔨','HVAC':'❄️','Masonry':'🧱',
   'Drywall':'▤','Painting':'🎨','Tile/Flooring':'▦','Roofing':'🏠','Concrete':'⬜',
-  'Demo':'🔨','Cleanup':'🧹','Other':'📦'
+  'Demo':'🔨','Protection':'🛡️','Cleanup':'🧹','Other':'📦'
 };
 
 window.TRADE_CATEGORIES = {
@@ -10141,6 +10141,7 @@ window.TRADE_CATEGORIES = {
   'Concrete': ['Sidewalk','Driveway','Apron','Slab','Footings','Curb','Patio','Concrete steps'],
   'Demo': ['Interior demo','Tear out fixtures','Remove flooring','Remove drywall',
     'Remove cabinets','Dumpster / debris removal'],
+  'Protection': ['Floor protection','Wall / corner guards','Dust barriers','Window protection','Fixture covering','Furniture covering','Site protection'],
   'Cleanup': ['Rough clean','Final clean','Debris removal','Site protection','Punch walk'],
   'Other': ['Mailbox','Garbage bins','Appliance delivery','Permit / inspection','Misc']
 };
