@@ -1,5 +1,58 @@
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
+
+/// Room icons: picked from the room's name, and every candidate is checked so a symbol this OS lacks never renders blank.
+enum RoomIcon {
+    static func exists(_ n: String) -> Bool {
+        #if canImport(UIKit)
+        return UIImage(systemName: n) != nil
+        #else
+        return NSImage(systemSymbolName: n, accessibilityDescription: nil) != nil
+        #endif
+    }
+    static func first(_ names: [String]) -> String { names.first(where: exists) ?? "square.grid.2x2" }
+
+    static func candidates(for name: String, stored: String) -> [String] {
+        let l = name.lowercased()
+        func has(_ w: String...) -> Bool { w.contains { l.contains($0) } }
+        var c: [String] = []
+        if has("kitchen") { c = ["fork.knife", "refrigerator", "cooktop"] }
+        else if has("half bath", "powder", "toilet", "wc") { c = ["toilet", "bathtub", "drop"] }
+        else if has("bath") { c = ["bathtub", "shower", "drop"] }
+        else if has("bed") { c = ["bed.double", "moon"] }
+        else if has("living", "family", "den", "lounge") { c = ["sofa", "tv"] }
+        else if has("dining") { c = ["fork.knife", "chair.lounge"] }
+        else if has("laundry", "washer", "utility") { c = ["washer", "tshirt", "drop"] }
+        else if has("garage") { c = ["car", "door.garage.closed"] }
+        else if has("office", "study") { c = ["desktopcomputer", "briefcase"] }
+        else if has("stair") { c = ["figure.stairs", "stairs", "arrow.up.right"] }
+        else if has("foyer", "entrance", "entry", "hall", "door") { c = ["door.left.hand.open", "door.left.hand.closed"] }
+        else if has("boiler", "mechanical", "furnace", "heat", "hvac") { c = ["flame", "fanblades", "fan"] }
+        else if has("attic") { c = ["triangle", "house"] }
+        else if has("basement") { c = ["house.lodge", "arrow.down.to.line", "house"] }
+        else if has("roof") { c = ["house", "triangle"] }
+        else if has("chimney") { c = ["smoke", "flame"] }
+        else if has("gutter", "downspout") { c = ["cloud.rain", "drop"] }
+        else if has("driveway", "walk", "path") { c = ["road.lanes", "arrow.right"] }
+        else if has("porch", "deck", "patio", "step", "ramp") { c = ["rectangle.split.3x1", "house"] }
+        else if has("yard", "lawn", "garden", "fence") { c = ["leaf", "tree"] }
+        else if has("window") { c = ["window.vertical.closed", "squareshape.split.2x2"] }
+        else if has("closet", "storage") { c = ["archivebox", "shippingbox"] }
+        if stored != "square.split.bottomrightquarter" { c.append(stored) }
+        c.append("door.left.hand.closed")
+        return c
+    }
+}
+
+extension Space {
+    /// The icon to show for this room.
+    var icon: String { RoomIcon.first(RoomIcon.candidates(for: name, stored: symbol)) }
+}
 
 /// One tile grid used by Spaces, Punch and Photos — grouped by level.
 /// Press-and-hold a tile, drag it onto another tile or a level header to reorder / change level.
@@ -115,7 +168,7 @@ struct SpaceTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                Image(systemName: space.symbol).font(.system(size: 30))
+                Image(systemName: space.icon).font(.system(size: 30))
                 Spacer()
             }
             Text(space.name).font(.headline.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.8)

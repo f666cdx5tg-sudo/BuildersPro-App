@@ -35,7 +35,7 @@ struct PunchListView: View {
                 }.buttonStyle(.plain)
                 HStack(spacing: 16) {
                     RoundedRectangle(cornerRadius: 20).fill(Theme.card(dark)).frame(width: 74, height: 74)
-                        .overlay(Image(systemName: space?.symbol ?? "door.left.hand.closed").font(.system(size: 32)))
+                        .overlay(Image(systemName: space?.icon ?? "door.left.hand.closed").font(.system(size: 32)))
                         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.border(dark), lineWidth: 1))
                     VStack(alignment: .leading, spacing: 4) {
                         Text(space?.name ?? "General").font(.system(size: 34, weight: .heavy)).minimumScaleFactor(0.6).lineLimit(1)

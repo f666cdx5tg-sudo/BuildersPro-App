@@ -831,21 +831,7 @@ struct AddSpacesSheet: View {
 
     private func existing(_ n: String) -> Space? { (job.spaces ?? []).first { $0.name == n && $0.level == level } }
 
-    private func symbol(_ n: String) -> String {
-        let l = n.lowercased()
-        if l.contains("bath") { return "bathtub" }
-        if l.contains("bed") { return "bed.double" }
-        if l.contains("kitchen") { return "cooktop" }
-        if l.contains("living") || l.contains("dining") { return "sofa" }
-        if l.contains("garage") { return "car" }
-        if l.contains("office") { return "briefcase" }
-        if l.contains("stair") { return "stairs" }
-        if l.contains("laundry") { return "basket" }
-        if l.contains("boiler") { return "flame" }
-        if l.contains("attic") { return "triangle" }
-        if l.contains("basement") { return "house.lodge" }
-        return "door.left.hand.closed"
-    }
+    private func symbol(_ n: String) -> String { RoomIcon.first(RoomIcon.candidates(for: n, stored: "")) }
 
     private func toggle(_ n: String) {
         let name = n.trimmingCharacters(in: .whitespaces)
