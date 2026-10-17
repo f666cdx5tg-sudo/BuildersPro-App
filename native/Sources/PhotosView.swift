@@ -145,7 +145,7 @@ struct MarkupView: View {
     @State private var strokes: [Stroke] = []
     @State private var color: Color = .red
     @State private var width: CGFloat = 0.008
-    @State private var tool: MarkTool = .pen
+    @State private var tool: MarkTool? = nil     // nothing selected until you pick a tool
     @State private var didMove = false
     @State private var moveActive = false
     @State private var movingIndex: Int?
@@ -170,8 +170,8 @@ struct MarkupView: View {
                                         didMove = false
                                         movingIndex = MarkupView.hit(strokes, at: v.location, size: g.size)
                                         lastPoint = pt
-                                        if movingIndex == nil && tool != .text {
-                                            strokes.append(Stroke(tool: tool, points: [pt], color: color, width: width))
+                                        if movingIndex == nil, let t = tool, t != .text {
+                                            strokes.append(Stroke(tool: t, points: [pt], color: color, width: width))
                                         }
                                         return
                                     }
@@ -180,8 +180,8 @@ struct MarkupView: View {
                                         let dx = pt.x - lastPoint.x, dy = pt.y - lastPoint.y
                                         strokes[i].points = strokes[i].points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
                                         lastPoint = pt
-                                    } else if tool != .text, !strokes.isEmpty {
-                                        if tool == .pen { strokes[strokes.count - 1].points.append(pt) }
+                                    } else if let t = tool, t != .text, !strokes.isEmpty {
+                                        if t == .pen { strokes[strokes.count - 1].points.append(pt) }
                                         else { strokes[strokes.count - 1].points = [strokes[strokes.count - 1].points[0], pt] }
                                     }
                                 }.onEnded { v in
@@ -221,11 +221,11 @@ struct MarkupView: View {
 
     @ToolbarContentBuilder private var markupBar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Image(systemName: tool.symbol)
+            Image(systemName: tool?.symbol ?? "hand.tap")
             Circle().fill(color).frame(width: 20, height: 20).overlay(Circle().stroke(Color.gray.opacity(0.6), lineWidth: 1))
             Menu {
                 Picker("Tool", selection: $tool) {
-                    ForEach(MarkTool.allCases) { t in Label(t.rawValue, systemImage: t.symbol).tag(t) }
+                    ForEach(MarkTool.allCases) { t in Label(t.rawValue, systemImage: t.symbol).tag(Optional(t)) }
                 }
                 Picker("Color", selection: $color) {
                     ForEach(Array(palette.enumerated()), id: \.offset) { i, c in Label(colorNames[i], systemImage: "circle.fill").tint(c).tag(c) }
