@@ -92,13 +92,14 @@ struct PhotosView: View {
 struct PhotoThumb: View {
     let photo: SitePhoto
     var body: some View {
-        Group {
-            if let d = photo.data, let img = Self.small(d, 500) {
-                img.resizable().scaledToFill()
-            } else { Color.gray.opacity(0.3) }
-        }
-        .frame(minHeight: 100).aspectRatio(1, contentMode: .fit).clipped()
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        Color.gray.opacity(0.3)
+            .aspectRatio(1, contentMode: .fit)          // square cell, never taller/wider than its slot
+            .overlay {
+                if let d = photo.data, let img = Self.small(d, 500) {
+                    img.resizable().scaledToFill()
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
     }
     static func image(_ d: Data) -> Image? {
         #if canImport(UIKit)
