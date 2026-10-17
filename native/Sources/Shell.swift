@@ -1164,13 +1164,17 @@ struct AllCalendarView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Calendar").font(.system(size: 40, weight: .heavy))
-                    monthBar
-                    HStack(spacing: 12) {
-                        addButton("+ Appointment", Theme.lightBlue, "Appointment")
-                        addButton("+ Due Date", Theme.red, "Due Date")
+                    if Theme.desk {
+                        deskHeader
+                    } else {
+                        Text("Calendar").font(.system(size: 40, weight: .heavy))
+                        monthBar
+                        HStack(spacing: 12) {
+                            addButton("+ Appointment", Theme.lightBlue, "Appointment")
+                            addButton("+ Due Date", Theme.red, "Due Date")
+                        }
+                        Divider()
                     }
-                    Divider()
                     legend
                     grid
                     Text(picked == nil ? "THIS MONTH" : (picked!.formatted(date: .complete, time: .omitted)).uppercased())
@@ -1188,6 +1192,37 @@ struct AllCalendarView: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
+    }
+
+    /// Command Center header, same arrangement as the web: title + date on the left, month nav and add buttons on the right.
+    private var deskHeader: some View {
+        let count = events.filter { cal.isDate($0.date, equalTo: month, toGranularity: .month) }.count
+        return HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Calendar").font(.system(size: 40, weight: .heavy)).foregroundStyle(Theme.lightBlue)
+                Text(Date().formatted(.dateTime.month(.twoDigits).day(.twoDigits).year()) + " · " + Date().formatted(date: .omitted, time: .shortened))
+                    .font(.system(size: 15, weight: .heavy)).foregroundStyle(Theme.sky)
+                Text("\(count) event\(count == 1 ? "" : "s") this month").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.muted(dark))
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 10) {
+                square("chevron.left") { shift(-1) }
+                Text(month.formatted(.dateTime.month(.wide).year())).font(.system(size: 17, weight: .heavy))
+                    .padding(.horizontal, 22).frame(height: 44)
+                    .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+                square("chevron.right") { shift(1) }
+                pill("+ Add Appointment", Theme.sky, "Appointment")
+                pill("+ Add Due Date", Theme.deskRed, "Due Date")
+            }
+        }
+    }
+
+    private func pill(_ title: String, _ color: Color, _ kind: String) -> some View {
+        Button { request = ApptRequest(kind: kind, date: picked ?? Calendar.current.startOfDay(for: Date()), job: jobs.first) } label: {
+            Text(title).font(.system(size: 17, weight: .heavy)).foregroundStyle(.white).lineLimit(1)
+                .padding(.horizontal, 22).frame(height: 44).background(color, in: RoundedRectangle(cornerRadius: 12))
+        }.buttonStyle(.plain)
     }
 
     private var monthBar: some View {
@@ -1216,9 +1251,9 @@ struct AllCalendarView: View {
 
     private var legend: some View {
         let items = ["Appointment", "Due Date", "Delivery", "Job Start", "Job Due", "Contractor", "Permit", "Invoice"]
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), alignment: .leading)], alignment: .leading, spacing: 8) {
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: Theme.desk ? 110 : 140), alignment: .leading)], alignment: .leading, spacing: 8) {
             ForEach(items, id: \.self) { k in
-                HStack(spacing: 8) { Circle().fill(Self.color(for: k)).frame(width: 14, height: 14); Text(k).font(.callout.weight(.semibold)).foregroundStyle(.secondary) }
+                HStack(spacing: 8) { Circle().fill(Self.color(for: k)).frame(width: Theme.desk ? 13 : 14, height: Theme.desk ? 13 : 14); Text(k).font(Theme.desk ? .system(size: 15, weight: .heavy) : .callout.weight(.semibold)).foregroundStyle(Theme.desk ? Theme.muted(dark) : .secondary) }
             }
         }
     }
@@ -1226,16 +1261,43 @@ struct AllCalendarView: View {
     private var grid: some View {
         let cols = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
         return LazyVGrid(columns: cols, spacing: 6) {
-            ForEach(Array(cal.veryShortWeekdaySymbols.enumerated()), id: \.offset) { _, d in
+            ForEach(Array((Theme.desk ? cal.shortWeekdaySymbols.map { $0.uppercased() } : cal.veryShortWeekdaySymbols).enumerated()), id: \.offset) { _, d in
                 Text(d).font(.callout.weight(.bold)).foregroundStyle(.secondary)
             }
             ForEach(Array(cells.enumerated()), id: \.offset) { _, day in
-                if let day { cell(day) } else { Color.clear.frame(height: 54) }
+                if let day { cell(day) } else { Color.clear.frame(height: Theme.desk ? 92 : 54) }
             }
         }
     }
 
-    private func cell(_ day: Date) -> some View {
+    /// Command Center day cell: day number plus colored event chips, like the web.
+    private func deskCell(_ day: Date) -> some View {
+        let evs = dayEvents(day)
+        let isToday = cal.isDateInToday(day)
+        let isPicked = picked.map { cal.isDate($0, inSameDayAs: day) } ?? false
+        return Button { picked = isPicked ? nil : cal.startOfDay(for: day) } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(cal.component(.day, from: day))").font(.system(size: 15, weight: .heavy)).foregroundStyle(isToday ? Theme.sky : Color.primary)
+                ForEach(evs.prefix(2)) { e in
+                    Text(e.title).font(.system(size: 11, weight: .heavy)).foregroundStyle(.white).lineLimit(1)
+                        .padding(.horizontal, 5).padding(.vertical, 2).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(e.color, in: RoundedRectangle(cornerRadius: 4))
+                }
+                if evs.count > 2 { Text("+\(evs.count - 2) more").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.muted(dark)) }
+                Spacer(minLength: 0)
+            }
+            .padding(6)
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+            .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(isPicked || isToday ? Theme.sky : Theme.border(dark), lineWidth: isPicked || isToday ? 1.5 : 1))
+        }.buttonStyle(.plain)
+    }
+
+    @ViewBuilder private func cell(_ day: Date) -> some View {
+        if Theme.desk { deskCell(day) } else { phoneCell(day) }
+    }
+
+    private func phoneCell(_ day: Date) -> some View {
         let evs = dayEvents(day)
         let kinds = Array(Set(evs.map { $0.kind })).sorted().prefix(4)
         let isToday = cal.isDateInToday(day)
