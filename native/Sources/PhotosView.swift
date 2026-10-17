@@ -147,7 +147,7 @@ struct MarkupView: View {
     @State private var baseZoom: CGFloat = 1
     @State private var pan: CGSize = .zero
     @State private var panBase: CGSize = .zero
-    @State private var panning = false
+    @State private var shown: CGImage?          // decoded once, not every frame
     @State private var tool: MarkTool? = nil     // nothing selected until you pick a tool
     @State private var didMove = false
     @State private var moveActive = false
@@ -160,8 +160,8 @@ struct MarkupView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            if let img = PhotoThumb.image(data) {
-                img.resizable().scaledToFit()
+            if let cg = shown {
+                Image(decorative: cg, scale: 1).resizable().scaledToFit()
                     .overlay {
                         GeometryReader { g in
                             Canvas { ctx, size in MarkupView.draw(strokes, in: &ctx, size: size) }
@@ -172,14 +172,12 @@ struct MarkupView: View {
                                         moveActive = true
                                         didMove = false
                                         movingIndex = MarkupView.hit(strokes, at: v.location, size: g.size)
-                                        panning = movingIndex == nil && tool == nil && zoom > 1
                                         lastPoint = pt
                                         if movingIndex == nil, let t = tool, t != .text {
                                             strokes.append(Stroke(tool: t, points: [pt], color: color, width: width))
                                         }
                                         return
                                     }
-                                    if panning { pan = CGSize(width: panBase.width + v.translation.width * zoom, height: panBase.height + v.translation.height * zoom); return }
                                     if v.translation != .zero { didMove = true }
                                     if let i = movingIndex, strokes.indices.contains(i) {
                                         let dx = pt.x - lastPoint.x, dy = pt.y - lastPoint.y
@@ -193,7 +191,6 @@ struct MarkupView: View {
                                     let hitSomething = movingIndex != nil
                                     let moved = didMove
                                     moveActive = false; movingIndex = nil
-                                    if panning { panBase = pan; panning = false; return }
                                     if tool == .text && !hitSomething && !moved {
                                         textSpot = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
                                                            y: min(max(v.location.y / g.size.height, 0), 1))
@@ -206,6 +203,11 @@ struct MarkupView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
                     .contentShape(Rectangle())
+                    // pan is measured on the fixed (un-zoomed) container so it can't feed back into itself
+                    .simultaneousGesture(DragGesture(minimumDistance: 6).onChanged { v in
+                        guard tool == nil, zoom > 1, movingIndex == nil else { return }
+                        pan = CGSize(width: panBase.width + v.translation.width, height: panBase.height + v.translation.height)
+                    }.onEnded { _ in panBase = pan })
                     .simultaneousGesture(MagnifyGesture().onChanged { v in
                         zoom = min(6, max(1, baseZoom * v.magnification))
                     }.onEnded { _ in
@@ -222,6 +224,7 @@ struct MarkupView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar { markupBar }
+        .task(id: data.count) { do { shown = await Task.detached(priority: .userInitiated) { ThumbCache.make(data, 2400) }.value } }
         .alert("Add text", isPresented: Binding(get: { textSpot != nil }, set: { if !$0 { textSpot = nil } })) {
             TextField("Type here", text: $textValue)
             Button("Add") {
