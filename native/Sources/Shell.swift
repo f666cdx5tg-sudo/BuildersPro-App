@@ -119,7 +119,25 @@ struct RootShell: View {
         }
     }
     #else
-    private func installScrollWatch() {}
+    @State private var watcher: ScrollWatcher?
+    /// Hides the floating buttons while you scroll down and brings them back when you scroll up.
+    /// A passive pan recognizer on the window: it watches touches but never steals them from the scroll view.
+    private func installScrollWatch() {
+        guard watcher == nil else { return }
+        let w = ScrollWatcher { hide in if shell.barHidden != hide { shell.barHidden = hide } }
+        watcher = w
+        func attach(_ tries: Int) {
+            if let win = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) {
+                let g = UIPanGestureRecognizer(target: w, action: #selector(ScrollWatcher.pan(_:)))
+                g.cancelsTouchesInView = false; g.delaysTouchesBegan = false; g.delaysTouchesEnded = false
+                g.delegate = w
+                win.addGestureRecognizer(g)
+            } else if tries < 10 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { attach(tries + 1) }
+            }
+        }
+        attach(0)
+    }
     #endif
 
     private var drawer: some View {
@@ -1480,3 +1498,18 @@ struct TradeCallSheet: View {
         }
     }
 }
+
+
+#if os(iOS)
+final class ScrollWatcher: NSObject, UIGestureRecognizerDelegate {
+    let onChange: (Bool) -> Void
+    init(_ f: @escaping (Bool) -> Void) { onChange = f }
+    @objc func pan(_ g: UIPanGestureRecognizer) {
+        guard g.state == .changed else { return }
+        let v = g.velocity(in: g.view)
+        guard abs(v.y) > abs(v.x) * 1.5, abs(v.y) > 150 else { return }
+        onChange(v.y < 0)          // finger moving up = content scrolling down = hide
+    }
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+}
+#endif
