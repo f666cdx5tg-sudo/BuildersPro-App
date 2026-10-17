@@ -1381,6 +1381,7 @@ private func tradeColor(_ t: String) -> Color {
     case "Painting": return Theme.purple
     case "Tile/Flooring": return Theme.green
     case "Roofing": return Theme.red
+    case "Demo": return .pink
     default: return .gray
     }
 }

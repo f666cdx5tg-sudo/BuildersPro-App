@@ -348,7 +348,7 @@ enum Levels {
 
 enum Trades {
     static let all = ["Plumbing", "Electrical", "Carpentry", "HVAC", "Masonry", "Drywall", "Painting",
-                      "Tile/Flooring", "Roofing", "Windows/Doors", "Cleaning", "Other"]
+                      "Tile/Flooring", "Roofing", "Windows/Doors", "Demo", "Cleaning", "Other"]
     static func symbol(_ t: String) -> String {
         switch t {
         case "Plumbing": return "wrench.and.screwdriver"
@@ -358,6 +358,7 @@ enum Trades {
         case "Painting": return "paintbrush"
         case "Roofing": return "house"
         case "Windows/Doors": return "door.left.hand.closed"
+        case "Demo": return "xmark.bin"
         case "Cleaning": return "sparkles"
         default: return "square.grid.2x2"
         }
