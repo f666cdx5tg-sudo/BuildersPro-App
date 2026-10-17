@@ -391,20 +391,8 @@ struct MoneyView: View {
     var body: some View {
         List {
             Section {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(pages, id: \.self) { p in
-                            Button { page = p } label: {
-                                Text(p).font(.headline.weight(.bold)).lineLimit(1)
-                                    .foregroundStyle(page == p ? Color.white : Color.primary)
-                                    .padding(.horizontal, 16).frame(height: 42)
-                                    .background(page == p ? Theme.blue : Color.secondary.opacity(0.18), in: Capsule())
-                            }.buttonStyle(.plain)
-                        }
-                    }.padding(.vertical, 2)
-                }
-                .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
-                .listRowBackground(Color.clear)
+                Text(page).font(.title2.weight(.heavy))
+                    .listRowBackground(Color.clear)
             }
             if job.revisedContract > 0 && job.remaining < 0 && page == "Overview" {
                 Text("Over budget by \(Money.text(-job.remaining)) (costs \(Money.text(job.totalCost)) vs contract \(Money.text(job.revisedContract)))")
@@ -577,6 +565,15 @@ struct MoneyView: View {
                 }
                 .onDelete { idx in idx.forEach { context.delete(timeEntries[$0]) } }
             } }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Picker("Finance section", selection: $page) {
+                        ForEach(pages, id: \.self) { Text($0).tag($0) }
+                    }
+                } label: { Image(systemName: "line.3.horizontal") }
+            }
         }
     }
 
