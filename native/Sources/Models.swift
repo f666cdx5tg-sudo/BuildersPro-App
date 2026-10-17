@@ -108,7 +108,7 @@ final class PunchPhoto {
     var created: Date = Date()
     var item: PunchItem?
 
-    init(data: Data?, kind: String) { self.data = data; self.kind = kind }
+    init(data: Data?, kind: String) { self.data = data.map { PhotoThumb.upright($0) }; self.kind = kind }
 }
 
 @Model
@@ -119,7 +119,7 @@ final class SitePhoto {
     var space: Space?               // nil = Unfiled
     var job: Job?
 
-    init(data: Data?) { self.data = data }
+    init(data: Data?) { self.data = data.map { PhotoThumb.upright($0) } }
 }
 
 @Model

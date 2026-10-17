@@ -381,3 +381,22 @@ struct CameraPicker: UIViewControllerRepresentable {
     }
 }
 #endif
+
+import ImageIO
+import UniformTypeIdentifiers
+extension PhotoThumb {
+    /// Bakes EXIF orientation into the pixels (and caps size) so every screen and the markup canvas agree on "up".
+    static func upright(_ d: Data) -> Data {
+        guard let src = CGImageSourceCreateWithData(d as CFData, nil) else { return d }
+        let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
+        let orient = (props?[kCGImagePropertyOrientation] as? Int) ?? 1
+        let w = (props?[kCGImagePropertyPixelWidth] as? Int) ?? 0, h = (props?[kCGImagePropertyPixelHeight] as? Int) ?? 0
+        if orient == 1 && max(w, h) <= 3000 { return d }
+        let o: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 3000]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, o as CFDictionary) else { return d }
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return d }
+        CGImageDestinationAddImage(dest, cg, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+        return CGImageDestinationFinalize(dest) ? out as Data : d
+    }
+}
