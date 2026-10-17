@@ -1670,7 +1670,7 @@ struct CommandCenterView: View {
                 }.buttonStyle(.plain)
                 .popover(isPresented: $sizePop, arrowEdge: .bottom) { TextSizePanel(showDone: true).frame(width: 440).preferredColorScheme(dark ? .dark : .light) }
                 Button { sel = .eod } label: {
-                    HStack(spacing: 8) { Image(systemName: "doc.badge.plus").font(.system(size: 14, weight: .semibold)); Text("New EOD Report").font(.system(size: 15, weight: .bold)).lineLimit(1) }
+                    HStack(spacing: 8) { Image(systemName: "doc.badge.plus").font(.system(size: 19, weight: .bold)); Text("New EOD Report").font(.system(size: 15, weight: .bold)).lineLimit(1) }
                         .padding(.horizontal, 18).frame(height: 44).foregroundStyle(.white)
                         .background(Theme.orange, in: RoundedRectangle(cornerRadius: 10))
                 }.buttonStyle(.plain)
@@ -1683,7 +1683,7 @@ struct CommandCenterView: View {
                 }
                 HStack(spacing: 14) {
                     HStack(spacing: 6) {
-                        Image(systemName: info.icon).foregroundStyle(Theme.muted(dark))
+                        Image(systemName: info.icon).font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.sky)
                         Text(info.weather).font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.sky).lineLimit(1)
                     }
                     Text(Date.now.formatted(.dateTime.weekday(.abbreviated).month(.twoDigits).day(.twoDigits).year()))
@@ -1702,7 +1702,7 @@ struct CommandCenterView: View {
 
     private func tbButton(_ icon: String, _ title: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 14, weight: .semibold)); Text(title).font(.system(size: 14, weight: .bold)) }
+            HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 19, weight: .bold)); Text(title).font(.system(size: 14, weight: .bold)) }
                 .padding(.horizontal, 16).frame(height: 44)
                 .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
@@ -1739,7 +1739,7 @@ struct CommandCenterView: View {
         let on = sel == s
         return Button { sel = s } label: {
             HStack(spacing: 10) {
-                Image(systemName: s.symbol).font(.system(size: 15, weight: .semibold)).frame(width: 20)
+                Image(systemName: s.symbol).font(.system(size: 20, weight: .bold)).frame(width: 28)
                 Text(s.rawValue).font(.system(size: 15, weight: on ? .bold : .semibold))
                 Spacer()
             }

@@ -169,7 +169,7 @@ struct SpaceTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                SpaceIcon(name: space.name, symbol: space.symbol, size: 30)
+                SpaceIcon(name: space.name, symbol: space.symbol, size: 40)
                 Spacer()
                 PhotoStack(photos: space.photos ?? []).padding(.trailing, 52)
             }
@@ -332,6 +332,6 @@ struct SpaceIcon: View {
     var size: CGFloat = 30
     var body: some View {
         if let g = LocGlyph.match(name) { LocGlyphView(glyph: g, size: size) }
-        else { Image(systemName: RoomIcon.first(RoomIcon.candidates(for: name, stored: symbol))).font(.system(size: size)) }
+        else { Image(systemName: RoomIcon.first(RoomIcon.candidates(for: name, stored: symbol))).font(.system(size: size, weight: .semibold)) }
     }
 }
