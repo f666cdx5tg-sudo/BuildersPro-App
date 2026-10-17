@@ -156,7 +156,6 @@ struct MarkupView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            toolbar
             if let img = PhotoThumb.image(data) {
                 img.resizable().scaledToFit()
                     .overlay {
@@ -203,6 +202,7 @@ struct MarkupView: View {
         }
         .padding(.bottom, 8)
         .navigationTitle("Mark up")
+        .toolbar { markupBar }
         .alert("Add text", isPresented: Binding(get: { textSpot != nil }, set: { if !$0 { textSpot = nil } })) {
             TextField("Type here", text: $textValue)
             Button("Add") {
@@ -218,8 +218,10 @@ struct MarkupView: View {
 
     private let colorNames = ["Red", "Yellow", "Blue", "Green", "White", "Black"]
 
-    private var toolbar: some View {
-        HStack(spacing: 12) {
+    @ToolbarContentBuilder private var markupBar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Image(systemName: tool.symbol)
+            Circle().fill(color).frame(width: 20, height: 20).overlay(Circle().stroke(Color.gray.opacity(0.6), lineWidth: 1))
             Menu {
                 Picker("Tool", selection: $tool) {
                     ForEach(MarkTool.allCases) { t in Label(t.rawValue, systemImage: t.symbol).tag(t) }
@@ -233,19 +235,9 @@ struct MarkupView: View {
                 Divider()
                 Button { _ = strokes.popLast() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }.disabled(strokes.isEmpty)
                 Button(role: .destructive) { strokes.removeAll() } label: { Label("Clear", systemImage: "trash") }.disabled(strokes.isEmpty)
-            } label: {
-                Image(systemName: "line.3.horizontal").font(.title2).frame(width: 48, height: 40)
-            }
-            // what's selected right now
-            HStack(spacing: 8) {
-                Image(systemName: tool.symbol).font(.title3)
-                Circle().fill(color).frame(width: 22, height: 22).overlay(Circle().stroke(Color.gray.opacity(0.6), lineWidth: 1))
-            }
-            Spacer()
-            Button("Cancel") { dismiss() }
-            Button("Save") { save() }.buttonStyle(.borderedProminent).disabled(strokes.isEmpty)
+            } label: { Image(systemName: "line.3.horizontal") }
+            Button("Save") { save() }.fontWeight(.bold).disabled(strokes.isEmpty)
         }
-        .padding(.horizontal).padding(.top, 8)
     }
 
     /// Which mark is under this point (topmost first)? Used by the Move tool.
