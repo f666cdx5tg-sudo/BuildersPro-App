@@ -1527,6 +1527,7 @@ struct AllSpacesView: View {
                     }.buttonStyle(.plain)
                 }.frame(maxWidth: .infinity).padding(.top, 30)
             } else {
+                if Theme.desk { levelSections } else {
                 LazyVGrid(columns: cols, spacing: 10) {
                     ForEach(spaces) { s in
                         if let j = s.job {
@@ -1544,7 +1545,47 @@ struct AllSpacesView: View {
                             .overlay(Image(systemName: "plus").font(.system(size: 34, weight: .light)).foregroundStyle(Theme.blue))
                     }.buttonStyle(.plain)
                 }
+                }
             }
+        }
+    }
+
+    /// Command Center: spaces grouped under their level, like the web ("BASEMENT  2 spaces").
+    private var levelSections: some View {
+        let order = ["Basement", "Level 1", "Level 2", "Level 3", "Level 4", "Attic", "Roof", "Outside"]
+        let groups = Dictionary(grouping: spaces) { $0.level.isEmpty ? (($0.isExterior) ? "Outside" : "Other") : $0.level }
+        let keys = groups.keys.sorted { a, b in
+            let ia = order.firstIndex(of: a) ?? 99, ib = order.firstIndex(of: b) ?? 99
+            return ia != ib ? ia < ib : a < b
+        }
+        return VStack(alignment: .leading, spacing: 18) {
+            ForEach(keys, id: \.self) { k in
+                let list = (groups[k] ?? []).sorted { $0.order != $1.order ? $0.order < $1.order : $0.name < $1.name }
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Text(k.uppercased()).font(.system(size: 15, weight: .heavy)).tracking(0.8).foregroundStyle(k == "Basement" ? Theme.brown : Theme.sky)
+                        Text("\(list.count) space\(list.count == 1 ? "" : "s")").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.muted(dark))
+                        Spacer()
+                    }
+                    Rectangle().fill((k == "Basement" ? Theme.brown : Theme.sky).opacity(0.6)).frame(height: 2)
+                    LazyVGrid(columns: cols, spacing: 12) {
+                        ForEach(list) { s in
+                            if let j = s.job {
+                                NavigationLink { PunchListView(job: j, space: s) } label: {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        SpaceTile(space: s, mode: .punch)
+                                        if jobKey.isEmpty { Text(j.name).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1).padding(.leading, 6) }
+                                    }
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }
+            Button { startAdd() } label: {
+                Text("+ Add Spaces").font(.system(size: 17, weight: .heavy)).foregroundStyle(.white)
+                    .padding(.horizontal, 26).frame(height: 48).background(Theme.gold, in: RoundedRectangle(cornerRadius: 12))
+            }.buttonStyle(.plain)
         }
     }
 
