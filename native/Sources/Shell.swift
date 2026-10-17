@@ -14,13 +14,13 @@ enum Theme {
     nonisolated(unsafe) static var desk = false
     @discardableResult static func setDesk(_ on: Bool) -> Bool { desk = on; return on }
     private static func hex(_ v: UInt32) -> Color { Color(red: Double((v >> 16) & 255) / 255, green: Double((v >> 8) & 255) / 255, blue: Double(v & 255) / 255) }
-    static func bg(_ dark: Bool) -> Color { desk ? hex(dark ? 0x0A0E1E : 0xF0F4FF) : (dark ? Color(red: 0.059, green: 0.059, blue: 0.059) : Color(red: 0.949, green: 0.969, blue: 1.0)) }
-    static func card(_ dark: Bool) -> Color { desk ? hex(dark ? 0x111630 : 0xFFFFFF) : (dark ? Color(red: 0.102, green: 0.102, blue: 0.102) : .white) }
-    static func card2(_ dark: Bool) -> Color { hex(dark ? 0x161D38 : 0xE8EEFF) }
-    static func border(_ dark: Bool) -> Color { desk ? hex(dark ? 0x1E2845 : 0xCBD5F0) : (dark ? Color(red: 0.165, green: 0.165, blue: 0.165) : Color(red: 0.878, green: 0.878, blue: 0.878)) }
-    static func muted(_ dark: Bool) -> Color { hex(dark ? 0x6B7DB3 : 0x5060A0) }
-    static func faint(_ dark: Bool) -> Color { hex(dark ? 0x8494C8 : 0x5C6B9E) }
-    static let gold = hex(0xC8935A), sky = hex(0x42A5F5), deskRed = hex(0xEF5350)
+    static func bg(_ dark: Bool) -> Color { desk ? hex(dark ? 0x070B22 : 0xEAF0FF) : (dark ? Color(red: 0.059, green: 0.059, blue: 0.059) : Color(red: 0.949, green: 0.969, blue: 1.0)) }
+    static func card(_ dark: Bool) -> Color { desk ? hex(dark ? 0x141C4A : 0xFFFFFF) : (dark ? Color(red: 0.102, green: 0.102, blue: 0.102) : .white) }
+    static func card2(_ dark: Bool) -> Color { hex(dark ? 0x1B2560 : 0xDDE7FF) }
+    static func border(_ dark: Bool) -> Color { desk ? hex(dark ? 0x2C3A8A : 0xB8C8F5) : (dark ? Color(red: 0.165, green: 0.165, blue: 0.165) : Color(red: 0.878, green: 0.878, blue: 0.878)) }
+    static func muted(_ dark: Bool) -> Color { hex(dark ? 0x8FA4F0 : 0x3F52C0) }
+    static func faint(_ dark: Bool) -> Color { hex(dark ? 0xAABBFF : 0x4A5CC0) }
+    static let gold = hex(0xFFB020), sky = hex(0x2EC4FF), deskRed = hex(0xFF4D5E)
 }
 
 private struct OpenMenuKey: EnvironmentKey { static let defaultValue: () -> Void = {} }
