@@ -52,6 +52,12 @@ struct RootShell: View {
     @State private var syncNote = false
     @State private var feedbackNote = false
     @StateObject private var shell = ShellState()
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSize
+    private var wide: Bool { hSize == .regular }        // iPad full screen → Command Center
+    #else
+    private var wide: Bool { true }
+    #endif
 
     private var dynamicSize: DynamicTypeSize { [DynamicTypeSize.large, .xLarge, .xxxLarge][min(max(textSize, 0), 2)] }
     private let sizeNames = ["Normal", "Large", "Extra large"]
@@ -73,6 +79,17 @@ struct RootShell: View {
     }
 
     private var content: some View {
+        Group {
+            if wide {
+                CommandCenterView().environmentObject(shell)
+                    .tint(Theme.blue)
+                    .preferredColorScheme(dark ? .dark : .light)
+                    .dynamicTypeSize(dynamicSize)
+            } else { phoneContent }
+        }
+    }
+
+    private var phoneContent: some View {
         ZStack(alignment: .leading) {
             Group {
                 switch screen {
@@ -1516,3 +1533,170 @@ final class ScrollWatcher: NSObject, UIGestureRecognizerDelegate {
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 }
 #endif
+
+
+// MARK: - Command Center (iPad + Mac): sidebar + big dashboard, same data and screens as the phone
+
+enum CCScreen: String, CaseIterable, Identifiable {
+    case dashboard = "Dashboard", jobs = "Jobs", calendar = "Calendar", photos = "Photos", punch = "Punch list", finance = "Finance", search = "Search"
+    var id: String { rawValue }
+    var symbol: String {
+        switch self {
+        case .dashboard: return "square.grid.2x2"
+        case .jobs: return "briefcase"
+        case .calendar: return "calendar"
+        case .photos: return "camera"
+        case .punch: return "checkmark.square"
+        case .finance: return "dollarsign.circle"
+        case .search: return "magnifyingglass"
+        }
+    }
+}
+
+struct CommandCenterView: View {
+    @AppStorage("bpDark") private var dark = true
+    @AppStorage("bpTextSize") private var textSize = 0
+    @EnvironmentObject private var shell: ShellState
+    @State private var sel: CCScreen? = .dashboard
+    @State private var column: NavigationSplitViewVisibility = .all
+    private let sizeNames = ["Normal", "Large", "Extra large"]
+
+    var body: some View {
+        NavigationSplitView(columnVisibility: $column) {
+            List(selection: $sel) {
+                ForEach(CCScreen.allCases) { s in
+                    Label(s.rawValue, systemImage: s.symbol).font(.title3.weight(.semibold)).padding(.vertical, 6).tag(s)
+                }
+            }
+            .navigationTitle("BuildersPro")
+            .safeAreaInset(edge: .bottom) { sidebarTools }
+            #if os(macOS)
+            .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 300)
+            #endif
+        } detail: {
+            detail
+                .environmentObject(shell)
+                .overlay(alignment: .bottomTrailing) { FloatBar(showBack: false).environmentObject(shell) }
+        }
+        .onAppear { shell.goHome = { sel = .dashboard } }
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch sel ?? .dashboard {
+        case .dashboard: CCDashboard(open: { sel = $0 })
+        case .jobs: JobsView()
+        case .calendar: AllCalendarView()
+        case .photos: AllPhotosView()
+        case .punch: AllPunchView()
+        case .finance: AllMoneyView()
+        case .search: SearchView()
+        }
+    }
+
+    private var sidebarTools: some View {
+        VStack(spacing: 8) {
+            Divider()
+            Button { textSize = (textSize + 1) % 3 } label: {
+                HStack { Text("Aa").font(.headline.weight(.black)).frame(width: 30); Text("Text size").font(.subheadline.weight(.semibold)); Spacer()
+                    Text(sizeNames[min(max(textSize, 0), 2)]).font(.footnote.weight(.bold)).foregroundStyle(.secondary) }
+            }.buttonStyle(.plain)
+            Button { dark.toggle() } label: {
+                HStack { Image(systemName: "circle.lefthalf.filled").frame(width: 30); Text("Light / Dark").font(.subheadline.weight(.semibold)); Spacer()
+                    Text(dark ? "Dark" : "Light").font(.footnote.weight(.bold)).foregroundStyle(.secondary) }
+            }.buttonStyle(.plain)
+            HStack { Image(systemName: "arrow.triangle.2.circlepath").frame(width: 30); Text("iCloud sync · automatic").font(.footnote.weight(.semibold)).foregroundStyle(.secondary); Spacer() }
+        }
+        .padding(.horizontal, 16).padding(.bottom, 10).background(.bar)
+    }
+}
+
+// MARK: - Dashboard
+
+struct CCDashboard: View {
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @AppStorage("bpDark") private var dark = true
+    let open: (CCScreen) -> Void
+
+    private var active: [Job] { jobs.filter { $0.isActive } }
+    private var openItems: Int { active.reduce(0) { $0 + ($1.totalCount - $1.doneCount) } }
+    private var unfiled: Int { active.reduce(0) { $0 + ($1.photos ?? []).filter { $0.space == nil }.count } }
+    private var outstanding: Double { active.reduce(0) { $0 + $1.outstanding } }
+    private var remaining: Double { active.reduce(0) { $0 + $1.remaining } }
+
+    private func money(_ v: Double) -> String { v.formatted(.currency(code: "USD").precision(.fractionLength(0))) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    Text("Command Center").font(.system(size: 34, weight: .heavy))
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 14)], spacing: 14) {
+                        kpi("Active jobs", "\(active.count)", "briefcase", Theme.blue) { open(.jobs) }
+                        kpi("Open items", "\(openItems)", "checkmark.square", Theme.orange) { open(.punch) }
+                        kpi("Unfiled photos", "\(unfiled)", "camera", unfiled > 0 ? .red : .secondary) { open(.photos) }
+                        kpi("Outstanding", money(outstanding), "doc.text", outstanding > 0 ? .red : .secondary) { open(.finance) }
+                        kpi("Remaining budget", money(remaining), "dollarsign.circle", remaining >= 0 ? .green : .red) { open(.finance) }
+                    }
+                    Text("Active jobs").font(.title2.weight(.heavy))
+                    if active.isEmpty {
+                        Text("No active jobs yet.").foregroundStyle(.secondary)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 14)], spacing: 14) {
+                            ForEach(active) { j in
+                                NavigationLink { JobDetailView(job: j) } label: { card(j) }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    Color.clear.frame(height: 90)
+                }
+                .padding(24)
+            }
+            .background(Theme.bg(dark))
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+        }
+    }
+
+    private func kpi(_ title: String, _ value: String, _ icon: String, _ color: Color, tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: icon).font(.title2).foregroundStyle(color)
+                Text(value).font(.system(size: 32, weight: .heavy)).minimumScaleFactor(0.6).lineLimit(1).foregroundStyle(color)
+                Text(title.uppercased()).font(.subheadline.weight(.bold)).tracking(1).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(18)
+            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
+        }.buttonStyle(.plain)
+    }
+
+    private func card(_ j: Job) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(j.name).font(.title3.weight(.heavy)).lineLimit(1)
+                Spacer()
+                Text("\(j.percent)%").font(.title3.weight(.heavy)).foregroundStyle(Theme.blue)
+            }
+            if !j.client.isEmpty || !j.address.isEmpty {
+                Text([j.client, j.address].filter { !$0.isEmpty }.joined(separator: " · ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+            ProgressView(value: Double(j.percent), total: 100).tint(Theme.blue)
+            HStack {
+                stat("Contract", money(j.revisedContract), .primary)
+                stat("Remaining", money(j.remaining), j.remaining >= 0 ? .green : .red)
+                stat("Open items", "\(j.totalCount - j.doneCount)", Theme.orange)
+            }
+        }
+        .padding(18)
+        .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark)))
+    }
+
+    private func stat(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(.headline.weight(.heavy)).foregroundStyle(color).minimumScaleFactor(0.7).lineLimit(1)
+            Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
