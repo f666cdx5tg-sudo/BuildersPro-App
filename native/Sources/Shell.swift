@@ -91,11 +91,6 @@ struct RootShell: View {
             }
             .onAppear { shell.goHome = { screen = .home }; installScrollWatch() }
             .onChange(of: screen) { _, _ in shell.barHidden = false }
-            .simultaneousGesture(DragGesture(minimumDistance: 14).onChanged { v in
-                // finger moving up = scrolling down: hide; finger moving down: show
-                if v.translation.height < -24 { if !shell.barHidden { shell.barHidden = true } }
-                else if v.translation.height > 24 { if shell.barHidden { shell.barHidden = false } }
-            })
 
             if menu {
                 Color.black.opacity(0.5).ignoresSafeArea()
