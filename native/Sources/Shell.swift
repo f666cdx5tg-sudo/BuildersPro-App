@@ -1837,18 +1837,19 @@ struct CommandCenterView: View {
                         Text("A").font(.system(size: 11, weight: .heavy)); Text("A").font(.system(size: 18, weight: .heavy))
                         Text("\(zoomPct)%").font(.system(size: 15, weight: .bold)).monospacedDigit().padding(.leading, 2)
                     }
-                    .padding(.horizontal, 16).frame(height: 44)
+                    .lineLimit(1).fixedSize().padding(.horizontal, 16).frame(height: 44)
                     .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
                 }.buttonStyle(.plain)
                 .popover(isPresented: $shell.sizePop, arrowEdge: .bottom) { TextSizePanel(showDone: true).frame(width: 440).preferredColorScheme(dark ? .dark : .light) }
                 Button { sel = .eod } label: {
                     HStack(spacing: 8) { Image(systemName: "doc.badge.plus").font(.system(size: 19, weight: .bold)); Text("New EOD Report").font(.system(size: 15, weight: .bold)).lineLimit(1) }
-                        .padding(.horizontal, 18).frame(height: 44).foregroundStyle(.white)
+                        .fixedSize().padding(.horizontal, 18).frame(height: 44).foregroundStyle(.white)
                         .background(Theme.orange, in: RoundedRectangle(cornerRadius: 10))
                 }.buttonStyle(.plain)
             }
             Spacer(minLength: 8)
+            ViewThatFits(in: .horizontal) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 7) {
                     Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.blue)
@@ -1868,6 +1869,8 @@ struct CommandCenterView: View {
                 }
             }
             .fixedSize(horizontal: true, vertical: false)
+            Color.clear.frame(width: 1, height: 1)
+            }
         }
         .padding(.horizontal, 20).frame(height: 118)
         .background(Theme.card(dark))
@@ -1875,8 +1878,8 @@ struct CommandCenterView: View {
 
     private func tbButton(_ icon: String, _ title: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 19, weight: .bold)); Text(title).font(.system(size: 14, weight: .bold)) }
-                .padding(.horizontal, 16).frame(height: 44)
+            HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 19, weight: .bold)); Text(title).font(.system(size: 14, weight: .bold)).lineLimit(1) }
+                .fixedSize().padding(.horizontal, 16).frame(height: 44)
                 .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
         }.buttonStyle(.plain)
