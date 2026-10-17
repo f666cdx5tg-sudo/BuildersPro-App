@@ -1426,16 +1426,34 @@ struct AllSpacesView: View {
         let open = spaces.reduce(0) { $0 + $1.openCount }
         return "\(spaces.count) area\(spaces.count == 1 ? "" : "s") · \(open) open"
     }
-    private let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+    private var cols: [GridItem] { Theme.desk ? [GridItem(.adaptive(minimum: 210), spacing: 12)] : [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)] }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Button { dismiss() } label: {
-                    HStack(spacing: 6) { Image(systemName: "chevron.left").font(.title3.weight(.semibold)); Text("Punch").font(.title3.weight(.semibold)) }
-                        .foregroundStyle(Theme.blue)
-                }.buttonStyle(.plain)
-                TopBar(title: "Spaces", sub: subtitle)
+                if Theme.desk {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Spaces").font(.system(size: 40, weight: .heavy)).foregroundStyle(Theme.gold)
+                            Text(Date().formatted(.dateTime.month(.twoDigits).day(.twoDigits).year()) + " · " + Date().formatted(date: .omitted, time: .shortened))
+                                .font(.system(size: 15, weight: .heavy)).foregroundStyle(Theme.sky)
+                            Text(subtitle).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.muted(dark))
+                        }
+                        Spacer()
+                        Button { startAdd() } label: {
+                            Text("+ New Space").font(.system(size: 17, weight: .heavy)).foregroundStyle(.primary)
+                                .padding(.horizontal, 22).frame(height: 44)
+                                .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border(dark)))
+                        }.buttonStyle(.plain)
+                    }
+                } else {
+                    Button { dismiss() } label: {
+                        HStack(spacing: 6) { Image(systemName: "chevron.left").font(.title3.weight(.semibold)); Text("Punch").font(.title3.weight(.semibold)) }
+                            .foregroundStyle(Theme.blue)
+                    }.buttonStyle(.plain)
+                    TopBar(title: "Spaces", sub: subtitle)
+                }
                 controls
                 if mode == "trade" { tradeGrid } else { areaGrid }
                 Color.clear.frame(height: 110)
