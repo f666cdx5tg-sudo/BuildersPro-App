@@ -1751,7 +1751,7 @@ struct CommandCenterView: View {
         case .documents: jobScoped("Documents") { DocsView(job: $0) }
         case .eod: jobScoped("EOD Reports") { ReportsView(job: $0) }
         case .time: CCTimeClockView()
-        case .estimates: soon("Estimates", "The estimates screen is next.")
+        case .estimates: CCEstimatesView()
         case .contacts: soon("Contacts", "Contacts is next.")
         case .archive: soon("Archived Jobs", "Archiving is next.")
         case .sync: soon("Sync Settings", "Your jobs sync through iCloud automatically on every device signed in to your Apple ID.")
@@ -2081,5 +2081,55 @@ struct CCTimeClockView: View {
             Text(e.rate > 0 ? usd(e.hours * e.rate) : "—").font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1.2)
             Button { context.delete(e) } label: { Image(systemName: "trash").foregroundStyle(Theme.deskRed).frame(width: 34, height: 30) }.buttonStyle(.plain)
         }.padding(.horizontal, 16).padding(.vertical, 12)
+    }
+}
+
+
+// MARK: - Command Center · Estimates
+
+struct CCEstimatesView: View {
+    @Query(sort: \Estimate.created, order: .reverse) private var estimates: [Estimate]
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @AppStorage("bpDark") private var dark = true
+    @State private var sheet: EstimateRequest?
+    @State private var openJob: Job?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Estimates").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.blue)
+                            Text("\(estimates.count) estimate\(estimates.count == 1 ? "" : "s")").font(.system(size: 15)).foregroundStyle(Theme.muted(dark))
+                        }
+                        Spacer()
+                        Button { sheet = EstimateRequest(est: nil) } label: {
+                            Text("+ New Estimate").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 18).frame(height: 40).background(Theme.blue, in: RoundedRectangle(cornerRadius: 10))
+                        }.buttonStyle(.plain)
+                    }
+                    if estimates.isEmpty {
+                        Text("No estimates yet").foregroundStyle(Theme.muted(dark)).frame(maxWidth: .infinity).padding(.vertical, 40)
+                            .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 12))
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 380), spacing: 14, alignment: .top)], alignment: .leading, spacing: 14) {
+                            ForEach(estimates) { e in
+                                EstimateCard(est: e, edit: { sheet = EstimateRequest(est: e) }, open: { key in
+                                    if let j = jobs.first(where: { String($0.created.timeIntervalSince1970) == key }) { openJob = j }
+                                })
+                            }
+                        }
+                    }
+                    Color.clear.frame(height: 90)
+                }
+                .padding(24)
+            }
+            .sheet(item: $sheet) { EstimateSheet(est: $0.est) }
+            .navigationDestination(item: $openJob) { JobDetailView(job: $0) }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+        }
     }
 }
