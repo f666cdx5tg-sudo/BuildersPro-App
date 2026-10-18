@@ -699,7 +699,7 @@ struct AllPhotosView: View {
     @Query(sort: \SitePhoto.created, order: .reverse) private var photos: [SitePhoto]
     @AppStorage("bpDark") private var dark = true
     @AppStorage("bpStamp") private var stamp = true
-    @State private var pick = ""                       // "" = All Jobs
+    @AppStorage("bpActiveJob") private var pick = ""   // shared: the job you chose stays chosen everywhere ("" = All Jobs)
     @State private var picking = false
     @State private var picked: [PhotosPickerItem] = []
 
@@ -862,7 +862,7 @@ private extension View {
 struct AllMoneyView: View {
     @Query(sort: \Job.created, order: .reverse) private var allJobs: [Job]
     @AppStorage("bpDark") private var dark = true
-    @State private var pick: String = ""          // "" = All Jobs
+    @AppStorage("bpActiveJob") private var pick: String = ""   // shared active job ("" = All Jobs)
     @State private var path: [Route] = []
     struct Route: Hashable { let job: Job; var page = "Overview" }
     struct FinItem: Identifiable { let kind: String; let job: Job?; var id: String { kind } }
@@ -1395,7 +1395,7 @@ struct AllSpacesView: View {
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
     var startJob: Job? = nil
-    @State private var jobKey = ""          // "" = All Jobs
+    @AppStorage("bpActiveJob") private var jobKey = ""   // shared active job ("" = All Jobs)
     @State private var mode = "area"        // area | trade
     @State private var inOut = "All"        // All | Inside | Outside
     @State private var addJob: Job?

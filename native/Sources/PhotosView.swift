@@ -501,22 +501,35 @@ struct PhotoPager: View {
 
     private var index: Int { pages.firstIndex { $0.id == current } ?? 0 }
 
+    private func go(_ delta: Int) {
+        let n = index + delta
+        guard pages.indices.contains(n) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { current = pages[n].id }
+    }
+
     var body: some View {
-        TabView(selection: $current) {
-            ForEach(pages) { p in
+        let p = pages.indices.contains(index) ? pages[index] : nil
+        ZStack {
+            if let p {
                 MarkupView(data: p.data, caption: p.caption, lockSwipe: $locked, onSave: p.save)
-                    .tag(p.id)
+                    .id(p.id)                       // fresh viewer per photo (zoom/markup state resets)
+                    .transition(.opacity)
             }
         }
-        #if os(iOS)
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        #endif
-        .scrollDisabled(locked)
+        // swipe anywhere on the photo (not while drawing or zoomed in)
+        .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
+            guard !locked, abs(v.translation.width) > 60, abs(v.translation.width) > abs(v.translation.height) * 1.4 else { return }
+            go(v.translation.width < 0 ? 1 : -1)
+        })
         .overlay(alignment: .top) {
             if pages.count > 1 {
-                Text("\(index + 1) of \(pages.count)").font(.caption.weight(.bold))
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(.ultraThinMaterial, in: Capsule()).padding(.top, 6)
+                HStack(spacing: 14) {
+                    Button { go(-1) } label: { Image(systemName: "chevron.left") }.disabled(index == 0)
+                    Text("\(index + 1) of \(pages.count)").font(.caption.weight(.bold))
+                    Button { go(1) } label: { Image(systemName: "chevron.right") }.disabled(index >= pages.count - 1)
+                }
+                .font(.body.weight(.bold)).padding(.horizontal, 14).padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule()).padding(.top, 6)
             }
         }
     }

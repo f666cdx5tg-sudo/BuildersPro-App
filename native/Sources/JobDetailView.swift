@@ -63,6 +63,7 @@ struct JobDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @AppStorage("bpDark") private var dark = true
+    @AppStorage("bpActiveJob") private var activeKey = ""
     @State private var section: JobTab?
     @State private var spacesOpen = true
     @State private var showOpen = false
@@ -92,7 +93,7 @@ struct JobDetailView: View {
         #endif
         .navigationDestination(item: $section) { t in sectionPage(t) }
         .navigationDestination(isPresented: $showOpen) { OpenItemsView(job: job) }
-        .onAppear { if tab != .spaces { section = tab; tab = .spaces } }
+        .onAppear { activeKey = String(job.created.timeIntervalSince1970); if tab != .spaces { section = tab; tab = .spaces } }
         .onChange(of: tab) { _, new in if new != .spaces { section = new; tab = .spaces } }
         .shellAdd { addMenu = true }
         .onChange(of: addMenu) { _, v in if v { addMenu = false; sheet = .picker } }
