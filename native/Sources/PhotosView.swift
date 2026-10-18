@@ -195,7 +195,7 @@ struct MarkupView: View {
                                                            y: min(max(v.location.y / g.size.height, 0), 1))
                                         textValue = ""
                                     }
-                                })
+                                }, including: (lockSwipe == nil || tool != nil) ? .all : .none)
                         }
                     }
                     .scaleEffect(zoom).offset(pan)
@@ -465,26 +465,47 @@ struct ThumbImage: View {
 }
 
 
+/// One page of the pager (works for site photos and punch-item photos).
+struct PagerPhoto: Identifiable {
+    let id: PersistentIdentifier
+    let data: Data
+    let caption: Binding<String>?
+    let save: (Data) -> Void
+
+    init(_ p: SitePhoto) {
+        id = p.persistentModelID; data = p.data ?? Data()
+        caption = Binding(get: { p.caption }, set: { p.caption = $0 })
+        save = { p.data = $0 }
+    }
+    init(_ p: PunchPhoto) {
+        id = p.persistentModelID; data = p.data ?? Data()
+        caption = nil
+        save = { p.data = $0 }
+    }
+}
+
 /// Swipe left/right through a set of photos; each page is the full markup viewer.
 struct PhotoPager: View {
-    let photos: [SitePhoto]
+    let pages: [PagerPhoto]
     @State private var current: PersistentIdentifier
     @State private var locked = false
 
     init(photos: [SitePhoto], start: SitePhoto) {
-        self.photos = photos
+        pages = photos.map(PagerPhoto.init)
+        _current = State(initialValue: start.persistentModelID)
+    }
+    init(punch: [PunchPhoto], start: PunchPhoto) {
+        pages = punch.map(PagerPhoto.init)
         _current = State(initialValue: start.persistentModelID)
     }
 
-    private var index: Int { photos.firstIndex { $0.persistentModelID == current } ?? 0 }
+    private var index: Int { pages.firstIndex { $0.id == current } ?? 0 }
 
     var body: some View {
         TabView(selection: $current) {
-            ForEach(photos) { p in
-                MarkupView(data: p.data ?? Data(),
-                           caption: Binding(get: { p.caption }, set: { p.caption = $0 }),
-                           lockSwipe: $locked) { p.data = $0 }
-                    .tag(p.persistentModelID)
+            ForEach(pages) { p in
+                MarkupView(data: p.data, caption: p.caption, lockSwipe: $locked, onSave: p.save)
+                    .tag(p.id)
             }
         }
         #if os(iOS)
@@ -492,9 +513,11 @@ struct PhotoPager: View {
         #endif
         .scrollDisabled(locked)
         .overlay(alignment: .top) {
-            Text("\(index + 1) of \(photos.count)").font(.caption.weight(.bold))
-                .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(.ultraThinMaterial, in: Capsule()).padding(.top, 6)
+            if pages.count > 1 {
+                Text("\(index + 1) of \(pages.count)").font(.caption.weight(.bold))
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(.ultraThinMaterial, in: Capsule()).padding(.top, 6)
+            }
         }
     }
 }

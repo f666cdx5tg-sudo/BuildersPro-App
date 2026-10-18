@@ -272,7 +272,7 @@ struct PunchDetail: View {
         Section("\(kind) photos · \(photos(kind).count)") {
             ForEach(photos(kind)) { p in
                 if let d = p.data {
-                    NavigationLink { MarkupView(data: d) { p.data = $0 } } label: {
+                    NavigationLink { PhotoPager(punch: photos(kind), start: p) } label: {
                         ThumbImage(data: d, px: 900).frame(height: 240).frame(maxWidth: .infinity).clipped()
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }.buttonStyle(.plain)
