@@ -117,7 +117,7 @@ struct RootShell: View {
                 case .punch: AllPunchView()
                 case .photos: AllPhotosView()
                 case .money: AllMoneyView()
-                case .search: SearchView()
+                case .search: SearchView(initial: searchText)
                 case .calendar: AllCalendarView()
                 }
             }
@@ -988,6 +988,7 @@ struct AllMoneyView: View {
 // MARK: - Search (jobs, punch items, notes)
 
 struct SearchView: View {
+    var initial: String = ""
     @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
     @AppStorage("bpDark") private var dark = true
     @State private var q = ""
@@ -1080,6 +1081,8 @@ struct SearchView: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
+        .onAppear { if q.isEmpty { q = initial } }
+        .onChange(of: initial) { _, v in q = v }
     }
 
     private func note(_ t: String) -> some View {
