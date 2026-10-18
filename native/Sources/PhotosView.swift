@@ -57,9 +57,7 @@ struct PhotosView: View {
             } label: { Image(systemName: "line.3.horizontal") }
         }
         .onChange(of: picked) { _, items in Task { await load(items) } }
-        .navigationDestination(item: $openPhoto) { p in
-            MarkupView(data: p.data ?? Data(), caption: Binding(get: { p.caption }, set: { p.caption = $0 })) { p.data = $0 }
-        }
+        .navigationDestination(item: $openPhoto) { p in PhotoPager(photos: photos, start: p) }
         #if os(iOS)
         .fullScreenCover(isPresented: $camera) {
             CameraPicker { data in
@@ -138,6 +136,7 @@ struct Stroke: Identifiable {
 struct MarkupView: View {
     let data: Data
     var caption: Binding<String>? = nil
+    var lockSwipe: Binding<Bool>? = nil          // true while drawing/zoomed so the pager doesn't steal the gesture
     let onSave: (Data) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var strokes: [Stroke] = []
@@ -224,6 +223,7 @@ struct MarkupView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar { markupBar }
+        .onChange(of: tool != nil || zoom > 1) { _, v in lockSwipe?.wrappedValue = v }
         .task(id: data.count) { do { shown = await Task.detached(priority: .userInitiated) { ThumbCache.make(data, 2400) }.value } }
         .alert("Add text", isPresented: Binding(get: { textSpot != nil }, set: { if !$0 { textSpot = nil } })) {
             TextField("Type here", text: $textValue)
@@ -460,6 +460,41 @@ struct ThumbImage: View {
             if let c = ThumbCache.cached(d, px) { img = c; return }
             let px = px
             img = await Task.detached(priority: .userInitiated) { ThumbCache.make(d, px) }.value
+        }
+    }
+}
+
+
+/// Swipe left/right through a set of photos; each page is the full markup viewer.
+struct PhotoPager: View {
+    let photos: [SitePhoto]
+    @State private var current: PersistentIdentifier
+    @State private var locked = false
+
+    init(photos: [SitePhoto], start: SitePhoto) {
+        self.photos = photos
+        _current = State(initialValue: start.persistentModelID)
+    }
+
+    private var index: Int { photos.firstIndex { $0.persistentModelID == current } ?? 0 }
+
+    var body: some View {
+        TabView(selection: $current) {
+            ForEach(photos) { p in
+                MarkupView(data: p.data ?? Data(),
+                           caption: Binding(get: { p.caption }, set: { p.caption = $0 }),
+                           lockSwipe: $locked) { p.data = $0 }
+                    .tag(p.persistentModelID)
+            }
+        }
+        #if os(iOS)
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        #endif
+        .scrollDisabled(locked)
+        .overlay(alignment: .top) {
+            Text("\(index + 1) of \(photos.count)").font(.caption.weight(.bold))
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(.ultraThinMaterial, in: Capsule()).padding(.top, 6)
         }
     }
 }

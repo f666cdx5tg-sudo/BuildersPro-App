@@ -806,7 +806,7 @@ struct PhotoTimeline: View {
             }.padding(.horizontal, 16).padding(.top, 8)
         }
         .background(Theme.bg(dark))
-        .navigationDestination(item: $open) { p in MarkupView(data: p.data ?? Data()) { p.data = $0 } }
+        .navigationDestination(item: $open) { p in PhotoPager(photos: days.flatMap { $0.1 }, start: p) }
     }
 }
 
