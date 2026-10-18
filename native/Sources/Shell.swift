@@ -117,7 +117,7 @@ struct RootShell: View {
                 case .punch: AllPunchView()
                 case .photos: AllPhotosView()
                 case .money: AllMoneyView()
-                case .search: SearchView(initial: searchText)
+                case .search: SearchView()
                 case .calendar: AllCalendarView()
                 }
             }
@@ -1940,7 +1940,7 @@ struct CommandCenterView: View {
         case .photos: AllPhotosView()
         case .punch: AllPunchView()
         case .finance: AllMoneyView()
-        case .search: SearchView()
+        case .search: SearchView(initial: searchText)
         case .spaces: AllSpacesView(startJob: active)
         case .documents: jobScoped("Documents") { DocsView(job: $0) }
         case .eod: jobScoped("EOD Reports") { ReportsView(job: $0) }
