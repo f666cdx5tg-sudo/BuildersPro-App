@@ -57,7 +57,7 @@ final class ModelMathTests: XCTestCase {
     func testBillingBuckets() {
         let j = job()
         for (amt, st) in [(100.0, "Paid"), (200.0, "Sent"), (300.0, "Overdue"), (400.0, "Draft")] {
-            let i = Invoice(amount: amt); i.status = st; ctx.insert(i); i.job = j
+            let i = Invoice(title: "INV", amount: amt); i.status = st; ctx.insert(i); i.job = j
         }
         XCTAssertEqual(j.invoiced, 1_000)
         XCTAssertEqual(j.collected, 100)
