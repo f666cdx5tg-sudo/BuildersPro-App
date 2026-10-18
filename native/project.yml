@@ -10,6 +10,8 @@ settings:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "5.34.12"
     CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: 44HA83UCKJ
+    CODE_SIGN_STYLE: Automatic
 targets:
   BuildersPro:
     type: application
@@ -31,6 +33,7 @@ targets:
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Attach photos to your jobs and punch items."
         CODE_SIGN_ENTITLEMENTS: Config/BuildersPro.entitlements
         ENABLE_PREVIEWS: YES
+        INFOPLIST_KEY_UIBackgroundModes: remote-notification
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
   BuildersProTests:
