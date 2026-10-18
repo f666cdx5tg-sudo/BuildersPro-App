@@ -106,6 +106,8 @@ final class PunchPhoto {
     @Attribute(.externalStorage) var data: Data?
     var kind: String = "Before"      // Before, After, Completion
     var created: Date = Date()
+    @Attribute(.externalStorage) var original: Data?     // the clean photo, kept so markups stay editable
+    var markup: Data?                                    // the marks (JSON), editable any time
     var item: PunchItem?
 
     init(data: Data?, kind: String) { self.data = data.map { PhotoThumb.upright($0) }; self.kind = kind }
@@ -116,6 +118,8 @@ final class SitePhoto {
     @Attribute(.externalStorage) var data: Data?     // big files live outside the database
     var caption: String = ""
     var created: Date = Date()
+    @Attribute(.externalStorage) var original: Data?     // the clean photo, kept so markups stay editable
+    var markup: Data?                                    // the marks (JSON), editable any time
     var space: Space?               // nil = Unfiled
     var job: Job?
 

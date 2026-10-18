@@ -132,14 +132,41 @@ struct Stroke: Identifiable {
     var width: CGFloat               // fraction of the picture's short side
 }
 
+struct StrokeDTO: Codable {
+    var tool: String; var pts: [[Double]]; var text: String; var rgba: [Double]; var width: Double
+}
+
+extension Stroke {
+    var dto: StrokeDTO {
+        let c = color.resolve(in: EnvironmentValues())
+        return StrokeDTO(tool: tool.rawValue, pts: points.map { [Double($0.x), Double($0.y)] }, text: text,
+                         rgba: [Double(c.red), Double(c.green), Double(c.blue), Double(c.opacity)], width: Double(width))
+    }
+    init(_ d: StrokeDTO) {
+        self.init(tool: MarkTool(rawValue: d.tool) ?? .pen,
+                  points: d.pts.map { CGPoint(x: $0[0], y: $0[1]) }, text: d.text,
+                  color: Color(.sRGB, red: d.rgba[0], green: d.rgba[1], blue: d.rgba[2], opacity: d.rgba[3]),
+                  width: CGFloat(d.width))
+    }
+    static func encode(_ s: [Stroke]) -> Data? { s.isEmpty ? nil : try? JSONEncoder().encode(s.map(\.dto)) }
+    static func decode(_ d: Data?) -> [Stroke] {
+        guard let d, let a = try? JSONDecoder().decode([StrokeDTO].self, from: d) else { return [] }
+        return a.map(Stroke.init)
+    }
+}
+
 /// Opens straight into drawing: tools sit on a bar above the photo, so they are always visible.
 struct MarkupView: View {
     let data: Data
     var caption: Binding<String>? = nil
     var lockSwipe: Binding<Bool>? = nil          // true while drawing/zoomed so the pager doesn't steal the gesture
-    let onSave: (Data) -> Void
+    var markup: Data? = nil                       // saved marks, reloaded so they can be edited
+    let onSave: (_ flattened: Data?, _ markup: Data?) -> Void   // flattened == nil → no marks, restore the clean photo
     @Environment(\.dismiss) private var dismiss
     @State private var strokes: [Stroke] = []
+    @State private var loaded = false
+    @State private var baseline: Data?
+    @State private var savedFlash = false
     @State private var color: Color = .red
     @State private var width: CGFloat = 0.008
     @State private var zoom: CGFloat = 1
@@ -224,6 +251,8 @@ struct MarkupView: View {
         #endif
         .toolbar { markupBar }
         .onChange(of: tool != nil || zoom > 1) { _, v in lockSwipe?.wrappedValue = v }
+        .onAppear { if !loaded { loaded = true; strokes = Stroke.decode(markup); baseline = Stroke.encode(strokes) } }
+        .onDisappear { if dirty { save(close: false) } }          // changes are never lost
         .task(id: data.count) { do { shown = await Task.detached(priority: .userInitiated) { ThumbCache.make(data, 2400) }.value } }
         .alert("Add text", isPresented: Binding(get: { textSpot != nil }, set: { if !$0 { textSpot = nil } })) {
             TextField("Type here", text: $textValue)
@@ -258,7 +287,7 @@ struct MarkupView: View {
                 Button { _ = strokes.popLast() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }.disabled(strokes.isEmpty)
                 Button(role: .destructive) { strokes.removeAll() } label: { Label("Clear", systemImage: "trash") }.disabled(strokes.isEmpty)
             } label: { Image(systemName: "line.3.horizontal") }
-            Button("Save") { save() }.fontWeight(.bold).disabled(strokes.isEmpty)
+            Button(savedFlash ? "Saved ✓" : "Save") { save(close: lockSwipe == nil) }.fontWeight(.bold).disabled(!dirty && !savedFlash)
         }
     }
 
@@ -336,7 +365,15 @@ struct MarkupView: View {
         }
     }
 
-    @MainActor private func save() {
+    private var dirty: Bool { loaded && Stroke.encode(strokes) != baseline }
+
+    @MainActor private func save(close: Bool = true) {
+        let marks = Stroke.encode(strokes)
+        defer { baseline = marks }
+        guard marks != nil else {                    // every mark removed → back to the clean photo
+            onSave(nil, nil)
+            flash(close); return
+        }
         guard let img = PhotoThumb.image(data), let px = PhotoThumb.pixelSize(data) else { return }
         let k = min(1, 2000 / max(px.width, px.height))
         let size = CGSize(width: px.width * k, height: px.height * k)
@@ -348,11 +385,17 @@ struct MarkupView: View {
         let r = ImageRenderer(content: view)
         r.scale = 1
         #if canImport(UIKit)
-        if let out = r.uiImage?.jpegData(compressionQuality: 0.85) { onSave(out); dismiss() }
+        if let out = r.uiImage?.jpegData(compressionQuality: 0.85) { onSave(out, marks); flash(close) }
         #else
         if let ns = r.nsImage, let tiff = ns.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
-           let out = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) { onSave(out); dismiss() }
+           let out = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) { onSave(out, marks); flash(close) }
         #endif
+    }
+
+    private func flash(_ close: Bool) {
+        if close { dismiss(); return }
+        savedFlash = true
+        Task { try? await Task.sleep(nanoseconds: 1_500_000_000); savedFlash = false }
     }
 }
 
@@ -468,34 +511,42 @@ struct ThumbImage: View {
 /// One page of the pager (works for site photos and punch-item photos).
 struct PagerPhoto: Identifiable {
     let id: PersistentIdentifier
-    let data: Data
+    let data: Data                 // the CLEAN photo (marks are drawn on top, so they stay editable)
+    let markup: Data?
     let caption: Binding<String>?
-    let save: (Data) -> Void
+    let save: (Data?, Data?) -> Void
 
     init(_ p: SitePhoto) {
-        id = p.persistentModelID; data = p.data ?? Data()
+        id = p.persistentModelID; data = p.original ?? p.data ?? Data(); markup = p.markup
         caption = Binding(get: { p.caption }, set: { p.caption = $0 })
-        save = { p.data = $0 }
+        save = { flat, marks in
+            if let flat { if p.original == nil { p.original = p.data }; p.data = flat; p.markup = marks }
+            else { if let o = p.original { p.data = o }; p.original = nil; p.markup = nil }
+        }
     }
     init(_ p: PunchPhoto) {
-        id = p.persistentModelID; data = p.data ?? Data()
+        id = p.persistentModelID; data = p.original ?? p.data ?? Data(); markup = p.markup
         caption = nil
-        save = { p.data = $0 }
+        save = { flat, marks in
+            if let flat { if p.original == nil { p.original = p.data }; p.data = flat; p.markup = marks }
+            else { if let o = p.original { p.data = o }; p.original = nil; p.markup = nil }
+        }
     }
 }
 
 /// Swipe left/right through a set of photos; each page is the full markup viewer.
 struct PhotoPager: View {
-    let pages: [PagerPhoto]
+    private let build: () -> [PagerPhoto]
+    private var pages: [PagerPhoto] { build() }          // rebuilt from the live photos so saved marks show when you swipe back
     @State private var current: PersistentIdentifier
     @State private var locked = false
 
     init(photos: [SitePhoto], start: SitePhoto) {
-        pages = photos.map(PagerPhoto.init)
+        build = { photos.map(PagerPhoto.init) }
         _current = State(initialValue: start.persistentModelID)
     }
     init(punch: [PunchPhoto], start: PunchPhoto) {
-        pages = punch.map(PagerPhoto.init)
+        build = { punch.map(PagerPhoto.init) }
         _current = State(initialValue: start.persistentModelID)
     }
 
@@ -511,7 +562,7 @@ struct PhotoPager: View {
         let p = pages.indices.contains(index) ? pages[index] : nil
         ZStack {
             if let p {
-                MarkupView(data: p.data, caption: p.caption, lockSwipe: $locked, onSave: p.save)
+                MarkupView(data: p.data, caption: p.caption, lockSwipe: $locked, markup: p.markup, onSave: p.save)
                     .id(p.id)                       // fresh viewer per photo (zoom/markup state resets)
                     .transition(.opacity)
             }
