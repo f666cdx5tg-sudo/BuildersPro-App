@@ -403,6 +403,20 @@ struct MoneyView: View {
             }
 
             if show("Overview") {
+            Section {
+                let cols = [GridItem(.adaptive(minimum: 110), spacing: 10)]
+                LazyVGrid(columns: cols, spacing: 10) {
+                    tile("Contract", job.revisedContract, .blue, "Invoices")
+                    tile("Invoiced", job.invoiced, .green, "Invoices")
+                    tile("Balance", max(0, job.remaining), job.remaining >= 0 ? .blue : .red, "Expenses")
+                    tile("Expenses", job.expenseTotal, .red, "Expenses")
+                    tile("Sub Costs", job.contractorTotal, .orange, "Contractors")
+                }
+                .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
+            }
+            }
+
+            if show("Overview") {
             Section("Contract") {
                 HStack {
                     Text("Original contract")
@@ -578,6 +592,18 @@ struct MoneyView: View {
                 } label: { Image(systemName: "line.3.horizontal") }
             }
         }
+    }
+
+    private func tile(_ label: String, _ value: Double, _ color: Color, _ target: String) -> some View {
+        Button { withAnimation { page = target } } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label.uppercased()).font(.caption.weight(.heavy)).tracking(1).foregroundStyle(.secondary)
+                Text(Money.text(value)).font(.title3.weight(.heavy)).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.6)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(color.opacity(0.35)))
+        }.buttonStyle(.plain)
     }
 
     private func line(_ label: String, _ value: Double, _ color: Color) -> some View {
