@@ -1820,11 +1820,9 @@ struct CommandCenterView: View {
 
     private var topbar: some View {
         HStack(spacing: 16) {
-            ZStack {
-                Circle().stroke(Color.primary, lineWidth: 4.5).frame(width: 96, height: 96)
-                Text("B").font(.system(size: 56, weight: .bold, design: .serif))
-                Capsule().fill(Color(red: 0.84, green: 0.13, blue: 0.13)).frame(width: 52, height: 7).offset(y: 27)
-            }
+            Image("CCLogo").resizable().scaledToFit().frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.border(dark)))
             VStack(spacing: 4) {
                 Text("BuildersPro").font(.system(size: 26, weight: .heavy)).lineLimit(1).fixedSize()
                     .foregroundStyle(LinearGradient(colors: [dark ? Color(white: 0.94) : Color(white: 0.78), Color(white: 0.55)], startPoint: .leading, endPoint: .trailing))
