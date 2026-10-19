@@ -80,6 +80,7 @@ struct RootShell: View {
         }
     }
     @State private var pinch: CGFloat = 1
+    @AppStorage("bpPinchLock") private var pinchLock = 0
     private var zoom: CGFloat { min(max(CGFloat(zoomPct) / 100 * pinch, 0.85), 1.8) }
 
     var body: some View {
@@ -92,13 +93,15 @@ struct RootShell: View {
                     .scaleEffect(zoom, anchor: .topLeading)
                     .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
             }
+            .onAppear { pinchLock = 0 }
             .simultaneousGesture(
                 MagnifyGesture()
                     .onChanged { v in pinch = v.magnification }
                     .onEnded { v in
                         let nv = Int((Double(zoomPct) * Double(v.magnification) / 5).rounded()) * 5
                         zoomPct = min(180, max(85, nv)); pinch = 1
-                    }
+                    },
+                including: pinchLock > 0 ? .subviews : .all
             )
         } else {
             content

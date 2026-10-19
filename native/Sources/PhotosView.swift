@@ -157,6 +157,7 @@ extension Stroke {
 
 /// Opens straight into drawing: tools sit on a bar above the photo, so they are always visible.
 struct MarkupView: View {
+    @AppStorage("bpPinchLock") private var pinchLock = 0   // while a photo is open, pinch zooms the photo, not the app
     let data: Data
     var caption: Binding<String>? = nil
     var lockSwipe: Binding<Bool>? = nil          // true while drawing/zoomed so the pager doesn't steal the gesture
@@ -251,8 +252,8 @@ struct MarkupView: View {
         #endif
         .toolbar { markupBar }
         .onChange(of: tool != nil || zoom > 1) { _, v in lockSwipe?.wrappedValue = v }
-        .onAppear { if !loaded { loaded = true; strokes = Stroke.decode(markup); baseline = Stroke.encode(strokes) } }
-        .onDisappear { if dirty { save(close: false) } }          // changes are never lost
+        .onAppear { pinchLock += 1; if !loaded { loaded = true; strokes = Stroke.decode(markup); baseline = Stroke.encode(strokes) } }
+        .onDisappear { pinchLock = max(0, pinchLock - 1); if dirty { save(close: false) } }          // changes are never lost
         .task(id: data.count) { do { shown = await Task.detached(priority: .userInitiated) { ThumbCache.make(data, 2400) }.value } }
         .alert("Add text", isPresented: Binding(get: { textSpot != nil }, set: { if !$0 { textSpot = nil } })) {
             TextField("Type here", text: $textValue)
