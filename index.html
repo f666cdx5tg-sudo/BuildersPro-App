@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.36';
+var APP_VERSION = '4.37';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -18289,23 +18289,21 @@ window.bpShopBack = function(){
 };
 /* v3.49: easy add — Qty | Item name / description | Cost, then Add (or Add + next) */
 window.bpShopOpenAdd = function(){
-  var body = '<div style="display:flex;gap:8px"><div style="width:26%"><div style="' + LBL + ';margin-top:0">Qty</div><input id="bp-sa-qty" inputmode="decimal" value="1" style="' + INP + ';text-align:center"/></div>'
-    + '<div style="flex:1;min-width:0"><div style="' + LBL + ';margin-top:0">Item name / description</div><input id="bp-sa-text" autocomplete="off" placeholder="1/2&quot; PEX elbow" style="' + INP + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpShopSaveNew(false)}"/></div>'
-    + '<div style="width:28%"><div style="' + LBL + ';margin-top:0">Cost $</div><input id="bp-sa-price" inputmode="decimal" placeholder="0.00" style="' + INP + '"/></div></div>'
-    + '<div style="font-size:13px;color:var(--muted);margin-top:10px">Cost is per item. Tap the item afterwards to add store, notes and more.</div>';
+  /* v4.37: one plain line instead of Qty / Item / Cost cells — type it like you'd say it: "10 1/2" PEX elbows @2" */
+  var body = '<input id="bp-sa-text" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" placeholder="10 1/2&quot; PEX elbows @2" style="width:100%;box-sizing:border-box;min-height:44px;padding:6px 2px;border:none;border-bottom:2px solid var(--border,#444);border-radius:0;background:transparent;color:var(--text,#f0f0f0);font-size:18px;font-family:inherit;outline:none" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpShopSaveNew(false)}"/>'
+    + '<div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.4">Number first = how many. <b>@2</b> at the end = price each. Tap the item afterwards to add store, notes and more.</div>';
   var foot = '<div style="display:flex;gap:8px"><button onclick="bpShopSaveNew(true)" style="' + BTN + ';background:var(--card2,#222);color:var(--text)">Add + next</button>'
     + '<button onclick="bpShopSaveNew(false)" style="' + BTN + ';flex:1;background:#30D158;color:#000">Add item</button></div>';
   overlay('bp-shop-new', 'Add item', body, foot);
   setTimeout(function(){ var t = document.getElementById('bp-sa-text'); if (t) t.focus(); }, 200);
 };
 window.bpShopSaveNew = function(next){
-  var g = function(k){ var e = document.getElementById('bp-sa-' + k); return e ? e.value.trim() : ''; };
-  var name = g('text');
-  if (!name) { say('Type the item name first'); var t = document.getElementById('bp-sa-text'); if (t) t.focus(); return; }
-  var qty = g('qty') ? window.bpCalcEval(g('qty')) : 1, price = g('price') ? window.bpCalcEval(g('price')) : 0;
-  if (isNaN(qty) || isNaN(price)) { say('Check the numbers'); return; }
+  var te = document.getElementById('bp-sa-text'), raw = te ? te.value.trim() : '';
+  if (!raw) { say('Type the item first'); if (te) te.focus(); return; }
+  var it = (typeof window.bpParseShopSpeech === 'function') ? window.bpParseShopSpeech(raw) : { qty:1, unit:'', price:0, text:raw };
+  if (!it || !it.text) it = { qty:1, unit:'', price:0, text:raw };
   DB.shopping = DB.shopping || [];
-  DB.shopping.push({ id:newId(), jobId:SH.job || '', text:name, qty:qty || 1, unit:'', price:price || 0, store:SH.lastStore || '', bought:false, created:ts(), updatedAt:ts() });
+  DB.shopping.push({ id:newId(), jobId:SH.job || '', text:it.text, qty:it.qty || 1, unit:it.unit || '', price:it.price || 0, store:SH.lastStore || '', bought:false, created:ts(), updatedAt:ts() });
   persist(); drawShop(); say('Added');
   if (next) { window.bpShopOpenAdd(); }
   else { var o = document.getElementById('bp-shop-new'); if (o) o.remove(); }
