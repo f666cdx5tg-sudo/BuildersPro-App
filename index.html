@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.34';
+var APP_VERSION = '4.35';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -18244,9 +18244,6 @@ function drawShop(){
   var byNew = function(a, b){ return (a.created||'') < (b.created||'') ? -1 : 1; };
   open.sort(byNew); ordd.sort(byNew); done.sort(function(a, b){ return (a.boughtAt||'') < (b.boughtAt||'') ? 1 : -1; });
   var body = '<div style="margin-top:4px">' + jobSelect('bp-shop-job', SH.job, 'bpShopJob(this.value)', true) + '</div>'
-    + '<button id="bp-shop-scan" onclick="bpShopScan()" style="' + BTN + ';width:100%;margin-top:10px;background:rgba(10,132,255,.14);color:#0A84FF;border:1.5px solid #0A84FF">📷 Scan a receipt</button>'
-    + '<div style="display:flex;align-items:center;gap:12px;margin:14px 0 4px"><button id="bp-shop-add" onclick="bpShopOpenAdd()" aria-label="Add item" style="width:60px;height:60px;border-radius:50%;border:none;background:#30D158;color:#000;font-size:36px;font-weight:900;line-height:1;cursor:pointer;flex-shrink:0;box-shadow:0 4px 14px rgba(48,209,88,.4)">+</button>'
-    + '<div style="font-size:15px;font-weight:800;color:var(--muted)">Add item</div></div>'
     + shopStrip()
     + '<div style="' + LBL + '">To buy (' + open.length + ')</div>'
     + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Add items above.</div>')
@@ -18260,7 +18257,8 @@ function drawShop(){
     + '<div style="margin-top:14px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)">Sales tax %'
     + '<input id="bp-shop-tax" inputmode="decimal" value="' + E(String(t.rate)) + '" onchange="bpSetShopTax(this.value)" style="' + INP + ';width:110px;padding:9px 12px;font-size:16px"/>'
     + '<span>(this device)</span></div>';
-  var foot = '<div id="bp-shop-totals" style="display:flex;gap:10px;align-items:flex-end">'
+  var foot = '<button id="bp-shop-add" onclick="bpShopOpenAdd()" aria-label="Add item" style="' + BTN + ';width:100%;margin-bottom:10px;background:#30D158;color:#000;font-size:18px;gap:8px"><span style="font-size:26px;font-weight:900;line-height:1">+</span>Add item</button>'
+    + '<div id="bp-shop-totals" style="display:flex;gap:10px;align-items:flex-end">'
     + '<div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Still to buy</div>'
     + '<div style="font-size:26px;font-weight:900;color:#FF9F0A">' + money(t.toBuyWithTax) + '</div>'
     + '<div style="font-size:12.5px;color:var(--muted)">' + money(t.toBuy) + ' + ' + money(t.tax) + ' tax</div></div>'
@@ -18268,9 +18266,25 @@ function drawShop(){
     + '<div style="font-size:20px;font-weight:900;color:#30D158">' + money(t.bought) + '</div></div>'
     + '<button onclick="bpOpenCalc()" aria-label="Calculator" style="' + BTN + ';background:#FF9F0A;color:#000;padding:12px 14px">' + ICON.calc + '</button></div>';
   var ow = overlay('bp-shop', ICON.cart + 'Shopping List', body, foot);
-  /* v3.49: floating back button -> closes the list and reopens the slide-over menu */
-  if (ow) ow.insertAdjacentHTML('beforeend', '<button type="button" id="bp-shop-back" aria-label="Back to menu" onclick="bpShopBack()" style="position:absolute;left:16px;bottom:calc(112px + env(safe-area-inset-bottom,0px));width:52px;height:52px;border-radius:50%;border:1.5px solid var(--border);background:var(--card);color:var(--text);box-shadow:0 4px 14px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3"><svg viewBox="0 0 24 24" style="width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round"><polyline points="15 5 8 12 15 19"/></svg></button>');
+  /* v4.35: back button sits in the header (left); Scan a receipt / Speak items live in a hamburger menu (right) */
+  if (ow) {
+    var hd = ow.querySelector('[data-bp-sheet-head]');
+    var SV = function(inner){ return '<svg viewBox="0 0 24 24" style="width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round">' + inner + '</svg>'; };
+    var CB = 'width:44px;height:44px;border-radius:50%;border:none;background:var(--card2,#222);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0';
+    var close = hd.querySelector('button'); if (close) close.remove();
+    hd.insertAdjacentHTML('afterbegin', '<button type="button" id="bp-shop-back" aria-label="Back to menu" onclick="bpShopBack()" style="' + CB + '">' + SV('<polyline points="15 5 8 12 15 19"/>') + '</button>');
+    hd.insertAdjacentHTML('beforeend', '<button type="button" id="bp-shop-menu-btn" aria-label="Menu" onclick="bpShopMenuToggle()" style="' + CB + '">' + SV('<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>') + '</button>');
+    ow.firstChild.style.position = 'relative';
+    ow.firstChild.insertAdjacentHTML('beforeend', '<div id="bp-shop-menu" style="display:none;position:absolute;right:16px;top:64px;z-index:5;min-width:220px;padding:8px;border-radius:14px;background:var(--card,#1c1c1e);border:1px solid var(--border,#333);box-shadow:0 8px 28px rgba(0,0,0,.5);flex-direction:column;gap:8px">'
+      + '<button id="bp-shop-scan" onclick="bpShopMenuToggle(false);bpShopScan()" style="' + BTN + ';width:100%;justify-content:flex-start;background:rgba(10,132,255,.14);color:#0A84FF;border:1.5px solid #0A84FF">📷 Scan a receipt</button></div>');
+    try { addSpeak(); } catch(e){}
+  }
 }
+window.bpShopMenuToggle = function(force){
+  var m = document.getElementById('bp-shop-menu'); if (!m) return;
+  var on = (typeof force === 'boolean') ? force : m.style.display === 'none';
+  m.style.display = on ? 'flex' : 'none';
+};
 window.bpShopBack = function(){
   var o = document.getElementById('bp-shop'); if (o) o.remove();
   if (typeof bpDrawerSet === 'function') bpDrawerSet(true);
@@ -20360,13 +20374,10 @@ if (window.visualViewport) { window.visualViewport.addEventListener('resize', pl
 function addSpeak(){
   var scan = document.getElementById('bp-shop-scan');
   if (!scan || document.getElementById('bp-shop-speak')) return;
-  var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;margin-top:10px';
-  scan.parentNode.insertBefore(row, scan); row.appendChild(scan);
-  scan.style.marginTop = '0'; scan.style.flex = '1'; scan.style.width = 'auto';
   var sp = document.createElement('button'); sp.id = 'bp-shop-speak'; sp.type = 'button'; sp.innerHTML = MIC(19, 2.2) + '<span style="margin-left:6px">Speak items</span>';
-  sp.style.cssText = BTN + ';flex:1;background:rgba(255,159,10,.14);color:#FF9F0A;border:1.5px solid #FF9F0A';
-  sp.onclick = function(){ window.bpVoiceCapture('shop'); };
-  row.insertBefore(sp, scan);
+  sp.style.cssText = BTN + ';width:100%;justify-content:flex-start;background:rgba(255,159,10,.14);color:#FF9F0A;border:1.5px solid #FF9F0A';
+  sp.onclick = function(){ var m = document.getElementById('bp-shop-menu'); if (m) m.style.display = 'none'; window.bpVoiceCapture('shop'); };
+  scan.parentNode.insertBefore(sp, scan);
 }
 new MutationObserver(function(){ try { addSpeak(); } catch(e){} }).observe(document.body, { childList:true });
 
