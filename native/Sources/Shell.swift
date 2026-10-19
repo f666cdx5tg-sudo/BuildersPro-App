@@ -79,18 +79,27 @@ struct RootShell: View {
         default: return .accessibility2
         }
     }
-    private var zoom: CGFloat { CGFloat(min(max(zoomPct, 85), 180)) / 100 }
+    @State private var pinch: CGFloat = 1
+    private var zoom: CGFloat { min(max(CGFloat(zoomPct) / 100 * pinch, 0.85), 1.8) }
 
     var body: some View {
-        if wide && zoomPct != 100 {
+        if wide {
             // iPad / Mac Command Center: the whole screen scales, like the web Command Center.
-            // At exactly 100% there is no scaling layer at all, so text and photos stay pixel-sharp while scrolling.
+            // Pinch with two fingers anywhere to zoom; the A− / A+ panel does the same.
             GeometryReader { g in
                 content
                     .frame(width: g.size.width / zoom, height: g.size.height / zoom)
                     .scaleEffect(zoom, anchor: .topLeading)
                     .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
             }
+            .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { v in pinch = v.magnification }
+                    .onEnded { v in
+                        let nv = Int((Double(zoomPct) * Double(v.magnification) / 5).rounded()) * 5
+                        zoomPct = min(180, max(85, nv)); pinch = 1
+                    }
+            )
         } else {
             content
         }
@@ -1846,7 +1855,7 @@ struct CommandCenterView: View {
                     .background(Theme.card2(dark), in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border(dark)))
                 }.buttonStyle(.plain)
-                .popover(isPresented: $shell.sizePop, arrowEdge: .bottom) { TextSizePanel(showDone: true).frame(width: 440).preferredColorScheme(dark ? .dark : .light) }
+                .popover(isPresented: $shell.sizePop, arrowEdge: .top) { TextSizePanel(showDone: true).frame(width: 440).preferredColorScheme(dark ? .dark : .light) }
                 Button { sel = .eod } label: {
                     HStack(spacing: 8) { Image(systemName: "doc.badge.plus").font(.system(size: 19, weight: .bold)); Text("New EOD Report").font(.system(size: 15, weight: .bold)).lineLimit(1) }
                         .fixedSize().padding(.horizontal, 18).frame(height: 44).foregroundStyle(.white)
