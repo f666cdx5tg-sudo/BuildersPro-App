@@ -2019,7 +2019,9 @@ struct CCDashboard: View {
     @Query private var photos: [SitePhoto]
     @Query(sort: \DailyReport.date, order: .reverse) private var reports: [DailyReport]
     @AppStorage("bpDark") private var dark = true
+    @AppStorage("bpActiveJob") private var activeKey = ""
     let open: (CCScreen) -> Void
+    private var activeJob: Job? { activeKey.isEmpty ? nil : jobs.first { String($0.created.timeIntervalSince1970) == activeKey } }
 
     private var activeCount: Int { jobs.filter { $0.status == "Active" }.count }
     private var openItems: Int { jobs.reduce(0) { $0 + ($1.totalCount - $1.doneCount) } }
@@ -2045,6 +2047,9 @@ struct CCDashboard: View {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Dashboard").font(.system(size: 36, weight: .semibold))
+                            if let j = activeJob {      // the project being reviewed
+                                Text(j.name).font(.system(size: 26, weight: .heavy)).foregroundStyle(Theme.gold).lineLimit(1)
+                            }
                             Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
                                 .font(.system(size: 15)).foregroundStyle(Theme.muted(dark))
                         }
