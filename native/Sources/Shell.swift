@@ -1819,7 +1819,7 @@ struct CommandCenterView: View {
                     .environmentObject(shell)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.bg(dark))
-                    .overlay(alignment: .bottomTrailing) { FloatBar(showBack: false).environmentObject(shell) }
+                    .overlay(alignment: .bottomTrailing) { FloatBar(showBack: false, showMenu: false).environmentObject(shell) }
             }
         }
         .background(Theme.bg(dark).ignoresSafeArea())

@@ -53,6 +53,7 @@ struct FloatBar: View {
     @StateObject private var voice = Dictation()
     @State private var saved = ""
     let showBack: Bool
+    var showMenu = true            // the ••• opens the slide-out menu; Command Center's sidebar is always open, so it hides it
     @AppStorage("bpDark") private var dark = true
 
     private var activeJob: Job? { jobs.first { String($0.created.timeIntervalSince1970) == activeKey } ?? jobs.first { $0.isActive } ?? jobs.first }
@@ -63,7 +64,7 @@ struct FloatBar: View {
             HStack(spacing: 14) {
                 if showBack { circle("chevron.left", filled: nil) { shell.goHome() } }
                 if let add = shell.addAction { circle(shell.addSymbol, filled: Theme.blue) { add() } }
-                circle("ellipsis", filled: nil) { openMenu() }
+                if showMenu { circle("ellipsis", filled: nil) { openMenu() } }
                 circle(voice.listening ? "stop.fill" : "mic.fill", filled: Theme.red) { toggleVoice() }
             }
         }
