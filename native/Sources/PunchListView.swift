@@ -195,11 +195,11 @@ struct PunchListView: View {
                     if n > 0 { Text("\(n)").font(.caption2.weight(.bold)).foregroundStyle(.white).padding(4).background(Theme.blue, in: Circle()).offset(x: 6, y: -6) }
                 }
             }.buttonStyle(.plain)
-            Button { toDelete = it } label: { Image(systemName: "xmark").font(.headline).foregroundStyle(.secondary).frame(width: 30, height: 40) }.buttonStyle(.plain)
         }
         .padding(.vertical, 14).padding(.horizontal, 16)
         .background(Theme.card(dark), in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border(dark), lineWidth: 1))
+        .swipeToDelete { toDelete = it }
     }
 }
 

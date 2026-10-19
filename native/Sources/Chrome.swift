@@ -1567,3 +1567,46 @@ struct DailyLogSheet: View {
         .onAppear { if !loaded { loaded = true; load() } }
     }
 }
+
+
+/// Swipe a row left to reveal Delete (full swipe deletes). Works inside ScrollView/VStack rows, where List's swipeActions can't.
+struct SwipeDelete: ViewModifier {
+    let onDelete: () -> Void
+    @State private var offset: CGFloat = 0
+    @State private var open = false
+    private let reveal: CGFloat = 96
+
+    func body(content: Content) -> some View {
+        ZStack(alignment: .trailing) {
+            if offset < 0 {
+                Button { withAnimation(.easeOut(duration: 0.2)) { offset = 0; open = false }; onDelete() } label: {
+                    Label("Delete", systemImage: "trash.fill").labelStyle(.titleAndIcon).font(.headline.weight(.bold)).foregroundStyle(.white)
+                        .frame(width: max(0, -offset), alignment: .center).frame(maxHeight: .infinity)
+                        .background(Color.red, in: RoundedRectangle(cornerRadius: 18))
+                }.buttonStyle(.plain)
+            }
+            content
+                .offset(x: offset)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 18)
+                        .onChanged { v in
+                            guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                            let base: CGFloat = open ? -reveal : 0
+                            offset = min(0, max(-320, base + v.translation.width))
+                        }
+                        .onEnded { v in
+                            guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                if offset < -240 { offset = 0; open = false; onDelete() }
+                                else if offset < -reveal / 2 { offset = -reveal; open = true }
+                                else { offset = 0; open = false }
+                            }
+                        }
+                )
+        }
+    }
+}
+
+extension View {
+    func swipeToDelete(_ action: @escaping () -> Void) -> some View { modifier(SwipeDelete(onDelete: action)) }
+}
