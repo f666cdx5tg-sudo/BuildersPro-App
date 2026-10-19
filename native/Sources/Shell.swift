@@ -1446,7 +1446,12 @@ struct AllSpacesView: View {
     }
     private var cols: [GridItem] { Theme.desk ? [GridItem(.adaptive(minimum: 210), spacing: 12)] : [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)] }
 
+    // Command Center shows this screen on its own (no parent stack), so give it one — otherwise the space tiles can't open.
     var body: some View {
+        if Theme.desk { NavigationStack { page } } else { page }
+    }
+
+    private var page: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if Theme.desk {
