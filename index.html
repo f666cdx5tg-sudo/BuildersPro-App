@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.35';
+var APP_VERSION = '4.36';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -18244,9 +18244,8 @@ function drawShop(){
   var byNew = function(a, b){ return (a.created||'') < (b.created||'') ? -1 : 1; };
   open.sort(byNew); ordd.sort(byNew); done.sort(function(a, b){ return (a.boughtAt||'') < (b.boughtAt||'') ? 1 : -1; });
   var body = '<div style="margin-top:4px">' + jobSelect('bp-shop-job', SH.job, 'bpShopJob(this.value)', true) + '</div>'
-    + shopStrip()
     + '<div style="' + LBL + '">To buy (' + open.length + ')</div>'
-    + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Add items above.</div>')
+    + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Tap Add item below.</div>')
     + (ordd.length ? '<div id="bp-shop-ordered" style="' + LBL + ';margin-top:18px">Ordered — waiting on delivery (' + ordd.length + ')</div>' + ordd.map(shopRow).join('') : '')
     + (done.length ? '<div style="' + LBL + ';margin-top:18px">Arrived / bought (' + done.length + ')</div>' + done.map(shopRow).join('') : '')
     + '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
@@ -18257,14 +18256,13 @@ function drawShop(){
     + '<div style="margin-top:14px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)">Sales tax %'
     + '<input id="bp-shop-tax" inputmode="decimal" value="' + E(String(t.rate)) + '" onchange="bpSetShopTax(this.value)" style="' + INP + ';width:110px;padding:9px 12px;font-size:16px"/>'
     + '<span>(this device)</span></div>';
-  var foot = '<button id="bp-shop-add" onclick="bpShopOpenAdd()" aria-label="Add item" style="' + BTN + ';width:100%;margin-bottom:10px;background:#30D158;color:#000;font-size:18px;gap:8px"><span style="font-size:26px;font-weight:900;line-height:1">+</span>Add item</button>'
-    + '<div id="bp-shop-totals" style="display:flex;gap:10px;align-items:flex-end">'
-    + '<div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Still to buy</div>'
-    + '<div style="font-size:26px;font-weight:900;color:#FF9F0A">' + money(t.toBuyWithTax) + '</div>'
-    + '<div style="font-size:12.5px;color:var(--muted)">' + money(t.toBuy) + ' + ' + money(t.tax) + ' tax</div></div>'
-    + '<div style="text-align:right"><div style="font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Bought</div>'
-    + '<div style="font-size:20px;font-weight:900;color:#30D158">' + money(t.bought) + '</div></div>'
-    + '<button onclick="bpOpenCalc()" aria-label="Calculator" style="' + BTN + ';background:#FF9F0A;color:#000;padding:12px 14px">' + ICON.calc + '</button></div>';
+  /* v4.36: compact footer — slimmer Add item bar, "Bought" total removed, "Materials · this job" strip removed */
+  var foot = '<button id="bp-shop-add" onclick="bpShopOpenAdd()" aria-label="Add item" style="' + BTN + ';width:100%;margin-bottom:6px;min-height:44px;padding:8px 12px;background:#30D158;color:#000;font-size:16px;gap:6px"><span style="font-size:22px;font-weight:900;line-height:1">+</span>Add item</button>'
+    + '<div id="bp-shop-totals" style="display:flex;gap:10px;align-items:center">'
+    + '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Still to buy</div>'
+    + '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span style="font-size:20px;font-weight:900;color:#FF9F0A">' + money(t.toBuyWithTax) + '</span>'
+    + '<span style="font-size:12px;color:var(--muted)">' + money(t.toBuy) + ' + ' + money(t.tax) + ' tax</span></div></div>'
+    + '<button onclick="bpOpenCalc()" aria-label="Calculator" style="' + BTN + ';flex-shrink:0;min-width:44px;min-height:44px;background:#FF9F0A;color:#000;padding:8px 12px">' + ICON.calc + '</button></div>';
   var ow = overlay('bp-shop', ICON.cart + 'Shopping List', body, foot);
   /* v4.35: back button sits in the header (left); Scan a receipt / Speak items live in a hamburger menu (right) */
   if (ow) {
