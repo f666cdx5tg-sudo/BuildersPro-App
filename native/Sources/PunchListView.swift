@@ -209,6 +209,7 @@ struct PunchDetail: View {
     @State private var pickBefore: [PhotosPickerItem] = []
     @State private var pickAfter: [PhotosPickerItem] = []
     @State private var cameraKind: String?
+    @State private var viewing: PunchPhoto?
 
     private func photos(_ kind: String) -> [PunchPhoto] {
         (item.photos ?? []).filter { $0.kind == kind }.sorted { $0.created < $1.created }
@@ -236,6 +237,7 @@ struct PunchDetail: View {
             Section("Notes") { TextEditor(text: $item.extraNotes).frame(minHeight: 70) }
         }
         .formStyle(.grouped)
+        .navigationDestination(item: $viewing) { p in PhotoPager(punch: photos(p.kind), start: p) }
         .navigationTitle(item.text.isEmpty ? "Punch item" : item.text)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -277,9 +279,9 @@ struct PunchDetail: View {
         Section("\(kind) photos · \(photos(kind).count)") {
             ForEach(photos(kind)) { p in
                 if let d = p.data {
-                    NavigationLink { PhotoPager(punch: photos(kind), start: p) } label: {
+                    Button { viewing = p } label: {
                         ThumbImage(data: d, px: 900).frame(height: 240).frame(maxWidth: .infinity).clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .clipShape(RoundedRectangle(cornerRadius: 10)).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                 }
             }
