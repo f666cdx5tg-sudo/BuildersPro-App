@@ -431,19 +431,28 @@ struct HomeView: View {
     // MARK: quick tiles + attention
 
     private func quickTiles(_ job: Job) -> some View {
-        HStack(spacing: 12) {
-            tile("cart", Theme.orange) { path.append(Route(job: job, tab: .shopping)) }
-            tile("list.clipboard", Theme.blue) { path.append(Route(job: job, tab: .notes)) }
-            tile("doc.text", .green) { path.append(Route(job: job, tab: .reports)) }
+        VStack(alignment: .leading, spacing: 10) {
+            Text("QUICK ACTIONS").font(.headline.weight(.heavy)).tracking(2).foregroundStyle(.secondary).padding(.top, 4)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
+                tile("cart", "Shopping", Theme.orange) { path.append(Route(job: job, tab: .shopping)) }
+                tile("note.text", "Notes", Theme.blue) { path.append(Route(job: job, tab: .notes)) }
+                tile("doc.text", "Daily Report", .green) { path.append(Route(job: job, tab: .reports)) }
+                tile("calendar", "Schedule", Theme.sky) { path.append(Route(job: job, tab: .schedule)) }
+                tile("doc.on.doc", "Documents", Theme.gold) { path.append(Route(job: job, tab: .docs)) }
+                tile("dollarsign.circle", "Finance", .mint) { path.append(Route(job: job, tab: .money)) }
+            }
         }
     }
 
-    private func tile(_ symbol: String, _ color: Color, _ tap: @escaping () -> Void) -> some View {
+    private func tile(_ symbol: String, _ label: String, _ color: Color, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            Image(systemName: symbol).font(.system(size: 34)).foregroundStyle(color)
-                .frame(maxWidth: .infinity, minHeight: 92)
-                .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 22))
-                .overlay(RoundedRectangle(cornerRadius: 22).stroke(color.opacity(0.7), lineWidth: 1.5))
+            VStack(spacing: 8) {
+                Image(systemName: symbol).font(.system(size: 30)).foregroundStyle(color)
+                Text(label).font(.subheadline.weight(.bold)).foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.7)
+            }
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(color.opacity(0.7), lineWidth: 1.5))
         }.buttonStyle(.plain)
     }
 
