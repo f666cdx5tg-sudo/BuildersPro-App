@@ -227,6 +227,7 @@ struct PunchDetail: View {
             Section {
                 TextField("What needs doing", text: $item.text, axis: .vertical).font(.title3.weight(.semibold))
                 HStack(spacing: 8) {
+                    if !item.trade.isEmpty { tag(item.trade, Theme.sky) }
                     if !item.priority.isEmpty { tag(item.priority, Theme.orange) }
                     if item.value > 0 { tag("$" + item.value.formatted(.number.precision(.fractionLength(0...2))), Theme.blue) }
                     if item.done { tag("Done", Theme.green) }
@@ -239,6 +240,10 @@ struct PunchDetail: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Picker("Trade", selection: $item.trade) {
+                        Text("None").tag("")
+                        ForEach(Trades.all, id: \.self) { Label($0, systemImage: Trades.symbol($0)).tag($0) }
+                    }
                     Picker("Priority", selection: $item.priority) {
                         Text("None").tag("")
                         ForEach(["Normal", "High", "Critical"], id: \.self) { Text($0).tag($0) }
