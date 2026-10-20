@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.37';
+var APP_VERSION = '4.38';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -18135,6 +18135,16 @@ function jobSelect(id, cur, onchange, allowNone){
   return h + '</select>';
 }
 
+/* v4.38: units are a dropdown — tap the button, pick one */
+var UNITS = ['ea','ft','box','bag','sheet','gal','roll','pc','pack','tube','case','stick','length','set'];
+function unitSelect(id, cur, none){
+  cur = String(cur || '');
+  var h = '<select id="' + id + '" style="' + INP + ';font-weight:800"><option value="">' + none + '</option>';
+  var list = UNITS.slice(); if (cur && list.indexOf(cur) < 0) list.push(cur);
+  list.forEach(function(u){ h += '<option value="' + E(u) + '"' + (u === cur ? ' selected' : '') + '>' + E(u) + '</option>'; });
+  return h + '</select>';
+}
+
 /* ═════════════ CALCULATOR ═════════════ */
 var CALC = { expr:'', target:'', done:null };
 window.bpOpenCalc = function(targetId, done){
@@ -18289,9 +18299,11 @@ window.bpShopBack = function(){
 };
 /* v3.49: easy add — Qty | Item name / description | Cost, then Add (or Add + next) */
 window.bpShopOpenAdd = function(){
-  /* v4.37: one plain line instead of Qty / Item / Cost cells — type it like you'd say it: "10 1/2" PEX elbows @2" */
-  var body = '<input id="bp-sa-text" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" placeholder="10 1/2&quot; PEX elbows @2" style="width:100%;box-sizing:border-box;min-height:44px;padding:6px 2px;border:none;border-bottom:2px solid var(--border,#444);border-radius:0;background:transparent;color:var(--text,#f0f0f0);font-size:18px;font-family:inherit;outline:none" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpShopSaveNew(false)}"/>'
-    + '<div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.4">Number first = how many. <b>@2</b> at the end = price each. Tap the item afterwards to add store, notes and more.</div>';
+  /* v4.38: two sections — 1 Item name (one plain line, "10 1/2" PEX elbows @2" still works), 2 Units (dropdown) */
+  var body = '<div style="' + LBL + ';margin-top:0">1 · Item name</div>'
+    + '<input id="bp-sa-text" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" placeholder="10 1/2&quot; PEX elbows @2" style="width:100%;box-sizing:border-box;min-height:44px;padding:6px 2px;border:none;border-bottom:2px solid var(--border,#444);border-radius:0;background:transparent;color:var(--text,#f0f0f0);font-size:18px;font-family:inherit;outline:none" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpShopSaveNew(false)}"/>'
+    + '<div style="font-size:13px;color:var(--muted);margin-top:6px;line-height:1.4">Number first = how many. <b>@2</b> at the end = price each.</div>'
+    + '<div style="' + LBL + '">2 · Units</div>' + unitSelect('bp-sa-unit', '', 'Pick unit');
   var foot = '<div style="display:flex;gap:8px"><button onclick="bpShopSaveNew(true)" style="' + BTN + ';background:var(--card2,#222);color:var(--text)">Add + next</button>'
     + '<button onclick="bpShopSaveNew(false)" style="' + BTN + ';flex:1;background:#30D158;color:#000">Add item</button></div>';
   overlay('bp-shop-new', 'Add item', body, foot);
@@ -18303,7 +18315,9 @@ window.bpShopSaveNew = function(next){
   var it = (typeof window.bpParseShopSpeech === 'function') ? window.bpParseShopSpeech(raw) : { qty:1, unit:'', price:0, text:raw };
   if (!it || !it.text) it = { qty:1, unit:'', price:0, text:raw };
   DB.shopping = DB.shopping || [];
-  DB.shopping.push({ id:newId(), jobId:SH.job || '', text:it.text, qty:it.qty || 1, unit:it.unit || '', price:it.price || 0, store:SH.lastStore || '', bought:false, created:ts(), updatedAt:ts() });
+  var UN = { boxes:'box', bags:'bag', rolls:'roll', sheets:'sheet', pieces:'pc', pcs:'pc', gallons:'gal', gallon:'gal', tubes:'tube', cases:'case', packs:'pack', sticks:'stick', lengths:'length' };
+  var ue = document.getElementById('bp-sa-unit'), unit = (ue && ue.value) || UN[it.unit] || it.unit || '';   /* dropdown wins; typed "rolls of" -> roll */
+  DB.shopping.push({ id:newId(), jobId:SH.job || '', text:it.text, qty:it.qty || 1, unit:unit, price:it.price || 0, store:SH.lastStore || '', bought:false, created:ts(), updatedAt:ts() });
   persist(); drawShop(); say('Added');
   if (next) { window.bpShopOpenAdd(); }
   else { var o = document.getElementById('bp-shop-new'); if (o) o.remove(); }
@@ -18434,10 +18448,9 @@ window.bpShopEdit = function(id){
   var stores = {}; (DB.shopping||[]).forEach(function(s){ if (s.store) stores[s.store] = 1; });
   ['Home Depot','Lowe\'s','Supply house'].forEach(function(s){ stores[s] = 1; });
   var body = '<div style="' + LBL + '">Item</div><input id="bp-se-text" value="' + E(x.text) + '" style="' + INP + '"/>'
-    + '<div style="display:flex;gap:8px"><div style="flex:1;min-width:0"><div style="' + LBL + '">How many</div><div style="display:flex;gap:6px"><input id="bp-se-qty" inputmode="decimal" value="' + E(String(x.qty||0)) + '" style="' + INP + '"/>' + calcBtn('bp-se-qty') + '</div></div>'
-    + '<div style="width:34%"><div style="' + LBL + '">Unit</div><input id="bp-se-unit" list="bp-se-units" placeholder="ea, ft, box" value="' + E(x.unit||'') + '" style="' + INP + '"/>'
-    + '<datalist id="bp-se-units"><option>ea</option><option>ft</option><option>box</option><option>bag</option><option>sheet</option><option>gal</option><option>roll</option><option>pc</option></datalist></div></div>'
-    + '<div style="' + LBL + '">Price each $</div><div style="display:flex;gap:6px"><input id="bp-se-price" inputmode="decimal" value="' + E(String(x.price||0)) + '" style="' + INP + '"/>' + calcBtn('bp-se-price') + '</div>'
+    + '<div style="display:flex;gap:8px"><div style="flex:1;min-width:0"><div style="' + LBL + '">How many</div><input id="bp-se-qty" inputmode="decimal" value="' + E(String(x.qty||0)) + '" style="' + INP + '"/></div>'
+    + '<div style="width:40%"><div style="' + LBL + '">Unit</div>' + unitSelect('bp-se-unit', x.unit, 'Pick unit') + '</div></div>'
+    + '<div style="' + LBL + '">Price each $</div><input id="bp-se-price" inputmode="decimal" value="' + E(String(x.price||0)) + '" style="' + INP + '"/>'
     + '<div style="' + LBL + '">Store</div>' + (window.bpVendorField ? window.bpVendorField('bp-se-store', x.store||'') : '<input id="bp-se-store" list="bp-se-stores" value="' + E(x.store||'') + '" style="' + INP + '"/>')
     + '<datalist id="bp-se-stores">' + Object.keys(stores).map(function(s){ return '<option>' + E(s) + '</option>'; }).join('') + '</datalist>'
     + '<div style="' + LBL + '">Job</div>' + jobSelect('bp-se-job', x.jobId || '', '', true)
