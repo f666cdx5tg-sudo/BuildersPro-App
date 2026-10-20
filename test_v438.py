@@ -1,4 +1,4 @@
-"""BuildersPro v4.38 (Edit item: no calculators, Unit dropdown; Add item: 1 Item name + 2 Units dropdown).
+"""BuildersPro v4.38 (Edit item: no calculators, Unit dropdown (Add item sheet is covered by test_v440.py)).
 Run from repo root: python3 test_v438.py (needs playwright + chromium). Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
 from playwright.async_api import async_playwright
@@ -17,7 +17,7 @@ async def run(w, h):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8796/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h}'
-        ok(await pg.evaluate("APP_VERSION==='4.39'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.40'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()"); await pg.evaluate(SEED)
         await pg.evaluate("bpOpenShop('j1')"); await pg.wait_for_timeout(500)
 
@@ -43,31 +43,6 @@ async def run(w, h):
         await pg.evaluate("bpShopSaveEdit('s1')"); await pg.wait_for_timeout(300)
         ok(await pg.evaluate("DB.shopping.find(x=>x.id==='s1').unit")=='', f'{t}: unit not clearable')
 
-        # ---- Add item ----
-        await pg.evaluate("bpShopOpenAdd()"); await pg.wait_for_timeout(300)
-        sheet = await pg.evaluate("document.getElementById('bp-shop-new').innerText")
-        ok('1 · ITEM NAME' in sheet.upper() and '2 · UNITS' in sheet.upper(), f'{t}: two sections {sheet!r}')
-        ok(await pg.evaluate("document.querySelectorAll('#bp-shop-new input').length")==1 and await pg.evaluate("document.getElementById('bp-sa-unit').tagName")=='SELECT', f'{t}: one name line + one units dropdown')
-        ok(not await pg.evaluate("!!document.getElementById('bp-sa-qty')||!!document.getElementById('bp-sa-price')"), f'{t}: old cells back')
-        await pg.fill('#bp-sa-text', '10 1/2" PEX elbows @2'); await pg.select_option('#bp-sa-unit', 'box')
-        await pg.evaluate("bpShopSaveNew(false)"); await pg.wait_for_timeout(300)
-        ok(await pg.evaluate("DB.shopping.some(x=>x.text==='1/2\" PEX elbows'&&x.qty===10&&x.price===2&&x.unit==='box')"), f'{t}: add with dropdown unit')
-        # no unit picked -> blank (or whatever the typed words implied)
-        await pg.evaluate("bpShopOpenAdd()"); await pg.wait_for_timeout(250); await pg.fill('#bp-sa-text', 'Mail boxes')
-        await pg.evaluate("bpShopSaveNew(false)"); await pg.wait_for_timeout(300)
-        ok(await pg.evaluate("DB.shopping.some(x=>x.text==='Mail boxes'&&x.unit===''&&x.qty===1)"), f'{t}: add without unit')
-        await pg.evaluate("bpShopOpenAdd()"); await pg.wait_for_timeout(250); await pg.fill('#bp-sa-text', '2 rolls of solder')
-        await pg.evaluate("bpShopSaveNew(false)"); await pg.wait_for_timeout(300)
-        ok(await pg.evaluate("DB.shopping.some(x=>x.text==='Solder'&&x.unit==='roll'&&x.qty===2)"), f'{t}: typed unit still understood')
-        # Enter + Add+next still work
-        await pg.evaluate("bpShopOpenAdd()"); await pg.wait_for_timeout(250); await pg.fill('#bp-sa-text', '2 P-traps @7'); await pg.press('#bp-sa-text', 'Enter'); await pg.wait_for_timeout(300)
-        ok(await pg.evaluate("DB.shopping.some(x=>x.qty===2&&x.price===7)"), f'{t}: Enter saves')
-        await pg.evaluate("bpShopOpenAdd()"); await pg.wait_for_timeout(250); await pg.fill('#bp-sa-text', 'Tape'); await pg.evaluate("bpShopSaveNew(true)"); await pg.wait_for_timeout(400)
-        ok(await pg.evaluate("document.getElementById('bp-sa-text').value===''&&document.getElementById('bp-sa-unit').value===''"), f'{t}: Add + next reopens clean')
-        # tap targets
-        z = float(await pg.evaluate("getComputedStyle(document.body).zoom") or 1)
-        hh = await pg.evaluate("document.getElementById('bp-sa-unit').getBoundingClientRect().height")
-        ok(hh / z >= 43.5, f'{t}: unit dropdown tap target {hh / z}')
         ok(len(errs)==0, f'{t}: errors {errs[:3]}')
         await b.close()
 async def main():
