@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.38';
+var APP_VERSION = '4.39';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -25317,6 +25317,11 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
 .bp-pm .bp-hm-btn svg.bp-dots{width:20px !important;height:20px !important}
 #jd-sections-trigger .bp-hm-btn{width:38px !important;height:38px !important}
 #jd-sections-trigger .bp-hm-btn svg.bp-dots{width:22px !important;height:22px !important}
+</style>
+<style id="v439">
+/* v4.39 — light mode: the bottom-right ••• button turns frosted white, so its white dots disappeared. Dots are black in light mode (dark mode unchanged, still white). */
+[data-theme="light"] #bp-dock-menu,[data-theme="light"] #bp-dock-menu svg.bp-dots{color:#000 !important}
+[data-theme="light"] #bp-dock-menu svg.bp-dots,[data-theme="light"] #bp-dock-menu svg.bp-dots circle{fill:#000 !important;stroke:none !important}
 </style>
 
 <script id="v415-unfiled">
