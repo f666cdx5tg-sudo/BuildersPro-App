@@ -14,7 +14,7 @@ async def run(w, h):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8795/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h}'
-        ok(await pg.evaluate("APP_VERSION==='4.40'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.41'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()"); await pg.wait_for_timeout(300)
         ok(await pg.evaluate("!!document.getElementById('bp-dock-menu')"), f'{t}: dock menu button exists')
         await pg.evaluate("document.documentElement.setAttribute('data-theme','light')"); await pg.wait_for_timeout(200)

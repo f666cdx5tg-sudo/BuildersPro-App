@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.40';
+var APP_VERSION = '4.41';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -1564,7 +1564,21 @@ window.bpHMenuToggle = function(id){
   var el = document.getElementById(id); if (!el) return;
   var was = el.classList.contains('open');
   bpHMenuClose();
-  if (!was) el.classList.add('open');
+  if (!was) { el.classList.add('open'); bpHMenuFit(el); }
+};
+/* v4.41: keep the open list fully on screen — if it runs off the left/right edge, slide it back in (zoom-aware) */
+window.bpHMenuFit = function(el){
+  try {
+    var pop = el.querySelector('.bp-hm-pop'); if (!pop) return;
+    pop.style.transform = ''; pop.style.maxHeight = '';
+    if (el.closest && el.closest('.bp-pm')) {   /* Status / Space lists: end above the bottom button row */
+      var t = pop.getBoundingClientRect().top, zz = parseFloat(getComputedStyle(document.body).zoom) || 1, room = (window.innerHeight - t - 110) / zz;
+      if (room > 120) pop.style.maxHeight = Math.min(room, 420) + 'px';
+    }
+    var r = pop.getBoundingClientRect(), vw = document.documentElement.clientWidth || window.innerWidth, M = 10, dx = 0;
+    if (r.left < M) dx = M - r.left; else if (r.right > vw - M) dx = (vw - M) - r.right;
+    if (dx) { var z = parseFloat(getComputedStyle(document.body).zoom) || 1; pop.style.transform = 'translateX(' + (dx / z) + 'px)'; }
+  } catch(e){}
 };
 window.bpHMenuClose = function(){ [].forEach.call(document.querySelectorAll('.bp-hm.open'), function(e){ e.classList.remove('open'); }); };
 document.addEventListener('click', function(e){ if (!e.target.closest || !e.target.closest('.bp-hm')) bpHMenuClose(); }, true);
@@ -25322,6 +25336,16 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
 .bp-pm .bp-hm-btn svg.bp-dots{width:20px !important;height:20px !important}
 #jd-sections-trigger .bp-hm-btn{width:38px !important;height:38px !important}
 #jd-sections-trigger .bp-hm-btn svg.bp-dots{width:22px !important;height:22px !important}
+</style>
+<style id="v441">
+/* v4.41 — Status / Space cells: no ••• button. The button stretches over the whole cell (invisible), so tapping the cell opens its options.
+   Long lists scroll instead of running under the bottom buttons. */
+.bp-pm .bp-hm .bp-hm-btn,.bp-pm .bp-hm.open .bp-hm-btn,.bp-pm .bp-hm .bp-hm-btn:active{position:absolute !important;top:0 !important;left:0 !important;width:100% !important;height:100% !important;margin:0 !important;padding:0 !important;
+ border:none !important;border-radius:12px !important;background:transparent !important;box-shadow:none !important;transform:none !important;z-index:2}
+.bp-pm .bp-hm .bp-hm-btn svg{display:none !important}
+.bp-pm{padding-right:10px !important}
+.bp-pm:has(.bp-hm.open){border-color:#0A84FF}
+.bp-pm .bp-hm-pop{max-height:min(60vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch}
 </style>
 <style id="v439">
 /* v4.39 — light mode: the bottom-right ••• button turns frosted white, so its white dots disappeared. Dots are black in light mode (dark mode unchanged, still white). */
