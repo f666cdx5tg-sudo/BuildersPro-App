@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.41';
+var APP_VERSION = '4.42';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -5046,20 +5046,60 @@ function driveLoad() {
 var BP_BLOB_CHUNK_BYTES = 3000000;  /* per-request ceiling, well under GitHub's */
 var BP_BLOB_MIN_LEN     = 512;      /* below this, inlining costs less than a ref */
 
+/* v4.42: ticking one checklist item re-hashed EVERY photo in the database (FNV over ~half a million characters each)
+   on every single save — over a second per tap on a phone once a job has a few dozen photos. A photo's text never
+   changes, so its hash is remembered. The memory is rebuilt on each full split, so it only ever holds photos that
+   still exist (a deleted photo is not kept alive). */
+var _bhCache = new Map(), _bhNext = null;
 function bpBlobHash(s) {
-  /* FNV-1a. Content-addressed on purpose: the same photo referenced from two
-     records, or re-pushed unchanged, produces the same ref and is stored once. */
-  var h = 0x811c9dc5;
-  for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
-  return h.toString(36) + '_' + s.length.toString(36);
+  var c = _bhCache.get(s);
+  if (c === undefined) {
+    /* FNV-1a. Content-addressed on purpose: the same photo referenced from two
+       records, or re-pushed unchanged, produces the same ref and is stored once. */
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+    c = h.toString(36) + '_' + s.length.toString(36);
+  }
+  if (_bhNext) _bhNext.set(s, c);
+  else { if (_bhCache.size > 4000) _bhCache.clear(); _bhCache.set(s, c); }
+  return c;
 }
 function bpChunkName(i) { return 'bp_blobs_' + ('0' + i).slice(-2) + '.json'; }
+/* v4.42: pre-hash the photos a few seconds after launch, a few at a time between taps, so even the FIRST tick of a session is instant. */
+window.bpWarmBlobHashes = function() {
+  try {
+    if (typeof DB === 'undefined' || !DB) return;
+    var todo = [];
+    (function walk(n) {
+      if (typeof n === 'string') { if (n.length >= BP_BLOB_MIN_LEN && n.slice(0, 5) === 'data:') todo.push(n); }
+      else if (Array.isArray(n)) { for (var i = 0; i < n.length; i++) walk(n[i]); }
+      else if (n && typeof n === 'object') { for (var k in n) if (Object.prototype.hasOwnProperty.call(n, k)) walk(n[k]); }
+    })(DB);
+    var i = 0;
+    (function step() {
+      var t = performance.now();
+      while (i < todo.length && performance.now() - t < 5) bpBlobHash(todo[i++]);
+      if (i < todo.length) setTimeout(step, 40);
+    })();
+  } catch(e) {}
+};
+(function pollWarm(n) {   /* start as soon as the saved data has loaded (checks every 0.5 s for up to ~15 s) */
+  var d = (typeof DB !== 'undefined') ? DB : null;
+  if (d && ((d.photos || []).length || (d.punchlist || []).length || (d.jobs || []).length)) setTimeout(function(){ window.bpWarmBlobHashes(); }, 300);
+  else if (n < 30) setTimeout(function(){ pollWarm(n + 1); }, 500);
+})(0);
+
 
 /* Deep copy that swaps every data: URL for a reference and collects the originals.
    Walks generically rather than naming fields (photos.src, expenses.receiptSrc,
    checklist before/after, completionPhoto, documents.src, …) so a blob field added
    later is covered automatically instead of silently bloating the payload again. */
 function bpSplitBlobs(node, blobs) {
+  var outer = _bhNext; if (!outer) _bhNext = new Map();
+  try { return bpSplitBlobs_(node, blobs); }
+  finally { if (!outer) { _bhCache = _bhNext; _bhNext = null; } }
+}
+function bpSplitBlobs_(node, blobs) {
   if (typeof node === 'string') {
     if (node.length >= BP_BLOB_MIN_LEN && node.slice(0, 5) === 'data:') {
       var ref = 'bpb:' + bpBlobHash(node);
@@ -5070,12 +5110,12 @@ function bpSplitBlobs(node, blobs) {
   }
   if (Array.isArray(node)) {
     var a = new Array(node.length);
-    for (var i = 0; i < node.length; i++) a[i] = bpSplitBlobs(node[i], blobs);
+    for (var i = 0; i < node.length; i++) a[i] = bpSplitBlobs_(node[i], blobs);
     return a;
   }
   if (node && typeof node === 'object') {
     var o = {};
-    for (var k in node) if (Object.prototype.hasOwnProperty.call(node, k)) o[k] = bpSplitBlobs(node[k], blobs);
+    for (var k in node) if (Object.prototype.hasOwnProperty.call(node, k)) o[k] = bpSplitBlobs_(node[k], blobs);
     return o;
   }
   return node;
