@@ -1128,6 +1128,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <button type="button" class="nav-btn bp-tool" id="bp-d-theme" onclick="bpDrawerTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><span class="bp-lbl">Light / Dark<small id="bp-d-theme-sub"></small></span></button>
   <button type="button" class="nav-btn bp-tool" id="nav-s-search" onclick="closeNavDrawer();showScreen('s-search')"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><span class="bp-lbl">Search</span></button>
   <button type="button" class="nav-btn bp-tool" id="nav-s-calendar" onclick="closeNavDrawer();showScreen('s-calendar')"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg><span class="bp-lbl">Calendar</span></button>
+  <button type="button" class="nav-btn bp-tool" id="nav-level" onclick="closeNavDrawer();bpLevelOpen()"><svg viewBox="0 0 24 24"><rect x="2" y="8" width="20" height="8" rx="2.5"/><circle cx="12" cy="12" r="2"/><line x1="7.5" y1="8" x2="7.5" y2="10.5"/><line x1="16.5" y1="8" x2="16.5" y2="10.5"/></svg><span class="bp-lbl">Level</span></button>
+  <button type="button" class="nav-btn bp-tool" id="nav-colormatch" onclick="closeNavDrawer();bpColorOpen()"><svg viewBox="0 0 24 24"><path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/><path d="M9.5 14.5a2.7 2.7 0 0 0 2.5 2"/></svg><span class="bp-lbl">Color match</span></button>
   <button type="button" class="nav-btn bp-tool" id="bp-sync-btn" data-bp-sync="1" title="Sync"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span class="bp-lbl">Sync<small id="bp-sync-mini"></small></span></button>
   <button class="nav-btn" id="nav-feedback" onclick="closeNavDrawer();bpSendFeedback()">
     <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -1544,7 +1546,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.45';
+var APP_VERSION = '4.46';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -25381,6 +25383,257 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
 #jd-sections-trigger .bp-hm-btn{width:38px !important;height:38px !important}
 #jd-sections-trigger .bp-hm-btn svg.bp-dots{width:22px !important;height:22px !important}
 </style>
+<style id="v446">
+/* v4.46 Level + Color match. green = level / match, red = off */
+.bp-tl{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;background:var(--bg,#0f0f0f);color:var(--text,#f0f0f0);font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box}
+.bp-tl-top{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;min-height:52px;flex-shrink:0}
+.bp-tl-top b{font-size:17px;font-weight:800}
+.bp-tl-x{min-width:44px;min-height:44px;border:none;background:none;color:var(--muted,#8e8e93);font-size:22px;cursor:pointer;font-family:inherit}
+.bp-tl-btn{min-height:44px;padding:0 14px;border-radius:12px;border:1.5px solid rgba(10,132,255,.45);background:rgba(10,132,255,.10);color:#0A84FF;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
+.bp-lv-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;min-height:0}
+.bp-lv-flat{position:relative;width:min(78vw,300px);height:min(78vw,300px);border-radius:50%;border:3px solid var(--border,#444);background:var(--card,#1a1a1a);overflow:hidden}
+.bp-lv-flat:before,.bp-lv-flat:after{content:"";position:absolute;background:var(--border,#444)}
+.bp-lv-flat:before{left:50%;top:0;bottom:0;width:1.5px}
+.bp-lv-flat:after{top:50%;left:0;right:0;height:1.5px}
+.bp-lv-ring{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;border:2.5px solid var(--muted,#8e8e93);z-index:1}
+.bp-lv-bub{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(10,132,255,.55);border:2px solid #0A84FF;z-index:2;will-change:transform}
+.bp-lv-ok .bp-lv-bub{background:rgba(48,209,88,.6);border-color:#30D158}
+.bp-lv-ok .bp-lv-ring{border-color:#30D158}
+.bp-lv-tube{position:relative;width:min(88vw,340px);height:72px;border-radius:36px;border:3px solid var(--border,#444);background:var(--card,#1a1a1a);overflow:hidden}
+.bp-lv-tube.v{width:72px;height:min(60vh,340px)}
+.bp-lv-tube:before{content:"";position:absolute;left:50%;top:0;bottom:0;width:62px;margin-left:-31px;border-left:2px solid var(--muted,#8e8e93);border-right:2px solid var(--muted,#8e8e93)}
+.bp-lv-tube.v:before{left:0;right:0;top:50%;bottom:auto;width:auto;height:62px;margin:-31px 0 0 0;border-left:none;border-right:none;border-top:2px solid var(--muted,#8e8e93);border-bottom:2px solid var(--muted,#8e8e93)}
+.bp-lv-tube .bp-lv-bub{border-radius:30px;width:56px;height:46px;margin:-23px 0 0 -28px}
+.bp-lv-tube.v .bp-lv-bub{width:46px;height:56px;margin:-28px 0 0 -23px;border-radius:30px}
+.bp-lv-ok.bp-lv-tube:before,.bp-lv-ok .bp-lv-tube:before{border-color:#30D158}
+.bp-lv-num{font-size:64px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+.bp-lv-ok .bp-lv-num,.bp-lv-num.ok{color:#30D158}
+.bp-lv-sub{font-size:16px;font-weight:700;color:var(--muted,#8e8e93);text-align:center;min-height:22px}
+.bp-cm-cam{position:relative;flex:1;min-height:0;background:#000;overflow:hidden}
+.bp-cm-cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.bp-cm-ret{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.6),inset 0 0 0 2px rgba(0,0,0,.6);pointer-events:none}
+.bp-cm-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;color:#bbb;font-size:16px;font-weight:700}
+.bp-cm-panel{flex-shrink:0;padding:12px 14px calc(14px + env(safe-area-inset-bottom));background:var(--card,#1a1a1a);border-top:1px solid var(--border,#2a2a2a)}
+.bp-cm-live{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.bp-cm-sw{width:44px;height:44px;border-radius:10px;border:1.5px solid var(--border,#444);flex-shrink:0;background:#888}
+.bp-cm-slots{display:flex;gap:8px}
+.bp-cm-slot{flex:1;min-height:64px;border-radius:12px;border:1.5px solid var(--border,#444);background:transparent;color:var(--text,#f0f0f0);display:flex;align-items:center;gap:10px;padding:6px 10px;font-family:inherit;cursor:pointer;text-align:left;min-width:0}
+.bp-cm-slot .bp-cm-sw{width:40px;height:40px}
+.bp-cm-slot small{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93)}
+.bp-cm-slot span{font-size:15px;font-weight:800}
+.bp-cm-res{margin-top:10px;font-size:17px;font-weight:900;text-align:center;min-height:24px}
+.bp-tl-top b{white-space:nowrap}
+</style>
+<script id="v446s">
+(function(){
+  'use strict';
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+  function lsSet(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+  /* ================= LEVEL ================= */
+  var LV = null;
+  function lvCal(){ try { return JSON.parse(lsGet('bp_lvl_cal') || '{}') || {}; } catch(e){ return {}; } }
+  function pageAngle(){
+    var a = 0;
+    try { a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (typeof window.orientation === 'number' ? window.orientation : 0); } catch(e){}
+    return ((a % 360) + 360) % 360;
+  }
+  window.bpLevelClose = function(){
+    if (!LV) return;
+    window.removeEventListener('deviceorientation', LV.on, true);
+    cancelAnimationFrame(LV.raf); clearTimeout(LV.t);
+    var o = document.getElementById('bp-level'); if (o) o.remove();
+    LV = null;
+  };
+  window.bpLevelOpen = function(){
+    bpLevelClose(); bpColorClose();
+    var o = document.createElement('div'); o.id = 'bp-level'; o.className = 'bp-tl';
+    o.innerHTML = '<div class="bp-tl-top"><button type="button" class="bp-tl-x" aria-label="Close" onclick="bpLevelClose()">✕</button><b>Level</b><span style="display:flex;gap:6px"><button type="button" class="bp-tl-btn" id="bp-lv-reset" style="display:none" onclick="bpLevelZero(true)">Reset</button><button type="button" class="bp-tl-btn" onclick="bpLevelZero(false)">Zero</button></span></div>'
+      + '<div class="bp-lv-stage" id="bp-lv-stage"><div class="bp-lv-sub" id="bp-lv-msg">Starting sensor…</div></div>';
+    document.body.appendChild(o);
+    LV = { d: null, mode: 'flat', got: false, raw: { fx:0, fy:0, e:0, ev:0 }, cal: lvCal(), shape: '' };
+    LV.on = function(e){
+      if (e.beta == null || e.gamma == null) return;
+      var b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
+      var n = [Math.sin(g) * Math.cos(b), -Math.sin(b), -Math.cos(g) * Math.cos(b)];
+      LV.d = LV.d ? [LV.d[0]*.75 + n[0]*.25, LV.d[1]*.75 + n[1]*.25, LV.d[2]*.75 + n[2]*.25] : n;
+      LV.got = true;
+    };
+    var start = function(){
+      window.addEventListener('deviceorientation', LV.on, true);
+      LV.t = setTimeout(function(){ if (LV && !LV.got) { var m = document.getElementById('bp-lv-msg'); if (m) m.textContent = 'No tilt sensor found on this device (or it was blocked). On iPhone: Settings › Safari › Motion & Orientation Access.'; } }, 1800);
+      var loop = function(){ if (!LV) return; try { lvFrame(); } catch(er){} LV.raf = requestAnimationFrame(loop); };
+      loop();
+    };
+    var P = (typeof DeviceOrientationEvent !== 'undefined') && DeviceOrientationEvent.requestPermission;
+    if (typeof P === 'function') {
+      DeviceOrientationEvent.requestPermission().then(function(r){ if (!LV) return; if (r === 'granted') start(); else { var m = document.getElementById('bp-lv-msg'); if (m) m.textContent = 'Motion access was denied. Allow it in Settings › Safari › Motion & Orientation Access, then reopen.'; } }).catch(function(){ if (LV) start(); });
+    } else start();
+  };
+  function lvShape(shape){
+    if (LV.shape === shape) return;
+    LV.shape = shape;
+    var st = document.getElementById('bp-lv-stage'); if (!st) return;
+    st.innerHTML = (shape === 'flat' ? '<div class="bp-lv-flat" id="bp-lv-vial"><div class="bp-lv-ring"></div><div class="bp-lv-bub" id="bp-lv-bub"></div></div>'
+        : '<div class="bp-lv-tube' + (shape === 'v' ? ' v' : '') + '" id="bp-lv-vial"><div class="bp-lv-bub" id="bp-lv-bub"></div></div>')
+      + '<div class="bp-lv-num" id="bp-lv-num">0.0°</div><div class="bp-lv-sub" id="bp-lv-sub"></div>';
+  }
+  function fracIn(deg){ var r = Math.abs(deg) * Math.PI / 180; return (r < 0.0005 ? '0' : (12 * Math.tan(r)).toFixed(2)) + ' in / ft'; }
+  function lvFrame(){
+    if (!LV.d) return;
+    var d = LV.d, a = pageAngle() * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    var px = d[0] * c - d[1] * s, py = d[0] * s + d[1] * c, dz = d[2];
+    var az = Math.abs(dz);
+    if (LV.mode === 'flat' && az < 0.7) LV.mode = 'edge'; else if (LV.mode === 'edge' && az > 0.8) LV.mode = 'flat';
+    var R = 180 / Math.PI, cal = LV.cal, ok = false, num = 0, sub = '', shape, bx = 0, by = 0;
+    if (LV.mode === 'flat') {
+      shape = 'flat';
+      var ax = Math.asin(clamp(px, -1, 1)) * R, ay = Math.asin(clamp(py, -1, 1)) * R;
+      LV.raw.fx = ax; LV.raw.fy = ay;
+      ax -= (cal.fx || 0); ay -= (cal.fy || 0);
+      num = Math.sqrt(ax * ax + ay * ay); ok = num < 0.5;
+      var rad = (document.getElementById('bp-lv-vial') ? document.getElementById('bp-lv-vial').clientWidth : 300) / 2 - 26;
+      var k = rad / 8;
+      bx = clamp(-ax * k, -rad, rad); by = clamp(ay * k, -rad, rad);
+      var m = Math.sqrt(bx * bx + by * by); if (m > rad) { bx *= rad / m; by *= rad / m; }
+      sub = ok ? 'LEVEL' : (Math.abs(ax) >= Math.abs(ay) ? (ax > 0 ? 'Right side low' : 'Left side low') : (ay < 0 ? 'Bottom low' : 'Top low')) + ' · ' + fracIn(num);
+    } else if (Math.abs(py) >= Math.abs(px)) {
+      shape = 'h';
+      var e = Math.asin(clamp(px, -1, 1)) * R; LV.raw.e = e; e -= (cal.e || 0);
+      num = Math.abs(e); ok = num < 0.5;
+      bx = clamp(-e * 22, -112, 112);
+      sub = ok ? 'LEVEL / PLUMB' : (e > 0 ? 'Right side low' : 'Left side low') + ' · ' + fracIn(num);
+    } else {
+      shape = 'v';
+      var ev = Math.asin(clamp(py, -1, 1)) * R; LV.raw.ev = ev; ev -= (cal.ev || 0);
+      num = Math.abs(ev); ok = num < 0.5;
+      by = clamp(ev * 22, -112, 112);
+      sub = ok ? 'LEVEL / PLUMB' : (ev < 0 ? 'Bottom low' : 'Top low') + ' · ' + fracIn(num);
+    }
+    lvShape(shape);
+    var st = document.getElementById('bp-lv-stage'); if (!st) return;
+    st.classList.toggle('bp-lv-ok', ok);
+    var bub = document.getElementById('bp-lv-bub'); if (bub) bub.style.transform = 'translate(' + bx.toFixed(1) + 'px,' + by.toFixed(1) + 'px)';
+    var nm = document.getElementById('bp-lv-num'); if (nm) nm.textContent = num.toFixed(1) + '°';
+    var sb = document.getElementById('bp-lv-sub'); if (sb) sb.textContent = sub;
+    var rs = document.getElementById('bp-lv-reset'); if (rs) rs.style.display = (cal.fx || cal.fy || cal.e || cal.ev) ? '' : 'none';
+  }
+  window.bpLevelZero = function(reset){
+    if (!LV) return;
+    if (reset) LV.cal = {};
+    else if (LV.mode === 'flat') { LV.cal.fx = LV.raw.fx; LV.cal.fy = LV.raw.fy; }
+    else if (LV.shape === 'v') LV.cal.ev = LV.raw.ev;
+    else LV.cal.e = LV.raw.e;
+    lsSet('bp_lvl_cal', JSON.stringify(LV.cal));
+  };
+
+  /* ================= COLOR MATCH ================= */
+  var NAMES = [['White','#FFFFFF'],['Warm White','#F5F0E6'],['Off-White','#F2EFE8'],['Cream','#F3E9CF'],['Ivory','#EFE6CC'],['Light Gray','#D3D3D3'],['Warm Gray','#C9C2B8'],['Greige','#BDB3A5'],['Gray','#9A9A9A'],['Charcoal','#4A4A4A'],['Black','#161616'],
+    ['Beige','#D8C8A8'],['Tan','#C2A878'],['Sand','#D8C39A'],['Taupe','#8F7E6E'],['Light Brown','#A47B52'],['Brown','#6B4A2E'],['Dark Brown','#3E2A1C'],['Oak','#B58A55'],['Walnut','#5C4130'],
+    ['Light Blue','#BFD9EA'],['Sky Blue','#8DBCE0'],['Blue','#2F6DB5'],['Navy','#1F3050'],['Teal','#2E8B8B'],['Seafoam','#B7D9CC'],
+    ['Pale Green','#CFE0C6'],['Sage','#9CAE92'],['Green','#3F8F4C'],['Forest Green','#24452E'],['Olive','#7B7A3C'],
+    ['Pale Yellow','#F6EBA8'],['Yellow','#EBC72D'],['Gold','#C8A02A'],['Orange','#E0802A'],['Terracotta','#B8613F'],['Peach','#F0C8AE'],
+    ['Pink','#EBB4C0'],['Red','#B3262B'],['Brick','#8B3A2F'],['Burgundy','#5E1F2A'],['Lavender','#C9BEDC'],['Purple','#6B4A8A']];
+  function hex2rgb(h){ h = h.replace('#',''); return [parseInt(h.substr(0,2),16), parseInt(h.substr(2,2),16), parseInt(h.substr(4,2),16)]; }
+  function rgb2hex(c){ return '#' + c.map(function(v){ var s = Math.round(clamp(v,0,255)).toString(16); return s.length < 2 ? '0' + s : s; }).join('').toUpperCase(); }
+  function lab(c){
+    function f(v){ v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+    var r = f(c[0]), g = f(c[1]), b = f(c[2]);
+    var X = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047, Y = (r * 0.2126 + g * 0.7152 + b * 0.0722), Z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+    function t(v){ return v > 0.008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116; }
+    var fx = t(X), fy = t(Y), fz = t(Z);
+    return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+  }
+  function deltaE(a, b){
+    var A = lab(typeof a === 'string' ? hex2rgb(a) : a), B = lab(typeof b === 'string' ? hex2rgb(b) : b);
+    return Math.sqrt(Math.pow(A[0]-B[0],2) + Math.pow(A[1]-B[1],2) + Math.pow(A[2]-B[2],2));
+  }
+  function nearest(c){
+    var best = null, bd = 1e9;
+    NAMES.forEach(function(n){ var d = deltaE(c, n[1]); if (d < bd) { bd = d; best = n; } });
+    return best[0];
+  }
+  window.bpColorTools = { deltaE: deltaE, nearest: nearest, hex: rgb2hex };
+
+  var CM = null;
+  window.bpColorClose = function(){
+    if (!CM) return;
+    clearInterval(CM.iv);
+    try { if (CM.stream) CM.stream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
+    var o = document.getElementById('bp-color'); if (o) o.remove();
+    CM = null;
+  };
+  function verdict(){
+    var el = document.getElementById('bp-cm-res'); if (!el || !CM) return;
+    if (!CM.A || !CM.B) { el.textContent = CM.A || CM.B ? 'Now sample the other' : 'Aim at one, tap A. Aim at the other, tap B'; el.style.color = 'var(--muted,#8e8e93)'; return; }
+    var d = deltaE(CM.A, CM.B), t, col;
+    if (d <= 3) { t = 'Match'; col = '#30D158'; } else if (d <= 6) { t = 'Close, slightly off'; col = 'var(--text,#f0f0f0)'; } else if (d <= 12) { t = 'Noticeably different'; col = '#FF453A'; } else { t = 'Different'; col = '#FF453A'; }
+    el.textContent = t + ' · ΔE ' + d.toFixed(1); el.style.color = col;
+  }
+  function slotHtml(k){
+    var c = CM[k];
+    return '<div class="bp-cm-sw" style="background:' + (c ? rgb2hex(c) : 'transparent') + '"></div><div style="min-width:0"><small>Sample ' + k + '</small><span>' + (c ? rgb2hex(c) : 'Tap') + '</span></div>';
+  }
+  function paintSlots(){
+    ['A','B'].forEach(function(k){ var b = document.getElementById('bp-cm-' + k); if (b) b.innerHTML = slotHtml(k); });
+    var w = document.getElementById('bp-cm-white'); if (w) w.textContent = CM.gain ? 'White ✓' : 'Set white';
+    var x = document.getElementById('bp-cm-clear'); if (x) x.style.display = (CM.A || CM.B || CM.gain) ? '' : 'none';
+    verdict();
+  }
+  function sample(){
+    var v = CM && CM.video; if (!v || !v.videoWidth) return null;
+    var side = Math.max(8, Math.floor(Math.min(v.videoWidth, v.videoHeight) * 0.06));
+    var cx = Math.floor((v.videoWidth - side) / 2), cy = Math.floor((v.videoHeight - side) / 2);
+    var cv = CM.cv, x = cv.getContext('2d', { willReadFrequently: true });
+    x.drawImage(v, cx, cy, side, side, 0, 0, 8, 8);
+    var px = x.getImageData(0, 0, 8, 8).data, s = [0,0,0], n = 0;
+    for (var i = 0; i < px.length; i += 4) { s[0] += px[i]; s[1] += px[i+1]; s[2] += px[i+2]; n++; }
+    return [s[0]/n, s[1]/n, s[2]/n];
+  }
+  function applyWB(c){ return CM.gain ? [c[0]*CM.gain[0], c[1]*CM.gain[1], c[2]*CM.gain[2]].map(function(v){ return clamp(v,0,255); }) : c; }
+  window.bpColorTake = function(k){
+    if (!CM) return; var c = sample(); if (!c) { toast('Camera not ready'); return; }
+    CM[k] = applyWB(c); paintSlots();
+  };
+  window.bpColorWhite = function(){
+    if (!CM) return; var c = sample(); if (!c) return;
+    if (CM.gain) { CM.gain = null; CM.A = null; CM.B = null; paintSlots(); return; }
+    var m = Math.max(c[0], c[1], c[2]);
+    if (m < 90) { toast('Too dark for a white reference'); return; }
+    CM.gain = [m / Math.max(c[0],1), m / Math.max(c[1],1), m / Math.max(c[2],1)].map(function(g){ return clamp(g, 0.6, 2.2); });
+    CM.A = null; CM.B = null; paintSlots(); toast('White set. Re-sample A and B');
+  };
+  window.bpColorClear = function(){ if (!CM) return; CM.A = null; CM.B = null; CM.gain = null; paintSlots(); };
+  window.bpColorOpen = function(){
+    bpColorClose(); bpLevelClose();
+    var o = document.createElement('div'); o.id = 'bp-color'; o.className = 'bp-tl';
+    o.innerHTML = '<div class="bp-tl-top"><button type="button" class="bp-tl-x" aria-label="Close" onclick="bpColorClose()">✕</button><b>Color match</b><span style="display:flex;gap:6px"><button type="button" class="bp-tl-btn" id="bp-cm-clear" style="display:none" onclick="bpColorClear()">Clear</button><button type="button" class="bp-tl-btn" id="bp-cm-white" onclick="bpColorWhite()">Set white</button></span></div>'
+      + '<div class="bp-cm-cam"><video id="bp-cm-vid" playsinline muted autoplay></video><div class="bp-cm-ret"></div><div class="bp-cm-msg" id="bp-cm-msg">Starting camera…</div></div>'
+      + '<div class="bp-cm-panel"><div class="bp-cm-live"><div class="bp-cm-sw" id="bp-cm-live"></div><div style="min-width:0"><div id="bp-cm-hex" style="font-size:20px;font-weight:900">—</div><div id="bp-cm-name" style="font-size:13px;font-weight:700;color:var(--muted,#8e8e93)">Closest generic color</div></div></div>'
+      + '<div class="bp-cm-slots"><button type="button" class="bp-cm-slot" id="bp-cm-A" onclick="bpColorTake(\'A\')"></button><button type="button" class="bp-cm-slot" id="bp-cm-B" onclick="bpColorTake(\'B\')"></button></div>'
+      + '<div class="bp-cm-res" id="bp-cm-res"></div></div>';
+    document.body.appendChild(o);
+    CM = { A: null, B: null, gain: null, cv: document.createElement('canvas'), video: document.getElementById('bp-cm-vid') };
+    CM.cv.width = 8; CM.cv.height = 8; paintSlots();
+    var msg = function(t){ var m = document.getElementById('bp-cm-msg'); if (m) { m.style.display = t ? 'flex' : 'none'; if (t) m.textContent = t; } };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { msg('Camera is not available here. Open BuildersPro on your phone.'); return; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }).then(function(st){
+      if (!CM) { st.getTracks().forEach(function(t){ t.stop(); }); return; }
+      CM.stream = st; CM.video.srcObject = st; CM.video.play && CM.video.play().catch(function(){});
+      msg('');
+      CM.iv = setInterval(function(){
+        if (!CM) return; var c = sample(); if (!c) return;
+        var w = applyWB(c), h = rgb2hex(w);
+        var sw = document.getElementById('bp-cm-live'); if (sw) sw.style.background = h;
+        var hx = document.getElementById('bp-cm-hex'); if (hx) hx.textContent = h + '  ·  ' + Math.round(w[0]) + ', ' + Math.round(w[1]) + ', ' + Math.round(w[2]);
+        var nm = document.getElementById('bp-cm-name'); if (nm) nm.textContent = 'Looks like: ' + nearest(w);
+      }, 200);
+    }).catch(function(){ msg('Camera access was blocked. Allow it in Settings › Safari (or BuildersPro) › Camera, then reopen.'); });
+  };
+})();
+</script>
 <style id="v445">
 /* v4.45 contractor address book + thumbs. green thumb = good sub, red thumb = bad sub */
 .bp-sb-seg{display:flex;gap:6px;margin:0 0 10px}
