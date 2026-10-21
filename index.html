@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.44';
+var APP_VERSION = '4.45';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -7643,7 +7643,7 @@ window.openFinanceAdd = function() {
   }
   else if (_financeTab === 'deliveries') { openNewDelivery(); }
   else if (_financeTab === 'changeorders') { openNewChangeOrder(); }
-  else if (_financeTab === 'contractors') { populateFinanceSelects(); openSheet('sheet-add-contractor'); }
+  else if (_financeTab === 'contractors') { if (window._conView === 'book' && window.bpSubOpen) { bpSubOpen(''); return; } populateFinanceSelects(); openSheet('sheet-add-contractor'); }
   else if (_financeTab === 'permits') { populateFinanceSelects(); openSheet('sheet-add-permit'); }
 };
 
@@ -8036,11 +8036,13 @@ function renderFinanceContent() {
   else if (_financeTab === 'changeorders') { renderChangeOrdersTab(el, jf); }
 
   else if (_financeTab === 'contractors') {
+    var _tg = window.bpSubToggleHtml ? bpSubToggleHtml() : '';
+    if (window._conView === 'book' && window.bpSubBookHtml) { el.innerHTML = _tg + bpSubBookHtml(); return; }
     var items = (jf ? (DB.contractors||[]).filter(function(c){return c.jobId===jf;}) : (DB.contractors||[])).slice().sort(function(a,b){return String(a.name||'').toLowerCase().localeCompare(String(b.name||'').toLowerCase());});
-    if (!items.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">No contractors</div><div class="empty-sub">Tap + to add a sub or contractor</div></div>'; return; }
+    if (!items.length) { el.innerHTML = _tg + '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">No contractors</div><div class="empty-sub">Tap + to add a sub or contractor</div></div>'; return; }
     var total = items.reduce(function(s,c){return s+(+c.value||0);},0);
     var statusColor = {Active:'#0A84FF',Pending:'var(--accent)',Completed:'var(--muted)','On Hold':'var(--red)'};
-    el.innerHTML = '<div style="font-size:13px;font-weight:700;color:#FFAA33;margin-bottom:8px;text-align:right">Total Sub Costs: $'+total.toLocaleString()+'</div>'
+    el.innerHTML = _tg + '<div style="font-size:13px;font-weight:700;color:#FFAA33;margin-bottom:8px;text-align:right">Total Sub Costs: $'+total.toLocaleString()+'</div>'
       + items.map(function(con) {
         var job = con.jobId ? DB.jobs.find(function(j){return j.id===con.jobId;}) : null;
         var pays = contractorPayments(con.id), paid = pays.reduce(function(s,p){return s+(+p.amount||0);},0), bal = (+con.value||0)-paid;
@@ -8051,6 +8053,7 @@ function renderFinanceContent() {
           +(con.created?'<div style="font-size:11px;color:var(--faint);margin-top:1px">Added '+fmtDate(con.created)+' · '+fmtTime(con.created)+'</div>':'')
           +'<div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere">🔧 '+esc(con.trade)+(job?' · 📋 '+esc(job.name):'')+'</div>'
           +(con.phone?'<div style="font-size:12px;color:var(--muted)">📞 '+esc(bpPhone(con.phone))+'</div>':'')
+          +(window.bpSubThumbsCon ? bpSubThumbsCon(con) : '')
           +'</div>'
           +'<div style="text-align:right;flex-shrink:0">'
           +'<div style="font-size:20px;font-weight:900;color:#FFAA33">$'+(+con.value||0).toLocaleString()+'</div>'
@@ -9514,6 +9517,7 @@ window.saveContractor = function() {
     created:now()
   });
   closeSheet('sheet-add-contractor');
+  if (window.bpSubEnsureFromContract) bpSubEnsureFromContract(name, document.getElementById('con-phone')?.value?.trim()||'', document.getElementById('con-trade')?.value||'');
   save(); renderFinance();
   toast('👷 Contractor saved');
 };
@@ -25377,6 +25381,221 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
 #jd-sections-trigger .bp-hm-btn{width:38px !important;height:38px !important}
 #jd-sections-trigger .bp-hm-btn svg.bp-dots{width:22px !important;height:22px !important}
 </style>
+<style id="v445">
+/* v4.45 contractor address book + thumbs. green thumb = good sub, red thumb = bad sub */
+.bp-sb-seg{display:flex;gap:6px;margin:0 0 10px}
+.bp-sb-seg button{flex:1;min-height:40px;border-radius:10px;border:1.5px solid var(--border,#333);background:transparent;color:var(--muted,#8e8e93);font-size:14px;font-weight:800;font-family:inherit;cursor:pointer}
+.bp-sb-seg button.on{border-color:#0A84FF;color:#0A84FF;background:rgba(10,132,255,.12)}
+.bp-th{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:50%;background:transparent;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0}
+.bp-th svg{width:24px;height:24px;fill:none;stroke:var(--muted,#8e8e93);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.bp-th.up.on{background:rgba(48,209,88,.16)}
+.bp-th.up.on svg{fill:#30D158;stroke:#30D158}
+.bp-th.down.on{background:rgba(255,69,58,.16)}
+.bp-th.down.on svg{fill:#FF453A;stroke:#FF453A}
+.bp-sk{display:inline-block;padding:3px 9px;border-radius:99px;font-size:12px;font-weight:800;background:var(--card2,#222);color:var(--muted,#8e8e93);margin:0 5px 5px 0}
+.bp-skp{min-height:36px;padding:0 13px;border-radius:99px;border:1.5px solid var(--border,#333);background:transparent;color:var(--muted,#8e8e93);font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;margin:0 6px 8px 0}
+.bp-skp.on{border-color:#0A84FF;color:#0A84FF;background:rgba(10,132,255,.14)}
+.bp-sc-in{width:100%;box-sizing:border-box;border:none;border-bottom:1.5px solid var(--border,#333);border-radius:0;background:transparent;color:var(--text,#f0f0f0);font-size:17px;font-family:inherit;padding:8px 0;outline:none}
+.bp-sc-in:focus{border-bottom-color:#0A84FF}
+.bp-sc-lbl{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:16px 0 2px}
+.bp-sc-act{flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1.5px solid rgba(10,132,255,.45);color:#0A84FF;background:rgba(10,132,255,.10);font-size:14px;font-weight:800;text-decoration:none;font-family:inherit}
+</style>
+<script id="v445s">
+(function(){
+  'use strict';
+  var TRADES = ['Plumbing','Electrical','HVAC','Framing','Carpentry','Roofing','Masonry','Concrete','Excavation','Demolition','Drywall','Insulation','Painting','Flooring','Tile','Windows & Doors','Siding','Cleaning'];
+  var SKIP = {general:1, other:1, '':1};
+  var CARD = null, _q = '', _sk = '';
+  window._conView = window._conView || 'contracts';
+
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function key(n){ return String(n || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+  function allBook(){ if (!DB.contacts) DB.contacts = []; return DB.contacts.filter(function(c){ return c && c.type === 'Contractor'; }); }
+  function byId(id){ return allBook().find(function(c){ return c.id === id; }); }
+  function findName(n){ var k = key(n); return k ? allBook().find(function(c){ return key(c.name) === k; }) : null; }
+  function byName(a, b){ return String(a.name || '').toLowerCase().localeCompare(String(b.name || '').toLowerCase()); }
+  function skillOf(trade){ return SKIP[key(trade)] ? [] : [trade]; }
+  function ensure(name, x){
+    x = x || {};
+    var c = findName(name);
+    if (!c) {
+      c = { id: uid(), name: name, type: 'Contractor', company: '', role: '', email: '', phone: x.phone || '', address: '', jobId: '', notes: '', skills: (x.skills || []).slice(), rating: '', created: now(), updated: now() };
+      DB.contacts.push(c);
+    } else {
+      if (!c.phone && x.phone) c.phone = x.phone;
+      c.skills = c.skills || [];
+      (x.skills || []).forEach(function(s){ if (c.skills.indexOf(s) < 0) c.skills.push(s); });
+    }
+    return c;
+  }
+
+  /* ---------- thumbs ---------- */
+  var UP = '<path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>';
+  var DN = '<path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>';
+  function thumbBtn(dir, on, call){
+    return '<button type="button" class="bp-th ' + dir + (on ? ' on' : '') + '" aria-pressed="' + (on ? 'true' : 'false') + '" aria-label="' + (dir === 'up' ? 'Thumbs up' : 'Thumbs down') + '" onclick="event.stopPropagation();' + call + '"><svg viewBox="0 0 24 24">' + (dir === 'up' ? UP : DN) + '</svg></button>';
+  }
+  function thumbs(rating, fn, id){
+    return '<span class="bp-ths" style="display:inline-flex;align-items:center">'
+      + thumbBtn('up', rating === 'up', fn + "('" + id + "','up')") + thumbBtn('down', rating === 'down', fn + "('" + id + "','down')") + '</span>';
+  }
+  function flip(c, val){ c.rating = (c.rating === val) ? '' : val; c.updated = now(); save(); }
+  window.bpSubRate = function(id, val){ var c = byId(id); if (!c) return; flip(c, val); renderFinance(); };
+  window.bpSubRateCon = function(conId, val){
+    var k = (DB.contractors || []).find(function(x){ return x.id === conId; }); if (!k) return;
+    var c = ensure(k.name, { phone: k.phone, skills: skillOf(k.trade) });
+    flip(c, val); renderFinance();
+  };
+  window.bpSubThumbsCon = function(con){
+    var c = findName(con.name);
+    return '<div style="margin:2px 0 0 -10px">' + thumbs(c ? c.rating : '', 'bpSubRateCon', con.id) + '</div>';
+  };
+
+  /* ---------- Finance > Contractors: toggle + address book list ---------- */
+  function missing(){
+    var seen = {}, out = [];
+    (DB.contractors || []).forEach(function(k){ var kk = key(k.name); if (kk && !seen[kk] && !findName(k.name)) { seen[kk] = 1; out.push(k); } });
+    return out;
+  }
+  window.bpSubToggleHtml = function(){
+    var v = window._conView;
+    return '<div class="bp-sb-seg"><button type="button" class="' + (v !== 'book' ? 'on' : '') + '" onclick="bpSubView(\'contracts\')">Contracts</button>'
+      + '<button type="button" class="' + (v === 'book' ? 'on' : '') + '" onclick="bpSubView(\'book\')">Address book (' + allBook().length + ')</button></div>';
+  };
+  window.bpSubView = function(v){ window._conView = v; renderFinance(); };
+  function allSkills(){
+    var m = {}; TRADES.forEach(function(t){ m[t] = 1; });
+    allBook().forEach(function(c){ (c.skills || []).forEach(function(s){ m[s] = 1; }); });
+    return Object.keys(m);
+  }
+  function listHtml(){
+    var q = _q.trim().toLowerCase();
+    var l = allBook().filter(function(c){
+      if (_sk && (c.skills || []).indexOf(_sk) < 0) return false;
+      if (!q) return true;
+      return (c.name + ' ' + (c.company || '') + ' ' + (c.phone || '') + ' ' + (c.notes || '') + ' ' + (c.skills || []).join(' ')).toLowerCase().indexOf(q) > -1;
+    }).sort(byName);
+    if (!l.length) return '<div class="empty"><div class="empty-text">' + (allBook().length ? 'No match' : 'No contractors yet') + '</div><div class="empty-sub">' + (allBook().length ? 'Try a different search or skill' : 'Tap + to add one') + '</div></div>';
+    return l.map(function(c){
+      return '<div onclick="bpSubOpen(\'' + c.id + '\')" style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 6px 10px 14px;margin-bottom:8px;cursor:pointer;min-width:0">'
+        + '<div style="flex:1;min-width:0;overflow-wrap:anywhere">'
+        + '<div style="font-size:16px;font-weight:800">' + E(c.name) + '</div>'
+        + (c.company ? '<div style="font-size:12px;color:var(--muted)">' + E(c.company) + '</div>' : '')
+        + ((c.skills || []).length ? '<div style="margin-top:5px">' + c.skills.map(function(s){ return '<span class="bp-sk">' + E(s) + '</span>'; }).join('') + '</div>' : '')
+        + (c.phone ? '<div style="font-size:13px;font-weight:700;color:#0A84FF">' + E(bpPhone(c.phone)) + '</div>' : '')
+        + '</div>' + thumbs(c.rating, 'bpSubRate', c.id) + '</div>';
+    }).join('');
+  }
+  window.bpSubBookHtml = function(){
+    var m = missing(), sel = allSkills().sort();
+    return (m.length ? '<button type="button" onclick="bpSubImport()" style="width:100%;min-height:44px;margin:0 0 10px;border-radius:12px;border:1.5px dashed rgba(10,132,255,.5);background:rgba(10,132,255,.08);color:#0A84FF;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">Add ' + m.length + ' sub' + (m.length !== 1 ? 's' : '') + ' from your jobs</button>' : '')
+      + '<div style="display:flex;gap:8px;margin-bottom:10px">'
+      + '<input id="bp-sb-q" type="text" placeholder="Search" value="' + E(_q) + '" oninput="bpSubQ(this.value)" autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit"/>'
+      + '<select id="bp-sb-sk" onchange="bpSubSk(this.value)" style="flex:0 0 42%;min-width:0;box-sizing:border-box;padding:10px 8px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit"><option value="">All skills</option>'
+      + sel.map(function(s){ return '<option' + (s === _sk ? ' selected' : '') + ' value="' + E(s) + '">' + E(s) + '</option>'; }).join('') + '</select></div>'
+      + '<div id="bp-sb-list">' + listHtml() + '</div>';
+  };
+  window.bpSubQ = function(v){ _q = v || ''; var l = document.getElementById('bp-sb-list'); if (l) l.innerHTML = listHtml(); };
+  window.bpSubSk = function(v){ _sk = v || ''; var l = document.getElementById('bp-sb-list'); if (l) l.innerHTML = listHtml(); };
+  window.bpSubImport = function(){
+    var m = missing();
+    m.forEach(function(k){ ensure(k.name, { phone: k.phone, skills: skillOf(k.trade) }); });
+    save(); renderFinance(); toast(m.length + ' added to address book');
+  };
+  window.bpSubEnsureFromContract = function(name, phone, trade){
+    try { if (key(name)) ensure(name, { phone: phone, skills: skillOf(trade) }); } catch (e) {}
+  };
+
+  /* ---------- contact card ---------- */
+  function skillList(){
+    var l = TRADES.slice();
+    allBook().forEach(function(c){ (c.skills || []).forEach(function(s){ if (l.indexOf(s) < 0) l.push(s); }); });
+    CARD.skills.forEach(function(s){ if (l.indexOf(s) < 0) l.push(s); });
+    return l;
+  }
+  function skillsHtml(){
+    CARD.list = skillList();
+    return CARD.list.map(function(s, i){
+      return '<button type="button" class="bp-skp' + (CARD.skills.indexOf(s) > -1 ? ' on' : '') + '" aria-pressed="' + (CARD.skills.indexOf(s) > -1) + '" onclick="bpSubSkillTog(' + i + ')">' + E(s) + '</button>';
+    }).join('') + '<button type="button" class="bp-skp" onclick="bpSubSkillNew()" style="border-style:dashed">+ Other</button>';
+  }
+  function paintCard(){
+    var s = document.getElementById('bp-sc-skills'); if (s) s.innerHTML = skillsHtml();
+    var t = document.getElementById('bp-sc-thumbs'); if (t) t.innerHTML = thumbs(CARD.rating, 'bpSubCardRate', '');
+  }
+  window.bpSubCardRate = function(_id, val){ CARD.rating = (CARD.rating === val) ? '' : val; paintCard(); };
+  window.bpSubSkillTog = function(i){
+    var s = CARD.list[i], at = CARD.skills.indexOf(s);
+    if (at > -1) CARD.skills.splice(at, 1); else CARD.skills.push(s);
+    paintCard();
+  };
+  window.bpSubSkillNew = function(){
+    var r = document.getElementById('bp-sc-newrow'); if (!r) return;
+    r.style.display = 'flex'; var i = document.getElementById('bp-sc-new'); if (i) { i.value = ''; i.focus(); }
+  };
+  window.bpSubSkillAdd = function(){
+    var i = document.getElementById('bp-sc-new'); var v = toTitleCase((i && i.value || '').trim());
+    if (!v) return;
+    var hit = skillList().filter(function(s){ return key(s) === key(v); })[0];
+    var name = hit || v;
+    if (CARD.skills.indexOf(name) < 0) CARD.skills.push(name);
+    i.value = ''; document.getElementById('bp-sc-newrow').style.display = 'none'; paintCard();
+  };
+  window.bpSubClose = function(){ var m = document.getElementById('bp-sub-card'); if (m) m.remove(); CARD = null; };
+  window.bpSubOpen = function(id){
+    var c = id ? byId(id) : null;
+    bpSubClose();
+    CARD = { id: id || '', rating: c ? (c.rating || '') : '', skills: c ? (c.skills || []).slice() : [], list: [] };
+    var v = function(k){ return c ? E(c[k] || '') : ''; };
+    var worked = c ? (DB.contractors || []).filter(function(k){ return key(k.name) === key(c.name) && k.jobId; }).map(function(k){ var j = DB.jobs.find(function(x){ return x.id === k.jobId; }); return j ? j.name : ''; }).filter(function(x, i, a){ return x && a.indexOf(x) === i; }) : [];
+    var tel = c && c.phone ? String(c.phone).replace(/[^\d+]/g, '') : '';
+    var mo = document.createElement('div');
+    mo.id = 'bp-sub-card';
+    mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg,#000);color:var(--text,#f0f0f0);display:flex;flex-direction:column;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+    mo.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border,#2a2a2a)">'
+      + '<button type="button" onclick="bpSubClose()" aria-label="Close" style="min-width:44px;min-height:44px;border:none;background:none;color:var(--muted,#8e8e93);font-size:22px;cursor:pointer">✕</button>'
+      + '<div style="font-size:17px;font-weight:800">' + (c ? 'Contractor' : 'New contractor') + '</div>'
+      + '<button type="button" onclick="bpSubSave()" style="min-width:64px;min-height:44px;border:none;background:none;color:#0A84FF;font-size:17px;font-weight:800;cursor:pointer;font-family:inherit">Save</button></div>'
+      + '<div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 18px 40px">'
+      + '<div class="bp-sc-lbl">Name</div><input id="bp-sc-name" class="bp-sc-in" type="text" value="' + v('name') + '" autocomplete="off"/>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px"><span class="bp-sc-lbl" style="margin:0">Rating</span><span id="bp-sc-thumbs">' + thumbs(CARD.rating, 'bpSubCardRate', '') + '</span></div>'
+      + (c && (tel || c.email) ? '<div style="display:flex;gap:8px;margin-top:10px">'
+        + (tel ? '<a class="bp-sc-act" href="tel:' + E(tel) + '">Call</a><a class="bp-sc-act" href="sms:' + E(tel) + '">Text</a>' : '')
+        + (c.email ? '<a class="bp-sc-act" href="mailto:' + E(c.email) + '">Email</a>' : '') + '</div>' : '')
+      + '<div class="bp-sc-lbl">Skills</div><div id="bp-sc-skills" style="margin-top:8px">' + skillsHtml() + '</div>'
+      + '<div id="bp-sc-newrow" style="display:none;gap:8px;align-items:center;margin-bottom:6px"><input id="bp-sc-new" class="bp-sc-in" type="text" placeholder="New skill" autocomplete="off" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpSubSkillAdd()}"/><button type="button" onclick="bpSubSkillAdd()" style="min-height:44px;padding:0 14px;border-radius:10px;border:none;background:#0A84FF;color:#000;font-weight:800;font-family:inherit;cursor:pointer">Add</button></div>'
+      + '<div class="bp-sc-lbl">Company</div><input id="bp-sc-company" class="bp-sc-in" type="text" value="' + v('company') + '"/>'
+      + '<div class="bp-sc-lbl">Phone</div><input id="bp-sc-phone" class="bp-sc-in" type="tel" inputmode="tel" value="' + E(bpPhone(c ? c.phone : '')) + '"/>'
+      + '<div class="bp-sc-lbl">Email</div><input id="bp-sc-email" class="bp-sc-in" type="email" autocapitalize="off" value="' + v('email') + '"/>'
+      + '<div class="bp-sc-lbl">Address</div><input id="bp-sc-address" class="bp-sc-in" type="text" value="' + v('address') + '"/>'
+      + '<div class="bp-sc-lbl">Notes</div><textarea id="bp-sc-notes" class="bp-sc-in" rows="3" style="resize:none">' + v('notes') + '</textarea>'
+      + (worked.length ? '<div class="bp-sc-lbl">Worked on</div><div style="font-size:14px;color:var(--muted,#8e8e93);padding-top:6px">' + worked.map(E).join(' · ') + '</div>' : '')
+      + (c ? '<button type="button" id="bp-sc-del" onclick="bpSubDelete()" style="margin-top:28px;width:100%;min-height:44px;border-radius:12px;border:1.5px solid var(--red,#FF453A);background:transparent;color:var(--red,#FF453A);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">Delete contractor</button>' : '')
+      + '</div>';
+    document.body.appendChild(mo);
+    if (!c) setTimeout(function(){ var n = document.getElementById('bp-sc-name'); if (n) n.focus(); }, 200);
+  };
+  window.bpSubSave = function(){
+    var g = function(id){ var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+    var name = g('bp-sc-name'); if (!name) { toast('Name required'); return; }
+    name = toTitleCase(name);
+    var c = CARD.id ? byId(CARD.id) : null;
+    var dup = findName(name);
+    if (dup && (!c || dup.id !== c.id)) { toast('Already in your address book'); return; }
+    if (!c) { c = { id: uid(), type: 'Contractor', jobId: '', created: now() }; DB.contacts.push(c); }
+    c.name = name; c.company = g('bp-sc-company'); c.phone = g('bp-sc-phone'); c.email = g('bp-sc-email');
+    c.address = g('bp-sc-address'); c.notes = g('bp-sc-notes'); c.skills = CARD.skills.slice(); c.rating = CARD.rating; c.updated = now();
+    bpSubClose(); save(); renderFinance(); toast('✅ Saved');
+  };
+  window.bpSubDelete = function(){
+    var b = document.getElementById('bp-sc-del'); if (!b || !CARD) return;
+    if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tap again to delete'; setTimeout(function(){ if (b && b.isConnected) { delete b.dataset.sure; b.textContent = 'Delete contractor'; } }, 3000); return; }
+    var id = CARD.id; bpRemoveFrom('contacts', function(x){ return x.id !== id; });
+    bpSubClose(); save(); renderFinance(); toast('Deleted');
+  };
+})();
+</script>
 <style id="v444">
 /* v4.44 colour logic: yellow = waiting / pending, purple = change orders / extras */
 .bp-wait{background:rgba(255,214,10,.18) !important;color:#FFD60A !important}
