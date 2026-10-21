@@ -1544,7 +1544,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.43';
+var APP_VERSION = '4.44';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -18282,8 +18282,8 @@ function shopBadge(x){
       : '<span style="' + P + 'background:rgba(255,159,10,.16);color:#FF9F0A">No receipt</span>';
   }
   var ord = x.status === 'ordered';
-  return '<button data-shop-status type="button" aria-label="' + (ord ? 'Ordered, tap to undo' : 'Mark ordered') + '" onclick="event.stopPropagation();bpShopOrder(\'' + Q(x.id) + '\')" style="' + P + 'border:none;'
-    + (ord ? 'background:rgba(10,132,255,.18);color:#0A84FF' : 'background:var(--card2,#222);color:var(--muted,#8e8e93)') + '">' + (ord ? '📦 Ordered' : 'Need · tap if ordered') + '</button>';
+  return '<button data-shop-status class="'+(ord?'bp-wait':'')+'" type="button" aria-label="' + (ord ? 'Ordered, tap to undo' : 'Mark ordered') + '" onclick="event.stopPropagation();bpShopOrder(\'' + Q(x.id) + '\')" style="' + P + 'border:none;'
+    + (ord ? 'background:rgba(255,214,10,.18);color:#FFD60A' : 'background:var(--card2,#222);color:var(--muted,#8e8e93)') + '">' + (ord ? '📦 Ordered' : 'Need · tap if ordered') + '</button>';
 }
 window.bpShopOrder = function(id){
   var x = (DB.shopping||[]).find(function(s){ return s.id === id; }); if (!x || x.bought) return;
@@ -18310,7 +18310,7 @@ function drawShop(){
   var body = '<div style="margin-top:4px">' + jobSelect('bp-shop-job', SH.job, 'bpShopJob(this.value)', true) + '</div>'
     + '<div style="' + LBL + '">To buy (' + open.length + ')</div>'
     + (open.length ? open.map(shopRow).join('') : '<div style="padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:14px">Nothing to buy. Tap Add item below.</div>')
-    + (ordd.length ? '<div id="bp-shop-ordered" style="' + LBL + ';margin-top:18px">Ordered — waiting on delivery (' + ordd.length + ')</div>' + ordd.map(shopRow).join('') : '')
+    + (ordd.length ? '<div id="bp-shop-ordered" class="bp-wait-lbl" style="' + LBL + ';margin-top:18px">Ordered — waiting on delivery (' + ordd.length + ')</div>' + ordd.map(shopRow).join('') : '')
     + (done.length ? '<div style="' + LBL + ';margin-top:18px">Arrived / bought (' + done.length + ')</div>' + done.map(shopRow).join('') : '')
     + '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
     + '<button onclick="bpShopShare()" style="' + BTN + ';flex:1;min-width:140px;background:var(--card2,#222);color:var(--text)">' + ICON.share + 'Share list</button>'
@@ -25376,6 +25376,13 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
 .bp-pm .bp-hm-btn svg.bp-dots{width:20px !important;height:20px !important}
 #jd-sections-trigger .bp-hm-btn{width:38px !important;height:38px !important}
 #jd-sections-trigger .bp-hm-btn svg.bp-dots{width:22px !important;height:22px !important}
+</style>
+<style id="v444">
+/* v4.44 colour logic: yellow = waiting / pending, purple = change orders / extras */
+.bp-wait{background:rgba(255,214,10,.18) !important;color:#FFD60A !important}
+.bp-wait-lbl{color:#FFD60A !important}
+[data-theme="light"] .bp-wait{background:rgba(255,204,0,.30) !important;color:#7A5C00 !important}
+[data-theme="light"] .bp-wait-lbl{color:#8A6A00 !important}
 </style>
 <style id="v441">
 /* v4.41 — Status / Space cells: no ••• button. The button stretches over the whole cell (invisible), so tapping the cell opens its options.
