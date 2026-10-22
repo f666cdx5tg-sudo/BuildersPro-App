@@ -46,12 +46,19 @@ struct ARMeasureView: View {
     @State private var status = "Move the phone slowly to find a surface"
     @State private var undoTick = 0
     @State private var clearTick = 0
+    @State private var zoom: CGFloat = 1
+    @State private var pinch: CGFloat = 1
+    private var z: CGFloat { min(max(zoom * pinch, 1), 6) }
     private var total: Double { segments.reduce(0, +) }
 
     var body: some View {
         ZStack(alignment: .bottom) {
             if ARWorldTrackingConfiguration.isSupported {
-                ARMeasureRep(segments: $segments, status: $status, undoTick: undoTick, clearTick: clearTick).ignoresSafeArea()
+                // Digital zoom: the picture is magnified about the screen center, and the crosshair is the screen
+                // center, so the point you aim at stays exact while you see it bigger.
+                ARMeasureRep(segments: $segments, status: $status, undoTick: undoTick, clearTick: clearTick)
+                    .scaleEffect(z).clipped().ignoresSafeArea()
+                    .gesture(MagnifyGesture().onChanged { pinch = $0.magnification }.onEnded { zoom = min(max(zoom * $0.magnification, 1), 6); pinch = 1 })
                 Image(systemName: "plus").font(.system(size: 34, weight: .light)).foregroundStyle(.white).shadow(radius: 3)
                     .frame(maxHeight: .infinity)
             } else {
@@ -59,6 +66,17 @@ struct ARMeasureView: View {
             }
             VStack(spacing: 10) {
                 Text(status).font(.footnote.weight(.semibold)).padding(.horizontal, 12).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule())
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.magnifyingglass").foregroundStyle(.secondary)
+                    ForEach([1, 2, 3, 4], id: \.self) { n in
+                        Button { withAnimation { zoom = CGFloat(n); pinch = 1 } } label: {
+                            Text("\(n)×").font(.subheadline.weight(.heavy)).frame(width: 46, height: 34)
+                                .background(abs(z - CGFloat(n)) < 0.15 ? Theme.sky : Color.secondary.opacity(0.2), in: Capsule())
+                                .foregroundStyle(abs(z - CGFloat(n)) < 0.15 ? .black : .primary)
+                        }.buttonStyle(.plain)
+                    }
+                    Text(String(format: "%.1f×", Double(z))).font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                }
                 if let last = segments.last {
                     VStack(spacing: 2) {
                         Text(feetInches(last)).font(.system(size: 34, weight: .heavy, design: .rounded))
