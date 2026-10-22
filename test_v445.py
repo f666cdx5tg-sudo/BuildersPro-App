@@ -1,4 +1,4 @@
-"""BuildersPro v4.49 (thumbs up/down on subs, contractor address book, skill selector on contact card).
+"""BuildersPro v4.50 (thumbs up/down on subs, contractor address book, skill selector on contact card).
 Run from repo root: python3 test_v445.py. Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
 from playwright.async_api import async_playwright
@@ -20,7 +20,7 @@ async def run(w, h, theme):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8795/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h} {theme}'
-        ok(await pg.evaluate("APP_VERSION==='4.49'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.50'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()")
         await pg.evaluate("document.documentElement.setAttribute('data-theme','%s')" % theme)
         await pg.evaluate(SEED)
@@ -51,30 +51,27 @@ async def run(w, h, theme):
         ok(await pg.evaluate("DB.contacts.find(x=>x.name===\"Sam's Electric\").rating")=='up', f'{t}: switch down->up')
         await pg.evaluate("document.querySelectorAll('#s-finance .bp-th.down')[2].click()"); await pg.wait_for_timeout(250)
         # --- address book view
-        ok(await pg.evaluate("!!document.querySelector('#s-finance .bp-sb-seg')"), f'{t}: toggle missing')
-        await pg.evaluate("bpSubView('book')"); await pg.wait_for_timeout(300)
-        ok(await pg.evaluate("document.getElementById('bp-sb-list').children.length")==2, f'{t}: book should have 2 entries (Gen Con, Sam) before import')
-        ok('Add 1 sub' in await pg.evaluate("document.getElementById('s-finance').innerText"), f'{t}: import banner for Joe')
-        await pg.evaluate("bpSubImport()"); await pg.wait_for_timeout(300)
+        ok(await pg.evaluate("document.querySelectorAll('#s-finance .bp-sb-seg').length")==0, f'{t}: no more Contracts / Address book toggle')
+        await pg.evaluate("renderFinance()"); await pg.wait_for_timeout(300)
         names = await pg.evaluate("DB.contacts.filter(x=>x.type==='Contractor').map(x=>x.name+'|'+(x.skills||[]).join(','))")
         ok(len(names)==3, f'{t}: import count {names}')
         ok('Joe Plumbing|Plumbing' in names, f'{t}: skill from trade {names}')
         ok(any(n.startswith('Gen Con|') and n=='Gen Con|' for n in names), f'{t}: General must not become a skill {names}')
         ok(await pg.evaluate("DB.contacts.find(x=>x.type==='Client').name")=='Owner Bob', f'{t}: client untouched')
-        ok(await pg.evaluate("document.getElementById('bp-sb-list').children.length")==3, f'{t}: 3 cards')
+        ok(await pg.evaluate("document.querySelectorAll('#bp-sb-list .bp-ub').length")==3, f'{t}: 3 cards (auto-added from jobs)')
         # search + skill filter
         await pg.fill('#bp-sb-q', 'joe'); await pg.wait_for_timeout(150)
-        ok(await pg.evaluate("document.getElementById('bp-sb-list').children.length")==1, f'{t}: search')
+        ok(await pg.evaluate("document.querySelectorAll('#bp-sb-list .bp-ub').length")==1, f'{t}: search')
         await pg.fill('#bp-sb-q', '')
         await pg.select_option('#bp-sb-sk', 'Electrical'); await pg.wait_for_timeout(150)
-        ok(await pg.evaluate("document.getElementById('bp-sb-list').children.length")==1, f'{t}: skill filter')
+        ok(await pg.evaluate("document.querySelectorAll('#bp-sb-list .bp-ub').length")==1, f'{t}: skill filter')
         await pg.select_option('#bp-sb-sk', '')
         # thumbs on book list
         await pg.evaluate("document.querySelector('#bp-sb-list .bp-th.up').click()"); await pg.wait_for_timeout(300)
         ok(await pg.evaluate("document.querySelectorAll('#bp-sb-list .bp-th.up.on').length")==1, f'{t}: book thumb')
         # --- contact card: new
-        await pg.evaluate("openFinanceAdd()"); await pg.wait_for_timeout(300)
-        ok(await pg.evaluate("!!document.getElementById('bp-sub-card')"), f'{t}: + opens contact card in book view')
+        await pg.evaluate("bpSubOpen('')"); await pg.wait_for_timeout(300)
+        ok(await pg.evaluate("!!document.getElementById('bp-sub-card')"), f'{t}: new contact card opens')
         ok(await pg.evaluate("document.querySelectorAll('#bp-sc-skills .bp-skp').length")>=19, f'{t}: skill chips')
         await pg.fill('#bp-sc-name', 'maria tile co'); await pg.fill('#bp-sc-phone', '9735550142')
         ok(await pg.evaluate("document.getElementById('bp-sc-phone').value")=='(973)-555-0142', f'{t}: phone format')
@@ -112,7 +109,6 @@ async def run(w, h, theme):
         ok(not await pg.evaluate("!!DB.contacts.find(x=>x.id==='%s')" % jid), f'{t}: 2nd tap deletes')
         ok(await pg.evaluate("DB.contractors.some(x=>x.name==='Joe Plumbing')"), f'{t}: deleting from book must not delete the job contract')
         # contract view: new contractor auto-lands in book
-        await pg.evaluate("bpSubView('contracts')")
         await pg.evaluate("populateFinanceSelects();openSheet('sheet-add-contractor')")
         await pg.evaluate("document.getElementById('con-contact').value='new guy hvac';document.getElementById('con-trade').value='HVAC';document.getElementById('con-phone').value='9085550000'")
         await pg.evaluate("saveContractor()"); await pg.wait_for_timeout(300)
@@ -121,7 +117,7 @@ async def run(w, h, theme):
         ov = await pg.evaluate("document.documentElement.scrollWidth - window.innerWidth")
         ok(ov <= 1, f'{t}: horizontal overflow {ov}')
         ok(len(errs)==0, f'{t}: errors {errs[:3]}')
-        await pg.evaluate("bpSubView('book')"); await pg.wait_for_timeout(300)
+        await pg.evaluate("renderFinance()"); await pg.wait_for_timeout(300)
         await pg.screenshot(path=os.environ.get('SHOT','/tmp/sb_%s_%d.png' % (theme, w)))
         await b.close()
 async def main():

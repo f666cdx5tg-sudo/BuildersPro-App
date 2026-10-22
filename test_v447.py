@@ -1,4 +1,4 @@
-"""BuildersPro v4.49 (contact card: contractor name + business name, contract value per job).
+"""BuildersPro v4.50 (contact card: contractor name + business name, contract value per job).
 Run from repo root: python3 test_v447.py. Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
 from playwright.async_api import async_playwright
@@ -20,13 +20,13 @@ async def run(w, h, theme):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8793/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h} {theme}'
-        ok(await pg.evaluate("APP_VERSION==='4.49'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.50'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()")
         await pg.evaluate("document.documentElement.setAttribute('data-theme','%s')" % theme)
         await pg.evaluate(SEED)
-        await pg.evaluate("showScreen('s-finance');setFinanceTab('contractors');bpSubView('book')"); await pg.wait_for_timeout(300)
+        await pg.evaluate("showScreen('s-finance');setFinanceTab('contractors')"); await pg.wait_for_timeout(300)
         # only Someone Else is missing from the book (Joe Rossi + Rossi Plumbing LLC both match the one card)
-        ok('Add 1 sub' in await pg.evaluate("document.getElementById('s-finance').innerText"), f'{t}: business-name contract should link to the same card')
+        ok(await pg.evaluate("document.querySelectorAll('#bp-sb-list .bp-ub').length")==2, f'{t}: Joe + Rossi Plumbing LLC contracts share ONE card, plus Someone Else')
         await pg.evaluate("bpSubOpen('k1')"); await pg.wait_for_timeout(200)
         txt = await pg.evaluate("document.getElementById('bp-sub-card').innerText")
         ok('CONTACT NAME' in txt.upper() and 'COMPANY NAME' in txt.upper(), f'{t}: labels')
@@ -50,7 +50,7 @@ async def run(w, h, theme):
         await pg.fill('#bp-sc-company', 'rossi plumbing & heating'); await pg.evaluate("bpSubSave()"); await pg.wait_for_timeout(200)
         ok(await pg.evaluate("DB.contacts.find(x=>x.id==='k1').company")=='rossi plumbing & heating', f'{t}: business saved')
         # rating from the 'Rossi Plumbing LLC' contract no longer matches renamed business, but Joe Rossi contract still does
-        await pg.evaluate("bpSubView('contracts')"); await pg.wait_for_timeout(200)
+        await pg.evaluate("renderFinance()"); await pg.wait_for_timeout(200)
         # contract sheet: datalist with names + business names, no dup entries
         await pg.evaluate("populateFinanceSelects();openSheet('sheet-add-contractor')")
         opts = await pg.evaluate("[...document.querySelectorAll('#dl-subs option')].map(o=>o.value)")

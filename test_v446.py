@@ -1,4 +1,4 @@
-"""BuildersPro v4.49 (Level + Color match tools in the drawer).
+"""BuildersPro v4.50 (Level + Color match tools in the drawer).
 Run from repo root: python3 test_v446.py. Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os, math
 from playwright.async_api import async_playwright
@@ -19,7 +19,7 @@ async def run(w, h, theme):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8794/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h} {theme}'
-        ok(await pg.evaluate("APP_VERSION==='4.49'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.50'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()")
         await pg.evaluate("document.documentElement.setAttribute('data-theme','%s')" % theme)
         # drawer buttons

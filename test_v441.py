@@ -17,7 +17,7 @@ async def run(w, h):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8793/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h}'
-        ok(await pg.evaluate("APP_VERSION==='4.49'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.50'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()"); await pg.evaluate(SEED); await pg.wait_for_timeout(600)
         ok(await pg.evaluate("document.querySelectorAll('#bp-clf-punch .bp-pm').length")==2, f'{t}: Status + Space cells')
         # no visible ••• button inside the cells

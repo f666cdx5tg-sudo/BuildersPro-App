@@ -1128,9 +1128,12 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <button type="button" class="nav-btn bp-tool" id="bp-d-theme" onclick="bpDrawerTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><span class="bp-lbl">Light / Dark<small id="bp-d-theme-sub"></small></span></button>
   <button type="button" class="nav-btn bp-tool" id="nav-s-search" onclick="closeNavDrawer();showScreen('s-search')"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><span class="bp-lbl">Search</span></button>
   <button type="button" class="nav-btn bp-tool" id="nav-s-calendar" onclick="closeNavDrawer();showScreen('s-calendar')"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg><span class="bp-lbl">Calendar</span></button>
-  <button type="button" class="nav-btn bp-tool" id="nav-level" onclick="closeNavDrawer();bpLevelOpen()"><svg viewBox="0 0 24 24"><rect x="2" y="8" width="20" height="8" rx="2.5"/><circle cx="12" cy="12" r="2"/><line x1="7.5" y1="8" x2="7.5" y2="10.5"/><line x1="16.5" y1="8" x2="16.5" y2="10.5"/></svg><span class="bp-lbl">Level</span></button>
-  <button type="button" class="nav-btn bp-tool" id="nav-colormatch" onclick="closeNavDrawer();bpColorOpen()"><svg viewBox="0 0 24 24"><path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/><path d="M9.5 14.5a2.7 2.7 0 0 0 2.5 2"/></svg><span class="bp-lbl">Color match</span></button>
   <button type="button" class="nav-btn bp-tool" id="bp-sync-btn" data-bp-sync="1" title="Sync"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span class="bp-lbl">Sync<small id="bp-sync-mini"></small></span></button>
+  <div class="bp-drawer-sep"></div>
+  <div class="bp-drawer-h">Tools</div>
+  <button type="button" class="nav-btn bp-tool" id="nav-level" onclick="closeNavDrawer();bpLevelOpen()"><svg viewBox="0 0 24 24"><rect x="2" y="8" width="20" height="8" rx="2.5"/><circle cx="12" cy="12" r="2"/><line x1="7.5" y1="8" x2="7.5" y2="10.5"/><line x1="16.5" y1="8" x2="16.5" y2="10.5"/></svg><span class="bp-lbl">Level</span></button>
+  <button type="button" class="nav-btn bp-tool" id="nav-colormatch" onclick="closeNavDrawer();bpColorOpen()"><svg viewBox="0 0 24 24"><path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/><path d="M9.5 14.5a2.7 2.7 0 0 0 2.5 2"/></svg><span class="bp-lbl">Paint match</span></button>
+  <div class="bp-drawer-sep"></div>
   <button class="nav-btn" id="nav-feedback" onclick="closeNavDrawer();bpSendFeedback()">
     <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     <span>Send feedback</span>
@@ -1546,7 +1549,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.49';
+var APP_VERSION = '4.50';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -7647,7 +7650,7 @@ window.openFinanceAdd = function() {
   }
   else if (_financeTab === 'deliveries') { openNewDelivery(); }
   else if (_financeTab === 'changeorders') { openNewChangeOrder(); }
-  else if (_financeTab === 'contractors') { if (window._conView === 'book' && window.bpSubOpen) { bpSubOpen(''); return; } populateFinanceSelects(); openSheet('sheet-add-contractor'); }
+  else if (_financeTab === 'contractors') { populateFinanceSelects(); openSheet('sheet-add-contractor'); }
   else if (_financeTab === 'permits') { populateFinanceSelects(); openSheet('sheet-add-permit'); }
 };
 
@@ -8040,8 +8043,8 @@ function renderFinanceContent() {
   else if (_financeTab === 'changeorders') { renderChangeOrdersTab(el, jf); }
 
   else if (_financeTab === 'contractors') {
-    var _tg = window.bpSubToggleHtml ? bpSubToggleHtml() : '';
-    if (window._conView === 'book' && window.bpSubBookHtml) { el.innerHTML = _tg + bpSubBookHtml(); return; }
+    var _tg = '';
+    if (window.bpSubUnifiedHtml) { el.innerHTML = bpSubUnifiedHtml(jf); return; }
     var items = (jf ? (DB.contractors||[]).filter(function(c){return c.jobId===jf;}) : (DB.contractors||[])).slice().sort(function(a,b){return String(a.name||'').toLowerCase().localeCompare(String(b.name||'').toLowerCase());});
     if (!items.length) { el.innerHTML = _tg + '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">No contractors</div><div class="empty-sub">Tap + to add a sub or contractor</div></div>'; return; }
     var total = items.reduce(function(s,c){return s+(+c.value||0);},0);
@@ -9523,12 +9526,14 @@ window.saveContractor = function() {
     status: document.getElementById('con-status')?.value||'Active',
     created:now()
   };
-  DB.contractors.push(rec);
+  var contactOnly = !rec.jobId && !rec.value && !rec.scope;
+  if (!contactOnly) DB.contractors.push(rec);
   closeSheet('sheet-add-contractor');
   if (window.bpSubSyncFromContract) bpSubSyncFromContract(rec, '');
-  ['con-contact','con-company','con-email','con-phone'].forEach(function(i){ var e=document.getElementById(i); if(e) e.value=''; });
+  ['con-contact','con-company','con-email','con-phone','con-job','con-value','con-scope','con-start','con-end'].forEach(function(i){ var e=document.getElementById(i); if(e) e.value=''; });
+  var _t=document.getElementById('con-trade'); if(_t) _t.value='General'; var _s=document.getElementById('con-status'); if(_s) _s.value='Active';
   save(); renderFinance();
-  toast('👷 Contractor saved');
+  toast(contactOnly ? '👷 Saved to contractors' : '👷 Contractor saved');
 };
 
 window.openEditContractor = function(conId) {
@@ -25400,6 +25405,7 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
 </style>
 <style id="v446">
 /* v4.46 Level + Color match. green = level / match, red = off */
+.bp-drawer-h{padding:8px 16px 2px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#8e8e93)}
 .bp-tl{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;background:var(--bg,#0f0f0f);color:var(--text,#f0f0f0);font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box}
 .bp-tl-top{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;min-height:52px;flex-shrink:0}
 .bp-tl-top b{font-size:17px;font-weight:800}
@@ -25624,7 +25630,7 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
   window.bpColorOpen = function(){
     bpColorClose(); bpLevelClose();
     var o = document.createElement('div'); o.id = 'bp-color'; o.className = 'bp-tl';
-    o.innerHTML = '<div class="bp-tl-top"><button type="button" class="bp-tl-x" aria-label="Close" onclick="bpColorClose()">✕</button><b>Color match</b><span style="display:flex;gap:6px"><button type="button" class="bp-tl-btn" id="bp-cm-clear" style="display:none" onclick="bpColorClear()">Clear</button><button type="button" class="bp-tl-btn" id="bp-cm-white" onclick="bpColorWhite()">Set white</button></span></div>'
+    o.innerHTML = '<div class="bp-tl-top"><button type="button" class="bp-tl-x" aria-label="Close" onclick="bpColorClose()">✕</button><b>Paint match</b><span style="display:flex;gap:6px"><button type="button" class="bp-tl-btn" id="bp-cm-clear" style="display:none" onclick="bpColorClear()">Clear</button><button type="button" class="bp-tl-btn" id="bp-cm-white" onclick="bpColorWhite()">Set white</button></span></div>'
       + '<div class="bp-cm-cam"><video id="bp-cm-vid" playsinline muted autoplay></video><div class="bp-cm-ret"></div><div class="bp-cm-msg" id="bp-cm-msg">Starting camera…</div></div>'
       + '<div class="bp-cm-panel"><div class="bp-cm-live"><div class="bp-cm-sw" id="bp-cm-live"></div><div style="min-width:0"><div id="bp-cm-hex" style="font-size:20px;font-weight:900">—</div><div id="bp-cm-name" style="font-size:13px;font-weight:700;color:var(--muted,#8e8e93)">Closest generic color</div></div></div>'
       + '<div class="bp-cm-slots"><button type="button" class="bp-cm-slot" id="bp-cm-A" onclick="bpColorTake(\'A\')"></button><button type="button" class="bp-cm-slot" id="bp-cm-B" onclick="bpColorTake(\'B\')"></button></div>'
@@ -25792,16 +25798,93 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
       + sel.map(function(s){ return '<option' + (s === _sk ? ' selected' : '') + ' value="' + E(s) + '">' + E(s) + '</option>'; }).join('') + '</select></div>'
       + '<div id="bp-sb-list">' + listHtml() + '</div>';
   };
-  window.bpSubQ = function(v){ _q = v || ''; var l = document.getElementById('bp-sb-list'); if (l) l.innerHTML = listHtml(); };
-  window.bpSubSk = function(v){ _sk = v || ''; var l = document.getElementById('bp-sb-list'); if (l) l.innerHTML = listHtml(); };
-  window.bpSubImport = function(){
+
+  /* ---------- v4.50: contractors + phone book are ONE list. One card per sub, contracts nested by job ---------- */
+  var _jf = '';
+  function conRow(k){
+    var j = k.jobId ? DB.jobs.find(function(x){ return x.id === k.jobId; }) : null;
+    var pays = contractorPayments(k.id), paid = pays.reduce(function(a, p){ return a + (+p.amount || 0); }, 0), val = +k.value || 0, bal = val - paid;
+    var btn = 'min-height:38px;padding:0 12px;border-radius:9px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;';
+    return '<div style="border-top:1px solid var(--border,#2a2a2a);margin-top:10px;padding:10px 6px 0 0">'
+      + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><span style="font-size:15px;font-weight:800;min-width:0;overflow-wrap:anywhere">' + E(j ? j.name : 'No job') + '</span><span style="font-size:19px;font-weight:900;color:#FFAA33;white-space:nowrap">' + money(val) + '</span></div>'
+      + '<div style="font-size:12px;color:var(--muted,#8e8e93);margin-top:2px">' + E(k.trade || '') + (k.status ? ' · ' + E(k.status) : '') + (k.start || k.end ? ' · ' + E((k.start || '') + (k.end ? ' to ' + k.end : '')) : '') + '</div>'
+      + (k.scope ? '<div style="font-size:13px;color:var(--muted,#8e8e93);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px">' + E(k.scope) + '</div>' : '')
+      + '<div style="display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;margin-top:8px"><div style="font-size:14px;font-weight:800"><span style="color:#0A84FF">Paid ' + money(paid) + '</span> · <span style="color:' + (bal > 0 ? '#FF9500' : 'var(--muted,#8e8e93)') + '">Left ' + money(bal) + '</span></div>'
+      + '<div style="display:flex;gap:6px;align-items:center"><button type="button" onclick="event.stopPropagation();openLogPayment(\'' + k.id + '\')" style="' + btn + 'border:1px solid rgba(10,132,255,.4);background:rgba(10,132,255,.14);color:#0A84FF">+ Payment</button>'
+      + '<button type="button" onclick="event.stopPropagation();openEditContractor(\'' + k.id + '\')" style="' + btn + 'border:1px solid var(--border,#333);background:transparent;color:var(--muted,#8e8e93)">Edit</button>'
+      + '<button type="button" aria-label="Delete contract" onclick="event.stopPropagation();deleteFinItem(\'contractors\',\'' + k.id + '\')" style="min-width:38px;min-height:38px;border:none;background:none;color:var(--faint,#666);font-size:18px;cursor:pointer">×</button></div></div>'
+      + (pays.length ? '<div style="margin-top:6px">' + pays.map(function(p){
+          return '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:2px 10px;font-size:12px;padding:5px 0;border-top:1px solid var(--border,#2a2a2a)"><div style="color:var(--muted,#8e8e93);min-width:0;flex:1 1 130px;overflow-wrap:anywhere">' + E(p.date || '') + ' · ' + E(p.method || '') + (p.notes ? ' · ' + E(p.notes) : '') + '</div>'
+            + '<div style="display:flex;align-items:center;gap:6px"><span style="font-weight:700">' + money(p.amount) + '</span><button type="button" onclick="openEditPayment(\'' + p.id + '\')" style="min-width:34px;min-height:34px;border:none;background:none;color:var(--faint,#666);font-size:13px;cursor:pointer">✏️</button><button type="button" onclick="deletePayment(\'' + p.id + '\')" style="min-width:34px;min-height:34px;border:none;background:none;color:var(--faint,#666);font-size:15px;cursor:pointer">×</button></div></div>';
+        }).join('') + '</div>' : '')
+      + '</div>';
+  }
+  function subCard(c, cons){
+    var tv = 0; cons.forEach(function(k){ tv += +k.value || 0; });
+    return '<div class="bp-ub" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 8px 10px 14px;margin-bottom:10px;min-width:0">'
+      + '<div onclick="bpSubOpen(\'' + c.id + '\')" style="display:flex;align-items:flex-start;gap:6px;cursor:pointer">'
+      + '<div style="flex:1;min-width:0;overflow-wrap:anywhere"><div style="font-size:17px;font-weight:800">' + E(c.name) + '</div>'
+      + (c.company ? '<div style="font-size:13px;color:var(--muted)">' + E(c.company) + '</div>' : '')
+      + ((c.skills || []).length ? '<div style="margin-top:5px">' + c.skills.map(function(x){ return '<span class="bp-sk">' + E(x) + '</span>'; }).join('') + '</div>' : '')
+      + (c.phone ? '<a href="tel:' + E(String(c.phone).replace(/[^\d+]/g, '')) + '" onclick="event.stopPropagation()" style="display:inline-block;font-size:14px;font-weight:700;color:#0A84FF;text-decoration:none;min-height:24px">' + E(bpPhone(c.phone)) + '</a>' : '')
+      + '</div>' + thumbs(c.rating, 'bpSubRate', c.id) + '</div>'
+      + (cons.length ? cons.map(conRow).join('') + (cons.length > 1 ? '<div style="display:flex;justify-content:space-between;padding:10px 6px 0 0;font-weight:900;font-size:15px;border-top:1px solid var(--border,#2a2a2a);margin-top:10px"><span>All jobs</span><span style="color:#FFAA33">' + money(tv) + '</span></div>' : '')
+        : '<div style="font-size:13px;color:var(--muted,#8e8e93);margin-top:8px">No job contracts yet</div>')
+      + '<button type="button" onclick="bpSubAddJob(\'' + c.id + '\')" style="margin-top:10px;min-height:40px;padding:0 14px;border-radius:10px;border:1.5px solid rgba(10,132,255,.45);background:rgba(10,132,255,.10);color:#0A84FF;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">+ Add to a job</button>'
+      + '</div>';
+  }
+  function subMatches(c){
+    if (_sk && (c.skills || []).indexOf(_sk) < 0) return false;
+    var q = _q.trim().toLowerCase(); if (!q) return true;
+    return (c.name + ' ' + (c.company || '') + ' ' + (c.phone || '') + ' ' + (c.email || '') + ' ' + (c.notes || '') + ' ' + (c.skills || []).join(' ')).toLowerCase().indexOf(q) > -1;
+  }
+  function unifiedList(){
+    var claimed = {}, rows = [], total = 0, any = allBook();
+    any.slice().sort(byName).forEach(function(c){
+      var cons = contractsFor(c).filter(function(k){ return !claimed[k.id]; });
+      cons.forEach(function(k){ claimed[k.id] = 1; });
+      if (_jf) cons = cons.filter(function(k){ return k.jobId === _jf; });
+      if (_jf && !cons.length) return;
+      if (!subMatches(c)) return;
+      cons.forEach(function(k){ total += +k.value || 0; });
+      rows.push(subCard(c, cons));
+    });
+    if (!rows.length) return '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">' + (any.length ? 'No match' : 'No contractors') + '</div><div class="empty-sub">' + (any.length ? 'Try a different search, skill or job' : 'Tap + to add a sub or contractor') + '</div></div>';
+    return '<div style="font-size:13px;font-weight:700;color:#FFAA33;margin-bottom:8px;text-align:right">Total Sub Costs: ' + money(total) + '</div>' + rows.join('');
+  }
+  window.bpSubUnifiedHtml = function(jf){
+    _jf = jf || '';
+    var m = missing();
+    if (m.length) { try { window.bpSubImport(true); } catch (e) {} }
+    var sel = allSkills().sort();
+    return (allBook().length ? '<div style="display:flex;gap:8px;margin-bottom:10px">'
+      + '<input id="bp-sb-q" type="text" placeholder="Search" value="' + E(_q) + '" oninput="bpSubQ(this.value)" autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit"/>'
+      + '<select id="bp-sb-sk" onchange="bpSubSk(this.value)" style="flex:0 0 42%;min-width:0;box-sizing:border-box;padding:10px 8px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit"><option value="">All skills</option>'
+      + sel.map(function(x){ return '<option' + (x === _sk ? ' selected' : '') + ' value="' + E(x) + '">' + E(x) + '</option>'; }).join('') + '</select></div>' : '')
+      + '<div id="bp-sb-list">' + unifiedList() + '</div>';
+  };
+  window.bpSubAddJob = function(id){
+    var c = byId(id || (CARD && CARD.id)); if (!c) return;
+    var idn = c.company ? { contact: c.name, company: c.company } : window.bpSubIdentity({ name: c.name });
+    bpSubClose();
+    populateFinanceSelects();
+    var st = function(i, v){ var e = document.getElementById(i); if (e) e.value = v || ''; };
+    st('con-contact', idn.contact); st('con-company', idn.company); st('con-email', c.email); st('con-phone', bpPhone(c.phone || ''));
+    st('con-value', ''); st('con-scope', ''); st('con-start', ''); st('con-end', ''); st('con-job', _jf);
+    var tr = document.getElementById('con-trade'), sk = (c.skills || [])[0];
+    if (tr) tr.value = (sk && [].some.call(tr.options, function(o){ return o.value === sk; })) ? sk : 'General';
+    openSheet('sheet-add-contractor');
+  };
+  window.bpSubQ = function(v){ _q = v || ''; var l = document.getElementById('bp-sb-list'); if (l) l.innerHTML = unifiedList(); };
+  window.bpSubSk = function(v){ _sk = v || ''; var l = document.getElementById('bp-sb-list'); if (l) l.innerHTML = unifiedList(); };
+  window.bpSubImport = function(quiet){
     var m = missing();
     m.forEach(function(k){
       var idn = window.bpSubIdentity(k), b = ensure(idn.contact || idn.company || k.name, { phone: k.phone, skills: skillOf(k.trade) });
       if (idn.contact && idn.company && !b.company) b.company = idn.company;
       if (idn.email && !b.email) b.email = idn.email;
     });
-    save(); renderFinance(); toast(m.length + ' added to address book');
+    save(); if (quiet !== true) { renderFinance(); toast(m.length + ' added to contractors'); }
   };
   function fillSubs(){
     var dl = document.getElementById('dl-subs'); if (!dl) return;
@@ -25854,7 +25937,7 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
   function jobsHtml(c){
     var l = contractsFor(c);
     var h = '<div class="bp-sc-lbl">Contract value by job</div>';
-    if (!l.length) return h + '<div style="font-size:14px;color:var(--muted,#8e8e93);padding-top:6px">No job contracts yet. Add one from the Contracts tab.</div>';
+    if (!l.length) return h + '<div style="font-size:14px;color:var(--muted,#8e8e93);padding-top:6px">No job contracts yet.</div><button type="button" onclick="bpSubAddJob()" style="margin-top:10px;min-height:40px;padding:0 14px;border-radius:10px;border:1.5px solid rgba(10,132,255,.45);background:rgba(10,132,255,.10);color:#0A84FF;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">+ Add to a job</button>';
     var tv = 0, tp = 0;
     h += l.map(function(k){
       var j = k.jobId ? DB.jobs.find(function(x){ return x.id === k.jobId; }) : null;
