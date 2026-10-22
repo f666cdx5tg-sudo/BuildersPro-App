@@ -308,8 +308,8 @@ struct ColorMatchView: View {
                 HStack(spacing: 10) {
                     slot("Save A") { a = cur }
                     slot("Save B") { b = cur }
-                    Button { white = cam.rgb } label: { Text(white == nil ? "Set white" : "Reset").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity, minHeight: 44) }
-                        .buttonStyle(.bordered).simultaneousGesture(TapGesture().onEnded { if white != nil { white = nil } })
+                    Button { if white == nil { white = cam.rgb } else { white = nil } } label: { Text(white == nil ? "Set white" : "Reset").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity, minHeight: 44) }
+                        .buttonStyle(.bordered)
                 }
                 if let a, let b {
                     let d = delta(a, b)
@@ -397,7 +397,7 @@ struct ContractorEditor: View {
         NavigationStack {
             Form {
                 Section { TextField("Name", text: $c.name); TextField("Company", text: $c.company)
-                    TextField("Phone", text: $c.phone).keyboardType(.phonePad); TextField("Email", text: $c.email).keyboardType(.emailAddress).textInputAutocapitalization(.never) }
+                    TextField("Phone", text: $c.phone); TextField("Email", text: $c.email) }
                 Section("Skills") {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)], spacing: 8) {
                         ForEach(trades, id: \.self) { t in
@@ -419,7 +419,7 @@ struct ContractorEditor: View {
                 }
                 Section("Notes") { TextField("Notes", text: $c.notes, axis: .vertical).lineLimit(2...6) }
             }
-            .navigationTitle(c.name.isEmpty ? "New contractor" : c.name).navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(c.name.isEmpty ? "New contractor" : c.name)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
     }
