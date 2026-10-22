@@ -11,6 +11,7 @@ struct PhotosView: View {
     @State private var selection = Set<PersistentIdentifier>()
     @State private var openPhoto: SitePhoto?
     @State private var camera = false
+    @State private var toDelete: SitePhoto?
 
     private var photos: [SitePhoto] {
         (job.photos ?? []).filter { $0.space?.uid == space?.uid }.sorted { $0.created > $1.created }
@@ -22,6 +23,7 @@ struct PhotosView: View {
             LazyVGrid(columns: cols, spacing: 4) {
                 ForEach(photos) { p in
                     PhotoThumb(photo: p)
+                        .contextMenu { Button("Delete photo", systemImage: "trash", role: .destructive) { toDelete = p } }
                         .overlay(alignment: .topTrailing) {
                             if selecting {
                                 Image(systemName: selection.contains(p.persistentModelID) ? "checkmark.circle.fill" : "circle")
@@ -57,7 +59,16 @@ struct PhotosView: View {
             } label: { Image(systemName: "line.3.horizontal") }
         }
         .onChange(of: picked) { _, items in Task { await load(items) } }
-        .navigationDestination(item: $openPhoto) { p in PhotoPager(photos: photos, start: p) }
+        .navigationDestination(item: $openPhoto) { p in
+            PhotoPager(photos: photos, start: p, onDelete: { id in
+                openPhoto = nil                                   // leave the viewer first, then delete
+                if let victim = photos.first(where: { $0.persistentModelID == id }) { context.delete(victim) }
+            })
+        }
+        .confirmationDialog("Delete this photo?", isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } }), titleVisibility: .visible) {
+            Button("Delete photo", role: .destructive) { if let t = toDelete { context.delete(t) }; toDelete = nil }
+            Button("Cancel", role: .cancel) { toDelete = nil }
+        }
         #if os(iOS)
         .fullScreenCover(isPresented: $camera) {
             CameraPicker { data in
@@ -541,14 +552,18 @@ struct PhotoPager: View {
     private var pages: [PagerPhoto] { build() }          // rebuilt from the live photos so saved marks show when you swipe back
     @State private var current: PersistentIdentifier
     @State private var locked = false
+    @State private var confirmDelete = false
+    private let onDelete: ((PersistentIdentifier) -> Void)?
 
-    init(photos: [SitePhoto], start: SitePhoto) {
+    init(photos: [SitePhoto], start: SitePhoto, onDelete: ((PersistentIdentifier) -> Void)? = nil) {
         build = { photos.map(PagerPhoto.init) }
         _current = State(initialValue: start.persistentModelID)
+        self.onDelete = onDelete
     }
     init(punch: [PunchPhoto], start: PunchPhoto) {
         build = { punch.map(PagerPhoto.init) }
         _current = State(initialValue: start.persistentModelID)
+        onDelete = nil
     }
 
     private var index: Int { pages.firstIndex { $0.id == current } ?? 0 }
@@ -573,6 +588,17 @@ struct PhotoPager: View {
             guard !locked, abs(v.translation.width) > 60, abs(v.translation.width) > abs(v.translation.height) * 1.4 else { return }
             go(v.translation.width < 0 ? 1 : -1)
         })
+        .toolbar {
+            if onDelete != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(role: .destructive) { confirmDelete = true } label: { Image(systemName: "trash") }
+                }
+            }
+        }
+        .confirmationDialog("Delete this photo?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete photo", role: .destructive) { onDelete?(current) }
+            Button("Cancel", role: .cancel) {}
+        }
         .overlay(alignment: .top) {
             if pages.count > 1 {
                 HStack(spacing: 14) {
