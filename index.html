@@ -1128,6 +1128,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <button type="button" class="nav-btn bp-tool" id="bp-d-theme" onclick="bpDrawerTheme()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><span class="bp-lbl">Light / Dark<small id="bp-d-theme-sub"></small></span></button>
   <button type="button" class="nav-btn bp-tool" id="nav-s-search" onclick="closeNavDrawer();showScreen('s-search')"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><span class="bp-lbl">Search</span></button>
   <button type="button" class="nav-btn bp-tool" id="nav-s-calendar" onclick="closeNavDrawer();showScreen('s-calendar')"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg><span class="bp-lbl">Calendar</span></button>
+  <button type="button" class="nav-btn bp-tool" id="nav-phonebook" onclick="closeNavDrawer();bpPhoneBookOpen()"><svg viewBox="0 0 24 24"><path d="M5 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5z"/><path d="M5 3v18"/><circle cx="12" cy="10" r="2.3"/><path d="M8.2 16.5c.6-1.6 2-2.4 3.8-2.4s3.2.8 3.8 2.4"/><path d="M19 8h2M19 12h2M19 16h2"/></svg><span class="bp-lbl">Phone book</span></button>
   <button type="button" class="nav-btn bp-tool" id="bp-sync-btn" data-bp-sync="1" title="Sync"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span class="bp-lbl">Sync<small id="bp-sync-mini"></small></span></button>
   <div class="bp-drawer-sep"></div>
   <div class="bp-drawer-h">Tools</div>
@@ -1549,7 +1550,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.50';
+var APP_VERSION = '4.51';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -25862,6 +25863,13 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
       + '<select id="bp-sb-sk" onchange="bpSubSk(this.value)" style="flex:0 0 42%;min-width:0;box-sizing:border-box;padding:10px 8px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit"><option value="">All skills</option>'
       + sel.map(function(x){ return '<option' + (x === _sk ? ' selected' : '') + ' value="' + E(x) + '">' + E(x) + '</option>'; }).join('') + '</select></div>' : '')
       + '<div id="bp-sb-list">' + unifiedList() + '</div>';
+  };
+  window.bpPhoneBookOpen = function(){
+    _q = ''; _sk = '';
+    try { window._financeTab = 'contractors'; } catch (e) {}
+    showScreen('s-finance');
+    if (typeof setFinanceTab === 'function') setFinanceTab('contractors');
+    if (typeof renderFinance === 'function') renderFinance();
   };
   window.bpSubAddJob = function(id){
     var c = byId(id || (CARD && CARD.id)); if (!c) return;

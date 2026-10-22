@@ -1,4 +1,4 @@
-"""BuildersPro v4.50 (contact card: contractor name + business name, contract value per job).
+"""BuildersPro v4.51 (contact card: contractor name + business name, contract value per job).
 Run from repo root: python3 test_v447.py. Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
 from playwright.async_api import async_playwright
@@ -20,7 +20,7 @@ async def run(w, h, theme):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8793/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h} {theme}'
-        ok(await pg.evaluate("APP_VERSION==='4.50'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.51'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()")
         await pg.evaluate("document.documentElement.setAttribute('data-theme','%s')" % theme)
         await pg.evaluate(SEED)
