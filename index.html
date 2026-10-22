@@ -755,7 +755,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     <!-- Row 3: location + time on one line (was two) -->
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
       <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:#0A84FF;fill:none;stroke-width:2.5;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <span id="info-loc-text" style="font-size:13px;font-weight:700;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Detecting...</span>
+      <span id="info-loc-text" onclick="bpGeoRefresh()" style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Detecting...</span>
       <span id="info-time" style="font-size:18px;font-weight:900;color:#0A84FF;letter-spacing:-.3px;flex-shrink:0">--:--</span>
     </div>
     <!-- Row 4: date on its own line.
@@ -766,8 +766,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     <div id="home-date" style="font-size:13px;font-weight:600;color:var(--muted);margin-left:19px;margin-bottom:2px"></div>
     <!-- Row 5: weather icon + weather text, always together -->
     <div style="display:flex;align-items:center;gap:6px;margin-left:0;white-space:nowrap">
-      <span id="info-weather-icon" style="font-size:17px;line-height:1;flex-shrink:0">🌡️</span>
-      <span id="info-weather-text" style="font-size:14px;font-weight:700;color:var(--muted);overflow:hidden;text-overflow:ellipsis">Loading...</span>
+      <span id="info-weather-icon" onclick="bpGeoRefresh()" style="cursor:pointer;font-size:17px;line-height:1;flex-shrink:0">🌡️</span>
+      <span id="info-weather-text" onclick="bpGeoRefresh()" style="cursor:pointer;font-size:14px;font-weight:700;color:var(--muted);overflow:hidden;text-overflow:ellipsis">Loading...</span>
     </div>
 
   </div>
@@ -1550,7 +1550,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.51';
+var APP_VERSION = '4.52';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -5814,81 +5814,137 @@ function bpShortPlace(city, state, zip) {
 }
 
 (function pbGeo() {
-  function setEl(id, val) {
-    var el = document.getElementById(id);
-    if (el) el.textContent = val;
+  /* v4.52: location + weather that does not give up.
+     Before: ONE attempt 0.8s after launch. If the GPS prompt was dismissed, the IP lookup was
+     rate-limited, or the reverse lookup failed, the header sat on "Detecting..." / "N/A" and photo
+     stamps got nothing until the app was force-quit. Now: several fallbacks, a saved last-known
+     place + weather, automatic refresh (return to app, back online, every 10 min) and tap-to-retry. */
+  var KEY = 'bp_geo_cache', THROTTLE = 5 * 60 * 1000, running = false, runAt = 0, lastOk = 0;
+  function setEl(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+  function cache() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function put(o) { var c = cache(); for (var k in o) c[k] = o[k]; try { localStorage.setItem(KEY, JSON.stringify(c)); } catch (e) {} }
+  function getJSON(url, ms) {
+    return new Promise(function (res, rej) {
+      var done = false, t = setTimeout(function () { if (!done) { done = true; rej(new Error('timeout')); } }, ms || 8000);
+      fetch(url).then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+        .then(function (d) { if (!done) { done = true; clearTimeout(t); res(d); } })
+        .catch(function (e) { if (!done) { done = true; clearTimeout(t); rej(e); } });
+    });
   }
+  function km(a, b, c, d) { var x = (c - a) * 111, y = (d - b) * 111 * Math.cos(a * Math.PI / 180); return Math.sqrt(x * x + y * y); }
 
-  /* Weather via Open-Meteo (free, no key) */
-  function getWeather(lat, lng) {
-    setEl('info-weather-text', '...');
-    fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lng+'&current_weather=true&temperature_unit=fahrenheit')
-      .then(function(r){ return r.json(); })
-      .then(function(d) {
-        var cw = d && d.current_weather; if (!cw) return;
-        var temp = Math.round(cw.temperature);
-        var c2   = +cw.weathercode;
-        var ico  = c2===0?'☀️':c2<=2?'⛅':c2<=3?'☁️':c2<=49?'🌫':c2<=69?'🌧':c2<=79?'🌨':c2<=84?'🌦':'⛈';
-        var txt  = {0:'Clear',1:'Clear',2:'Partly Cloudy',3:'Overcast',45:'Foggy',
-          51:'Drizzle',61:'Rain',63:'Rain',65:'Heavy Rain',
-          71:'Snow',80:'Showers',95:'Thunderstorm'}[c2] || '';
-        setEl('info-weather-icon', ico);
-        setEl('info-weather-text', temp+'°F '+txt);
-        window._currentWeather = ico+' '+temp+'°F '+txt;
-      })
-      .catch(function(){ setEl('info-weather-text','N/A'); });
+  /* ---- weather (Open-Meteo, free, no key) ---- */
+  var WX = [[0,'☀️','Clear'],[1,'🌤','Mostly Clear'],[2,'⛅','Partly Cloudy'],[3,'☁️','Overcast'],[45,'🌫','Foggy'],[48,'🌫','Fog'],[51,'🌦','Drizzle'],[53,'🌦','Drizzle'],[55,'🌧','Drizzle'],[56,'🌧','Freezing Drizzle'],[57,'🌧','Freezing Drizzle'],
+    [61,'🌧','Rain'],[63,'🌧','Rain'],[65,'🌧','Heavy Rain'],[66,'🌧','Freezing Rain'],[67,'🌧','Freezing Rain'],[71,'🌨','Snow'],[73,'🌨','Snow'],[75,'❄️','Heavy Snow'],[77,'🌨','Snow Grains'],
+    [80,'🌦','Showers'],[81,'🌧','Showers'],[82,'🌧','Heavy Showers'],[85,'🌨','Snow Showers'],[86,'🌨','Snow Showers'],[95,'⛈','Thunderstorm'],[96,'⛈','Thunderstorm'],[99,'⛈','Thunderstorm']];
+  function wxLabel(code) { var r = ['🌡️', '']; WX.forEach(function (w) { if (w[0] === code) r = [w[1], w[2]]; }); return r; }
+  function wxParse(d) {
+    var t, c;
+    if (d && d.current_weather && d.current_weather.temperature != null) { t = d.current_weather.temperature; c = +d.current_weather.weathercode; }
+    else if (d && d.current && d.current.temperature_2m != null) { t = d.current.temperature_2m; c = +d.current.weather_code; }
+    else return null;
+    var l = wxLabel(c);
+    return { ico: l[0], txt: l[1], temp: Math.round(t) };
   }
-
-  /* IP-based location — no permission needed */
-  function byIP() {
-    setEl('info-loc-text','Detecting...');
-    fetch('https://ipapi.co/json/')
-      .then(function(r){ return r.json(); })
-      .then(function(d) {
-        if (!d || !d.latitude) throw 0;
-        var lat = ''+d.latitude, lng = ''+d.longitude;
-        var loc = bpShortPlace(d.city, d.region_code || d.region, d.postal);
-        setEl('info-loc-text', loc || lat+', '+lng);
-        window._currentGeo = loc; window._geoLat = lat; window._geoLng = lng;
-        getWeather(lat, lng);
-      })
-      .catch(function(){
-        /* fallback: Bergenfield NJ coords from profile */
-        setEl('info-loc-text','Bergenfield NJ');
-        getWeather('40.9268','-73.9957');
+  function showWx(w) {
+    var line = w.temp + '°F' + (w.txt ? ' ' + w.txt : '');
+    setEl('info-weather-icon', w.ico); setEl('info-weather-text', line);
+    window._currentWeather = w.ico + ' ' + line;
+  }
+  function weather(lat, lng) {
+    if (!window._currentWeather) setEl('info-weather-text', '...');
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lng + '&current_weather=true&current=temperature_2m,weather_code&temperature_unit=fahrenheit';
+    function once(n) { return getJSON(url, 8000).then(wxParse).then(function (w) { if (!w) throw new Error('no weather'); return w; }).catch(function (e) { if (n > 0) return once(n - 1); throw e; }); }
+    return once(1).then(function (w) { showWx(w); put({ wx: { ico: w.ico, txt: w.txt, temp: w.temp, at: Date.now() } }); return true; })
+      .catch(function () {
+        var c = cache().wx;
+        if (c && Date.now() - c.at < 3 * 3600 * 1000) { showWx(c); return true; }
+        if (!window._currentWeather) { setEl('info-weather-icon', '🌡️'); setEl('info-weather-text', 'Tap to retry'); }
+        return false;
       });
   }
 
-  /* GPS first, IP fallback if denied/timeout */
-  function start() {
-    if (!navigator.geolocation) { byIP(); return; }
-    navigator.geolocation.getCurrentPosition(
-      function(pos) {
-        var lat = pos.coords.latitude.toFixed(4);
-        var lng = pos.coords.longitude.toFixed(4);
-        window._geoLat = lat; window._geoLng = lng;
-        /* Show coords, then reverse-geocode */
-        setEl('info-loc-text', lat+', '+lng);
-        getWeather(lat, lng);
-        fetch('https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lng+'&format=json')
-          .then(function(r){ return r.json(); })
-          .then(function(d) {
-            var a = d.address||{};
-            var loc = bpShortPlace(a.city||a.town||a.village||a.suburb||a.county, a.state_code||a.state, a.postcode);
-            if (loc) { setEl('info-loc-text', loc); window._currentGeo = loc; }
-          }).catch(function(){});
-      },
-      function() { byIP(); },   /* denied → IP fallback */
-      {timeout:6000, enableHighAccuracy:false}
-    );
+  /* ---- place name ---- */
+  function showPlace(p) { setEl('info-loc-text', p); window._currentGeo = p; }
+  function reverse(lat, lng) {
+    return getJSON('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=json&addressdetails=1&zoom=14&accept-language=en', 7000)
+      .then(function (d) {
+        var a = (d && d.address) || {}, iso = a['ISO3166-2-lvl4'] ? String(a['ISO3166-2-lvl4']).split('-')[1] : '';
+        var p = bpShortPlace(a.city || a.town || a.village || a.suburb || a.county, a.state_code || iso || a.state, a.postcode);
+        if (!p) throw new Error('empty'); return p;
+      })
+      .catch(function () {
+        return getJSON('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lng + '&localityLanguage=en', 7000)
+          .then(function (d) {
+            var iso = d && d.principalSubdivisionCode ? String(d.principalSubdivisionCode).split('-')[1] : '';
+            return bpShortPlace(d && (d.city || d.locality), iso || (d && d.principalSubdivision), d && d.postcode) || '';
+          }).catch(function () { return ''; });
+      });
+  }
+  function withCoords(lat, lng) {
+    window._geoLat = lat; window._geoLng = lng;
+    var c = cache();
+    if (c.place && c.lat && km(+c.lat, +c.lng, +lat, +lng) < 3) showPlace(c.place);
+    else if (!window._currentGeo) showPlace(lat + ', ' + lng);
+    weather(lat, lng);
+    return reverse(lat, lng).then(function (p) {
+      if (p) { showPlace(p); put({ lat: lat, lng: lng, place: p, placeAt: Date.now() }); }
+      else if (window._currentGeo === lat + ', ' + lng || !window._currentGeo) put({ lat: lat, lng: lng });
+    });
   }
 
-  /* Fire after page loads */
-  if (document.readyState !== 'loading') {
-    setTimeout(start, 800);
-  } else {
-    document.addEventListener('DOMContentLoaded', function(){ setTimeout(start, 800); });
+  /* ---- IP fallback (approximate) ---- */
+  function byIP() {
+    return getJSON('https://ipapi.co/json/', 7000).then(function (d) { if (!d || d.error || !d.latitude) throw new Error('ip1'); return d; })
+      .catch(function () { return getJSON('https://ipwho.is/', 7000).then(function (d) { if (!d || d.success === false || !d.latitude) throw new Error('ip2'); return d; }); })
+      .then(function (d) {
+        var lat = (+d.latitude).toFixed(4), lng = (+d.longitude).toFixed(4);
+        var zip = typeof d.postal === 'string' ? d.postal : '';
+        var p = bpShortPlace(d.city, d.region_code || d.region, zip);
+        window._geoLat = lat; window._geoLng = lng;
+        if (p) { showPlace(p); put({ lat: lat, lng: lng, place: p, placeAt: Date.now() }); } else if (!window._currentGeo) showPlace(lat + ', ' + lng);
+        weather(lat, lng);
+      });
   }
+  function fromCache() {
+    var c = cache();
+    if (c.place) { showPlace(c.place); if (c.lat) { window._geoLat = c.lat; window._geoLng = c.lng; weather(c.lat, c.lng); } return true; }
+    if (!window._currentGeo) setEl('info-loc-text', 'Tap to retry');
+    if (!window._currentWeather) { setEl('info-weather-icon', '🌡️'); setEl('info-weather-text', 'Tap to retry'); }
+    return false;
+  }
+
+  function start(manual) {
+    if (running && Date.now() - runAt < 40000) return;
+    if (!manual && Date.now() - lastOk < THROTTLE) return;
+    running = true; runAt = Date.now();
+    var finished = false;
+    function done(ok) { running = false; if (ok) lastOk = Date.now(); }
+    function fail() { byIP().then(function () { done(true); }).catch(function () { fromCache(); done(false); }); }
+    if (!navigator.geolocation) { fail(); return; }
+    var guard = setTimeout(function () { if (!finished) { finished = true; fail(); } }, 12000);
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        if (finished) return; finished = true; clearTimeout(guard);
+        withCoords(pos.coords.latitude.toFixed(4), pos.coords.longitude.toFixed(4)).then(function () { done(true); }, function () { done(true); });
+      },
+      function () { if (finished) return; finished = true; clearTimeout(guard); fail(); },
+      { timeout: 10000, maximumAge: 300000, enableHighAccuracy: false }
+    );
+  }
+  window.bpGeoRefresh = function () { lastOk = 0; running = false; try { toast('Updating location and weather…'); } catch (e) {} start(true); };
+
+  /* show what we knew last time right away (works offline too), then refresh */
+  (function () {
+    var c = cache();
+    if (c.place && !window._currentGeo) showPlace(c.place);
+    if (c.wx && Date.now() - c.wx.at < 3 * 3600 * 1000 && !window._currentWeather) showWx(c.wx);
+  })();
+  function go() { setTimeout(function () { start(false); }, 800); }
+  if (document.readyState !== 'loading') go(); else document.addEventListener('DOMContentLoaded', go);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) start(false); });
+  window.addEventListener('online', function () { start(true); });
+  setInterval(function () { if (!document.hidden) start(false); }, 10 * 60 * 1000);
 })();
 </script>
 
