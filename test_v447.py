@@ -1,4 +1,4 @@
-"""BuildersPro v4.48 (contact card: contractor name + business name, contract value per job).
+"""BuildersPro v4.49 (contact card: contractor name + business name, contract value per job).
 Run from repo root: python3 test_v447.py. Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
 from playwright.async_api import async_playwright
@@ -20,7 +20,7 @@ async def run(w, h, theme):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8793/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h} {theme}'
-        ok(await pg.evaluate("APP_VERSION==='4.48'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.49'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()")
         await pg.evaluate("document.documentElement.setAttribute('data-theme','%s')" % theme)
         await pg.evaluate(SEED)
@@ -55,7 +55,7 @@ async def run(w, h, theme):
         await pg.evaluate("populateFinanceSelects();openSheet('sheet-add-contractor')")
         opts = await pg.evaluate("[...document.querySelectorAll('#dl-subs option')].map(o=>o.value)")
         ok('Joe Rossi' in opts and 'rossi plumbing & heating' in opts, f'{t}: datalist {opts}')
-        ok(await pg.evaluate("document.getElementById('con-name').getAttribute('list')")=='dl-subs', f'{t}: input uses datalist')
+        ok(await pg.evaluate("document.getElementById('con-contact').getAttribute('list')")=='dl-subs', f'{t}: input uses datalist')
         ok(len(errs)==0, f'{t}: errors {errs[:3]}')
         await b.close()
 async def main():

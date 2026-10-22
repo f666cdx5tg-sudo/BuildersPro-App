@@ -1,4 +1,4 @@
-"""BuildersPro v4.48 (thumbs up/down on subs, contractor address book, skill selector on contact card).
+"""BuildersPro v4.49 (thumbs up/down on subs, contractor address book, skill selector on contact card).
 Run from repo root: python3 test_v445.py. Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
 from playwright.async_api import async_playwright
@@ -20,7 +20,7 @@ async def run(w, h, theme):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8795/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h} {theme}'
-        ok(await pg.evaluate("APP_VERSION==='4.48'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.49'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()")
         await pg.evaluate("document.documentElement.setAttribute('data-theme','%s')" % theme)
         await pg.evaluate(SEED)
@@ -114,7 +114,7 @@ async def run(w, h, theme):
         # contract view: new contractor auto-lands in book
         await pg.evaluate("bpSubView('contracts')")
         await pg.evaluate("populateFinanceSelects();openSheet('sheet-add-contractor')")
-        await pg.evaluate("document.getElementById('con-name').value='new guy hvac';document.getElementById('con-trade').value='HVAC';document.getElementById('con-phone').value='9085550000'")
+        await pg.evaluate("document.getElementById('con-contact').value='new guy hvac';document.getElementById('con-trade').value='HVAC';document.getElementById('con-phone').value='9085550000'")
         await pg.evaluate("saveContractor()"); await pg.wait_for_timeout(300)
         ok(await pg.evaluate("(x=>!!x&&x.skills.join()==='HVAC')(DB.contacts.find(x=>x.name==='New Guy Hvac'))"), f'{t}: new sub auto-added to book')
         # no overflow on the page

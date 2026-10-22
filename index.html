@@ -1546,7 +1546,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.48';
+var APP_VERSION = '4.49';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -5673,7 +5673,10 @@ setInterval(updateHeaderClocks, 10000);
       <button class="sheet-close" onclick="closeSheet('sheet-add-contractor')">✕</button>
     </div>
     <div class="sheet-body">
-      <div class="field"><div class="field-label">Contractor or business name *</div><input id="con-name" type="text" list="dl-subs" autocomplete="off" placeholder="Pick from address book or type" spellcheck="true" autocapitalize="words"/><datalist id="dl-subs"></datalist></div>
+      <div class="field"><div class="field-label">Contact name</div><input id="con-contact" type="text" list="dl-subs" autocomplete="off" placeholder="Pick from address book or type" autocapitalize="words" onchange="bpSubFillAdd()"/><datalist id="dl-subs"></datalist></div>
+      <div class="field"><div class="field-label">Company name</div><input id="con-company" type="text" list="dl-subs" autocomplete="off" autocapitalize="words" onchange="bpSubFillAdd()"/></div>
+      <div class="field"><div class="field-label">Email</div><input id="con-email" type="email" autocapitalize="off" autocomplete="off"/></div>
+      <div class="field"><div class="field-label">Cell</div><input id="con-phone" type="tel" placeholder="(123)-456-7890"/></div>
       <div class="field"><div class="field-label">Job</div><select id="con-job"><option value="">No job</option></select></div>
       <div class="field-row">
         <div class="field"><div class="field-label">Trade</div>
@@ -5688,7 +5691,6 @@ setInterval(updateHeaderClocks, 10000);
       <div class="field"><div class="field-label">Scope of Work *</div>
         <textarea id="con-scope" rows="4" placeholder="Detailed scope of work, inclusions, exclusions..."></textarea>
       </div>
-      <div class="field"><div class="field-label">Contact Phone</div><input id="con-phone" type="tel" placeholder="(123)-456-7890"/></div>
       <div class="field"><div class="field-label">Status</div>
         <select id="con-status"><option>Active</option><option>Pending</option><option>Completed</option><option>On Hold</option></select>
       </div>
@@ -8052,6 +8054,7 @@ function renderFinanceContent() {
           +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">'
           +'<div style="flex:1;min-width:0;overflow-wrap:anywhere">'
           +'<div style="font-size:16px;font-weight:800">'+esc(con.name)+'</div>'
+          +(con.contact&&con.company?'<div style="font-size:13px;color:var(--muted)">'+esc(con.contact)+'</div>':'')
           +(con.created?'<div style="font-size:11px;color:var(--faint);margin-top:1px">Added '+fmtDate(con.created)+' · '+fmtTime(con.created)+'</div>':'')
           +'<div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere">🔧 '+esc(con.trade)+(job?' · 📋 '+esc(job.name):'')+'</div>'
           +(con.phone?'<div style="font-size:12px;color:var(--muted)">📞 '+esc(bpPhone(con.phone))+'</div>':'')
@@ -9501,13 +9504,15 @@ window.bpExportChangeOrders = function(jobId) {
 };
 
 window.saveContractor = function() {
-  var name  = document.getElementById('con-name')?.value?.trim();
+  var contact = toTitleCase((document.getElementById('con-contact')?.value||'').trim());
+  var company = (document.getElementById('con-company')?.value||'').trim();
+  var name  = company || contact;
   var scope = document.getElementById('con-scope')?.value?.trim();
-  if (!name) { toast('Contractor name required'); return; }
-  name = toTitleCase(name);
+  if (!name) { toast('Contact or company name required'); return; }
   if (!DB.contractors) DB.contractors=[];
-  DB.contractors.push({
-    id:     uid(), name:name,
+  var rec = {
+    id:     uid(), name:name, contact:contact, company:company,
+    email:  (document.getElementById('con-email')?.value||'').trim(),
     jobId:  document.getElementById('con-job')?.value||'',
     trade:  document.getElementById('con-trade')?.value||'General',
     value:  +(document.getElementById('con-value')?.value||0),
@@ -9517,9 +9522,11 @@ window.saveContractor = function() {
     phone:  document.getElementById('con-phone')?.value?.trim()||'',
     status: document.getElementById('con-status')?.value||'Active',
     created:now()
-  });
+  };
+  DB.contractors.push(rec);
   closeSheet('sheet-add-contractor');
-  if (window.bpSubEnsureFromContract) bpSubEnsureFromContract(name, document.getElementById('con-phone')?.value?.trim()||'', document.getElementById('con-trade')?.value||'');
+  if (window.bpSubSyncFromContract) bpSubSyncFromContract(rec, '');
+  ['con-contact','con-company','con-email','con-phone'].forEach(function(i){ var e=document.getElementById(i); if(e) e.value=''; });
   save(); renderFinance();
   toast('👷 Contractor saved');
 };
@@ -9543,7 +9550,12 @@ window.openEditContractor = function(conId) {
   html += '<div style="font-size:17px;font-weight:700">Edit Contractor</div>';
   html += '<button onclick="document.getElementById(\'edit-con-modal\').remove()" style="width:30px;height:30px;border-radius:50%;background:var(--card2);border:none;color:var(--muted);font-size:18px;cursor:pointer">x</button>';
   html += '</div><div style="padding:16px 18px">';
-  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Name *</div><input id="ec-name" type="text" value="'+esc(con.name)+'" style="'+s+'"/></div>';
+  var idn = window.bpSubIdentity ? bpSubIdentity(con) : {contact:con.name||'',company:'',email:con.email||''};
+  function qa(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Contact name</div><input id="ec-contact" type="text" autocapitalize="words" autocomplete="off" value="'+qa(idn.contact)+'" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Company name</div><input id="ec-company" type="text" autocapitalize="words" autocomplete="off" value="'+qa(idn.company)+'" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Email</div><input id="ec-email" type="email" autocapitalize="off" autocomplete="off" value="'+qa(idn.email)+'" style="'+s+'"/></div>';
+  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Cell</div><input id="ec-phone" type="tel" value="'+qa(bpPhone(con.phone||''))+'" style="'+s+'"/></div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Job</div><select id="ec-job" style="'+s+'">'+jobOpts+'</select></div>';
   html += '<div style="display:flex;gap:10px;margin-bottom:14px">';
   html += '<div style="flex:1"><div style="'+lbl+'">Trade</div><select id="ec-trade" style="'+s+'">'+tradeOpts+'</select></div>';
@@ -9554,7 +9566,6 @@ window.openEditContractor = function(conId) {
   html += '<div style="flex:1"><div style="'+lbl+'">End Date</div><input id="ec-end" type="date" value="'+(con.end||'')+'" style="'+s+'"/></div>';
   html += '</div>';
   html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Scope of Work</div><textarea id="ec-scope" rows="4" style="'+s+'">'+esc(con.scope||'')+'</textarea></div>';
-  html += '<div style="margin-bottom:14px"><div style="'+lbl+'">Contact Phone</div><input id="ec-phone" type="tel" value="'+esc(bpPhone(con.phone||''))+'" style="'+s+'"/></div>';
   html += '<div style="margin-bottom:18px"><div style="'+lbl+'">Status</div><select id="ec-status" style="'+s+'">'+statusOpts+'</select></div>';
   html += '<div style="display:flex;gap:8px">';
   html += '<button onclick="deleteFinItem(\'contractors\',\''+conId+'\');document.getElementById(\'edit-con-modal\').remove()" style="flex:1;padding:13px;border-radius:12px;border:1px solid var(--red);background:transparent;color:var(--red);font-weight:700;cursor:pointer;font-family:inherit">Delete</button>';
@@ -9562,15 +9573,18 @@ window.openEditContractor = function(conId) {
   html += '</div></div></div>';
   mo.innerHTML = html;
   document.body.appendChild(mo);
-  setTimeout(function(){ document.getElementById('ec-name') && document.getElementById('ec-name').focus(); }, 200);
+  setTimeout(function(){ document.getElementById('ec-contact') && document.getElementById('ec-contact').focus(); }, 200);
 };
 
 window.saveEditContractor = function(conId) {
   var con = (DB.contractors||[]).find(function(c){ return c.id===conId; });
   if (!con) return;
-  var name = (document.getElementById('ec-name').value||'').trim();
-  if (!name) { toast('Contractor name required'); return; }
-  con.name   = name;
+  var contact = (document.getElementById('ec-contact').value||'').trim(), company = (document.getElementById('ec-company').value||'').trim();
+  var name = company || contact;
+  if (!name) { toast('Contact or company name required'); return; }
+  var prevName = con.name;
+  con.name   = name; con.contact = contact; con.company = company;
+  con.email  = (document.getElementById('ec-email').value||'').trim();
   con.jobId  = document.getElementById('ec-job').value || '';
   con.trade  = document.getElementById('ec-trade').value || 'General';
   con.value  = +(document.getElementById('ec-value').value||0);
@@ -9581,6 +9595,7 @@ window.saveEditContractor = function(conId) {
   con.status = document.getElementById('ec-status').value || 'Active';
   con.updatedAt = now();
   document.getElementById('edit-con-modal') && document.getElementById('edit-con-modal').remove();
+  if (window.bpSubSyncFromContract) bpSubSyncFromContract(con, prevName);
   save(); renderFinance();
   toast('👷 Contractor updated');
 };
@@ -25666,7 +25681,34 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
   function allBook(){ if (!DB.contacts) DB.contacts = []; return DB.contacts.filter(function(c){ return c && c.type === 'Contractor'; }); }
   function byId(id){ return allBook().find(function(c){ return c.id === id; }); }
   function findName(n){ var k = key(n); return k ? allBook().find(function(c){ return key(c.name) === k || (c.company && key(c.company) === k); }) : null; }
-  function contractsFor(c){ return (DB.contractors || []).filter(function(k){ var kk = key(k.name); return kk && (kk === key(c.name) || (c.company && kk === key(c.company))); }); }
+  var CO_RE = /\b(llc|l\.l\.c\.?|inc\.?|corp\.?|co\.?|company|ltd\.?|group|services|construction|contracting|enterprises|plumbing|heating|electric|electrical|mechanical)\b/i;
+  window.bpSubIdentity = function(con){
+    if (con.contact || con.company || con.email) return { contact: con.contact || '', company: con.company || '', email: con.email || '' };
+    var b = findName(con.name);
+    if (b) { var co = b.company || '', ct = b.name; if (!co && CO_RE.test(ct)) { co = ct; ct = ''; } return { contact: ct, company: co, email: b.email || '' }; }
+    return CO_RE.test(con.name || '') ? { contact: '', company: con.name || '', email: '' } : { contact: con.name || '', company: '', email: '' };
+  };
+  window.bpSubSyncFromContract = function(con, prev){
+    try {
+      var nm = con.contact || con.company; if (!nm) return;
+      var b = (prev && findName(prev)) || findName(con.name) || (con.contact && findName(con.contact)) || (con.company && findName(con.company));
+      if (!b) b = ensure(nm, { phone: con.phone, skills: skillOf(con.trade) });
+      else skillOf(con.trade).forEach(function(s){ b.skills = b.skills || []; if (b.skills.indexOf(s) < 0) b.skills.push(s); });
+      if (con.contact) { var other = findName(con.contact); if (!other || other.id === b.id) b.name = con.contact; if (con.company) b.company = con.company; }
+      else if (con.company && !b.company && key(b.name) !== key(con.company)) b.company = con.company;
+      if (con.email) b.email = con.email;
+      if (con.phone) b.phone = con.phone;
+      b.updated = now();
+    } catch (e) {}
+  };
+  window.bpSubFillAdd = function(){
+    var g = function(i){ var e = document.getElementById(i); return e ? e.value.trim() : ''; }, st = function(i, v){ var e = document.getElementById(i); if (e && !e.value && v) e.value = v; };
+    var b = findName(g('con-contact')) || findName(g('con-company')); if (!b) return;
+    st('con-contact', b.name); st('con-company', b.company); st('con-email', b.email); st('con-phone', bpPhone(b.phone || ''));
+    var tr = document.getElementById('con-trade'), sk = (b.skills || [])[0];
+    if (tr && sk && tr.value === 'General' && [].some.call(tr.options, function(o){ return o.value === sk; })) tr.value = sk;
+  };
+  function contractsFor(c){ return (DB.contractors || []).filter(function(k){ var kk = key(k.name); return kk && (kk === key(c.name) || (k.contact && key(k.contact) === key(c.name)) || (c.company && kk === key(c.company))); }); }
   function money(n){ return '$' + (Math.round((+n || 0) * 100) / 100).toLocaleString(); }
   function byName(a, b){ return String(a.name || '').toLowerCase().localeCompare(String(b.name || '').toLowerCase()); }
   function skillOf(trade){ return SKIP[key(trade)] ? [] : [trade]; }
@@ -25754,7 +25796,11 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
   window.bpSubSk = function(v){ _sk = v || ''; var l = document.getElementById('bp-sb-list'); if (l) l.innerHTML = listHtml(); };
   window.bpSubImport = function(){
     var m = missing();
-    m.forEach(function(k){ ensure(k.name, { phone: k.phone, skills: skillOf(k.trade) }); });
+    m.forEach(function(k){
+      var idn = window.bpSubIdentity(k), b = ensure(idn.contact || idn.company || k.name, { phone: k.phone, skills: skillOf(k.trade) });
+      if (idn.contact && idn.company && !b.company) b.company = idn.company;
+      if (idn.email && !b.email) b.email = idn.email;
+    });
     save(); renderFinance(); toast(m.length + ' added to address book');
   };
   function fillSubs(){
