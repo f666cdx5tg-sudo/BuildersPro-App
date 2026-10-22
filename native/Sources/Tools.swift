@@ -11,16 +11,22 @@ import AVFoundation
 
 struct ToolsView: View {
     @AppStorage("bpDark") private var dark = true
+    @Environment(\.openURL) private var openURL
+    @State private var noMeasure = false
     var body: some View {
         List {
             #if os(iOS)
             NavigationLink { ARMeasureView() } label: { row("ruler", "AR Measure", "Point the camera, tap two points", Theme.sky) }
+            Button {
+                if let u = URL(string: "measure://") { openURL(u) { ok in if !ok { noMeasure = true } } }
+            } label: { row("arrow.up.forward.app", "Apple Measure", "Open Apple's own Measure app", Theme.blue) }.buttonStyle(.plain)
             NavigationLink { LevelView() } label: { row("level", "Level", "Bubble level in degrees and in/ft", Theme.green) }
             NavigationLink { ColorMatchView() } label: { row("eyedropper", "Color match", "Sample a wall color with the camera", Theme.orange) }
             #endif
             NavigationLink { ContractorBookView() } label: { row("person.2.crop.square.stack", "Contractors", "Address book with skills and thumbs", Theme.gold) }
         }
         .navigationTitle("Tools")
+        .alert("Apple Measure isn't available", isPresented: $noMeasure) { Button("OK", role: .cancel) {} } message: { Text("Install Measure from the App Store, or use AR Measure here.") }
     }
     private func row(_ symbol: String, _ title: String, _ sub: String, _ c: Color) -> some View {
         HStack(spacing: 14) {
