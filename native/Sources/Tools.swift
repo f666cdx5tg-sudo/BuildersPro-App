@@ -311,8 +311,8 @@ struct ColorMatchView: View {
                     Spacer()
                 }
                 HStack(spacing: 10) {
-                    slot("Save A") { a = cur }
-                    slot("Save B") { b = cur }
+                    slot("Save A", a) { a = cur }
+                    slot("Save B", b) { b = cur }
                     Button { if white == nil { white = cam.rgb } else { white = nil } } label: { Text(white == nil ? "Set white" : "Reset").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity, minHeight: 44) }
                         .buttonStyle(.bordered)
                 }
