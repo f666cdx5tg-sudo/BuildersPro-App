@@ -23,6 +23,7 @@ struct ToolsView: View {
             NavigationLink { LevelView() } label: { row("level", "Level", "Bubble level in degrees and in/ft", Theme.green) }
             NavigationLink { ColorMatchView() } label: { row("eyedropper", "Color match", "Sample a wall color with the camera", Theme.orange) }
             #endif
+            NavigationLink { SavedResultsView() } label: { row("tray.full", "Saved results", "Everything you saved from the tools", Theme.blue) }
             NavigationLink { ContractorBookView() } label: { row("person.2.crop.square.stack", "Contractors", "Address book with skills and thumbs", Theme.gold) }
         }
         .navigationTitle("Tools")
@@ -107,6 +108,10 @@ struct ARMeasureView: View {
                     Image(systemName: "plus").font(.system(size: 28, weight: .semibold)).foregroundStyle(.black)
                         .frame(width: 66, height: 66).background(.white, in: Circle()).overlay(Circle().stroke(.black.opacity(0.15), lineWidth: 3))
                 }
+                if !segments.isEmpty {
+                    SaveResultButton(tool: "AR Measure", title: segments.count > 1 ? "Total " + feetInches(total) : feetInches(segments[0]),
+                                     summary: segments.enumerated().map { "Line \($0.offset + 1): " + feetInches($0.element) }.joined(separator: "\n") + (segments.count > 1 ? "\nTotal: " + feetInches(total) : ""))
+                }
                 HStack(spacing: 10) {
                     Button { undoTick += 1 } label: { Label("Undo", systemImage: "arrow.uturn.backward").frame(maxWidth: .infinity) }
                     Button(role: .destructive) { clearTick += 1; segments = [] } label: { Label("Clear", systemImage: "trash").frame(maxWidth: .infinity) }
@@ -115,6 +120,7 @@ struct ARMeasureView: View {
             .padding(14).background(.bar)
         }
         .navigationTitle("AR Measure").navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { NavigationLink { SavedResultsView(tool: "AR Measure") } label: { Image(systemName: "tray.full") } } }
         .clearFloatBar()
     }
 }
@@ -297,10 +303,14 @@ struct LevelView: View {
                 Text(isLevel ? "Level" : String(format: "%.2f in per foot", inPerFt)).font(.title3.weight(.semibold)).foregroundStyle(.white)
                 Button { zeroX = mo.gx; zeroY = mo.gy; zeroEdge = edgeRaw - (edgeRaw / 90).rounded() * 90 } label: {
                     Text("Calibrate").font(.headline).foregroundStyle(.black).frame(width: 160, height: 48).background(.white, in: Capsule())
-                }.padding(.vertical, 24)
+                }.padding(.top, 24)
+                SaveResultButton(tool: "Level", title: String(format: "%.1f°", deg),
+                                 summary: String(format: "%.1f° · %.2f in per foot · ", deg, inPerFt) + (isLevel ? "level" : "not level") + (flat ? " (flat)" : " (edge)"))
+                    .padding(.horizontal, 60).padding(.vertical, 14)
             }
         }
         .navigationTitle("Level").navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { NavigationLink { SavedResultsView(tool: "Level") } label: { Image(systemName: "tray.full") } } }
         .toolbarColorScheme(.dark, for: .navigationBar)
         .clearFloatBar()
         .onAppear { mo.start() }.onDisappear { mo.stop() }
@@ -382,6 +392,13 @@ struct ColorMatchView: View {
         }.buttonStyle(.plain).frame(maxWidth: .infinity)
     }
 
+    private var colorSummary: String {
+        var t = "\(hex(cur))  ·  R \(Int(cur.0 * 255)) G \(Int(cur.1 * 255)) B \(Int(cur.2 * 255))" + (white != nil ? "  (white-corrected)" : "")
+        if let a { t += "\nSample A: " + hex(a) }
+        if let b { t += "\nSample B: " + hex(b) }
+        if let a, let b { let d = delta(a, b); t += "\nA vs B: " + (d < 4 ? "very close" : d < 12 ? "close" : "visibly different") }
+        return t
+    }
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
@@ -404,6 +421,7 @@ struct ColorMatchView: View {
                     Button { if white == nil { white = cam.rgb } else { white = nil } } label: { Text(white == nil ? "Set white" : "Reset").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity, minHeight: 44) }
                         .buttonStyle(.bordered)
                 }
+                SaveResultButton(tool: "Color match", title: hex(cur), summary: colorSummary)
                 if let a, let b {
                     let d = delta(a, b)
                     Text(d < 4 ? "Very close match" : d < 12 ? "Close — slight difference" : "Visibly different")
@@ -413,6 +431,7 @@ struct ColorMatchView: View {
             }.padding(14).background(.bar)
         }
         .navigationTitle("Color match").navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { NavigationLink { SavedResultsView(tool: "Color match") } label: { Image(systemName: "tray.full") } } }
         .clearFloatBar()
         .onAppear { cam.start() }.onDisappear { cam.stop() }
     }
@@ -520,5 +539,100 @@ struct ContractorEditor: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .onDisappear { if c.name.trimmingCharacters(in: .whitespaces).isEmpty && c.company.isEmpty && c.phone.isEmpty && c.skills.isEmpty { context.delete(c) } }
+    }
+}
+
+
+// MARK: - Saved results (all tools)
+
+@Model
+final class ToolResult {
+    var tool: String = ""          // "AR Measure", "Level", "Color match"
+    var title: String = ""         // headline, e.g. "12′ 4″"
+    var summary: String = ""       // the full readout
+    var note: String = ""
+    var jobName: String = ""
+    var created: Date = Date()
+    init(tool: String, title: String, summary: String) { self.tool = tool; self.title = title; self.summary = summary }
+}
+
+struct SaveResultSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Job.created, order: .reverse) private var jobs: [Job]
+    @AppStorage("bpActiveJob") private var activeKey = ""
+    let tool: String, title: String, summary: String
+    @State private var jobID: PersistentIdentifier?
+    @State private var label = ""
+    @State private var note = ""
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(tool) { Text(title).font(.title2.weight(.heavy)); Text(summary).font(.callout).foregroundStyle(.secondary) }
+                Section {
+                    TextField("Label (e.g. Kitchen wall)", text: $label)
+                    TextField("Note", text: $note, axis: .vertical)
+                    Picker("Job", selection: $jobID) {
+                        Text("No job").tag(PersistentIdentifier?.none)
+                        ForEach(jobs.filter { $0.isActive }) { j in Text(j.name.isEmpty ? "Job" : j.name).tag(Optional(j.persistentModelID)) }
+                    }
+                }
+            }
+            .navigationTitle("Save result")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Save") { save() }.bold() }
+            }
+            .onAppear { if jobID == nil { jobID = jobs.first { String($0.created.timeIntervalSince1970) == activeKey }?.persistentModelID } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+    private func save() {
+        let job = jobs.first { $0.persistentModelID == jobID }
+        let head = label.isEmpty ? title : label + " — " + title
+        let r = ToolResult(tool: tool, title: head, summary: summary)
+        r.note = note; r.jobName = job?.name ?? ""
+        context.insert(r)
+        if let job {   // also show it in the job's Notes
+            let n = JobNote(title: tool + ": " + head)
+            n.text = summary + (note.isEmpty ? "" : "\n" + note); n.job = job
+            context.insert(n)
+        }
+        try? context.save()
+        dismiss()
+    }
+}
+
+/// Green "Save" button used by every tool.
+struct SaveResultButton: View {
+    let tool: String, title: String, summary: String
+    @State private var show = false
+    var body: some View {
+        Button { show = true } label: { Label("Save", systemImage: "square.and.arrow.down").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity, minHeight: 40) }
+            .buttonStyle(.borderedProminent).tint(Theme.green).foregroundStyle(.black)
+            .sheet(isPresented: $show) { SaveResultSheet(tool: tool, title: title, summary: summary) }
+    }
+}
+
+struct SavedResultsView: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort: \ToolResult.created, order: .reverse) private var all: [ToolResult]
+    var tool: String? = nil
+    private var items: [ToolResult] { tool == nil ? all : all.filter { $0.tool == tool } }
+    var body: some View {
+        List {
+            if items.isEmpty { Text("Nothing saved yet. Use Save on a tool.").foregroundStyle(.secondary) }
+            ForEach(items) { r in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack { Text(r.title).font(.headline); Spacer(); Text(r.tool).font(.caption.weight(.bold)).foregroundStyle(.secondary) }
+                    Text(r.summary).font(.callout).foregroundStyle(.secondary)
+                    if !r.note.isEmpty { Text(r.note).font(.callout) }
+                    Text((r.jobName.isEmpty ? "" : r.jobName + " · ") + r.created.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                }.padding(.vertical, 2)
+            }
+            .onDelete { idx in idx.forEach { context.delete(items[$0]) } }
+        }
+        .navigationTitle(tool.map { $0 + " — saved" } ?? "Saved results")
+        .clearFloatBar()
     }
 }

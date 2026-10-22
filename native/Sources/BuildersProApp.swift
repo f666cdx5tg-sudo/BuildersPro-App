@@ -10,7 +10,7 @@ struct BuildersProApp: App {
         let schema = Schema([Job.self, Space.self, PunchItem.self, SitePhoto.self,
                               Expense.self, Contractor.self, Payment.self, DailyReport.self,
                               ChangeOrder.self, Invoice.self, Permit.self, TimeEntry.self,
-                              Appointment.self, JobNote.self, ShoppingItem.self, Vendor.self, JobDocument.self, PunchPhoto.self, Estimate.self, BookContact.self])
+                              Appointment.self, JobNote.self, ShoppingItem.self, Vendor.self, JobDocument.self, PunchPhoto.self, Estimate.self, BookContact.self, ToolResult.self])
         #if targetEnvironment(simulator)
         let config = ModelConfiguration(schema: schema, cloudKitDatabase: .none)     // the simulator has no iCloud account — keep it local so it can launch
         #else
