@@ -1047,7 +1047,9 @@ struct ShoppingView: View {
                     .frame(maxWidth: .infinity).padding(.vertical, 9)
                     .background(Theme.green, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.black)
             }
-            .buttonStyle(.plain).padding(.horizontal, 16).padding(.vertical, 6).background(.bar)
+            .buttonStyle(.plain).padding(.horizontal, 16).padding(.vertical, 6)
+            .padding(.bottom, Theme.desk ? 0 : 76)          // sit above the floating back / ••• / mic buttons, never under them
+            .background(.bar)
         }
         .sheet(isPresented: $adding) { ShoppingSheet(job: job) }
     }
