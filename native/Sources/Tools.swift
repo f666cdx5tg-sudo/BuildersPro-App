@@ -36,6 +36,13 @@ struct ToolsView: View {
     }
 }
 
+extension View {
+    /// Keeps the bottom of a pushed Tools screen clear of the floating back / ••• / mic buttons.
+    func clearFloatBar() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: Theme.desk ? 0 : 84) }
+    }
+}
+
 /// Feet-and-inches text for a length in meters, to the nearest 1/8".
 func feetInches(_ meters: Double) -> String {
     let eighths = Int((meters * 39.3701 * 8).rounded())
@@ -108,6 +115,7 @@ struct ARMeasureView: View {
             .padding(14).background(.bar)
         }
         .navigationTitle("AR Measure").navigationBarTitleDisplayMode(.inline)
+        .clearFloatBar()
     }
 }
 
@@ -294,6 +302,7 @@ struct LevelView: View {
         }
         .navigationTitle("Level").navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .clearFloatBar()
         .onAppear { mo.start() }.onDisappear { mo.stop() }
     }
 }
@@ -404,6 +413,7 @@ struct ColorMatchView: View {
             }.padding(14).background(.bar)
         }
         .navigationTitle("Color match").navigationBarTitleDisplayMode(.inline)
+        .clearFloatBar()
         .onAppear { cam.start() }.onDisappear { cam.stop() }
     }
 }
@@ -465,6 +475,8 @@ struct ContractorBookView: View {
         }
         .searchable(text: $search, prompt: "Search name, company, skill")
         .navigationTitle("Contractors")
+        .clearFloatBar()
+        .onAppear { all.filter { $0.name.trimmingCharacters(in: .whitespaces).isEmpty && $0.company.isEmpty && $0.phone.isEmpty && $0.skills.isEmpty }.forEach { context.delete($0) } }
         .toolbar { ToolbarItem(placement: .primaryAction) { Button { let c = BookContact(name: ""); context.insert(c); editing = c } label: { Image(systemName: "plus") } } }
         .sheet(item: $editing) { c in ContractorEditor(c: c) }
     }
@@ -472,6 +484,7 @@ struct ContractorBookView: View {
 
 struct ContractorEditor: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @Bindable var c: BookContact
     private let trades = ["Plumbing", "Electrical", "HVAC", "Carpentry", "Painting", "Flooring", "Roofing", "Masonry", "Tile", "Drywall", "Demolition", "General"]
     private var picked: Set<String> { Set(c.skills.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }) }
@@ -506,5 +519,6 @@ struct ContractorEditor: View {
             .navigationTitle(c.name.isEmpty ? "New contractor" : c.name)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+        .onDisappear { if c.name.trimmingCharacters(in: .whitespaces).isEmpty && c.company.isEmpty && c.phone.isEmpty && c.skills.isEmpty { context.delete(c) } }
     }
 }
