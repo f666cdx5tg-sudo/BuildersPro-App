@@ -121,6 +121,7 @@ struct ARMeasureRep: UIViewRepresentable {
         let v = ARSCNView()
         v.automaticallyUpdatesLighting = true
         v.session.delegate = context.coordinator
+        v.delegate = context.coordinator
         let cfg = ARWorldTrackingConfiguration(); cfg.planeDetection = [.horizontal, .vertical]
         if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) { cfg.sceneReconstruction = .mesh }
         v.session.run(cfg)
@@ -135,65 +136,95 @@ struct ARMeasureRep: UIViewRepresentable {
     }
     static func dismantleUIView(_ v: ARSCNView, coordinator: Coord) { v.session.pause() }
 
-    final class Coord: NSObject, ARSessionDelegate {
+    /// Every point is an ARAnchor, so ARKit keeps it pinned to the real corner while its tracking improves
+    /// (plain scene nodes drift). The lines and labels are re-drawn every frame between the anchors.
+    final class Coord: NSObject, ARSessionDelegate, ARSCNViewDelegate {
         var parent: ARMeasureRep
         weak var view: ARSCNView?
         var lastUndo = 0, lastClear = 0, lastAdd = 0
-        var points: [SCNNode] = [], lines: [SCNNode] = [], labels: [SCNNode] = []
+        private let lock = NSLock()
+        private var anchors: [ARAnchor] = []
+        private var segs: [(line: SCNNode, label: SCNNode)] = []
+        private var lastPublished: [Double] = []
         init(_ p: ARMeasureRep) { parent = p }
 
         func session(_ session: ARSession, didUpdate frame: ARFrame) {
-            if case .normal = frame.camera.trackingState { if parent.status.hasPrefix("Move") { DispatchQueue.main.async { self.parent.status = "Aim at a corner and tap to drop a point" } } }
+            if case .normal = frame.camera.trackingState { if parent.status.hasPrefix("Move") { DispatchQueue.main.async { self.parent.status = "Aim at a corner and tap + to drop a point" } } }
         }
 
-        @objc func tap(_ g: UITapGestureRecognizer) { addPoint() }
+        // the yellow dot for each anchor
+        func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
+            guard anchor.name == "pt" else { return nil }
+            let dot = SCNNode(geometry: SCNSphere(radius: 0.005)); dot.geometry?.firstMaterial?.diffuse.contents = UIColor.systemYellow
+            dot.geometry?.firstMaterial?.writesToDepthBuffer = false; dot.renderingOrder = 10
+            return dot
+        }
+
+        // every frame: stretch each line/label between its two (anchored) dots and publish the lengths
+        func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+            guard let v = view else { return }
+            lock.lock(); let a = anchors, sg = segs; lock.unlock()
+            var lengths: [Double] = []
+            for (i, s) in sg.enumerated() {
+                guard i + 1 < a.count, let n1 = v.node(for: a[i]), let n2 = v.node(for: a[i + 1]) else { lengths.append(lastPublished.indices.contains(i) ? lastPublished[i] : 0); continue }
+                let p1 = n1.worldPosition, p2 = n2.worldPosition
+                let d = distance(p1, p2)
+                lengths.append(Double(d))
+                if let cyl = s.line.geometry as? SCNCylinder { cyl.height = CGFloat(d) }
+                s.line.position = SCNVector3((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, (p1.z + p2.z) / 2)
+                s.line.look(at: p2, up: SCNVector3(0, 1, 0), localFront: SCNVector3(0, 1, 0))
+                if let t = s.label.geometry as? SCNText {
+                    let str = feetInches(Double(d))
+                    if (t.string as? String) != str { t.string = str; let (mn, mx) = t.boundingBox; s.label.pivot = SCNMatrix4MakeTranslation((mx.x - mn.x) / 2, 0, 0) }
+                }
+                s.label.position = SCNVector3((p1.x + p2.x) / 2, (p1.y + p2.y) / 2 + 0.02, (p1.z + p2.z) / 2)
+            }
+            if lengths.count != lastPublished.count || zip(lengths, lastPublished).contains(where: { abs($0 - $1) > 0.001 }) {
+                lastPublished = lengths
+                DispatchQueue.main.async { self.parent.segments = lengths }
+            }
+        }
+
         func addPoint() {
             guard let v = view else { return }
-            let pt = CGPoint(x: v.bounds.midX, y: v.bounds.midY)   // crosshair is always the center
+            let pt = CGPoint(x: v.bounds.midX, y: v.bounds.midY)   // the ring is always the center
             var found: ARRaycastResult?
             for target in [ARRaycastQuery.Target.existingPlaneGeometry, .existingPlaneInfinite, .estimatedPlane] {
                 if let q = v.raycastQuery(from: pt, allowing: target, alignment: .any), let r = v.session.raycast(q).first { found = r; break }
             }
             guard let hit = found else { parent.status = "No surface found — move closer or add light"; return }
-            let t = hit.worldTransform.columns.3
-            let pos = SCNVector3(t.x, t.y, t.z)
-            let dot = SCNNode(geometry: SCNSphere(radius: 0.006)); dot.geometry?.firstMaterial?.diffuse.contents = UIColor.systemYellow
-            dot.position = pos; v.scene.rootNode.addChildNode(dot)
-            if let prev = points.last {
-                let d = Double(distance(prev.position, pos))
-                let line = lineNode(prev.position, pos); v.scene.rootNode.addChildNode(line); lines.append(line)
-                let lab = labelNode(feetInches(d), at: SCNVector3((prev.position.x + pos.x) / 2, (prev.position.y + pos.y) / 2 + 0.02, (prev.position.z + pos.z) / 2))
-                v.scene.rootNode.addChildNode(lab); labels.append(lab)
-                parent.segments.append(d)
+            let anchor = ARAnchor(name: "pt", transform: hit.worldTransform)
+            v.session.add(anchor: anchor)
+            lock.lock()
+            if let prev = anchors.last { _ = prev
+                let cyl = SCNCylinder(radius: 0.0015, height: 0.01); cyl.firstMaterial?.diffuse.contents = UIColor.systemYellow
+                let line = SCNNode(geometry: cyl)
+                let t = SCNText(string: "", extrusionDepth: 0.1); t.font = .boldSystemFont(ofSize: 10); t.firstMaterial?.diffuse.contents = UIColor.white
+                let lab = SCNNode(geometry: t); lab.scale = SCNVector3(0.004, 0.004, 0.004); lab.constraints = [SCNBillboardConstraint()]
+                v.scene.rootNode.addChildNode(line); v.scene.rootNode.addChildNode(lab)
+                segs.append((line, lab))
             }
-            points.append(dot)
-            parent.status = "Tap again to keep measuring, or Clear to start over"
+            anchors.append(anchor)
+            lock.unlock()
+            parent.status = "Locked. Move to the next point and tap +, or Undo / Clear"
         }
         func undo() {
-            guard let p = points.popLast() else { return }
-            p.removeFromParentNode()
-            if let l = lines.popLast() { l.removeFromParentNode() }
-            if let l = labels.popLast() { l.removeFromParentNode() }
-            if !parent.segments.isEmpty { parent.segments.removeLast() }
+            guard let v = view else { return }
+            lock.lock()
+            if let a = anchors.popLast() { v.session.remove(anchor: a) }
+            if let s = segs.popLast() { s.line.removeFromParentNode(); s.label.removeFromParentNode() }
+            lock.unlock()
         }
-        func clear() { (points + lines + labels).forEach { $0.removeFromParentNode() }; points = []; lines = []; labels = [] }
+        func clear() {
+            guard let v = view else { return }
+            lock.lock()
+            anchors.forEach { v.session.remove(anchor: $0) }; anchors = []
+            segs.forEach { $0.line.removeFromParentNode(); $0.label.removeFromParentNode() }; segs = []
+            lock.unlock()
+            lastPublished = []
+        }
 
         private func distance(_ a: SCNVector3, _ b: SCNVector3) -> Float { sqrtf((a.x-b.x)*(a.x-b.x) + (a.y-b.y)*(a.y-b.y) + (a.z-b.z)*(a.z-b.z)) }
-        private func lineNode(_ a: SCNVector3, _ b: SCNVector3) -> SCNNode {
-            let h = CGFloat(distance(a, b))
-            let cyl = SCNCylinder(radius: 0.002, height: h); cyl.firstMaterial?.diffuse.contents = UIColor.systemYellow
-            let n = SCNNode(geometry: cyl)
-            n.position = SCNVector3((a.x+b.x)/2, (a.y+b.y)/2, (a.z+b.z)/2)
-            n.look(at: b, up: SCNVector3(0, 1, 0), localFront: SCNVector3(0, 1, 0))
-            return n
-        }
-        private func labelNode(_ s: String, at p: SCNVector3) -> SCNNode {
-            let t = SCNText(string: s, extrusionDepth: 0.1); t.font = .boldSystemFont(ofSize: 10); t.firstMaterial?.diffuse.contents = UIColor.white
-            let n = SCNNode(geometry: t); n.scale = SCNVector3(0.004, 0.004, 0.004); n.position = p
-            n.constraints = [SCNBillboardConstraint()]
-            let (mn, mx) = t.boundingBox; n.pivot = SCNMatrix4MakeTranslation((mx.x - mn.x) / 2, 0, 0)
-            return n
-        }
     }
 }
 
