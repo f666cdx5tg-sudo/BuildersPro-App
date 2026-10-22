@@ -1,4 +1,4 @@
-"""BuildersPro v4.52 (location + weather: fallbacks, cache, refresh, tap to retry).
+"""BuildersPro v4.53 (location + weather: fallbacks, cache, refresh, tap to retry).
 Run from repo root: python3 test_v452.py. Exit 0 = all pass.
 All network calls are mocked with Playwright routes."""
 import subprocess, time, asyncio, sys, os, json
@@ -47,7 +47,7 @@ async def main():
         # 1 everything works
         ctx, pg, calls = await setup(b, {}); errs=[]; pg.on('pageerror', lambda e: errs.append(str(e)))
         await load(pg); r = await read(pg)
-        ok(await pg.evaluate("APP_VERSION==='4.52'"), 'version')
+        ok(await pg.evaluate("APP_VERSION==='4.53'"), 'version')
         ok(r['loc'] == 'Bergenfield NJ 07621' and r['geo'] == 'Bergenfield NJ 07621', f'1 place {r}')
         ok(r['wx'] == '61°F Partly Cloudy' and r['cw'] == '⛅ 61°F Partly Cloudy', f'1 weather {r}')
         ok(len(errs) == 0, f'1 errors {errs}'); await ctx.close()

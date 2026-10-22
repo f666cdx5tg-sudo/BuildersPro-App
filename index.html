@@ -1550,7 +1550,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.52';
+var APP_VERSION = '4.53';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -2303,7 +2303,10 @@ function compressImageDataUrl(dataUrl, cb, maxDim, quality) {
       canvas.width = cw; canvas.height = ch;
       var ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, cw, ch);
-      cb(canvas.toDataURL('image/jpeg', quality));
+      var out = canvas.toDataURL('image/jpeg', quality);
+      canvas.width = canvas.height = 0;   // v4.53: hand the pixel memory back right away (iOS Safari holds it otherwise)
+      img.onload = img.onerror = null; img.src = '';
+      cb(out);
     } catch (e) { cb(dataUrl); }
   };
   img.onerror = function() { cb(dataUrl); };
@@ -6423,32 +6426,105 @@ window.bpDuplicateRoom = function(roomId) {
 
 /* ── Extend addPhotos to accept roomId ── */
 var _origAddPhotos = addPhotos;
-addPhotos = function(input, jobId, roomId) {
-  if (!input.files) return;
-  Array.from(input.files).forEach(function(file) {
-    if (!file.type.startsWith('image/')) return;
+
+/* v4.53 — photo intake is a ONE-AT-A-TIME queue.
+   Picking 10-30 camera photos used to start every FileReader (full-size base64,
+   3-10MB each) and canvas decode at the same moment, then save() + renderAll()
+   once per photo. iPhone Safari ran out of memory and reloaded the page — "the
+   app crashes". Now: one photo in memory at a time, the original is never turned
+   into base64 (blob URL instead), save every 4 photos, one render at the end,
+   a failed/stuck photo is skipped instead of killing the batch, and the job/room
+   is captured when the photos are picked (not 5 seconds later). */
+var bpPhotoQ = [], bpPhotoBusy = false, bpPhotoDone = 0, bpPhotoFail = 0;
+function bpPhotoShrink(file, cb) {
+  function viaReader() {
     var r = new FileReader();
     r.onload = function(e) {
       var raw = e.target.result;
-      if (!raw || raw.length < 100) return;
-      bpCompressFor('photo', raw, function(src) {
+      if (!raw || raw.length < 100) return cb('');
+      bpCompressFor('photo', raw, function(s) {
+        if (typeof s !== 'string' || s.slice(0, 11) !== 'data:image/') return cb('');
+        var chk = new Image();   // a file that can't be decoded is skipped, not stored as a broken picture
+        chk.onload = function() { chk.onload = chk.onerror = null; chk.src = ''; cb(s); };
+        chk.onerror = function() { cb(''); };
+        chk.src = s;
+      });
+    };
+    r.onerror = function() { cb(''); };
+    r.readAsDataURL(file);
+  }
+  var url = '';
+  try { url = URL.createObjectURL(file); } catch (e) { return viaReader(); }
+  bpCompressFor('photo', url, function(s) {
+    try { URL.revokeObjectURL(url); } catch (e) {}
+    if (typeof s === 'string' && s.slice(0, 11) === 'data:image/') cb(s); else viaReader();
+  });
+}
+function bpPhotoFinish() {
+  var n = bpPhotoDone, f = bpPhotoFail;
+  bpPhotoDone = 0; bpPhotoFail = 0;
+  try { save(); renderAll(); bpRefreshCurrentScreen(); } catch (e) { console.warn('[BP] photo finish', e); }
+  if (n || f) toast(n ? ('📷 ' + n + ' photo' + (n === 1 ? '' : 's') + ' added' + (f ? ' · ' + f + ' could not be read' : '')) : '⚠️ Could not read those photos');
+}
+function bpPhotoNext() {
+  if (bpPhotoBusy) return;
+  var t = bpPhotoQ.shift();
+  if (!t) { bpPhotoFinish(); return; }
+  bpPhotoBusy = true;
+  var settled = false, timer = null;
+  var left = bpPhotoQ.length, at = bpPhotoDone + bpPhotoFail + 1, total = at + left;
+  if (total > 1) toast('📷 Adding photo ' + at + ' of ' + total + '…');
+  function step(src) {
+    if (settled) return; settled = true; clearTimeout(timer);
+    try {
+      if (src) {
         DB.photos.push({
           id:    uid(),
           src:   src,
-          jobId: jobId || currentJobId || '',
-          roomId: roomId || currentRoomId || '',
+          jobId: t.jobId,
+          roomId: t.roomId,
           date:  now(),
           size:  Math.round(src.length*0.75/1024) + 'KB',
           geo:     window._currentGeo || '',
           weather: window._currentWeather || '',
           createdBy: _userName || '',
         });
-        save(); renderAll();
-        bpRefreshCurrentScreen();   // v2.50: was `if (currentRoomId) openRoomDetail(...)`
-      });
-    };
-    r.readAsDataURL(file);
+        bpPhotoDone++;
+        if (bpPhotoDone % 4 === 0) save();
+      } else { bpPhotoFail++; }
+    } catch (e) { bpPhotoFail++; console.warn('[BP] photo add', e); }
+    t = null; bpPhotoBusy = false;
+    setTimeout(bpPhotoNext, 40);   // breathe: lets the browser free the last image before the next one
+  }
+  timer = setTimeout(function() { step(''); }, 30000);
+  try { bpPhotoShrink(t.file, step); } catch (e) { step(''); }
+}
+/* v4.53 — same one-at-a-time rule for every other multi-photo picker (checklist
+   before/after, notes). onSrc(src, file) runs per good photo; onDone(ok, bad) once. */
+function bpPhotosSerial(files, onSrc, onDone) {
+  var list = Array.prototype.slice.call(files || []).filter(function(f) {
+    return (f.type || '').startsWith('image/') || /\.(jpe?g|png|heic|heif|webp|gif)$/i.test(f.name || '');
+  }), i = 0, ok = 0, bad = 0;
+  (function next() {
+    if (i >= list.length) { if (onDone) onDone(ok, bad); return; }
+    var f = list[i++], settled = false, timer = null;
+    function fin(src) {
+      if (settled) return; settled = true; clearTimeout(timer);
+      try { if (src) { onSrc(src, f); ok++; } else bad++; } catch (e) { bad++; console.warn('[BP] photo', e); }
+      setTimeout(next, 40);
+    }
+    timer = setTimeout(function() { fin(''); }, 30000);
+    try { bpPhotoShrink(f, fin); } catch (e) { fin(''); }
+  })();
+}
+addPhotos = function(input, jobId, roomId) {
+  if (!input || !input.files) return;
+  var jid = jobId || currentJobId || '', rid = roomId || currentRoomId || '', n = 0;
+  Array.from(input.files).forEach(function(file) {
+    if (!(file.type || '').startsWith('image/') && !/\.(jpe?g|png|heic|heif|webp|gif)$/i.test(file.name || '')) return;
+    bpPhotoQ.push({ file: file, jobId: jid, roomId: rid }); n++;
   });
+  if (n) bpPhotoNext();
 };
 
 /* ── Extend populateJobSelects to include rooms ── */
@@ -7156,27 +7232,21 @@ window.addChecklistPhoto = function(input, itemId, phase) {
   if (!item.photosBefore) item.photosBefore = [];
   if (!item.photosAfter)  item.photosAfter  = [];
 
-  Array.from(input.files).forEach(function(file) {
-    if (!file.type.startsWith('image/')) return;
-    var r = new FileReader();
-    r.onload = function(e) {
-      var raw = e.target.result;
-      if (!raw || raw.length < 100) return;
-      bpCompressFor('photo', raw, function(src) {
-        var ph = {
-          src:     src,
-          date:    now(),
-          geo:     window._currentGeo || '',
-          weather: window._currentWeather || '',
-        };
-        if (phase === 'before') item.photosBefore.push(ph);
-        else item.photosAfter.push(ph);
-        item.updatedAt = now();
-        save(); refreshChecklistViews();
-        toast(phase === 'before' ? '📷 Before photo saved' : '✅ After photo saved');
-      });
+  var picked = Array.from(input.files || []);
+  bpPhotosSerial(picked, function(src) {
+    var ph = {
+      src:     src,
+      date:    now(),
+      geo:     window._currentGeo || '',
+      weather: window._currentWeather || '',
     };
-    r.readAsDataURL(file);
+    if (phase === 'before') item.photosBefore.push(ph);
+    else item.photosAfter.push(ph);
+    item.updatedAt = now();
+  }, function(ok, bad) {
+    save(); refreshChecklistViews();
+    if (ok) toast(ok > 1 ? '📷 ' + ok + ' photos saved' : (phase === 'before' ? '📷 Before photo saved' : '✅ After photo saved'));
+    else if (bad) toast('⚠️ Could not read that photo');
   });
 };
 
@@ -18128,7 +18198,7 @@ function stamp(src){
         });
         x.font = '800 ' + Math.round(fs * 0.85) + 'px -apple-system,Helvetica,Arial,sans-serif';
         x.textAlign = 'right'; x.fillStyle = '#FF453A'; x.fillText('BuildersPro', W - pad, H - band + pad + Math.round(fs * 0.1));
-        res(c.toDataURL('image/jpeg', 0.86));
+        var o = c.toDataURL('image/jpeg', 0.86); c.width = c.height = 0; i.onload = i.onerror = null; i.src = ''; res(o);
       } catch (e) { rej(e); }
     };
     i.onerror = rej;
@@ -23336,16 +23406,8 @@ window.bpNoteSpace = function(){ sync(); draw(); };
 window.bpNotePhotos = function(inp){
   sync();
   var files = Array.prototype.slice.call(inp.files || []).filter(function(f){ return /^image\//.test(f.type); });
-  var left = files.length; if (!left) return;
-  files.forEach(function(f){
-    var r = new FileReader();
-    r.onload = function(e){
-      var raw = e.target.result, done = function(src){ N && N.photos.push(src); if (--left === 0) draw(); };
-      try { if (typeof bpCompressFor === 'function') bpCompressFor('photo', raw, function(src){ done(src || raw); }); else done(raw); } catch(err){ done(raw); }
-    };
-    r.onerror = function(){ if (--left === 0) draw(); };
-    r.readAsDataURL(f);
-  });
+  if (!files.length) return;
+  bpPhotosSerial(files, function(src){ N && N.photos.push(src); }, function(){ draw(); });
 };
 window.bpNoteDelPhoto = function(i){ sync(); N.photos.splice(i,1); draw(); };
 window.bpNoteDelAudio = function(i){ sync(); N.audio.splice(i,1); draw(); };

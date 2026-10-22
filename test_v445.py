@@ -1,4 +1,4 @@
-"""BuildersPro v4.52 (thumbs up/down on subs, contractor address book, skill selector on contact card).
+"""BuildersPro v4.53 (thumbs up/down on subs, contractor address book, skill selector on contact card).
 Run from repo root: python3 test_v445.py. Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
 from playwright.async_api import async_playwright
@@ -20,7 +20,7 @@ async def run(w, h, theme):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8795/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h} {theme}'
-        ok(await pg.evaluate("APP_VERSION==='4.52'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.53'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()")
         await pg.evaluate("document.documentElement.setAttribute('data-theme','%s')" % theme)
         await pg.evaluate(SEED)
