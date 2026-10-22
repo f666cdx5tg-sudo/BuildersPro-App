@@ -63,13 +63,17 @@ struct ARMeasureView: View {
             if ARWorldTrackingConfiguration.isSupported {
                 // Digital zoom: the picture is magnified about the screen center, and the crosshair is the screen
                 // center, so the point you aim at stays exact while you see it bigger.
+                // The ring is drawn ON the AR view (same frame), so it sits exactly where the raycast is aimed.
                 ARMeasureRep(segments: $segments, status: $status, undoTick: undoTick, clearTick: clearTick, addTick: addTick)
-                    .scaleEffect(z).clipped().ignoresSafeArea()
+                    .scaleEffect(z).clipped()
+                    .overlay {
+                        ZStack {
+                            Circle().stroke(.white, lineWidth: 2).frame(width: 52, height: 52)
+                            Circle().fill(.white).frame(width: 7, height: 7)
+                        }.shadow(radius: 3).allowsHitTesting(false)
+                    }
+                    .ignoresSafeArea()
                     .gesture(MagnifyGesture().onChanged { pinch = $0.magnification }.onEnded { zoom = min(max(zoom * $0.magnification, 1), 6); pinch = 1 })
-                ZStack {
-                    Circle().stroke(.white, lineWidth: 2).frame(width: 52, height: 52)
-                    Circle().fill(.white).frame(width: 7, height: 7)
-                }.shadow(radius: 3).frame(maxHeight: .infinity).allowsHitTesting(false)
             } else {
                 Text("AR isn't supported on this device.").foregroundStyle(.secondary).frame(maxHeight: .infinity)
             }
@@ -118,8 +122,8 @@ struct ARMeasureRep: UIViewRepresentable {
         v.automaticallyUpdatesLighting = true
         v.session.delegate = context.coordinator
         let cfg = ARWorldTrackingConfiguration(); cfg.planeDetection = [.horizontal, .vertical]
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) { cfg.sceneReconstruction = .mesh }
         v.session.run(cfg)
-        v.addGestureRecognizer(UITapGestureRecognizer(target: context.coordinator, action: #selector(Coord.tap(_:))))
         context.coordinator.view = v
         return v
     }
@@ -146,8 +150,11 @@ struct ARMeasureRep: UIViewRepresentable {
         func addPoint() {
             guard let v = view else { return }
             let pt = CGPoint(x: v.bounds.midX, y: v.bounds.midY)   // crosshair is always the center
-            guard let q = v.raycastQuery(from: pt, allowing: .estimatedPlane, alignment: .any),
-                  let hit = v.session.raycast(q).first else { parent.status = "No surface found — move closer or add light"; return }
+            var found: ARRaycastResult?
+            for target in [ARRaycastQuery.Target.existingPlaneGeometry, .existingPlaneInfinite, .estimatedPlane] {
+                if let q = v.raycastQuery(from: pt, allowing: target, alignment: .any), let r = v.session.raycast(q).first { found = r; break }
+            }
+            guard let hit = found else { parent.status = "No surface found — move closer or add light"; return }
             let t = hit.worldTransform.columns.3
             let pos = SCNVector3(t.x, t.y, t.z)
             let dot = SCNNode(geometry: SCNSphere(radius: 0.006)); dot.geometry?.firstMaterial?.diffuse.contents = UIColor.systemYellow
