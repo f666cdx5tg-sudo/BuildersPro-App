@@ -1026,6 +1026,7 @@ struct NoteDetail: View {
 struct ShoppingView: View {
     @Environment(\.modelContext) private var context
     @Bindable var job: Job
+    @State private var adding = false
     private var toBuy: [ShoppingItem] { (job.shopping ?? []).filter { !$0.bought }.sorted { $0.created < $1.created } }
     private var bought: [ShoppingItem] { (job.shopping ?? []).filter { $0.bought }.sorted { ($0.boughtAt ?? .distantPast) > ($1.boughtAt ?? .distantPast) } }
 
@@ -1039,6 +1040,16 @@ struct ShoppingView: View {
                 Section("Bought · " + Money.text(bought.reduce(0) { $0 + $1.total })) { rows(bought) }
             }
         }
+        // Compact Add item bar pinned to the bottom (matches web v4.35+)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Button { adding = true } label: {
+                Label("Add item", systemImage: "plus").font(.subheadline.weight(.heavy))
+                    .frame(maxWidth: .infinity).padding(.vertical, 9)
+                    .background(Theme.green, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.black)
+            }
+            .buttonStyle(.plain).padding(.horizontal, 16).padding(.vertical, 6).background(.bar)
+        }
+        .sheet(isPresented: $adding) { ShoppingSheet(job: job) }
     }
 
     @ViewBuilder private func rows(_ items: [ShoppingItem]) -> some View {
