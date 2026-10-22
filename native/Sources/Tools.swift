@@ -52,6 +52,7 @@ struct ARMeasureView: View {
     @State private var status = "Move the phone slowly to find a surface"
     @State private var undoTick = 0
     @State private var clearTick = 0
+    @State private var addTick = 0
     @State private var zoom: CGFloat = 1
     @State private var pinch: CGFloat = 1
     private var z: CGFloat { min(max(zoom * pinch, 1), 6) }
@@ -62,11 +63,13 @@ struct ARMeasureView: View {
             if ARWorldTrackingConfiguration.isSupported {
                 // Digital zoom: the picture is magnified about the screen center, and the crosshair is the screen
                 // center, so the point you aim at stays exact while you see it bigger.
-                ARMeasureRep(segments: $segments, status: $status, undoTick: undoTick, clearTick: clearTick)
+                ARMeasureRep(segments: $segments, status: $status, undoTick: undoTick, clearTick: clearTick, addTick: addTick)
                     .scaleEffect(z).clipped().ignoresSafeArea()
                     .gesture(MagnifyGesture().onChanged { pinch = $0.magnification }.onEnded { zoom = min(max(zoom * $0.magnification, 1), 6); pinch = 1 })
-                Image(systemName: "plus").font(.system(size: 34, weight: .light)).foregroundStyle(.white).shadow(radius: 3)
-                    .frame(maxHeight: .infinity)
+                ZStack {
+                    Circle().stroke(.white, lineWidth: 2).frame(width: 52, height: 52)
+                    Circle().fill(.white).frame(width: 7, height: 7)
+                }.shadow(radius: 3).frame(maxHeight: .infinity).allowsHitTesting(false)
             } else {
                 Text("AR isn't supported on this device.").foregroundStyle(.secondary).frame(maxHeight: .infinity)
             }
@@ -89,6 +92,10 @@ struct ARMeasureView: View {
                         if segments.count > 1 { Text("Total " + feetInches(total)).font(.callout).foregroundStyle(.secondary) }
                     }
                 }
+                Button { addTick += 1 } label: {
+                    Image(systemName: "plus").font(.system(size: 28, weight: .semibold)).foregroundStyle(.black)
+                        .frame(width: 66, height: 66).background(.white, in: Circle()).overlay(Circle().stroke(.black.opacity(0.15), lineWidth: 3))
+                }
                 HStack(spacing: 10) {
                     Button { undoTick += 1 } label: { Label("Undo", systemImage: "arrow.uturn.backward").frame(maxWidth: .infinity) }
                     Button(role: .destructive) { clearTick += 1; segments = [] } label: { Label("Clear", systemImage: "trash").frame(maxWidth: .infinity) }
@@ -103,7 +110,7 @@ struct ARMeasureView: View {
 struct ARMeasureRep: UIViewRepresentable {
     @Binding var segments: [Double]
     @Binding var status: String
-    var undoTick: Int, clearTick: Int
+    var undoTick: Int, clearTick: Int, addTick: Int
 
     func makeCoordinator() -> Coord { Coord(self) }
     func makeUIView(context: Context) -> ARSCNView {
@@ -119,6 +126,7 @@ struct ARMeasureRep: UIViewRepresentable {
     func updateUIView(_ v: ARSCNView, context: Context) {
         let c = context.coordinator; c.parent = self
         if undoTick != c.lastUndo { c.lastUndo = undoTick; DispatchQueue.main.async { c.undo() } }
+        if addTick != c.lastAdd { c.lastAdd = addTick; DispatchQueue.main.async { c.addPoint() } }
         if clearTick != c.lastClear { c.lastClear = clearTick; DispatchQueue.main.async { c.clear() } }
     }
     static func dismantleUIView(_ v: ARSCNView, coordinator: Coord) { v.session.pause() }
@@ -126,7 +134,7 @@ struct ARMeasureRep: UIViewRepresentable {
     final class Coord: NSObject, ARSessionDelegate {
         var parent: ARMeasureRep
         weak var view: ARSCNView?
-        var lastUndo = 0, lastClear = 0
+        var lastUndo = 0, lastClear = 0, lastAdd = 0
         var points: [SCNNode] = [], lines: [SCNNode] = [], labels: [SCNNode] = []
         init(_ p: ARMeasureRep) { parent = p }
 
@@ -134,7 +142,8 @@ struct ARMeasureRep: UIViewRepresentable {
             if case .normal = frame.camera.trackingState { if parent.status.hasPrefix("Move") { DispatchQueue.main.async { self.parent.status = "Aim at a corner and tap to drop a point" } } }
         }
 
-        @objc func tap(_ g: UITapGestureRecognizer) {
+        @objc func tap(_ g: UITapGestureRecognizer) { addPoint() }
+        func addPoint() {
             guard let v = view else { return }
             let pt = CGPoint(x: v.bounds.midX, y: v.bounds.midY)   // crosshair is always the center
             guard let q = v.raycastQuery(from: pt, allowing: .estimatedPlane, alignment: .any),
@@ -214,31 +223,39 @@ struct LevelView: View {
     private var isLevel: Bool { deg < 0.3 }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Text(flat ? "Phone flat on the surface" : "Hold the phone's edge against the surface").font(.callout).foregroundStyle(.secondary)
-            if flat {
-                ZStack {
-                    Circle().stroke(Color.secondary, lineWidth: 3).frame(width: 260, height: 260)
-                    Circle().stroke(Color.secondary.opacity(0.4)).frame(width: 40, height: 40)
-                    Circle().fill(isLevel ? Theme.green : Theme.orange).frame(width: 44, height: 44)
-                        .offset(x: max(-108, min(108, -tiltX * 900)), y: max(-108, min(108, tiltY * 900)))
-                }.frame(height: 270)
-            } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20).stroke(Color.secondary, lineWidth: 3).frame(width: 300, height: 56)
-                    Rectangle().fill(Color.secondary.opacity(0.5)).frame(width: 2, height: 56)
-                    Circle().fill(isLevel ? Theme.green : Theme.orange).frame(width: 44, height: 44)
-                        .offset(x: max(-125, min(125, edgeDev * 12)))
-                }.frame(height: 270)
+        // Apple-style: black screen, big white degrees, ring + bubble; the whole screen goes green when level.
+        ZStack {
+            (isLevel ? Color(red: 0.19, green: 0.78, blue: 0.35) : Color.black).ignoresSafeArea()
+            VStack(spacing: 0) {
+                Text(String(format: "%.0f°", deg.rounded()))
+                    .font(.system(size: 88, weight: .light, design: .rounded)).foregroundStyle(.white).monospacedDigit().padding(.top, 24)
+                Text(flat ? "Phone flat" : "Phone on its edge").font(.callout).foregroundStyle(.white.opacity(0.7))
+                Spacer()
+                if flat {
+                    ZStack {
+                        Circle().stroke(.white.opacity(0.9), lineWidth: 2).frame(width: 280, height: 280)
+                        Rectangle().fill(.white.opacity(0.5)).frame(width: 280, height: 1)
+                        Rectangle().fill(.white.opacity(0.5)).frame(width: 1, height: 280)
+                        Circle().stroke(.white, lineWidth: 2).frame(width: 60, height: 60)
+                        Circle().fill(.white.opacity(0.85)).frame(width: 60, height: 60)
+                            .offset(x: max(-110, min(110, -tiltX * 900)), y: max(-110, min(110, tiltY * 900)))
+                    }
+                } else {
+                    ZStack {
+                        // the bar tilts opposite to the phone, like Apple's, with a fixed center mark
+                        Capsule().fill(.white).frame(width: 300, height: 4).rotationEffect(.degrees(-edgeDev))
+                        Rectangle().fill(.white.opacity(0.5)).frame(width: 2, height: 40)
+                    }.frame(height: 280)
+                }
+                Spacer()
+                Text(isLevel ? "Level" : String(format: "%.2f in per foot", inPerFt)).font(.title3.weight(.semibold)).foregroundStyle(.white)
+                Button { zeroX = mo.gx; zeroY = mo.gy; zeroEdge = edgeRaw - (edgeRaw / 90).rounded() * 90 } label: {
+                    Text("Calibrate").font(.headline).foregroundStyle(.black).frame(width: 160, height: 48).background(.white, in: Capsule())
+                }.padding(.vertical, 24)
             }
-            Text(String(format: "%.1f°", deg)).font(.system(size: 64, weight: .heavy, design: .rounded)).foregroundStyle(isLevel ? Theme.green : .primary)
-            Text(isLevel ? "LEVEL" : String(format: "%.2f in per foot", inPerFt)).font(.title3.weight(.bold)).foregroundStyle(isLevel ? Theme.green : Theme.orange)
-            Button("Zero here") { zeroX = mo.gx; zeroY = mo.gy; zeroEdge = edgeRaw - (edgeRaw / 90).rounded() * 90 }
-                .buttonStyle(.borderedProminent).controlSize(.large)
-            Spacer()
         }
-        .padding(.top, 20).frame(maxWidth: .infinity)
         .navigationTitle("Level").navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear { mo.start() }.onDisappear { mo.stop() }
     }
 }
