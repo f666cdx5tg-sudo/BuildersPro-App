@@ -268,6 +268,7 @@ struct HomeView: View {
     @AppStorage("bpDark") private var dark = true
     @AppStorage("bpActiveJob") private var activeKey = ""
     @StateObject private var info = HeaderInfo()
+    @State private var showTools = false
     let go: (AppScreen) -> Void
     @State private var path: [Route] = []
 
@@ -305,6 +306,7 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .onAppear { info.start() }
+            .sheet(isPresented: $showTools) { NavigationStack { ToolsView().toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showTools = false } } } } }
         }
     }
 
@@ -440,6 +442,7 @@ struct HomeView: View {
                 tile("calendar", "Schedule", Theme.sky) { path.append(Route(job: job, tab: .schedule)) }
                 tile("doc.on.doc", "Documents", Theme.gold) { path.append(Route(job: job, tab: .docs)) }
                 tile("dollarsign.circle", "Finance", .mint) { path.append(Route(job: job, tab: .money)) }
+                tile("wrench.and.screwdriver", "Tools", Theme.purple) { showTools = true }
             }
         }
     }
@@ -1764,7 +1767,7 @@ enum CCScreen: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard", calendar = "Calendar"
     case jobs = "Jobs", estimates = "Estimates", time = "Time Clock", spaces = "Spaces", photos = "Photos", punch = "Punchlist", documents = "Documents", shopping = "Shopping List"
     case dailylog = "Daily Log", eod = "EOD Reports", finance = "Finance", contacts = "Contacts"
-    case archive = "Archived Jobs", sync = "Sync Settings", search = "Search"
+    case tools = "Tools", archive = "Archived Jobs", sync = "Sync Settings", search = "Search"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -1782,6 +1785,7 @@ enum CCScreen: String, CaseIterable, Identifiable {
         case .eod: return "doc.text"
         case .finance: return "dollarsign"
         case .contacts: return "person"
+        case .tools: return "wrench.and.screwdriver"
         case .archive: return "archivebox"
         case .sync: return "arrow.triangle.2.circlepath"
         case .search: return "magnifyingglass"
@@ -1804,6 +1808,7 @@ enum CCScreen: String, CaseIterable, Identifiable {
         ("Reports", [.dailylog, .eod]),
         ("Finance", [.finance, .time]),
         ("Directory", [.contacts]),
+        ("Tools", [.tools]),
         ("Settings", [.archive, .sync]),
     ]
 }
@@ -1975,6 +1980,7 @@ struct CommandCenterView: View {
         case .time: CCTimeClockView()
         case .estimates: CCEstimatesView()
         case .contacts: CCContactsView()
+        case .tools: NavigationStack { ToolsView() }
         case .archive: CCArchiveView()
         case .sync: CCSyncView()
         }

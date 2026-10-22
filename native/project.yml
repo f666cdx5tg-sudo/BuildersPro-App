@@ -8,7 +8,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "5.35.0"
+    MARKETING_VERSION: "5.36.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: 44HA83UCKJ
     CODE_SIGN_STYLE: Automatic
@@ -29,7 +29,7 @@ targets:
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Show your job-site location and local weather on the Home screen."
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Record voice notes for your jobs."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Turn your voice into job notes."
-        INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of job sites and punch items."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of job sites, measure with AR, and match colors."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Attach photos to your jobs and punch items."
         CODE_SIGN_ENTITLEMENTS: Config/BuildersPro.entitlements
         ENABLE_PREVIEWS: YES
