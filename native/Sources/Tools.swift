@@ -44,7 +44,8 @@ func feetInches(_ meters: Double) -> String {
 struct ARMeasureView: View {
     @State private var segments: [Double] = []
     @State private var status = "Move the phone slowly to find a surface"
-    @State private var undoTick = 0, clearTick = 0
+    @State private var undoTick = 0
+    @State private var clearTick = 0
     private var total: Double { segments.reduce(0, +) }
 
     var body: some View {
@@ -160,7 +161,9 @@ struct ARMeasureRep: UIViewRepresentable {
 
 final class LevelMotion: ObservableObject {
     private let mm = CMMotionManager()
-    @Published var gx = 0.0, gy = 0.0, gz = -1.0
+    @Published var gx = 0.0
+    @Published var gy = 0.0
+    @Published var gz = -1.0
     func start() {
         guard mm.isDeviceMotionAvailable else { return }
         mm.deviceMotionUpdateInterval = 1 / 30
@@ -174,7 +177,9 @@ final class LevelMotion: ObservableObject {
 
 struct LevelView: View {
     @StateObject private var mo = LevelMotion()
-    @State private var zeroX = 0.0, zeroY = 0.0, zeroEdge = 0.0
+    @State private var zeroX = 0.0
+    @State private var zeroY = 0.0
+    @State private var zeroEdge = 0.0
     private var flat: Bool { abs(mo.gz) > 0.8 }
     private var edgeRaw: Double { atan2(mo.gx, -mo.gy) * 180 / .pi }
     private var edgeDev: Double { let r = edgeRaw - (edgeRaw / 90).rounded() * 90; return r - zeroEdge }
