@@ -112,8 +112,8 @@ struct ARMeasureRep: UIViewRepresentable {
     }
     func updateUIView(_ v: ARSCNView, context: Context) {
         let c = context.coordinator; c.parent = self
-        if undoTick != c.lastUndo { c.lastUndo = undoTick; c.undo() }
-        if clearTick != c.lastClear { c.lastClear = clearTick; c.clear() }
+        if undoTick != c.lastUndo { c.lastUndo = undoTick; DispatchQueue.main.async { c.undo() } }
+        if clearTick != c.lastClear { c.lastClear = clearTick; DispatchQueue.main.async { c.clear() } }
     }
     static func dismantleUIView(_ v: ARSCNView, coordinator: Coord) { v.session.pause() }
 
