@@ -1,4 +1,4 @@
-"""BuildersPro v4.47 (contact card: contractor name + business name, contract value per job).
+"""BuildersPro v4.48 (contact card: contractor name + business name, contract value per job).
 Run from repo root: python3 test_v447.py. Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
 from playwright.async_api import async_playwright
@@ -20,7 +20,7 @@ async def run(w, h, theme):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8793/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h} {theme}'
-        ok(await pg.evaluate("APP_VERSION==='4.47'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.48'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()")
         await pg.evaluate("document.documentElement.setAttribute('data-theme','%s')" % theme)
         await pg.evaluate(SEED)
@@ -29,7 +29,7 @@ async def run(w, h, theme):
         ok('Add 1 sub' in await pg.evaluate("document.getElementById('s-finance').innerText"), f'{t}: business-name contract should link to the same card')
         await pg.evaluate("bpSubOpen('k1')"); await pg.wait_for_timeout(200)
         txt = await pg.evaluate("document.getElementById('bp-sub-card').innerText")
-        ok('CONTRACTOR NAME' in txt.upper() and 'BUSINESS NAME' in txt.upper(), f'{t}: labels')
+        ok('CONTACT NAME' in txt.upper() and 'COMPANY NAME' in txt.upper(), f'{t}: labels')
         ok(await pg.evaluate("document.getElementById('bp-sc-name').value")=='Joe Rossi' and await pg.evaluate("document.getElementById('bp-sc-company').value")=='Rossi Plumbing LLC', f'{t}: values')
         order = await pg.evaluate("(()=>{var a=document.getElementById('bp-sc-name').getBoundingClientRect().top,b=document.getElementById('bp-sc-company').getBoundingClientRect().top,c=document.getElementById('bp-sc-phone').getBoundingClientRect().top;return a<b&&b<c})()")
         ok(order, f'{t}: business name sits right under name')

@@ -17,7 +17,7 @@ async def run(w, h):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8796/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h}'
-        ok(await pg.evaluate("APP_VERSION==='4.47'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.48'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()"); await pg.evaluate(SEED)
         await pg.evaluate("bpOpenShop('j1')"); await pg.wait_for_timeout(500)
 

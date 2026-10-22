@@ -22,7 +22,7 @@ async def run(w, h):
         errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('http://localhost:8789/index.html'); await pg.wait_for_timeout(2500)
         t = f'{w}x{h}'
-        ok(await pg.evaluate("APP_VERSION==='4.47'"), f'{t}: version')
+        ok(await pg.evaluate("APP_VERSION==='4.48'"), f'{t}: version')
         await pg.evaluate("document.getElementById('bp-lock')?.remove()"); await pg.evaluate(SEED); await pg.wait_for_timeout(800)
         # 1) caching: a second full split is far cheaper than the first, and produces identical refs
         r = await pg.evaluate("""(()=>{

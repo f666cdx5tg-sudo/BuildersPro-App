@@ -1546,7 +1546,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '4.47';
+var APP_VERSION = '4.48';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -25835,17 +25835,17 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
       + '<div style="font-size:17px;font-weight:800">' + (c ? 'Contractor' : 'New contractor') + '</div>'
       + '<button type="button" onclick="bpSubSave()" style="min-width:64px;min-height:44px;border:none;background:none;color:#0A84FF;font-size:17px;font-weight:800;cursor:pointer;font-family:inherit">Save</button></div>'
       + '<div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 18px 40px">'
-      + '<div class="bp-sc-lbl">Contractor name</div><input id="bp-sc-name" class="bp-sc-in" type="text" value="' + v('name') + '" autocomplete="off" autocapitalize="words"/>'
-      + '<div class="bp-sc-lbl">Business name</div><input id="bp-sc-company" class="bp-sc-in" type="text" value="' + v('company') + '" autocomplete="off" autocapitalize="words"/>'
-      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px"><span class="bp-sc-lbl" style="margin:0">Rating</span><span id="bp-sc-thumbs">' + thumbs(CARD.rating, 'bpSubCardRate', '') + '</span></div>'
+      + '<div class="bp-sc-lbl">Contact name</div><input id="bp-sc-name" class="bp-sc-in" type="text" value="' + v('name') + '" autocomplete="off" autocapitalize="words"/>'
+      + '<div class="bp-sc-lbl">Company name</div><input id="bp-sc-company" class="bp-sc-in" type="text" value="' + v('company') + '" autocomplete="off" autocapitalize="words"/>'
+      + '<div class="bp-sc-lbl">Email</div><input id="bp-sc-email" class="bp-sc-in" type="email" autocapitalize="off" value="' + v('email') + '"/>'
+      + '<div class="bp-sc-lbl">Cell</div><input id="bp-sc-phone" class="bp-sc-in" type="tel" inputmode="tel" value="' + E(bpPhone(c ? c.phone : '')) + '"/>'
       + (c && (tel || c.email) ? '<div style="display:flex;gap:8px;margin-top:10px">'
         + (tel ? '<a class="bp-sc-act" href="tel:' + E(tel) + '">Call</a><a class="bp-sc-act" href="sms:' + E(tel) + '">Text</a>' : '')
         + (c.email ? '<a class="bp-sc-act" href="mailto:' + E(c.email) + '">Email</a>' : '') + '</div>' : '')
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px"><span class="bp-sc-lbl" style="margin:0">Rating</span><span id="bp-sc-thumbs">' + thumbs(CARD.rating, 'bpSubCardRate', '') + '</span></div>'
       + (c ? jobsHtml(c) : '')
       + '<div class="bp-sc-lbl">Skills</div><div id="bp-sc-skills" style="margin-top:8px">' + skillsHtml() + '</div>'
       + '<div id="bp-sc-newrow" style="display:none;gap:8px;align-items:center;margin-bottom:6px"><input id="bp-sc-new" class="bp-sc-in" type="text" placeholder="New skill" autocomplete="off" onkeydown="if(event.key===\'Enter\'){event.preventDefault();bpSubSkillAdd()}"/><button type="button" onclick="bpSubSkillAdd()" style="min-height:44px;padding:0 14px;border-radius:10px;border:none;background:#0A84FF;color:#000;font-weight:800;font-family:inherit;cursor:pointer">Add</button></div>'
-      + '<div class="bp-sc-lbl">Phone</div><input id="bp-sc-phone" class="bp-sc-in" type="tel" inputmode="tel" value="' + E(bpPhone(c ? c.phone : '')) + '"/>'
-      + '<div class="bp-sc-lbl">Email</div><input id="bp-sc-email" class="bp-sc-in" type="email" autocapitalize="off" value="' + v('email') + '"/>'
       + '<div class="bp-sc-lbl">Address</div><input id="bp-sc-address" class="bp-sc-in" type="text" value="' + v('address') + '"/>'
       + '<div class="bp-sc-lbl">Notes</div><textarea id="bp-sc-notes" class="bp-sc-in" rows="3" style="resize:none">' + v('notes') + '</textarea>'
       + (c ? '<button type="button" id="bp-sc-del" onclick="bpSubDelete()" style="margin-top:28px;width:100%;min-height:44px;border-radius:12px;border:1.5px solid var(--red,#FF453A);background:transparent;color:var(--red,#FF453A);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">Delete contractor</button>' : '')
