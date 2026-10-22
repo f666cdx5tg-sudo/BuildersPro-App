@@ -35,7 +35,7 @@ struct MenuButton: View {
 }
 
 enum AppScreen: String, CaseIterable, Identifiable {
-    case home = "Home", jobs = "Jobs", punch = "Punch", photos = "Photos", money = "Money", search = "Search", calendar = "Calendar"
+    case home = "Home", jobs = "Jobs", punch = "Punch", photos = "Photos", money = "Money", search = "Search", calendar = "Calendar", tools = "Tools"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -46,6 +46,7 @@ enum AppScreen: String, CaseIterable, Identifiable {
         case .money: return "dollarsign"
         case .search: return "magnifyingglass"
         case .calendar: return "calendar"
+        case .tools: return "wrench.and.screwdriver"
         }
     }
 }
@@ -131,6 +132,7 @@ struct RootShell: View {
                 case .money: AllMoneyView()
                 case .search: SearchView()
                 case .calendar: AllCalendarView()
+                case .tools: NavigationStack { ToolsView() }
                 }
             }
             .environment(\.openMenu, { withAnimation(.easeOut(duration: 0.25)) { menu = true } })
@@ -212,7 +214,7 @@ struct RootShell: View {
             }
             .padding(.bottom, 8)
             Divider()
-            ForEach([AppScreen.home, .jobs, .punch, .photos, .money]) { row($0) }
+            ForEach([AppScreen.home, .jobs, .punch, .photos, .money, .tools]) { row($0) }
             Divider().padding(.vertical, 4)
             Button { withAnimation(.easeOut(duration: 0.25)) { menu = false }; sizeSheet = true } label: {
                 tool(icon: nil, aa: true, title: "Text size", sub: "\(zoomPct)%")
