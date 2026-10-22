@@ -274,39 +274,46 @@ struct LevelView: View {
     private var inPerFt: Double { tan(deg * .pi / 180) * 12 }
     private var isLevel: Bool { deg < 0.3 }
 
+    private let liquid = Color(red: 0.85, green: 0.93, blue: 0.25)
+    private var accent: Color { isLevel ? Theme.green : Color(red: 0.98, green: 0.76, blue: 0.1) }
+
+    /// Spirit-level glass: a tube (or round window) of yellow-green liquid with a bubble and two center marks.
+    private func bubbleOffset(_ v: Double, limit: Double, k: Double) -> Double { max(-limit, min(limit, v * k)) }
+
     var body: some View {
-        // Apple-style: black screen, big white degrees, ring + bubble; the whole screen goes green when level.
+        // Classic bubble (spirit) level: yellow body, liquid vials, bubble floats to the high side.
         ZStack {
-            (isLevel ? Color(red: 0.19, green: 0.78, blue: 0.35) : Color.black).ignoresSafeArea()
-            VStack(spacing: 0) {
-                Text(String(format: "%.0f°", deg.rounded()))
-                    .font(.system(size: 88, weight: .light, design: .rounded)).foregroundStyle(.white).monospacedDigit().padding(.top, 24)
-                Text(flat ? "Phone flat" : "Phone on its edge").font(.callout).foregroundStyle(.white.opacity(0.7))
-                Spacer()
-                if flat {
-                    ZStack {
-                        Circle().stroke(.white.opacity(0.9), lineWidth: 2).frame(width: 280, height: 280)
-                        Rectangle().fill(.white.opacity(0.5)).frame(width: 280, height: 1)
-                        Rectangle().fill(.white.opacity(0.5)).frame(width: 1, height: 280)
-                        Circle().stroke(.white, lineWidth: 2).frame(width: 60, height: 60)
-                        Circle().fill(.white.opacity(0.85)).frame(width: 60, height: 60)
-                            .offset(x: max(-110, min(110, -tiltX * 900)), y: max(-110, min(110, tiltY * 900)))
+            Color(red: 0.12, green: 0.12, blue: 0.13).ignoresSafeArea()
+            VStack(spacing: 18) {
+                Text(String(format: "%.1f°", deg)).font(.system(size: 64, weight: .bold, design: .rounded)).foregroundStyle(accent).monospacedDigit().padding(.top, 14)
+                Text(flat ? "Phone flat — bubble goes to the high side" : "Phone on its edge").font(.callout).foregroundStyle(.white.opacity(0.7))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 26).fill(accent)
+                    if flat {
+                        ZStack {   // round bullseye vial
+                            Circle().fill(liquid).overlay(Circle().stroke(.black.opacity(0.55), lineWidth: 5))
+                            Circle().stroke(.black.opacity(0.55), lineWidth: 2).frame(width: 70, height: 70)
+                            Circle().fill(.white.opacity(0.55)).overlay(Circle().stroke(.black.opacity(0.5), lineWidth: 2)).frame(width: 54, height: 54)
+                                .offset(x: bubbleOffset(-tiltX, limit: 86, k: 900), y: bubbleOffset(tiltY, limit: 86, k: 900))
+                        }.frame(width: 250, height: 250)
+                    } else {
+                        ZStack {   // long horizontal vial
+                            Capsule().fill(liquid).overlay(Capsule().stroke(.black.opacity(0.55), lineWidth: 5))
+                            HStack(spacing: 64) { Rectangle().fill(.black.opacity(0.55)).frame(width: 3); Rectangle().fill(.black.opacity(0.55)).frame(width: 3) }.padding(.vertical, 8)
+                            Ellipse().fill(.white.opacity(0.55)).overlay(Ellipse().stroke(.black.opacity(0.5), lineWidth: 2)).frame(width: 60, height: 34)
+                                .offset(x: bubbleOffset(-edgeDev, limit: 130, k: 18))
+                        }.frame(width: 320, height: 76)
                     }
-                } else {
-                    ZStack {
-                        // the bar tilts opposite to the phone, like Apple's, with a fixed center mark
-                        Capsule().fill(.white).frame(width: 300, height: 4).rotationEffect(.degrees(-edgeDev))
-                        Rectangle().fill(.white.opacity(0.5)).frame(width: 2, height: 40)
-                    }.frame(height: 280)
-                }
-                Spacer()
-                Text(isLevel ? "Level" : String(format: "%.2f in per foot", inPerFt)).font(.title3.weight(.semibold)).foregroundStyle(.white)
-                Button { zeroX = mo.gx; zeroY = mo.gy; zeroEdge = edgeRaw - (edgeRaw / 90).rounded() * 90 } label: {
-                    Text("Calibrate").font(.headline).foregroundStyle(.black).frame(width: 160, height: 48).background(.white, in: Capsule())
-                }.padding(.top, 24)
-                SaveResultButton(tool: "Level", title: String(format: "%.1f°", deg),
-                                 summary: String(format: "%.1f° · %.2f in per foot · ", deg, inPerFt) + (isLevel ? "level" : "not level") + (flat ? " (flat)" : " (edge)"))
-                    .padding(.horizontal, 60).padding(.vertical, 14)
+                }.frame(maxWidth: 340, maxHeight: flat ? 290 : 150)
+                Text(isLevel ? "LEVEL" : String(format: "%.2f in per foot", inPerFt)).font(.title3.weight(.heavy)).foregroundStyle(accent)
+                Spacer(minLength: 0)
+                HStack(spacing: 10) {
+                    Button { zeroX = mo.gx; zeroY = mo.gy; zeroEdge = edgeRaw - (edgeRaw / 90).rounded() * 90 } label: {
+                        Text("Calibrate").font(.subheadline.weight(.bold)).foregroundStyle(.black).frame(maxWidth: .infinity, minHeight: 40).background(.white, in: Capsule())
+                    }
+                    SaveResultButton(tool: "Level", title: String(format: "%.1f°", deg),
+                                     summary: String(format: "%.1f° · %.2f in per foot · ", deg, inPerFt) + (isLevel ? "level" : "not level") + (flat ? " (flat)" : " (edge)"))
+                }.padding(.horizontal, 24).padding(.bottom, 8)
             }
         }
         .navigationTitle("Level").navigationBarTitleDisplayMode(.inline)
