@@ -1,0 +1,16 @@
+name: Native app compile check
+on:
+  push:
+    paths: ['native/**', '.github/workflows/native-build.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make the Xcode project
+        run: brew install xcodegen && cd native && xcodegen
+      - name: Build for iPhone / iPad
+        run: cd native && xcodebuild -project BuildersPro.xcodeproj -scheme BuildersPro -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build | tail -40 ; exit ${PIPESTATUS[0]}
+      - name: Build for Mac
+        run: cd native && xcodebuild -project BuildersPro.xcodeproj -scheme BuildersPro -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build | tail -40 ; exit ${PIPESTATUS[0]}

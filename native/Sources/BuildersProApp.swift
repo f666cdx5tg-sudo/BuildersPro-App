@@ -1,27 +1,29 @@
 import SwiftUI
-import SwiftData
 
+/// BuildersPro 6 — the native app is now a frame around the live web app.
+/// Every fix pushed to GitHub shows up here on the next launch; no Xcode rebuild needed.
+/// Native parts: Face ID (LockGate), share sheet, save, print, pop-ups, camera and mic permissions.
 @main
 struct BuildersProApp: App {
-    // iCloud sync: SwiftData mirrors this store to the private CloudKit container in the entitlements file.
-    init() { UserDefaults.standard.removeObject(forKey: "bpActiveJob") }   // no job preselected on launch
-
-    var container: ModelContainer = {
-        let schema = Schema([Job.self, Space.self, PunchItem.self, SitePhoto.self,
-                              Expense.self, Contractor.self, Payment.self, DailyReport.self,
-                              ChangeOrder.self, Invoice.self, Permit.self, TimeEntry.self,
-                              Appointment.self, JobNote.self, ShoppingItem.self, Vendor.self, JobDocument.self, PunchPhoto.self, Estimate.self, BookContact.self, ToolResult.self])
-        #if targetEnvironment(simulator)
-        let config = ModelConfiguration(schema: schema, cloudKitDatabase: .none)     // the simulator has no iCloud account — keep it local so it can launch
-        #else
-        let config = ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)
-        #endif
-        do { return try ModelContainer(for: schema, configurations: [config]) }
-        catch { fatalError("Could not open the database: \(error)") }
-    }()
+    @StateObject private var shell = ShellModel()
 
     var body: some Scene {
-        WindowGroup { LockGate { RootShell() }.font(.title3).controlSize(.large) }
-            .modelContainer(container)
+        WindowGroup {
+            LockGate { ShellView(model: shell) }
+        }
+        #if os(macOS)
+        .defaultSize(width: 1440, height: 920)
+        .commands {
+            CommandMenu("BuildersPro") {
+                Button("Command Center") { shell.show(.command) }
+                    .keyboardShortcut("1", modifiers: .command)
+                Button("Field App") { shell.show(.field) }
+                    .keyboardShortcut("2", modifiers: .command)
+                Divider()
+                Button("Reload") { shell.reload() }
+                    .keyboardShortcut("r", modifiers: .command)
+            }
+        }
+        #endif
     }
 }

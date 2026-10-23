@@ -1,35 +1,23 @@
-# BuildersPro (native) — setup, step by step
+# BuildersPro native app (v6) — a frame around the live web app
 
-This is the starter ("scaffold") for the real iPhone / iPad / Mac app. It already has:
-Jobs → Spaces (grouped by level, press-and-hold to drag between levels) → Punch lists and Photos,
-progress "20/22 · 2 left", and iCloud sync built in. Your web app (index.html) is untouched.
+Since v6.0.0 the native app shows the **live web app** from GitHub Pages inside a real
+iPhone / iPad / Mac app. Every web fix pushed to GitHub appears on the next launch —
+no Xcode rebuild. You only rebuild in Xcode when this `native` folder changes.
 
-## Fastest way: double-click **Setup.command** in this folder (it does steps 1–3 for you), then continue at step 4.
+- iPhone / iPad open the **field app** (index.html).
+- The Mac opens the **Command Center** (desktop.html). Menu **BuildersPro** → ⌘1 Command Center, ⌘2 Field App, ⌘R Reload.
+- Face ID opens the app (the web passcode screen is skipped inside the app).
+- Share, Save, Print, pop-ups, camera and microphone all go to the real iPhone/Mac features.
+- Sync is the web app's own sync (iCloud or GitHub). **One sync for everything.**
 
-## One-time setup (about 10 minutes, on your Mac)
-1. Open **Terminal** (Spotlight → type Terminal).
-2. Install the project maker (one line): `brew install xcodegen`
-   (No Homebrew? Go to brew.sh and paste its one-line installer first.)
-3. In Terminal: `cd` into this `native` folder, then run: `xcodegen`
-   It creates **BuildersPro.xcodeproj**. Double-click it to open in Xcode.
-4. In Xcode: click **BuildersPro** (top of the left list) → **Signing & Capabilities**
-   → pick your Apple Developer **Team**.
-5. Same screen → **iCloud** → tick **CloudKit** → under Containers press **+** and add
-   `iCloud.com.stanrobinson.builderspro` (change the name everywhere if you prefer another).
-6. Pick your iPhone (or "My Mac") at the top → press **Play ▶**.
+## First time on each device
+The app keeps its own copy of your data, separate from Safari / the Home-Screen web app.
+Open **Sync** in the app once and sign in (iCloud) or paste your pairing code (GitHub) — it pulls everything down.
 
-If Xcode complains the bundle ID is taken, change `com.stanrobinson` in `project.yml`
-(both places) and in `Config/BuildersPro.entitlements`, then run `xcodegen` again.
+## Building it (only when the native folder changes)
+Double-click **Setup.command**, then press **Play ▶** in Xcode with your iPhone (or My Mac) selected.
+Every push is compile-checked on a Mac in the cloud first (GitHub → Actions → "Native app compile check").
 
-## Before you ship to the App Store
-In CloudKit Dashboard (icloud.developer.apple.com), press **Deploy Schema to Production**.
-
-## What is NOT built yet (next phases)
-Money/expenses, daily report + PDF, markup on photos, importing your data from the web app,
-Command Center layout for Mac, widgets. Nothing here was compiled by me — I can't run Xcode —
-so expect to send me any red errors Xcode shows and I'll fix them.
-
-
-## Putting it on your iPhone
-Plug the iPhone into the Mac (or use Wi-Fi pairing), unlock it, choose it at the top of Xcode, press Play.
-First time only: on the iPhone go to Settings → Privacy & Security → turn on **Developer Mode**, and trust your developer certificate (Settings → General → VPN & Device Management).
+## Old SwiftData app
+The earlier SwiftData rebuild is kept in `Legacy-SwiftData/` (not built). Anything entered in it
+is still in iCloud container `iCloud.com.stanrobinson.builderspro` if it ever needs recovering.

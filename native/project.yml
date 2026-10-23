@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "5.40.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "6.0.0"
+    CURRENT_PROJECT_VERSION: "2"
     DEVELOPMENT_TEAM: 44HA83UCKJ
     CODE_SIGN_STYLE: Automatic
 targets:
@@ -31,18 +31,9 @@ targets:
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Turn your voice into job notes."
         INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of job sites, measure with AR, and match colors."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Attach photos to your jobs and punch items."
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "Save job photos and reports to your Photos."
         CODE_SIGN_ENTITLEMENTS: Config/BuildersPro.entitlements
         ENABLE_PREVIEWS: YES
-        INFOPLIST_KEY_UIBackgroundModes: remote-notification
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
-  BuildersProTests:
-    type: bundle.unit-test
-    supportedDestinations: [iOS, macOS]
-    sources: [Tests/BuildersProTests]
-    dependencies:
-      - target: BuildersPro
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.stanrobinson.builderspro.tests
+    scheme: {}
