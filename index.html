@@ -1550,7 +1550,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.0.0';
+var APP_VERSION = '6.0.1';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -22884,7 +22884,7 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     var clipped = typeof bpClipHas === 'function' && bpClipHas(it.id);
     var hasExtra = (it.tasks && it.tasks.length) || (it.photosBefore && it.photosBefore.length) || (it.photosAfter && it.photosAfter.length);
     var h = '<div id="cli-' + it.id + '" class="bp-cl-row" data-cl-id="' + it.id + '" style="border:' + (clipped ? '1.5px dashed #FF9F0A' : '1px solid var(--border)') + '">';
-    h += '<div onclick="toggleChecklistItem(\'' + it.id + '\')" style="width:26px;height:26px;border-radius:8px;border:2px solid ' + (it.done ? '#0A84FF' : 'var(--faint)') + ';background:' + (it.done ? '#0A84FF' : 'transparent') + ';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
+    h += '<div class="bp-cl-check" data-id="' + it.id + '" onclick="toggleChecklistItem(\'' + it.id + '\')" style="width:26px;height:26px;border-radius:8px;border:2px solid ' + (it.done ? '#0A84FF' : 'var(--faint)') + ';background:' + (it.done ? '#0A84FF' : 'transparent') + ';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
       + (it.done ? '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#fff;fill:none;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>' : '') + '</div>';
     h += '<div onclick="toggleChecklistExpand(\'' + it.id + '\')" style="flex:1;min-width:0;cursor:pointer">';
     h += '<div class="bp-cl-name" style="text-decoration:' + (it.done ? 'line-through' : 'none') + ';color:' + (it.done ? 'var(--faint)' : 'var(--text)') + '">' + E(it.text);
@@ -22995,7 +22995,7 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
   var st = null, swallow = 0;
   function rowAt(tg){
     if (!tg || !tg.closest) return null;
-    if (tg.closest('#bp-dock, #bp-drawer, #bp-sw-confirm, .bp-cl-acts, .bp-cl-undoacts, .bp-stack, .bp-clphoto-btn')) return null;
+    if (tg.closest('#bp-dock, #bp-drawer, #bp-sw-confirm, .bp-cl-acts, .bp-cl-undoacts, .bp-stack, .bp-clphoto-btn, .bp-cl-check')) return null;   /* v6.0.1: a tap on the check box never starts a slide */
     return tg.closest('.bp-cl-row');
   }
   document.addEventListener('touchstart', function(e){
@@ -27204,5 +27204,85 @@ window.bpClFilterBar = function(scope, id){
 window.bpClFilterBar.__v424 = 1;
 window.bpClFilterBar.__sel = 1;
 console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete');
+})();
+</script>
+<script>
+/* ══ v6.0.1 — SPACES CHECK-OFF: ONE TAP, INSTANT ═══════════════════════════
+   Stan (Oct 23): "In Spaces the check mark doesn't respond, I have to tap
+   multiple times." Two causes:
+   1. The row's slide-for-Cut/Delete gesture took over any tap that drifted
+      6px sideways, and then swallowed the click — a normal thumb tap often
+      drifts that much, so the tick was thrown away.
+   2. Every tick saved the whole database and rebuilt the entire Spaces screen
+      (photos, drawing, icons) plus the Job screen before the box changed —
+      slow to show, and a tap landing during the rebuild hit a dead element.
+   Now: the box answers on touch-up (16px of wiggle allowed, bigger hit area),
+   paints at once, saves right after the paint, and the full screen refresh
+   waits until you stop ticking — so ticking down a list stays put under
+   your thumb.                                                              */
+(function(){
+  var st = document.createElement('style');
+  st.textContent = '.bp-cl-check{position:relative;touch-action:manipulation;-webkit-tap-highlight-color:transparent}'
+    + '.bp-cl-check::before{content:"";position:absolute;top:-10px;bottom:-10px;left:-10px;right:-8px}';
+  document.head.appendChild(st);
+
+  var CHECK = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#fff;fill:none;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>';
+  function paint(id, done){
+    var row = document.getElementById('cli-' + id); if (!row) return;
+    var b = row.querySelector('.bp-cl-check');
+    if (b) { b.style.borderColor = done ? '#0A84FF' : 'var(--faint)'; b.style.background = done ? '#0A84FF' : 'transparent'; b.innerHTML = done ? CHECK : ''; }
+    var n = row.querySelector('.bp-cl-name');
+    if (n) { n.style.textDecoration = done ? 'line-through' : 'none'; n.style.color = done ? 'var(--faint)' : 'var(--text)'; }
+  }
+
+  var refreshT = 0, last = { id:'', t:0 };
+  function laterRefresh(){
+    clearTimeout(refreshT);
+    refreshT = setTimeout(function(){
+      /* never yank the list out from under a finger or a row slid open for Cut/Delete */
+      var busy = fingers > 0 || [].some.call(document.querySelectorAll('.bp-cl-row'), function(r){ return !!r.style.transform; });
+      if (busy) { laterRefresh(); return; }
+      refreshT = 0; try { window.refreshChecklistViews(); } catch(e){}
+    }, 1100);
+  }
+  var fingers = 0;
+  document.addEventListener('touchstart', function(e){ fingers = e.touches.length; }, { passive:true, capture:true });
+  document.addEventListener('touchend', function(e){ fingers = e.touches.length; }, { passive:true, capture:true });
+  document.addEventListener('touchcancel', function(e){ fingers = e.touches.length; }, { passive:true, capture:true });
+
+  var prev = window.toggleChecklistItem;   /* base toggle + undo wrapper */
+  window.toggleChecklistItem = function(id){
+    var a = document.querySelector('.screen.active');
+    if (!(a && a.id === 's-room-detail' && document.getElementById('cli-' + id))) return prev.apply(this, arguments);
+    var t = Date.now();
+    if (last.id === id && t - last.t < 400) return;   /* the click that trails a touch — already handled */
+    last = { id:id, t:t };
+    var it = (DB.punchlist||[]).find(function(n){ return n.id === id; }); if (!it) return;
+    var realSave = window.save, realRefresh = window.refreshChecklistViews;
+    window.save = function(){}; window.refreshChecklistViews = function(){};
+    try { prev.call(window, id); } finally { window.save = realSave; window.refreshChecklistViews = realRefresh; }
+    paint(id, !!it.done);
+    requestAnimationFrame(function(){ setTimeout(function(){ try { window.save(); } catch(e){} }, 0); });
+    laterRefresh();
+  };
+
+  /* answer on touch-up instead of waiting for iOS to decide it was a "click" */
+  var ts = null;
+  document.addEventListener('touchstart', function(e){
+    var b = e.touches.length === 1 && e.target.closest && e.target.closest('.bp-cl-check');
+    ts = b ? { b:b, x:e.touches[0].clientX, y:e.touches[0].clientY } : null;
+  }, { passive:true, capture:true });
+  document.addEventListener('touchend', function(e){
+    if (!ts) return; var s = ts; ts = null;
+    var c = e.changedTouches[0];
+    if (Math.abs(c.clientX - s.x) > 16 || Math.abs(c.clientY - s.y) > 16) return;   /* that was a scroll */
+    var row = s.b.closest('.bp-cl-row');
+    if (row && row.style.transform) return;   /* row is slid open — let the tap close it */
+    if (e.cancelable) e.preventDefault();      /* no second, delayed click */
+    window.toggleChecklistItem(s.b.getAttribute('data-id'));
+  }, { passive:false, capture:true });
+  document.addEventListener('touchcancel', function(){ ts = null; }, { passive:true, capture:true });
+
+  console.log('[BP] v6.0.1 — Spaces check-off is one tap');
 })();
 </script>
