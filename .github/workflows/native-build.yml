@@ -11,6 +11,11 @@ jobs:
       - name: Make the Xcode project
         run: brew install xcodegen && cd native && xcodegen
       - name: Build for iPhone / iPad
-        run: cd native && xcodebuild -project BuildersPro.xcodeproj -scheme BuildersPro -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build | tail -40 ; exit ${PIPESTATUS[0]}
+        run: cd native && xcodebuild -project BuildersPro.xcodeproj -scheme BuildersPro -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build > ../ios.log 2>&1; r=$?; tail -40 ../ios.log; exit $r
       - name: Build for Mac
-        run: cd native && xcodebuild -project BuildersPro.xcodeproj -scheme BuildersPro -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build | tail -40 ; exit ${PIPESTATUS[0]}
+        run: cd native && xcodebuild -project BuildersPro.xcodeproj -scheme BuildersPro -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build > ../mac.log 2>&1; r=$?; tail -40 ../mac.log; exit $r
+      - name: Report Swift warnings
+        if: always()
+        run: |
+          grep -hE "Sources/.*(warning|error):" ios.log mac.log | sort -u | while IFS= read -r l; do echo "::warning::$l"; done
+          if grep -q "nearly matches" ios.log mac.log; then echo "::error::A delegate method nearly matches but won't be called"; exit 1; fi
