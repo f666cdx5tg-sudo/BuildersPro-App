@@ -952,6 +952,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     <button class="btn btn-ghost bp-act" title="Add Item" aria-label="Add Item" onclick="bpActTap(this);openAddNote(currentJobId)">
       <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span class="bp-act-lb">Add Item</span>
     </button>
+    <!-- v6.0.2: change order in two taps from the job page (purple = change orders / extras) -->
+    <button class="btn btn-ghost bp-act bp-act-co" id="jd-act-co" title="Change Order" aria-label="Change Order" style="color:#BF5AF2" onclick="bpActTap(this);openNewChangeOrder(currentJobId)">
+      <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="M9 14h6"/></svg><span class="bp-act-lb">Change Order</span>
+    </button>
   </div>
   <!-- Rooms & Areas section is injected dynamically right here by the Rooms engine -->
   <!-- Photos in this job -->
@@ -1550,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.0.1';
+var APP_VERSION = '6.0.2';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -27284,5 +27288,61 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   document.addEventListener('touchcancel', function(){ ts = null; }, { passive:true, capture:true });
 
   console.log('[BP] v6.0.1 — Spaces check-off is one tap');
+})();
+</script>
+<script>
+/* ══ v6.0.2 — CHANGE ORDER IN TWO TAPS ══════════════════════════════════════
+   Stan logs change orders in the field. Before this it was Money → Changes →
+   +, three screens away. Now a purple "Change order" row sits on the On Site
+   card (Home) and a purple button sits in the job page's quick-action row.
+   Both open the existing change-order sheet already scoped to that job.
+   Purple = change orders / extras (Stan's colour rule, v4.44). */
+(function(){
+  var PURPLE = '#BF5AF2';
+  function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function money(n){ n = Math.round(+n || 0); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US'); }
+  var ICO = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0;stroke:' + PURPLE + ';fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>';
+
+  /* ── On Site card: one purple row under the three tiles ── */
+  if (typeof window.bpOnSiteCardHtml === 'function' && !window.bpOnSiteCardHtml.__v602) {
+    var _card = window.bpOnSiteCardHtml;
+    window.bpOnSiteCardHtml = function(id){
+      var html = _card.apply(this, arguments);
+      if (!html) return html;
+      var cos = (DB.changeOrders || []).filter(function(c){ return c && c.jobId === id; });
+      var pend = cos.filter(function(c){ return c.status === 'Draft' || c.status === 'Submitted' || !c.status; });
+      var appr = cos.filter(function(c){ return c.status === 'Approved'; }).reduce(function(s, c){ return s + (+c.amount || 0); }, 0);
+      var q = "'" + String(id).replace(/'/g, "\\'") + "'";
+      /* short on purpose — it has to fit beside the label on an iPhone */
+      var sub = pend.length ? pend.length + ' waiting' : appr ? money(appr) + ' approved' : 'None yet';
+      var row = '<div data-onsite="co" onclick="openNewChangeOrder(' + q + ')" style="margin-top:8px;display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:12px;cursor:pointer;background:rgba(191,90,242,.10);border:1px solid rgba(191,90,242,.45);min-width:0">'
+        + ICO
+        + '<span style="font-size:14px;font-weight:800;color:' + PURPLE + ';white-space:nowrap;flex-shrink:0">+ Change order</span>'
+        + '<span style="margin-left:auto;font-size:12.5px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">' + E(sub) + '</span>'
+        + '</div>';
+      /* place it right after the three-tile grid */
+      var i = html.indexOf('<div data-onsite="next"');
+      return i < 0 ? html.replace(/<\/div>\s*$/, row + '</div>') : html.slice(0, i) + row + html.slice(i);
+    };
+    window.bpOnSiteCardHtml.__v602 = 1;
+  }
+
+  /* ── Job page button: keep it purple whichever state the row is in ── */
+  var st = document.createElement('style');
+  st.textContent = '#jd-act-co{color:' + PURPLE + '!important;border-color:rgba(191,90,242,.45)!important}'
+    + '#jd-act-co.bp-open{background:rgba(191,90,242,.12)!important}';
+  document.head.appendChild(st);
+
+  /* after a change order is saved, refresh the Home card so the row's count is right */
+  if (typeof window.saveChangeOrder === 'function' && !window.saveChangeOrder.__v602) {
+    var _save = window.saveChangeOrder;
+    window.saveChangeOrder = function(){
+      var r = _save.apply(this, arguments);
+      try { if (document.querySelector('#s-home.active') && typeof renderHome === 'function') renderHome(); } catch(e){}
+      return r;
+    };
+    window.saveChangeOrder.__v602 = 1;
+  }
+  console.log('[BP] v6.0.2 — change order in two taps');
 })();
 </script>
