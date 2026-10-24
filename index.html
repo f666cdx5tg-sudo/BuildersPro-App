@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.0.2';
+var APP_VERSION = '6.1.0';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -27344,5 +27344,427 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     window.saveChangeOrder.__v602 = 1;
   }
   console.log('[BP] v6.0.2 — change order in two taps');
+})();
+</script>
+<script>
+/* ══ v6.1.0 — BSP, phase 1 ═══════════════════════════════════════
+   BSP (BuildersPro) starts acting as Stan's assistant from the first
+   walk-through on:
+   1. Intake gate — a new or edited job is checked for client name,
+      address, email and cell. Anything missing is named before saving.
+   2. Phone book link — every job with a client name gets a Client card
+      in DB.contacts (one per job, kept in step with the job's fields).
+   3. Signed contract gate — marking a job Started asks first when no
+      document filed as "Contract" is on that job.
+   4. Signed change order gate — a change order can't be saved as
+      Approved without the owner's signature.
+   5. BSP checklist card on the job page — red = still open, green = done,
+      blue = the fix. Scoped to that one job only.
+   6. Pick-two pie on estimates — Fast / Good / Cheap, equal fixed slices,
+      the client taps exactly two. BSP suggests a price and days for each
+      combo from the estimate total; every number can be edited.
+   Colors follow BSP's meanings: red open, green done, blue actions,
+   purple change orders. ═══════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var RED = '#FF453A', GREEN = '#30D158', BLUE = '#0A84FF', PURPLE = '#BF5AF2';
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function val(id){ var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
+  function money(n){ return '$' + (Math.round(+n || 0)).toLocaleString('en-US'); }
+
+  /* ── 1 + 2: intake gate and client contact ───────────────────── */
+  var FIELDS = [['client','client name'],['address','address'],['clientEmail','email'],['clientPhone','cell']];
+  function missingFrom(o){ return FIELDS.filter(function(f){ return !String(o[f[0]] || '').trim(); }).map(function(f){ return f[1]; }); }
+  function listWords(a){ return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  function intakeOk(o){
+    var miss = missingFrom(o);
+    if (!miss.length) return true;
+    return confirm('BSP: this job is missing the client ' + listWords(miss) + '.\n\nOK = save anyway (it stays red on the job until it\'s filled in)\nCancel = go back and add it');
+  }
+  window.bspClientContact = function(job){
+    if (!job) return null;
+    return (DB.contacts || []).find(function(c){ return c && c.type === 'Client' && c.jobId === job.id; }) || null;
+  };
+  window.bspSyncClientContact = function(job){
+    if (!job || !String(job.client || '').trim()) return null;
+    if (!DB.contacts) DB.contacts = [];
+    var c = bspClientContact(job);
+    if (!c) { c = { id: uid(), type: 'Client', role: 'Client', company: '', notes: '', jobId: job.id, created: now() }; DB.contacts.push(c); }
+    c.name = job.client;
+    c.email = job.clientEmail || '';
+    c.phone = job.clientPhone || '';
+    c.address = [job.address, job.city, [job.state, job.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    c.updated = now(); c.updatedAt = c.updated;
+    return c;
+  };
+
+  if (typeof window.saveJob === 'function' && !window.saveJob.__v610) {
+    var _saveJob = window.saveJob;
+    window.saveJob = function(){
+      if (!val('aj-name')) return _saveJob.apply(this, arguments);   /* original says "Job name required" */
+      var draft = { client: val('aj-client'), address: val('aj-address'), clientEmail: val('aj-client-email'), clientPhone: val('aj-client-phone') };
+      if (!intakeOk(draft)) return;
+      var before = (DB.jobs || []).length;
+      var r = _saveJob.apply(this, arguments);
+      if (DB.jobs.length > before && bspSyncClientContact(DB.jobs[DB.jobs.length - 1])) save();
+      return r;
+    };
+    window.saveJob.__v610 = 1;
+  }
+  if (typeof window.saveEditJob === 'function' && !window.saveEditJob.__v610) {
+    var _saveEditJob = window.saveEditJob;
+    window.saveEditJob = function(jobId){
+      if (!val('ej-name')) return _saveEditJob.apply(this, arguments);
+      var draft = { client: val('ej-client'), address: val('ej-address'), clientEmail: val('ej-client-email'), clientPhone: val('ej-client-phone') };
+      if (!intakeOk(draft)) return;
+      var r = _saveEditJob.apply(this, arguments);
+      var job = (DB.jobs || []).find(function(j){ return j.id === jobId; });
+      if (bspSyncClientContact(job)) { save(); if (currentJobId === jobId && typeof renderJobDetail === 'function') renderJobDetail(jobId); }
+      return r;
+    };
+    window.saveEditJob.__v610 = 1;
+  }
+
+  /* ── 3: signed contract gate ─────────────────────────────────── */
+  window.bspSignedContract = function(jobId){
+    return (DB.documents || []).find(function(d){ return d && d.jobId === jobId && d.category === 'Contract'; }) || null;
+  };
+  window.bspAddSignedContract = function(jobId){
+    if (typeof openAddDocument !== 'function') return;
+    openAddDocument(jobId);
+    var c = document.getElementById('doc-category'); if (c) c.value = 'Contract';
+    var n = document.getElementById('doc-name'); if (n && !n.value) n.value = 'Signed contract';
+  };
+  if (typeof window.toggleJobStarted === 'function' && !window.toggleJobStarted.__v610) {
+    var _toggleStarted = window.toggleJobStarted;
+    window.toggleJobStarted = function(id){
+      var j = (DB.jobs || []).find(function(x){ return x.id === id; });
+      if (j && !j.startDate && !bspSignedContract(id)) {
+        if (!confirm('BSP: there is no signed contract on file for ' + (j.name || 'this job') + '.\n\nOK = start anyway\nCancel = don\'t start yet')) { try { renderJobDetail(id); } catch(e){} return; }
+      }
+      return _toggleStarted.apply(this, arguments);
+    };
+    window.toggleJobStarted.__v610 = 1;
+  }
+
+  /* ── 4: signed change order gate ─────────────────────────────── */
+  if (typeof window.saveChangeOrder === 'function' && !window.saveChangeOrder.__v610) {
+    var _saveCO = window.saveChangeOrder;
+    window.saveChangeOrder = function(){
+      if (val('co-status') === 'Approved' && val('co-title')) {
+        var editing = (typeof _coEditId !== 'undefined' && _coEditId) ? (DB.changeOrders || []).find(function(c){ return c.id === _coEditId; }) : null;
+        var hasSig = (editing && editing.signature) || (typeof bpSigHasInk === 'function' && bpSigHasInk());
+        if (!hasSig) {
+          toast('BSP: get the owner\'s signature before marking this Approved');
+          var pad = document.getElementById('co-sig-pad');
+          if (pad) { pad.style.display = ''; pad.style.outline = '2px solid ' + RED; pad.style.borderRadius = '12px'; pad.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+          return;
+        }
+      }
+      return _saveCO.apply(this, arguments);
+    };
+    window.saveChangeOrder.__v610 = 1;
+  }
+
+  /* ── 5: BSP checklist card on the job page ───────────────────── */
+  function rowHtml(done, label, value, fix){
+    return '<div style="display:flex;align-items:center;gap:10px;min-height:38px;border-top:1px solid var(--border)">'
+      + '<span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:' + (done ? GREEN : RED) + '"></span>'
+      + '<span style="font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0">' + E(label) + '</span>'
+      + '<span style="margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;text-align:right">' + (done ? E(value) : '') + '</span>'
+      + (!done && fix ? '<button type="button" onclick="' + fix + '" style="flex-shrink:0;min-height:30px;padding:0 12px;border-radius:9px;border:1px solid ' + BLUE + '66;background:transparent;color:' + BLUE + ';font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">' + (label === 'Signed contract' ? 'Add' : 'Fix') + '</button>' : '')
+      + '</div>';
+  }
+  window.bspChecklist = function(jobId){
+    var job = (DB.jobs || []).find(function(j){ return j.id === jobId; });
+    if (!job) return [];
+    var edit = "openEditJob('" + jobId + "')";
+    var rows = [
+      { done: !!String(job.client || '').trim(), label: 'Client name', value: job.client, fix: edit },
+      { done: !!String(job.address || '').trim(), label: 'Address', value: job.address, fix: edit },
+      { done: !!String(job.clientEmail || '').trim(), label: 'Email', value: job.clientEmail, fix: edit },
+      { done: !!String(job.clientPhone || '').trim(), label: 'Cell', value: job.clientPhone, fix: edit },
+      { done: !!bspClientContact(job), label: 'In contacts', value: 'Client card saved', fix: String(job.client || '').trim() ? "bspAddContactNow('" + jobId + "')" : edit }
+    ];
+    var doc = bspSignedContract(jobId);
+    rows.push({ done: !!doc, label: 'Signed contract', value: doc ? (doc.name || 'On file') : '', fix: "bspAddSignedContract('" + jobId + "')" });
+    var cos = (DB.changeOrders || []).filter(function(c){ return c.jobId === jobId && c.status === 'Approved'; });
+    if (cos.length) {
+      var unsigned = cos.filter(function(c){ return !c.signature; });
+      rows.push({ done: !unsigned.length, label: 'Signed change orders', value: cos.length + ' of ' + cos.length + ' signed', fix: unsigned.length ? "openEditChangeOrder('" + unsigned[0].id + "')" : '' });
+    }
+    return rows;
+  };
+  window.bspAddContactNow = function(jobId){
+    var job = (DB.jobs || []).find(function(j){ return j.id === jobId; });
+    if (bspSyncClientContact(job)) { save(); toast('Client added to contacts'); renderJobDetail(jobId); }
+  };
+  window.bspToggleChecklist = function(){
+    try { localStorage.setItem('bp_bsp_open', localStorage.getItem('bp_bsp_open') === '1' ? '0' : '1'); } catch(e){}
+    if (currentJobId) renderJobDetail(currentJobId);
+  };
+  function renderCard(jobId){
+    var host = document.getElementById('bsp-ready');
+    if (!host) {
+      var hdr = document.querySelector('#s-job-detail .detail-header');
+      if (!hdr) return;
+      host = document.createElement('div'); host.id = 'bsp-ready'; host.style.cssText = 'padding:12px 16px 0';
+      hdr.insertAdjacentElement('afterend', host);
+    }
+    var rows = bspChecklist(jobId);
+    if (!rows.length) { host.innerHTML = ''; return; }
+    var left = rows.filter(function(r){ return !r.done; }).length;
+    var open = false; try { open = localStorage.getItem('bp_bsp_open') === '1'; } catch(e){}
+    var showRows = left > 0 || open;
+    var head = '<div onclick="bspToggleChecklist()" style="display:flex;align-items:center;gap:8px;min-height:34px;cursor:pointer">'
+      + '<span style="font-size:13px;font-weight:800;letter-spacing:.04em">BSP</span>'
+      + '<span style="font-size:13px;font-weight:700;color:' + (left ? RED : GREEN) + '">' + (left ? left + ' to do before work starts' : 'All set') + '</span>'
+      + '<span style="margin-left:auto;font-size:12px;color:var(--muted)">' + (rows.length - left) + ' of ' + rows.length + '</span>'
+      + '</div>';
+    host.innerHTML = '<div class="card" style="padding:4px 14px 6px;margin:0">' + head
+      + (showRows ? rows.map(function(r){ return rowHtml(r.done, r.label, r.value, r.fix); }).join('') : '') + '</div>';
+  }
+  if (typeof window.renderJobDetail === 'function' && !window.renderJobDetail.__v610) {
+    var _rjd = window.renderJobDetail;
+    window.renderJobDetail = function(jobId){
+      var r = _rjd.apply(this, arguments);
+      try { renderCard(jobId); } catch(e){ console.warn('[BSP] checklist', e); }
+      return r;
+    };
+    window.renderJobDetail.__v610 = 1;
+  }
+
+  /* ── 6: pick-two pie on estimates ────────────────────────────── */
+  var COMBOS = {
+    fg: { label: 'Fast + Good',  note: 'costs more',     keys: ['fast','good'] },
+    gc: { label: 'Good + Cheap', note: 'takes longer',   keys: ['good','cheap'] },
+    fc: { label: 'Fast + Cheap', note: 'basic finishes', keys: ['fast','cheap'] }
+  };
+  /* BSP's starting suggestions, as a share of the estimate total and of the normal schedule. */
+  var SUGGEST = { fg: { price: 1.20, days: 0.75 }, gc: { price: 1.00, days: 1.30 }, fc: { price: 0.90, days: 0.75 } };
+  window.BSP_PICK_LINE = 'Code, safety and workmanship are the same on every option.';
+  function comboOf(pick){
+    if (!pick || pick.length !== 2) return '';
+    var s = pick.slice().sort().join(',');
+    return s === 'fast,good' ? 'fg' : s === 'cheap,good' ? 'gc' : s === 'cheap,fast' ? 'fc' : '';
+  }
+  window.bspComboOf = comboOf;
+  var P = null;   /* working state while the estimate sheet is open */
+
+  function suggest(){
+    if (!P) return;
+    var T = (typeof bpEstTotal === 'function' && typeof _estLineItems !== 'undefined') ? bpEstTotal(_estLineItems) : 0;
+    var D = +P.baseDays || 0;
+    Object.keys(COMBOS).forEach(function(k){
+      var o = P.opts[k];
+      if (!o.editedPrice) o.price = Math.round(T * SUGGEST[k].price);
+      if (!o.editedDays) o.days = D ? Math.ceil(D * SUGGEST[k].days) : '';
+      var pi = document.getElementById('p2-price-' + k); if (pi && document.activeElement !== pi) pi.value = o.price || '';
+      var di = document.getElementById('p2-days-' + k);  if (di && document.activeElement !== di) di.value = o.days || '';
+    });
+  }
+  function slicePath(i){
+    var cx = 110, cy = 110, r = 100;
+    function pt(deg){ var a = (deg - 90) * Math.PI / 180; return (cx + r * Math.cos(a)).toFixed(1) + ' ' + (cy + r * Math.sin(a)).toFixed(1); }
+    return 'M' + cx + ' ' + cy + ' L' + pt(i * 120) + ' A' + r + ' ' + r + ' 0 0 1 ' + pt(i * 120 + 120) + ' Z';
+  }
+  function labelPos(i){ var a = (i * 120 + 60 - 90) * Math.PI / 180; return [(110 + 58 * Math.cos(a)).toFixed(1), (110 + 58 * Math.sin(a)).toFixed(1)]; }
+  function paintPie(){
+    if (!P) return;
+    ['fast','good','cheap'].forEach(function(k){
+      var on = P.pick.indexOf(k) > -1, locked = P.pick.length === 2 && !on;
+      var p = document.getElementById('p2-s-' + k), t = document.getElementById('p2-t-' + k);
+      if (p) { p.setAttribute('fill', on ? 'rgba(48,209,88,.22)' : 'var(--card2)'); p.setAttribute('stroke', on ? GREEN : 'var(--border)'); p.parentNode.style.opacity = locked ? .35 : 1; }
+      if (t) t.setAttribute('fill', on ? GREEN : 'var(--text)');
+    });
+    var c = comboOf(P.pick);
+    Object.keys(COMBOS).forEach(function(k){
+      var row = document.getElementById('p2-row-' + k);
+      if (row) { row.style.borderColor = k === c ? GREEN : 'var(--border)'; row.style.background = k === c ? 'rgba(48,209,88,.08)' : 'transparent'; }
+    });
+    var m = document.getElementById('p2-msg');
+    if (m) {
+      m.style.color = 'var(--muted)';
+      m.textContent = P.pick.length < 2 ? 'Client taps ' + (2 - P.pick.length) + ' more slice' + (P.pick.length ? '' : 's') : COMBOS[c].label + ' — ' + COMBOS[c].note + '. ' + BSP_PICK_LINE;
+    }
+  }
+  window.bspPickTap = function(k){
+    if (!P) return;
+    var i = P.pick.indexOf(k);
+    if (i > -1) P.pick.splice(i, 1);
+    else if (P.pick.length < 2) P.pick.push(k);
+    else { var m = document.getElementById('p2-msg'); if (m) { m.textContent = 'Only 2. Tap a green slice to swap it out.'; m.style.color = RED; } return; }
+    paintPie();
+  };
+  window.bspPickEdit = function(k, field, el){
+    if (!P) return;
+    var o = P.opts[k]; var v = el.value === '' ? '' : +el.value;
+    if (field === 'price') { o.price = v; o.editedPrice = el.value !== ''; }
+    else { o.days = v; o.editedDays = el.value !== ''; }
+  };
+  window.bspPickBaseDays = function(el){ if (!P) return; P.baseDays = el.value === '' ? '' : +el.value; suggest(); };
+  window.bspPickResuggest = function(){
+    if (!P) return;
+    Object.keys(P.opts).forEach(function(k){ P.opts[k].editedPrice = false; P.opts[k].editedDays = false; });
+    suggest(); toast('BSP suggestions refreshed');
+  };
+
+  function pieSection(){
+    var inp = 'box-sizing:border-box;width:100%;padding:9px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:14px;font-family:inherit;text-align:right';
+    var lbl = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px';
+    var names = ['fast','good','cheap'], titles = { fast: 'Fast', good: 'Good', cheap: 'Cheap' };
+    var svg = '<svg viewBox="0 0 220 220" width="190" height="190" style="display:block;margin:0 auto" role="img" aria-label="Pick two: fast, good, cheap">'
+      + names.map(function(k, i){
+          var lp = labelPos(i);
+          return '<g style="cursor:pointer" onclick="bspPickTap(\'' + k + '\')">'
+            + '<path id="p2-s-' + k + '" d="' + slicePath(i) + '" fill="var(--card2)" stroke="var(--border)" stroke-width="1.5"/>'
+            + '<text id="p2-t-' + k + '" x="' + lp[0] + '" y="' + lp[1] + '" text-anchor="middle" dominant-baseline="central" fill="var(--text)" style="font-size:16px;font-weight:800;pointer-events:none">' + titles[k] + '</text></g>';
+        }).join('') + '</svg>';
+    var rows = Object.keys(COMBOS).map(function(k){
+      return '<div id="p2-row-' + k + '" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px">'
+        + '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + COMBOS[k].label + '</div>'
+        + '<div style="font-size:11px;color:var(--muted);white-space:nowrap">' + COMBOS[k].note + '</div></div>'
+        + '<div style="width:92px;flex-shrink:0"><input id="p2-price-' + k + '" type="number" inputmode="decimal" placeholder="$" oninput="bspPickEdit(\'' + k + '\',\'price\',this)" style="' + inp + '"/></div>'
+        + '<div style="width:58px;flex-shrink:0"><input id="p2-days-' + k + '" type="number" inputmode="numeric" placeholder="days" oninput="bspPickEdit(\'' + k + '\',\'days\',this)" style="' + inp + '"/></div>'
+        + '</div>';
+    }).join('');
+    return '<div id="bsp-pick2" style="margin-bottom:16px">'
+      + '<div style="' + lbl + '">Client picks 2</div>'
+      + svg
+      + '<div id="p2-msg" style="font-size:13px;text-align:center;min-height:36px;padding:6px 4px 10px;line-height:1.4"></div>'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:13px;color:var(--muted);flex:1">Normal schedule (days)</span>'
+      + '<div style="width:58px"><input id="p2-basedays" type="number" inputmode="numeric" placeholder="days" oninput="bspPickBaseDays(this)" style="' + inp + '"/></div></div>'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;font-size:11px;color:var(--muted);padding:0 8px 4px"><span style="width:92px;text-align:right">Price</span><span style="width:58px;text-align:right">Days</span></div>'
+      + rows
+      + '<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font-size:11px;color:var(--muted);flex:1;line-height:1.4">BSP suggests these from the total. Type over any number to set your own.</span>'
+      + '<button type="button" onclick="bspPickResuggest()" style="flex-shrink:0;min-height:30px;padding:0 10px;border-radius:9px;border:1px solid ' + BLUE + '66;background:transparent;color:' + BLUE + ';font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Re-suggest</button></div>'
+      + '</div>';
+  }
+
+  if (typeof window.buildEstimateModal === 'function' && !window.buildEstimateModal.__v610) {
+    var _bem = window.buildEstimateModal;
+    window.buildEstimateModal = function(e){
+      P = null;
+      var r = _bem.apply(this, arguments);
+      try {
+        var saved = (e && e.pickOptions) || {};
+        P = { pick: (e && e.pick ? e.pick.slice(0, 2) : []), baseDays: e && e.baseDays != null ? e.baseDays : '', opts: {} };
+        Object.keys(COMBOS).forEach(function(k){
+          var s = saved[k] || {};
+          P.opts[k] = { price: s.price != null ? s.price : '', days: s.days != null ? s.days : '', editedPrice: !!s.editedPrice, editedDays: !!s.editedDays };
+        });
+        var notes = document.getElementById('est-notes');
+        var anchor = notes && notes.parentNode;
+        if (anchor) {
+          anchor.insertAdjacentHTML('beforebegin', pieSection());
+          var bd = document.getElementById('p2-basedays'); if (bd) bd.value = P.baseDays;
+          Object.keys(COMBOS).forEach(function(k){
+            var pi = document.getElementById('p2-price-' + k); if (pi) pi.value = P.opts[k].price;
+            var di = document.getElementById('p2-days-' + k);  if (di) di.value = P.opts[k].days;
+          });
+          suggest(); paintPie();
+        }
+      } catch(err){ console.warn('[BSP] pick-two', err); }
+      return r;
+    };
+    window.buildEstimateModal.__v610 = 1;
+  }
+  if (typeof window.bpEstRecalcTotal === 'function' && !window.bpEstRecalcTotal.__v610) {
+    var _recalc = window.bpEstRecalcTotal;
+    window.bpEstRecalcTotal = function(){ var r = _recalc.apply(this, arguments); try { suggest(); } catch(e){} return r; };
+    window.bpEstRecalcTotal.__v610 = 1;
+  }
+  if (typeof window.saveEstimateModal === 'function' && !window.saveEstimateModal.__v610) {
+    var _sem = window.saveEstimateModal;
+    window.saveEstimateModal = function(){
+      var state = P ? JSON.parse(JSON.stringify(P)) : null;
+      var target = (typeof _editingEstId !== 'undefined') ? _editingEstId : null;
+      var before = (DB.estimates || []).length;
+      var r = _sem.apply(this, arguments);
+      if (state && !document.getElementById('estimate-modal')) {
+        var est = target ? (DB.estimates || []).find(function(x){ return x.id === target; })
+                         : (DB.estimates.length > before ? DB.estimates[DB.estimates.length - 1] : null);
+        if (est) {
+          est.pick = state.pick.length === 2 ? state.pick : [];
+          est.baseDays = state.baseDays;
+          est.pickOptions = state.opts;
+          est.updatedAt = now();
+          save(); if (typeof renderEstimates === 'function') renderEstimates();
+        }
+        P = null;
+      }
+      return r;
+    };
+    window.saveEstimateModal.__v610 = 1;
+  }
+  window.bspEstChoice = function(e){
+    var k = e && comboOf(e.pick);
+    if (!k) return null;
+    var o = (e.pickOptions || {})[k] || {};
+    return { key: k, label: COMBOS[k].label, note: COMBOS[k].note, price: +o.price || 0, days: o.days };
+  };
+  if (typeof window.buildEstimateCard === 'function' && !window.buildEstimateCard.__v610) {
+    var _bec = window.buildEstimateCard;
+    window.buildEstimateCard = function(e){
+      var h = _bec.apply(this, arguments);
+      var ch = bspEstChoice(e);
+      var line = ch
+        ? '<div style="font-size:13px;font-weight:700;color:' + GREEN + ';margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Client pick: ' + E(ch.label) + (ch.price ? ' · ' + money(ch.price) : '') + (ch.days ? ' · ' + E(ch.days) + ' days' : '') + '</div>'
+        : '<div style="font-size:13px;font-weight:600;color:' + RED + ';margin-top:6px">Client hasn\'t picked 2 yet</div>';
+      var i = h.indexOf('<div style="display:flex;gap:8px;margin-top:10px">');
+      return i < 0 ? h : h.slice(0, i) + line + h.slice(i);
+    };
+    window.buildEstimateCard.__v610 = 1;
+  }
+  if (typeof window.emailEstimate === 'function' && !window.emailEstimate.__v610) {
+    var _ee = window.emailEstimate;
+    window.emailEstimate = function(id){
+      var e = (DB.estimates || []).find(function(x){ return x.id === id; });
+      var opts = e && e.pickOptions;
+      var hasOpts = opts && Object.keys(COMBOS).some(function(k){ return opts[k] && +opts[k].price; });
+      if (!hasOpts || typeof window.sendEmail !== 'function') return _ee.apply(this, arguments);
+      var ch = bspEstChoice(e);
+      var block = '\nYour options (pick 2 of fast, good, cheap):\n'
+        + Object.keys(COMBOS).map(function(k){
+            var o = opts[k] || {};
+            return '  ' + (ch && ch.key === k ? '[x] ' : '[ ] ') + COMBOS[k].label + ' (' + COMBOS[k].note + '): ' + money(o.price) + (o.days ? ', about ' + o.days + ' days' : '');
+          }).join('\n')
+        + '\n' + BSP_PICK_LINE + '\n'
+        + (ch ? 'You picked: ' + ch.label + '.\n' : '');
+      var _send = window.sendEmail;
+      window.sendEmail = function(to, subject, body){
+        var i = body.indexOf('\nThanks,');
+        body = i < 0 ? body + block : body.slice(0, i) + block + body.slice(i);
+        return _send.call(this, to, subject, body);
+      };
+      try { return _ee.apply(this, arguments); } finally { window.sendEmail = _send; }
+    };
+    window.emailEstimate.__v610 = 1;
+  }
+  if (typeof window.convertEstimateToJob === 'function' && !window.convertEstimateToJob.__v610) {
+    var _conv = window.convertEstimateToJob;
+    window.convertEstimateToJob = function(id){
+      var e = (DB.estimates || []).find(function(x){ return x.id === id; });
+      if (e && !bspEstChoice(e) && e.pickOptions && !confirm('BSP: the client hasn\'t picked 2 of fast, good, cheap yet.\n\nOK = convert anyway\nCancel = go back')) return;
+      var r = _conv.apply(this, arguments);
+      var job = e && e.convertedJobId && (DB.jobs || []).find(function(j){ return j.id === e.convertedJobId; });
+      if (job) {
+        if (e.clientEmail && !job.clientEmail) job.clientEmail = e.clientEmail;
+        var ch = bspEstChoice(e);
+        if (ch) {
+          job.pick = ch.label;
+          if (ch.price) job.contract = ch.price;
+          job.notes = ((job.notes ? job.notes + '\n' : '') + 'Client pick: ' + ch.label + ' (' + ch.note + '). ' + BSP_PICK_LINE).trim();
+        }
+        bspSyncClientContact(job);
+        job.updatedAt = now();
+        save(); try { renderJobDetail(job.id); } catch(err){}
+      }
+      return r;
+    };
+    window.convertEstimateToJob.__v610 = 1;
+  }
+
+  console.log('[BP] v6.1.0 — BSP phase 1: intake gate, contacts, signed contract + CO gates, pick-two pie');
 })();
 </script>
