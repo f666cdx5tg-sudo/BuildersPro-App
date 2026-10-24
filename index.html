@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.0';
+var APP_VERSION = '6.1.1';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -27766,5 +27766,87 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   }
 
   console.log('[BP] v6.1.0 — BSP phase 1: intake gate, contacts, signed contract + CO gates, pick-two pie');
+})();
+</script>
+<script>
+/* ══ v6.1.1 — clients in the field phone book ═════════════════════
+   The phone book (Finance > Contractors) gets a Subs | Clients switch.
+   Clients come from the Client cards BSP keeps per job (v6.1.0); the
+   same person on several jobs is one card with each job listed. Cell
+   and email are tap-to-call / tap-to-email (blue = action). Tapping a
+   job opens it. The Finance job filter still applies. ══════════════ */
+(function(){
+  'use strict';
+  var BLUE = '#0A84FF';
+  var _view = 'subs', _cq = '';
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function key(n){ return String(n || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+  function ph(p){ try { return typeof bpPhone === 'function' ? bpPhone(p) : p; } catch(e){ return p; } }
+
+  window.bspClientGroups = function(jf){
+    var groups = {}, order = [];
+    (DB.contacts || []).forEach(function(c){
+      if (!c || c.type !== 'Client' || !String(c.name || '').trim()) return;
+      if (jf && c.jobId !== jf) return;
+      var job = (DB.jobs || []).find(function(j){ return j.id === c.jobId; });
+      var k = key(c.name);
+      var g = groups[k];
+      if (!g) { g = groups[k] = { name: c.name, phone: '', email: '', address: '', jobs: [] }; order.push(k); }
+      if (!g.phone && c.phone) g.phone = c.phone;
+      if (!g.email && c.email) g.email = c.email;
+      if (!g.address && c.address) g.address = c.address;
+      if (job) g.jobs.push(job);
+    });
+    return order.map(function(k){ return groups[k]; }).sort(function(a, b){ return key(a.name).localeCompare(key(b.name)); });
+  };
+  function clientMatches(g){
+    var q = _cq.trim().toLowerCase(); if (!q) return true;
+    return (g.name + ' ' + g.phone + ' ' + g.email + ' ' + g.address + ' ' + g.jobs.map(function(j){ return j.name; }).join(' ')).toLowerCase().indexOf(q) > -1;
+  }
+  function clientCard(g){
+    var one = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;min-width:0">'
+      + '<div style="font-size:17px;font-weight:800;' + one + '">' + E(g.name) + '</div>'
+      + (g.address ? '<div style="font-size:13px;color:var(--muted);' + one + '">' + E(g.address) + '</div>' : '')
+      + (g.phone ? '<a href="tel:' + E(String(g.phone).replace(/[^\d+]/g, '')) + '" style="display:block;font-size:14px;font-weight:700;color:' + BLUE + ';text-decoration:none;min-height:26px;line-height:26px">' + E(ph(g.phone)) + '</a>' : '')
+      + (g.email ? '<a href="mailto:' + E(g.email) + '" style="display:block;font-size:14px;font-weight:700;color:' + BLUE + ';text-decoration:none;min-height:26px;line-height:26px;' + one + '">' + E(g.email) + '</a>' : '')
+      + (g.jobs.length ? g.jobs.map(function(j){
+          return '<div onclick="openJobDetail(\'' + j.id + '\')" style="display:flex;align-items:center;gap:8px;min-height:38px;border-top:1px solid var(--border);margin-top:6px;cursor:pointer">'
+            + '<span style="font-size:14px;font-weight:700;min-width:0;' + one + '">' + E(j.name) + '</span>'
+            + '<span style="margin-left:auto;font-size:13px;font-weight:700;color:' + BLUE + ';flex-shrink:0">Open</span></div>';
+        }).join('') : '')
+      + '</div>';
+  }
+  function clientList(jf){
+    var all = bspClientGroups(jf), l = all.filter(clientMatches);
+    if (!l.length) return '<div class="empty"><div class="empty-text">' + (all.length ? 'No match' : 'No clients yet') + '</div><div class="empty-sub">' + (all.length ? 'Try a different search' : 'Clients are added here when you save a job with a client name') + '</div></div>';
+    return l.map(clientCard).join('');
+  }
+  function seg(jf){
+    var n = bspClientGroups(jf).length;
+    return '<div class="bp-sb-seg" id="bsp-pb-seg"><button type="button" class="' + (_view === 'subs' ? 'on' : '') + '" onclick="bspPhoneView(\'subs\')">Subs</button>'
+      + '<button type="button" class="' + (_view === 'clients' ? 'on' : '') + '" onclick="bspPhoneView(\'clients\')">Clients (' + n + ')</button></div>';
+  }
+  window.bspPhoneView = function(v){ _view = v === 'clients' ? 'clients' : 'subs'; _cq = ''; if (typeof renderFinance === 'function') renderFinance(); };
+  window.bspClientQ = function(v){ _cq = v || ''; var l = document.getElementById('bsp-cl-list'); if (l) l.innerHTML = clientList(window._bspJf || ''); };
+
+  if (typeof window.bpSubUnifiedHtml === 'function' && !window.bpSubUnifiedHtml.__v611) {
+    var _uni = window.bpSubUnifiedHtml;
+    window.bpSubUnifiedHtml = function(jf){
+      window._bspJf = jf || '';
+      if (_view !== 'clients') return seg(jf) + _uni.apply(this, arguments);
+      return seg(jf)
+        + '<input id="bsp-cl-q" type="text" placeholder="Search clients" value="' + E(_cq) + '" oninput="bspClientQ(this.value)" autocomplete="off" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit"/>'
+        + '<div id="bsp-cl-list">' + clientList(jf) + '</div>';
+    };
+    window.bpSubUnifiedHtml.__v611 = 1;
+  }
+  /* opening the phone book from the menu starts on Subs, as before */
+  if (typeof window.bpPhoneBookOpen === 'function' && !window.bpPhoneBookOpen.__v611) {
+    var _open = window.bpPhoneBookOpen;
+    window.bpPhoneBookOpen = function(){ _view = 'subs'; _cq = ''; return _open.apply(this, arguments); };
+    window.bpPhoneBookOpen.__v611 = 1;
+  }
+  console.log('[BP] v6.1.1 — clients in the field phone book');
 })();
 </script>

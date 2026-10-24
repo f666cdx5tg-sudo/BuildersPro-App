@@ -26,7 +26,7 @@ async def main():
             await pg.route('**/*', lambda r: r.abort() if any(h in r.request.url for h in ('open-meteo', 'nominatim', 'bigdatacloud', 'ipapi', 'ipwho', 'api.github', 'apple-cloudkit')) else r.continue_())
             await pg.goto('http://localhost:8793/index.html'); await pg.wait_for_timeout(2500)
             await pg.evaluate("document.getElementById('bp-lock')?.remove()")
-            ok(await pg.evaluate("APP_VERSION") == '6.1.0', 'version is 6.1.0')
+            ok(await pg.evaluate("APP_VERSION") >= '6.1.0', 'version is 6.1.0+')
 
             # ---- 1. intake gate: missing fields -> Cancel keeps the job unsaved ----
             await pg.evaluate("openAddJob()"); await pg.wait_for_timeout(300)
