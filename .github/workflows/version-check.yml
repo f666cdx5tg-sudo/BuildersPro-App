@@ -1,0 +1,11 @@
+name: Same version on every app
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Field app, Command Center and native app must match
+        run: bash check_versions.sh
