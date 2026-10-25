@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.15';
+var APP_VERSION = '6.1.16';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -28741,5 +28741,68 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     }
   } catch(e){}
   console.log('[BP] v6.1.15 — daily backup file; GitHub sync off');
+})();
+</script>
+<script>
+/* ══ v6.1.16 — appointments go straight into a "BuildersPro" calendar ════
+   The old "Subscribe" link needed GitHub backup, which is off (v6.1.15), so
+   it could never work. Inside the App Store app, BSP now writes every
+   appointment into a calendar called BuildersPro in the iPhone's own Calendar
+   app (in iCloud, so it shows on the Mac and iPad too). It re-syncs when the
+   app opens and whenever appointments change. One way: BSP → Calendar. ══ */
+(function(){
+  'use strict';
+  function shell(){ try { return !!(window.BPShell && window.webkit && webkit.messageHandlers && webkit.messageHandlers.bp); } catch(e){ return false; } }
+  function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ return null; } }
+  function jobOf(a){ return a && a.jobId ? (DB.jobs||[]).find(function(j){ return j.id === a.jobId; }) : null; }
+  function events(){
+    return (DB.appointments||[]).filter(function(a){ return a && a.id && /^\d{4}-\d{2}-\d{2}$/.test(a.date || ''); }).map(function(a){
+      var j = jobOf(a), loc = j ? [j.address, j.city, j.state, j.zip].filter(Boolean).join(', ') : '';
+      var e = { id: a.id, title: a.title || a.type || 'Appointment', location: loc,
+        notes: [(a.type || 'Appointment') + (j ? ' · ' + j.name : ''), a.notes || '', 'From BuildersPro'].filter(Boolean).join('\n') };
+      if (a.time && /^\d{1,2}:\d{2}/.test(a.time)) {
+        var st = new Date(a.date + 'T' + (a.time.length === 4 ? '0' + a.time : a.time.slice(0,5)) + ':00');
+        if (!isNaN(st)) { e.allDay = false; e.start = st.toISOString().replace(/\.\d{3}Z$/, 'Z'); e.end = new Date(st.getTime() + 3600000).toISOString().replace(/\.\d{3}Z$/, 'Z'); return e; }
+      }
+      e.allDay = true; e.date = a.date; return e;
+    });
+  }
+  var lastSig = '', timer = 0;
+  window.bpCalendarSyncNow = function(force){
+    if (!shell()) return false;
+    var ev = events(), sig = JSON.stringify(ev);
+    if (!force && sig === lastSig) return true;
+    lastSig = sig;
+    webkit.messageHandlers.bp.postMessage({ kind: 'calendarSync', events: ev });
+    return true;
+  };
+  window.bpCalDone = function(r){
+    ls('bp_cal_info', JSON.stringify(Object.assign({ at: new Date().toISOString() }, r || {})));
+    if (r && !r.ok) lastSig = '';
+    paint();
+  };
+  setTimeout(function(){ window.bpCalendarSyncNow(true); }, 8000);
+  if (typeof window.save === 'function' && !window.save.__v6116) {
+    var _s = window.save;
+    window.save = function(){ var r = _s.apply(this, arguments); clearTimeout(timer); timer = setTimeout(function(){ window.bpCalendarSyncNow(false); }, 3000); return r; };
+    window.save.__v6116 = 1;
+  }
+  function paint(){
+    var c = document.getElementById('bp-cal-card'); if (!c || !shell()) return;
+    Array.prototype.forEach.call(c.querySelectorAll('div'), function(d){ if (/needs GitHub backup/.test(d.textContent) && !d.querySelector('div')) d.style.display = 'none'; });
+    Array.prototype.forEach.call(c.querySelectorAll('a[href^="webcal:"], a[href*="calendar.google.com/calendar/r?cid"]'), function(a){ a.style.display = 'none'; });
+    var el = document.getElementById('bp-cal-native');
+    if (!el) { el = document.createElement('div'); el.id = 'bp-cal-native'; el.style.cssText = 'margin:8px 0'; var h = c.firstChild && c.firstChild.nextSibling; c.insertBefore(el, h ? h.nextSibling : null); }
+    var i = {}; try { i = JSON.parse(ls('bp_cal_info') || '{}'); } catch(e){}
+    var when = i.at ? new Date(i.at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+    var line = !i.at ? 'Your appointments are added to a <b>BuildersPro</b> calendar in the Calendar app. The first time, the iPhone asks to allow Calendar access — tap Allow Full Access.'
+      : i.ok ? '✅ ' + i.total + ' appointment' + (i.total === 1 ? '' : 's') + ' in your <b>BuildersPro</b> calendar (' + (i.where === 'iCloud' ? 'iCloud — shows on Mac and iPad too' : 'this device') + ') · ' + when
+      : '⚠️ ' + String(i.err || 'Calendar sync failed').replace(/</g,'&lt;');
+    el.innerHTML = '<div style="font-size:13px;line-height:1.5">' + line + '</div>'
+      + '<button type="button" onclick="bpCalendarSyncNow(true)" style="display:block;width:100%;margin-top:8px;min-height:44px;border-radius:12px;border:none;background:#0A84FF;color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">Update my calendar now</button>';
+  }
+  var _os = window.openSync;
+  if (typeof _os === 'function' && !_os.__v6116) { window.openSync = function(){ var r = _os.apply(this, arguments); setTimeout(paint, 120); return r; }; window.openSync.__v6116 = 1; }
+  console.log('[BP] v6.1.16 — native BuildersPro calendar');
 })();
 </script>

@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import EventKit
 #if os(iOS)
 import UIKit
 #else
@@ -106,6 +107,9 @@ final class ShellModel: NSObject, ObservableObject {
             let files = writeFiles(body["files"] as? [[String: Any]] ?? [])
             let text = body["text"] as? String ?? ""
             deliver(files: files, text: text, save: kind == "save", from: source)
+        case "calendarSync":
+            let evs = body["events"] as? [[String: Any]] ?? []
+            CalendarSync.shared.sync(evs) { [weak self] js in self?.webView.evaluateJavaScript(js) }
         case "backupBegin", "backupChunk", "backupEnd":
             DailyBackup.shared.handle(kind, body, reply: { [weak self] js in self?.webView.evaluateJavaScript(js) })
         default:
@@ -453,5 +457,88 @@ final class DailyBackup {
         let d = (try? JSONSerialization.data(withJSONObject: [s])) ?? Data("[\"\"]".utf8)
         let a = String(data: d, encoding: .utf8) ?? "[\"\"]"
         return String(a.dropFirst().dropLast())
+    }
+}
+
+
+// MARK: Calendar (v6.1.16)
+
+/// Keeps a calendar called "BuildersPro" in the phone's own Calendar app matching the
+/// app's appointments. It lives in the iCloud account when there is one, so it shows on
+/// the Mac and iPad too. One way: BuildersPro → Calendar. Only events this app made
+/// (marked with its id) are ever changed or removed; nothing else in Calendar is touched.
+@MainActor
+final class CalendarSync {
+    static let shared = CalendarSync()
+    private let store = EKEventStore()
+    private let tag = "builderspro://appt/"
+
+    func sync(_ events: [[String: Any]], reply: @escaping @MainActor (String) -> Void) {
+        Task { @MainActor in
+            let granted: Bool
+            do {
+                if #available(iOS 17.0, macOS 14.0, *) { granted = try await store.requestFullAccessToEvents() }
+                else { granted = try await store.requestAccess(to: .event) }
+            } catch { granted = false }
+            guard granted else { reply("window.bpCalDone && bpCalDone({ok:false,err:'Calendar access is off. Turn it on in Settings › BuildersPro › Calendars.'})"); return }
+            guard let cal = calendar() else { reply("window.bpCalDone && bpCalDone({ok:false,err:'Could not create the BuildersPro calendar.'})"); return }
+
+            let start = Date().addingTimeInterval(-400 * 86400), end = Date().addingTimeInterval(800 * 86400)
+            let existing = store.events(matching: store.predicateForEvents(withStart: start, end: end, calendars: [cal]))
+            var byId: [String: EKEvent] = [:]
+            for e in existing { if let u = e.url?.absoluteString, u.hasPrefix(tag) { let k = String(u.dropFirst(tag.count)); byId[k.removingPercentEncoding ?? k] = e } }
+
+            let iso = ISO8601DateFormatter()
+            let day = DateFormatter(); day.dateFormat = "yyyy-MM-dd"; day.timeZone = .current
+            var seen = Set<String>(), added = 0, changed = 0, removed = 0
+            for ev in events {
+                guard let id = ev["id"] as? String, !id.isEmpty else { continue }
+                let allDay = (ev["allDay"] as? Bool) ?? true
+                var s: Date?, f: Date?
+                if allDay, let d = ev["date"] as? String, let dd = day.date(from: d) { s = dd; f = dd.addingTimeInterval(86400 - 1) }
+                else if let a = ev["start"] as? String, let b = ev["end"] as? String { s = iso.date(from: a); f = iso.date(from: b) }
+                guard let st = s, let en = f else { continue }
+                seen.insert(id)
+                let e = byId[id] ?? EKEvent(eventStore: store)
+                let isNew = byId[id] == nil
+                let title = (ev["title"] as? String) ?? "Appointment"
+                let loc = (ev["location"] as? String) ?? ""
+                let notes = (ev["notes"] as? String) ?? ""
+                if !isNew && e.title == title && e.startDate == st && e.endDate == en && e.isAllDay == allDay
+                    && (e.location ?? "") == loc && (e.notes ?? "") == notes { continue }
+                e.calendar = cal; e.title = title; e.startDate = st; e.endDate = en; e.isAllDay = allDay
+                e.location = loc.isEmpty ? nil : loc; e.notes = notes.isEmpty ? nil : notes
+                e.url = URL(string: tag + (id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? id))
+                if (try? store.save(e, span: .thisEvent, commit: false)) != nil { if isNew { added += 1 } else { changed += 1 } }
+            }
+            for (id, e) in byId where !seen.contains(id) {
+                if (try? store.remove(e, span: .thisEvent, commit: false)) != nil { removed += 1 }
+            }
+            try? store.commit()
+            let where_ = cal.source.sourceType == .calDAV ? "iCloud" : "this device"
+            reply("window.bpCalDone && bpCalDone({ok:true,total:\(seen.count),added:\(added),changed:\(changed),removed:\(removed),where:'\(where_)'})")
+        }
+    }
+
+    private func calendar() -> EKCalendar? {
+        let key = "bp_calendar_id"
+        if let id = UserDefaults.standard.string(forKey: key), let c = store.calendar(withIdentifier: id) { return c }
+        if let c = store.calendars(for: .event).first(where: { $0.title == "BuildersPro" && $0.allowsContentModifications }) {
+            UserDefaults.standard.set(c.calendarIdentifier, forKey: key); return c
+        }
+        let c = EKCalendar(for: .event, eventStore: store)
+        c.title = "BuildersPro"
+        #if os(iOS)
+        c.cgColor = UIColor(red: 0.04, green: 0.52, blue: 1.0, alpha: 1).cgColor
+        #else
+        c.color = NSColor(red: 0.04, green: 0.52, blue: 1.0, alpha: 1)
+        #endif
+        let icloud = store.sources.first { $0.sourceType == .calDAV && $0.title.lowercased().contains("icloud") }
+        let src = icloud ?? store.defaultCalendarForNewEvents?.source ?? store.sources.first { $0.sourceType == .local }
+        guard let s = src else { return nil }
+        c.source = s
+        do { try store.saveCalendar(c, commit: true) } catch { return nil }
+        UserDefaults.standard.set(c.calendarIdentifier, forKey: key)
+        return c
     }
 }

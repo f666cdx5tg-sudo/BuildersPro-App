@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "6.1.15"
-    CURRENT_PROJECT_VERSION: "8"
+    MARKETING_VERSION: "6.1.16"
+    CURRENT_PROJECT_VERSION: "9"
     DEVELOPMENT_TEAM: 44HA83UCKJ
     CODE_SIGN_STYLE: Automatic
 targets:
@@ -26,6 +26,8 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Put your BuildersPro appointments in a BuildersPro calendar."
+        INFOPLIST_KEY_NSCalendarsUsageDescription: "Put your BuildersPro appointments in a BuildersPro calendar."
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Unlock BuildersPro with Face ID."
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Show your job-site location and local weather on the Home screen."
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Record voice notes for your jobs."
