@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.12';
+var APP_VERSION = '6.1.13';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -2183,7 +2183,10 @@ window.bpStorageReport = function() {
     if (sum) byColl[coll] = sum;
   });
   var meta = 0;
-  try { meta = JSON.stringify(DB).length - total; } catch(e) {}
+  /* v6.1.13: never stringify the photos here. Turning ~150 MB of photos into one
+     string made the iPhone kill the page the moment Sync opened (black flash,
+     app reloads, Sync never shows). Measure the records with photos left out. */
+  try { meta = JSON.stringify(DB, function(k, v){ return (typeof v === 'string' && v.length > 1024 && v.slice(0,5) === 'data:') ? '' : v; }).length; } catch(e) {}
   images.sort(function(a,b){ return b-a; });
   return {
     byColl: byColl, total: total, meta: meta,
