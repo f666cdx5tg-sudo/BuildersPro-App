@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "6.1.14"
-    CURRENT_PROJECT_VERSION: "7"
+    MARKETING_VERSION: "6.1.15"
+    CURRENT_PROJECT_VERSION: "8"
     DEVELOPMENT_TEAM: 44HA83UCKJ
     CODE_SIGN_STYLE: Automatic
 targets:
@@ -21,6 +21,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.stanrobinson.builderspro
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Config/Info-extra.plist
         INFOPLIST_KEY_CFBundleDisplayName: BuildersPro
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"

@@ -106,6 +106,8 @@ final class ShellModel: NSObject, ObservableObject {
             let files = writeFiles(body["files"] as? [[String: Any]] ?? [])
             let text = body["text"] as? String ?? ""
             deliver(files: files, text: text, save: kind == "save", from: source)
+        case "backupBegin", "backupChunk", "backupEnd":
+            DailyBackup.shared.handle(kind, body, reply: { [weak self] js in self?.webView.evaluateJavaScript(js) })
         default:
             break
         }
@@ -363,5 +365,93 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
     init(_ target: ShellModel) { self.target = target }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         target?.handle(message)
+    }
+}
+
+
+// MARK: Daily backup file (v6.1.15)
+
+/// The page streams a full backup (records + every photo) in pieces; this writes it to
+/// iCloud Drive › BuildersPro › Backups (or, if iCloud Drive is off, Files › On My iPhone ›
+/// BuildersPro › Backups) and keeps the newest 30. The same JSON the Restore button reads.
+final class DailyBackup {
+    static let shared = DailyBackup()
+    static let containerID = "iCloud.com.stanleyrobinson.builderspro"
+    private let q = DispatchQueue(label: "bp.backup")
+    private var fh: FileHandle?
+    private var tmp: URL?
+    private var name = ""
+    private var bytes = 0
+
+    func handle(_ kind: String, _ body: [String: Any], reply: @escaping @MainActor (String) -> Void) {
+        q.async { [self] in
+            switch kind {
+            case "backupBegin":
+                try? fh?.close()
+                name = ((body["name"] as? String) ?? "builderspro-backup.json")
+                    .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+                let t = FileManager.default.temporaryDirectory.appendingPathComponent("bp-backup-\(UUID().uuidString).json")
+                FileManager.default.createFile(atPath: t.path, contents: nil)
+                tmp = t; bytes = 0
+                fh = try? FileHandle(forWritingTo: t)
+            case "backupChunk":
+                if let s = body["text"] as? String, let d = s.data(using: .utf8) {
+                    fh?.write(d); bytes += d.count
+                }
+            default: // backupEnd
+                try? fh?.close(); fh = nil
+                let result = finish()
+                let js = "window.bpBackupDone && window.bpBackupDone(" + result + ")"
+                Task { @MainActor in reply(js) }
+            }
+        }
+    }
+
+    private func folder() -> (URL, String)? {
+        let fm = FileManager.default
+        if let c = fm.url(forUbiquityContainerIdentifier: Self.containerID) {
+            let d = c.appendingPathComponent("Documents/Backups", isDirectory: true)
+            if (try? fm.createDirectory(at: d, withIntermediateDirectories: true)) != nil { return (d, "iCloud Drive › BuildersPro › Backups") }
+        }
+        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let d = docs.appendingPathComponent("Backups", isDirectory: true)
+            if (try? fm.createDirectory(at: d, withIntermediateDirectories: true)) != nil {
+                #if os(iOS)
+                return (d, "Files › On My iPhone › BuildersPro › Backups")
+                #else
+                return (d, d.path)
+                #endif
+            }
+        }
+        return nil
+    }
+
+    private func finish() -> String {
+        let fm = FileManager.default
+        guard let t = tmp, bytes > 0, let f = folder() else {
+            return "{ok:false,err:'could not create the backup folder'}"
+        }
+        let dir = f.0, label = f.1
+        let dest = dir.appendingPathComponent(name)
+        try? fm.removeItem(at: dest)
+        do { try fm.moveItem(at: t, to: dest) } catch {
+            return "{ok:false,err:" + Self.js(error.localizedDescription) + "}"
+        }
+        // keep the newest 30
+        if let all = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) {
+            let files = all.filter { $0.pathExtension == "json" }.sorted {
+                let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return a > b
+            }
+            for old in files.dropFirst(30) { try? fm.removeItem(at: old) }
+        }
+        return "{ok:true,where:" + Self.js(label) + ",name:" + Self.js(name) + ",bytes:\(bytes)}"
+    }
+
+    static func js(_ s: String) -> String {
+        let d = (try? JSONSerialization.data(withJSONObject: [s])) ?? Data("[\"\"]".utf8)
+        let a = String(data: d, encoding: .utf8) ?? "[\"\"]"
+        return String(a.dropFirst().dropLast())
     }
 }

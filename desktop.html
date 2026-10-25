@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.1.14';
+var APP_VERSION = '6.1.15';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -21507,5 +21507,94 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
     if (chip.textContent.indexOf(extra) < 0 && chip.textContent.length < 120) chip.textContent = chip.textContent.replace(/ — tap.*$/, '') + extra + ' — tap';
   }, 2500);
   console.log('[BP] v6.1.14 — token check + failing step');
+})();
+</script>
+<script>
+/* ══ v6.1.15 — a full backup FILE every day, no tokens ═══════════════════
+   Stan chose this instead of GitHub sync (Oct 25). Inside the App Store app,
+   once a day BSP writes a complete backup (all records + every photo) to
+   iCloud Drive › BuildersPro › Backups, and keeps the newest 30 days.
+   It is the same file the Restore button reads. The photos are sent to the
+   app one at a time, so this never builds one giant string (which is what
+   crashed the iPhone before).
+   GitHub sync is switched off on every device (the token is removed so the
+   red 403 pill stops); it can be turned back on with Change GitHub Token. ══ */
+(function(){
+  'use strict';
+  var KEY_AT = 'bp_daily_file_at', KEY_INFO = 'bp_daily_file_info';
+  function shell(){ try { return !!(window.BPShell && window.webkit && webkit.messageHandlers && webkit.messageHandlers.bp); } catch(e){ return false; } }
+  function post(m){ webkit.messageHandlers.bp.postMessage(m); }
+  function today(){ var d = new Date(); return d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2); }
+  function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ return null; } }
+  var busy = false, waiter = null;
+
+  window.bpBackupDone = function(r){
+    busy = false;
+    r = r || {};
+    if (r.ok) { ls(KEY_AT, today()); ls(KEY_INFO, JSON.stringify({ at: new Date().toISOString(), where: r.where, name: r.name, bytes: r.bytes })); }
+    else ls(KEY_INFO, JSON.stringify({ at: new Date().toISOString(), err: r.err || 'unknown' }));
+    paint();
+    if (waiter) { var w = waiter; waiter = null; w(r); }
+  };
+
+  window.bpDailyFileNow = async function(){
+    if (!shell()) { alert('Backup files are saved by the BuildersPro app on iPhone, iPad and Mac. Use Download backup here instead.'); return { ok:false }; }
+    if (busy) return { ok:false, err:'already running' };
+    busy = true; paint();
+    try {
+      var blobs = {}, lean = bpSplitBlobs(DB, blobs);
+      var head = JSON.stringify({ app:'BuildersPro', exportedAt: new Date().toISOString(),
+        exportedBy: 'BuildersPro ' + (window.APP_VERSION || '') + ' daily file', note: 'Daily automatic backup. Photos are embedded.', db: lean });
+      var name = 'BuildersPro-backup-' + today() + '.json';
+      post({ kind:'backupBegin', name: name });
+      var re = /"bpb:[^"]+"/g, last = 0, m, buf = '', n = 0;
+      function flush(){ if (buf) { post({ kind:'backupChunk', text: buf }); buf = ''; } }
+      while ((m = re.exec(head))) {
+        buf += head.slice(last, m.index);
+        var ref = m[0].slice(1, -1), src = blobs[ref];
+        if (typeof src === 'string') { flush(); post({ kind:'backupChunk', text: '"' + src + '"' }); }
+        else buf += m[0];
+        last = m.index + m[0].length;
+        if (buf.length > 512000) flush();
+        if (++n % 10 === 0) await new Promise(function(r){ setTimeout(r, 0); });
+      }
+      buf += head.slice(last); flush();
+      var p = new Promise(function(res){ waiter = res; setTimeout(function(){ if (waiter === res) { waiter = null; busy = false; res({ ok:false, err:'the app did not answer' }); paint(); } }, 120000); });
+      post({ kind:'backupEnd' });
+      return await p;
+    } catch(e) { busy = false; paint(); return { ok:false, err: (e && e.message) || String(e) }; }
+  };
+
+  /* once a day, quietly, 20 s after opening */
+  setTimeout(function(){ if (shell() && ls(KEY_AT) !== today()) window.bpDailyFileNow(); }, 20000);
+
+  /* card on the Sync screen */
+  function paint(){
+    var sw = document.getElementById('storage-wrap'); if (!sw) return;
+    var el = document.getElementById('bp-daily-file');
+    if (!el) { el = document.createElement('div'); el.id = 'bp-daily-file'; el.style.cssText = 'background:var(--card2);border-radius:12px;padding:14px;margin:0 0 14px'; sw.parentElement.insertBefore(el, sw); }
+    var info = {}; try { info = JSON.parse(ls(KEY_INFO) || '{}'); } catch(e){}
+    var when = info.at ? new Date(info.at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+    var line = busy ? '⏳ Saving today\'s backup file…'
+      : info.err ? '⚠️ Last try failed (' + when + '): ' + esc(info.err)
+      : info.at ? '✅ Last backup file: ' + when + ' · ' + (info.bytes ? Math.round(info.bytes/1048576) + ' MB' : '') + '<br><span style="color:var(--muted)">' + esc(info.where || '') + '</span>'
+      : (shell() ? 'First backup file is saved shortly after opening the app.' : 'Saved by the BuildersPro app on iPhone, iPad and Mac.');
+    el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:6px">🗂 Daily backup file</div>'
+      + '<div style="font-size:13px;line-height:1.5">' + line + '</div>'
+      + '<div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:4px">One full copy a day (records + photos), newest 30 kept. Restore reads this file.</div>'
+      + (shell() ? '<button type="button" onclick="bpDailyFileNow()" style="width:100%;min-height:42px;margin-top:8px;border-radius:12px;border:1.5px solid rgba(48,209,88,.45);background:rgba(48,209,88,.10);color:#30D158;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer"' + (busy ? ' disabled' : '') + '>Save a backup file now</button>' : '');
+  }
+  var _os = window.openSync;
+  if (typeof _os === 'function' && !_os.__v6115) { window.openSync = function(){ var r = _os.apply(this, arguments); setTimeout(paint, 80); return r; }; window.openSync.__v6115 = 1; }
+
+  /* GitHub sync off (Stan's choice) — once per device */
+  try {
+    if (ls('bp_gh_off_v6115') !== '1') {
+      ls('bp_gh_off_v6115', '1');
+      if (typeof _syncToken !== 'undefined' && _syncToken) { _syncToken = ''; _lastSyncError = ''; if (typeof save === 'function') save(); }
+      setTimeout(function(){ try { if (window.bpQueueRender) bpQueueRender(); var c = document.getElementById('bp-q-chip'); if (c) c.classList.remove('on'); } catch(e){} }, 1500);
+    }
+  } catch(e){}
+  console.log('[BP] v6.1.15 — daily backup file; GitHub sync off');
 })();
 </script>
