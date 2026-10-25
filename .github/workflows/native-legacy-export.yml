@@ -1,0 +1,14 @@
+name: Legacy native export compile check
+on:
+  push:
+    paths: ['native-legacy-export/**', '.github/workflows/native-legacy-export.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make the Xcode project
+        run: brew install xcodegen && cd native-legacy-export && xcodegen
+      - name: Build for iPhone
+        run: cd native-legacy-export && xcodebuild -project BuildersPro.xcodeproj -scheme BuildersPro -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build > ../ios.log 2>&1; r=$?; grep -E "error:" ../ios.log | head -30; tail -15 ../ios.log; exit $r

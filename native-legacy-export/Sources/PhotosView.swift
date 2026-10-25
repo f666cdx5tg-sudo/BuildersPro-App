@@ -1,0 +1,614 @@
+import SwiftUI
+import SwiftData
+import PhotosUI
+
+struct PhotosView: View {
+    @Environment(\.modelContext) private var context
+    let job: Job
+    let space: Space?              // nil = Unfiled
+    @State private var picked: [PhotosPickerItem] = []
+    @State private var selecting = false
+    @State private var selection = Set<PersistentIdentifier>()
+    @State private var openPhoto: SitePhoto?
+    @State private var camera = false
+    @State private var toDelete: SitePhoto?
+
+    private var photos: [SitePhoto] {
+        (job.photos ?? []).filter { $0.space?.uid == space?.uid }.sorted { $0.created > $1.created }
+    }
+    private let cols = [GridItem(.adaptive(minimum: 100), spacing: 4)]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: cols, spacing: 4) {
+                ForEach(photos) { p in
+                    PhotoThumb(photo: p)
+                        .contextMenu { Button("Delete photo", systemImage: "trash", role: .destructive) { toDelete = p } }
+                        .overlay(alignment: .topTrailing) {
+                            if selecting {
+                                Image(systemName: selection.contains(p.persistentModelID) ? "checkmark.circle.fill" : "circle")
+                                    .padding(6).foregroundStyle(.white, .blue)
+                            }
+                        }
+                        .onTapGesture {
+                            guard selecting else { openPhoto = p; return }
+                            if !selection.insert(p.persistentModelID).inserted { selection.remove(p.persistentModelID) }
+                        }
+                }
+            }.padding(4)
+        }
+        .navigationTitle(space?.name ?? "Unfiled")
+        .toolbar {
+            // one button holds the options (standing rule)
+            Menu {
+                PhotosPicker(selection: $picked, matching: .images) { Label("Add photos", systemImage: "plus") }
+                #if os(iOS)
+                if CameraPicker.available { Button("Take a photo", systemImage: "camera") { camera = true } }
+                #endif
+                Button(selecting ? "Done selecting" : "Select", systemImage: "checkmark.circle") {
+                    selecting.toggle(); selection.removeAll()
+                }
+                if selecting && !selection.isEmpty {
+                    Menu("Assign to space", systemImage: "folder") {
+                        ForEach((job.spaces ?? []).sorted { $0.name < $1.name }) { s in
+                            Button(s.name) { assign(to: s) }
+                        }
+                    }
+                    Button("Delete selected", systemImage: "trash", role: .destructive) { deleteSelected() }
+                }
+            } label: { Image(systemName: "line.3.horizontal") }
+        }
+        .onChange(of: picked) { _, items in Task { await load(items) } }
+        .navigationDestination(item: $openPhoto) { p in
+            PhotoPager(photos: photos, start: p, onDelete: { id in
+                openPhoto = nil                                   // leave the viewer first, then delete
+                if let victim = photos.first(where: { $0.persistentModelID == id }) { context.delete(victim) }
+            })
+        }
+        .confirmationDialog("Delete this photo?", isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } }), titleVisibility: .visible) {
+            Button("Delete photo", role: .destructive) { if let t = toDelete { context.delete(t) }; toDelete = nil }
+            Button("Cancel", role: .cancel) { toDelete = nil }
+        }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $camera) {
+            CameraPicker { data in
+                let p = SitePhoto(data: data); p.job = job; p.space = space
+                context.insert(p)
+            }.ignoresSafeArea()
+        }
+        #endif
+    }
+
+    private func load(_ items: [PhotosPickerItem]) async {
+        for it in items {
+            if let data = try? await it.loadTransferable(type: Data.self) {
+                let p = SitePhoto(data: data); p.job = job; p.space = space
+                context.insert(p)
+            }
+        }
+        picked = []
+    }
+    private func assign(to s: Space) {
+        photos.filter { selection.contains($0.persistentModelID) }.forEach { $0.space = s }
+        selection.removeAll(); selecting = false
+    }
+    private func deleteSelected() {
+        photos.filter { selection.contains($0.persistentModelID) }.forEach { context.delete($0) }
+        selection.removeAll(); selecting = false
+    }
+}
+
+struct PhotoThumb: View {
+    let photo: SitePhoto
+    var body: some View {
+        Color.gray.opacity(0.3)
+            .aspectRatio(1, contentMode: .fit)          // square cell, never taller/wider than its slot
+            .overlay {
+                ThumbImage(data: photo.data, px: 400)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    static func image(_ d: Data) -> Image? {
+        #if canImport(UIKit)
+        UIImage(data: d).map { Image(uiImage: $0) }
+        #else
+        NSImage(data: d).map { Image(nsImage: $0) }
+        #endif
+    }
+}
+
+
+// MARK: - Viewer, markup, camera
+
+enum MarkTool: String, CaseIterable, Identifiable {
+    case pen = "Pen", text = "Text", circle = "Circle", arrow = "Arrow", square = "Square"
+    var id: String { rawValue }
+    var symbol: String {
+        switch self {
+        case .pen: return "pencil.tip"
+        case .text: return "textformat"
+        case .circle: return "circle"
+        case .arrow: return "arrow.up.right"
+        case .square: return "square"
+        }
+    }
+}
+
+struct Stroke: Identifiable {
+    let id = UUID()
+    var tool: MarkTool = .pen
+    var points: [CGPoint]            // 0...1 of the picture's width/height
+    var text: String = ""
+    var color: Color
+    var width: CGFloat               // fraction of the picture's short side
+}
+
+struct StrokeDTO: Codable {
+    var tool: String; var pts: [[Double]]; var text: String; var rgba: [Double]; var width: Double
+}
+
+extension Stroke {
+    var dto: StrokeDTO {
+        let c = color.resolve(in: EnvironmentValues())
+        return StrokeDTO(tool: tool.rawValue, pts: points.map { [Double($0.x), Double($0.y)] }, text: text,
+                         rgba: [Double(c.red), Double(c.green), Double(c.blue), Double(c.opacity)], width: Double(width))
+    }
+    init(_ d: StrokeDTO) {
+        self.init(tool: MarkTool(rawValue: d.tool) ?? .pen,
+                  points: d.pts.map { CGPoint(x: $0[0], y: $0[1]) }, text: d.text,
+                  color: Color(.sRGB, red: d.rgba[0], green: d.rgba[1], blue: d.rgba[2], opacity: d.rgba[3]),
+                  width: CGFloat(d.width))
+    }
+    static func encode(_ s: [Stroke]) -> Data? { s.isEmpty ? nil : try? JSONEncoder().encode(s.map(\.dto)) }
+    static func decode(_ d: Data?) -> [Stroke] {
+        guard let d, let a = try? JSONDecoder().decode([StrokeDTO].self, from: d) else { return [] }
+        return a.map(Stroke.init)
+    }
+}
+
+/// Opens straight into drawing: tools sit on a bar above the photo, so they are always visible.
+struct MarkupView: View {
+    @AppStorage("bpPinchLock") private var pinchLock = 0   // while a photo is open, pinch zooms the photo, not the app
+    let data: Data
+    var caption: Binding<String>? = nil
+    var lockSwipe: Binding<Bool>? = nil          // true while drawing/zoomed so the pager doesn't steal the gesture
+    var markup: Data? = nil                       // saved marks, reloaded so they can be edited
+    let onSave: (_ flattened: Data?, _ markup: Data?) -> Void   // flattened == nil → no marks, restore the clean photo
+    @Environment(\.dismiss) private var dismiss
+    @State private var strokes: [Stroke] = []
+    @State private var loaded = false
+    @State private var baseline: Data?
+    @State private var savedFlash = false
+    @State private var color: Color = .red
+    @State private var width: CGFloat = 0.008
+    @State private var zoom: CGFloat = 1
+    @State private var baseZoom: CGFloat = 1
+    @State private var pan: CGSize = .zero
+    @State private var panBase: CGSize = .zero
+    @State private var shown: CGImage?          // decoded once, not every frame
+    @State private var tool: MarkTool? = nil     // nothing selected until you pick a tool
+    @State private var didMove = false
+    @State private var moveActive = false
+    @State private var movingIndex: Int?
+    @State private var lastPoint: CGPoint = .zero
+    @State private var textSpot: CGPoint?
+    @State private var textValue = ""
+    private let palette: [Color] = [.red, .yellow, .blue, .green, .white, .black]
+    private let widths: [(String, CGFloat)] = [("Thin", 0.004), ("Medium", 0.008), ("Thick", 0.016)]
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if let cg = shown {
+                Image(decorative: cg, scale: 1).resizable().scaledToFit()
+                    .overlay {
+                        GeometryReader { g in
+                            Canvas { ctx, size in MarkupView.draw(strokes, in: &ctx, size: size) }
+                                .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                                    let pt = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
+                                                     y: min(max(v.location.y / g.size.height, 0), 1))
+                                    if !moveActive {
+                                        moveActive = true
+                                        didMove = false
+                                        movingIndex = MarkupView.hit(strokes, at: v.location, size: g.size)
+                                        lastPoint = pt
+                                        if movingIndex == nil, let t = tool, t != .text {
+                                            strokes.append(Stroke(tool: t, points: [pt], color: color, width: width))
+                                        }
+                                        return
+                                    }
+                                    if v.translation != .zero { didMove = true }
+                                    if let i = movingIndex, strokes.indices.contains(i) {
+                                        let dx = pt.x - lastPoint.x, dy = pt.y - lastPoint.y
+                                        strokes[i].points = strokes[i].points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
+                                        lastPoint = pt
+                                    } else if let t = tool, t != .text, !strokes.isEmpty {
+                                        if t == .pen { strokes[strokes.count - 1].points.append(pt) }
+                                        else { strokes[strokes.count - 1].points = [strokes[strokes.count - 1].points[0], pt] }
+                                    }
+                                }.onEnded { v in
+                                    let hitSomething = movingIndex != nil
+                                    let moved = didMove
+                                    moveActive = false; movingIndex = nil
+                                    if tool == .text && !hitSomething && !moved {
+                                        textSpot = CGPoint(x: min(max(v.location.x / g.size.width, 0), 1),
+                                                           y: min(max(v.location.y / g.size.height, 0), 1))
+                                        textValue = ""
+                                    }
+                                }, including: (lockSwipe == nil || tool != nil) ? .all : .none)
+                        }
+                    }
+                    .scaleEffect(zoom).offset(pan)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    .contentShape(Rectangle())
+                    // pan is measured on the fixed (un-zoomed) container so it can't feed back into itself
+                    .simultaneousGesture(DragGesture(minimumDistance: 6).onChanged { v in
+                        guard tool == nil, zoom > 1, movingIndex == nil else { return }
+                        pan = CGSize(width: panBase.width + v.translation.width, height: panBase.height + v.translation.height)
+                    }.onEnded { _ in panBase = pan })
+                    .simultaneousGesture(MagnifyGesture().onChanged { v in
+                        zoom = min(6, max(1, baseZoom * v.magnification))
+                    }.onEnded { _ in
+                        baseZoom = zoom
+                        if zoom <= 1.01 { zoom = 1; baseZoom = 1; pan = .zero; panBase = .zero }
+                    })
+                    .padding(.horizontal, 8)
+            }
+            if let caption { TextField("Caption", text: caption).textFieldStyle(.roundedBorder).padding(.horizontal) }
+        }
+        .padding(.bottom, 8)
+        .navigationTitle("")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar { markupBar }
+        .onChange(of: tool != nil || zoom > 1) { _, v in lockSwipe?.wrappedValue = v }
+        .onAppear { pinchLock += 1; if !loaded { loaded = true; strokes = Stroke.decode(markup); baseline = Stroke.encode(strokes) } }
+        .onDisappear { pinchLock = max(0, pinchLock - 1); if dirty { save(close: false) } }          // changes are never lost
+        .task(id: data.count) { do { shown = await Task.detached(priority: .userInitiated) { ThumbCache.make(data, 2400) }.value } }
+        .alert("Add text", isPresented: Binding(get: { textSpot != nil }, set: { if !$0 { textSpot = nil } })) {
+            TextField("Type here", text: $textValue)
+            Button("Add") {
+                let t = textValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let spot = textSpot, !t.isEmpty {
+                    strokes.append(Stroke(tool: .text, points: [spot], text: t, color: color, width: width))
+                }
+                textSpot = nil
+            }
+            Button("Cancel", role: .cancel) { textSpot = nil }
+        }
+    }
+
+    private let colorNames = ["Red", "Yellow", "Blue", "Green", "White", "Black"]
+
+    @ToolbarContentBuilder private var markupBar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Image(systemName: tool?.symbol ?? "hand.tap")
+            Circle().fill(color).frame(width: 20, height: 20).overlay(Circle().stroke(Color.gray.opacity(0.6), lineWidth: 1))
+            Menu {
+                Picker("Tool", selection: $tool) {
+                    ForEach(MarkTool.allCases) { t in Label(t.rawValue, systemImage: t.symbol).tag(Optional(t)) }
+                }
+                Picker("Color", selection: $color) {
+                    ForEach(Array(palette.enumerated()), id: \.offset) { i, c in Label(colorNames[i], systemImage: "circle.fill").tint(c).tag(c) }
+                }
+                Picker("Size", selection: $width) {
+                    ForEach(widths, id: \.0) { w in Text(w.0).tag(w.1) }
+                }
+                Divider()
+                Button { _ = strokes.popLast() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }.disabled(strokes.isEmpty)
+                Button(role: .destructive) { strokes.removeAll() } label: { Label("Clear", systemImage: "trash") }.disabled(strokes.isEmpty)
+            } label: { Image(systemName: "line.3.horizontal") }
+            Button(savedFlash ? "Saved ✓" : "Save") { save(close: lockSwipe == nil) }.fontWeight(.bold).disabled(!dirty && !savedFlash)
+        }
+    }
+
+    /// Which mark is under this point (topmost first)? Used by the Move tool.
+    static func hit(_ strokes: [Stroke], at p: CGPoint, size: CGSize) -> Int? {
+        let tol: CGFloat = 24
+        func px(_ q: CGPoint) -> CGPoint { CGPoint(x: q.x * size.width, y: q.y * size.height) }
+        func dist(_ p: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat {
+            let dx = b.x - a.x, dy = b.y - a.y
+            let l2 = dx * dx + dy * dy
+            if l2 == 0 { return hypot(p.x - a.x, p.y - a.y) }
+            let t = max(0, min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2))
+            return hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
+        }
+        for i in strokes.indices.reversed() {
+            let s = strokes[i]
+            let pts = s.points.map(px)
+            guard let a = pts.first else { continue }
+            switch s.tool {
+            case .pen, .arrow:
+                if pts.count == 1 { if hypot(p.x - a.x, p.y - a.y) < tol { return i } }
+                for k in 1..<max(pts.count, 1) where dist(p, pts[k - 1], pts[k]) < tol { return i }
+            case .circle, .square:
+                guard let b = pts.last else { continue }
+                let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y)).insetBy(dx: -tol, dy: -tol)
+                if r.contains(p) { return i }
+            case .text:
+                let fs = max(14, min(size.width, size.height) * s.width * 4)
+                let r = CGRect(x: a.x, y: a.y, width: CGFloat(s.text.count) * fs * 0.62, height: fs * 1.3).insetBy(dx: -tol / 2, dy: -tol / 2)
+                if r.contains(p) { return i }
+            }
+        }
+        return nil
+    }
+
+    static func draw(_ strokes: [Stroke], in ctx: inout GraphicsContext, size: CGSize) {
+        for s in strokes {
+            let w = max(3, min(size.width, size.height) * s.width)
+            let pts = s.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+            guard let a = pts.first else { continue }
+            let style = StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round)
+            switch s.tool {
+            case .pen:
+                if pts.count == 1 {
+                    ctx.fill(Path(ellipseIn: CGRect(x: a.x - w / 2, y: a.y - w / 2, width: w, height: w)), with: .color(s.color))
+                } else {
+                    var path = Path(); path.move(to: a)
+                    for q in pts.dropFirst() { path.addLine(to: q) }
+                    ctx.stroke(path, with: .color(s.color), style: style)
+                }
+            case .text:
+                let fs = max(14, min(size.width, size.height) * s.width * 4)
+                let resolved = ctx.resolve(Text(s.text).font(.system(size: fs, weight: .bold)).foregroundColor(s.color))
+                let box = resolved.measure(in: CGSize(width: size.width * 0.9, height: size.height))
+                let origin = CGPoint(x: min(a.x, max(0, size.width - box.width)), y: min(a.y, max(0, size.height - box.height)))
+                ctx.drawLayer { layer in
+                    layer.addFilter(.shadow(color: .black.opacity(0.7), radius: 2, x: 0, y: 1))
+                    layer.draw(resolved, at: origin, anchor: .topLeading)
+                }
+            case .circle, .square:
+                guard pts.count > 1, let b = pts.last else { continue }
+                let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+                ctx.stroke(s.tool == .circle ? Path(ellipseIn: r) : Path(r), with: .color(s.color), style: style)
+            case .arrow:
+                guard pts.count > 1, let b = pts.last else { continue }
+                var path = Path(); path.move(to: a); path.addLine(to: b)
+                let ang = atan2(b.y - a.y, b.x - a.x)
+                let head = max(14, w * 5)
+                for d in [CGFloat.pi * 0.85, -CGFloat.pi * 0.85] {
+                    path.move(to: b)
+                    path.addLine(to: CGPoint(x: b.x + cos(ang + d) * head, y: b.y + sin(ang + d) * head))
+                }
+                ctx.stroke(path, with: .color(s.color), style: style)
+            }
+        }
+    }
+
+    private var dirty: Bool { loaded && Stroke.encode(strokes) != baseline }
+
+    @MainActor private func save(close: Bool = true) {
+        let marks = Stroke.encode(strokes)
+        defer { baseline = marks }
+        guard marks != nil else {                    // every mark removed → back to the clean photo
+            onSave(nil, nil)
+            flash(close); return
+        }
+        guard let img = PhotoThumb.image(data), let px = PhotoThumb.pixelSize(data) else { return }
+        let k = min(1, 2000 / max(px.width, px.height))
+        let size = CGSize(width: px.width * k, height: px.height * k)
+        let marked = strokes
+        let view = ZStack {
+            img.resizable().frame(width: size.width, height: size.height)
+            Canvas { ctx, sz in MarkupView.draw(marked, in: &ctx, size: sz) }.frame(width: size.width, height: size.height)
+        }.frame(width: size.width, height: size.height)
+        let r = ImageRenderer(content: view)
+        r.scale = 1
+        #if canImport(UIKit)
+        if let out = r.uiImage?.jpegData(compressionQuality: 0.85) { onSave(out, marks); flash(close) }
+        #else
+        if let ns = r.nsImage, let tiff = ns.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+           let out = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) { onSave(out, marks); flash(close) }
+        #endif
+    }
+
+    private func flash(_ close: Bool) {
+        if close { dismiss(); return }
+        savedFlash = true
+        Task { try? await Task.sleep(nanoseconds: 1_500_000_000); savedFlash = false }
+    }
+}
+
+extension PhotoThumb {
+    static func pixelSize(_ d: Data) -> CGSize? {
+        #if canImport(UIKit)
+        UIImage(data: d).map { CGSize(width: $0.size.width * $0.scale, height: $0.size.height * $0.scale) }
+        #else
+        NSImage(data: d).map { $0.size }
+        #endif
+    }
+}
+
+#if os(iOS)
+import UIKit
+struct CameraPicker: UIViewControllerRepresentable {
+    static var available: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
+    let onImage: (Data) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let c = UIImagePickerController()
+        c.sourceType = CameraPicker.available ? .camera : .photoLibrary
+        c.delegate = context.coordinator
+        return c
+    }
+    func updateUIViewController(_ vc: UIImagePickerController, context: Context) {}
+    func makeCoordinator() -> Coord { Coord(self) }
+
+    final class Coord: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+        init(_ p: CameraPicker) { parent = p }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let img = info[.originalImage] as? UIImage, let d = img.jpegData(compressionQuality: 0.85) { parent.onImage(d) }
+            parent.dismiss()
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
+    }
+}
+#endif
+
+import ImageIO
+import UniformTypeIdentifiers
+extension PhotoThumb {
+    /// Bakes EXIF orientation into the pixels (and caps size) so every screen and the markup canvas agree on "up".
+    static func upright(_ d: Data) -> Data {
+        guard let src = CGImageSourceCreateWithData(d as CFData, nil) else { return d }
+        let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
+        let orient = (props?[kCGImagePropertyOrientation] as? Int) ?? 1
+        let w = (props?[kCGImagePropertyPixelWidth] as? Int) ?? 0, h = (props?[kCGImagePropertyPixelHeight] as? Int) ?? 0
+        if orient == 1 && max(w, h) <= 3000 { return d }
+        let o: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 3000]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, o as CFDictionary) else { return d }
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return d }
+        CGImageDestinationAddImage(dest, cg, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+        return CGImageDestinationFinalize(dest) ? out as Data : d
+    }
+}
+
+extension PhotoThumb {
+    /// Downsampled decode — keeps memory low when many photos are on screen (full-size decode was getting the app killed).
+    static func small(_ d: Data, _ maxPixels: CGFloat) -> Image? {
+        guard let src = CGImageSourceCreateWithData(d as CFData, nil) else { return nil }
+        let o: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: maxPixels]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, o as CFDictionary) else { return nil }
+        return Image(decorative: cg, scale: 1)
+    }
+}
+
+
+// MARK: - Cached, off-main-thread thumbnails (smooth scrolling)
+final class ThumbBox { let cg: CGImage; init(_ c: CGImage) { cg = c } }
+enum ThumbCache {
+    static let cache: NSCache<NSString, ThumbBox> = { let c = NSCache<NSString, ThumbBox>(); c.totalCostLimit = 60_000_000; return c }()
+    static func key(_ d: Data, _ px: CGFloat) -> NSString {
+        "\(d.count)-\(Int(px))-\(d.prefix(48).hashValue)-\(d.suffix(48).hashValue)" as NSString
+    }
+    static func cached(_ d: Data?, _ px: CGFloat) -> CGImage? {
+        guard let d else { return nil }
+        return cache.object(forKey: key(d, px))?.cg
+    }
+    static func make(_ d: Data, _ px: CGFloat) -> CGImage? {
+        let k = key(d, px)
+        if let b = cache.object(forKey: k) { return b.cg }
+        guard let src = CGImageSourceCreateWithData(d as CFData, nil) else { return nil }
+        let o: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                                  kCGImageSourceShouldCacheImmediately: true, kCGImageSourceThumbnailMaxPixelSize: px]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, o as CFDictionary) else { return nil }
+        cache.setObject(ThumbBox(cg), forKey: k, cost: cg.width * cg.height * 4)
+        return cg
+    }
+}
+struct ThumbImage: View {
+    let data: Data?
+    let px: CGFloat
+    @State private var img: CGImage?
+    init(data: Data?, px: CGFloat) { self.data = data; self.px = px; _img = State(initialValue: ThumbCache.cached(data, px)) }
+    var body: some View {
+        Group {
+            if let img { Image(decorative: img, scale: 1).resizable().scaledToFill() } else { Color.clear }
+        }
+        .task(id: data.map { ThumbCache.key($0, px) } ?? "") {
+            guard let d = data else { img = nil; return }
+            if let c = ThumbCache.cached(d, px) { img = c; return }
+            let px = px
+            img = await Task.detached(priority: .userInitiated) { ThumbCache.make(d, px) }.value
+        }
+    }
+}
+
+
+/// One page of the pager (works for site photos and punch-item photos).
+struct PagerPhoto: Identifiable {
+    let id: PersistentIdentifier
+    let data: Data                 // the CLEAN photo (marks are drawn on top, so they stay editable)
+    let markup: Data?
+    let caption: Binding<String>?
+    let save: (Data?, Data?) -> Void
+
+    init(_ p: SitePhoto) {
+        id = p.persistentModelID; data = p.original ?? p.data ?? Data(); markup = p.markup
+        caption = Binding(get: { p.caption }, set: { p.caption = $0 })
+        save = { flat, marks in
+            if let flat { if p.original == nil { p.original = p.data }; p.data = flat; p.markup = marks }
+            else { if let o = p.original { p.data = o }; p.original = nil; p.markup = nil }
+        }
+    }
+    init(_ p: PunchPhoto) {
+        id = p.persistentModelID; data = p.original ?? p.data ?? Data(); markup = p.markup
+        caption = nil
+        save = { flat, marks in
+            if let flat { if p.original == nil { p.original = p.data }; p.data = flat; p.markup = marks }
+            else { if let o = p.original { p.data = o }; p.original = nil; p.markup = nil }
+        }
+    }
+}
+
+/// Swipe left/right through a set of photos; each page is the full markup viewer.
+struct PhotoPager: View {
+    private let build: () -> [PagerPhoto]
+    private var pages: [PagerPhoto] { build() }          // rebuilt from the live photos so saved marks show when you swipe back
+    @State private var current: PersistentIdentifier
+    @State private var locked = false
+    @State private var confirmDelete = false
+    private let onDelete: ((PersistentIdentifier) -> Void)?
+
+    init(photos: [SitePhoto], start: SitePhoto, onDelete: ((PersistentIdentifier) -> Void)? = nil) {
+        build = { photos.map(PagerPhoto.init) }
+        _current = State(initialValue: start.persistentModelID)
+        self.onDelete = onDelete
+    }
+    init(punch: [PunchPhoto], start: PunchPhoto) {
+        build = { punch.map(PagerPhoto.init) }
+        _current = State(initialValue: start.persistentModelID)
+        onDelete = nil
+    }
+
+    private var index: Int { pages.firstIndex { $0.id == current } ?? 0 }
+
+    private func go(_ delta: Int) {
+        let n = index + delta
+        guard pages.indices.contains(n) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { current = pages[n].id }
+    }
+
+    var body: some View {
+        let p = pages.indices.contains(index) ? pages[index] : nil
+        ZStack {
+            if let p {
+                MarkupView(data: p.data, caption: p.caption, lockSwipe: $locked, markup: p.markup, onSave: p.save)
+                    .id(p.id)                       // fresh viewer per photo (zoom/markup state resets)
+                    .transition(.opacity)
+            }
+        }
+        // swipe anywhere on the photo (not while drawing or zoomed in)
+        .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
+            guard !locked, abs(v.translation.width) > 60, abs(v.translation.width) > abs(v.translation.height) * 1.4 else { return }
+            go(v.translation.width < 0 ? 1 : -1)
+        })
+        .toolbar {
+            if onDelete != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(role: .destructive) { confirmDelete = true } label: { Image(systemName: "trash") }
+                }
+            }
+        }
+        .confirmationDialog("Delete this photo?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete photo", role: .destructive) { onDelete?(current) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .overlay(alignment: .top) {
+            if pages.count > 1 {
+                HStack(spacing: 14) {
+                    Button { go(-1) } label: { Image(systemName: "chevron.left") }.disabled(index == 0)
+                    Text("\(index + 1) of \(pages.count)").font(.caption.weight(.bold))
+                    Button { go(1) } label: { Image(systemName: "chevron.right") }.disabled(index >= pages.count - 1)
+                }
+                .font(.body.weight(.bold)).padding(.horizontal, 14).padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule()).padding(.top, 6)
+            }
+        }
+    }
+}
