@@ -19,12 +19,14 @@ enum BackupExporter {
         var expenses = 0, contractors = 0, payments = 0, reports = 0, changeOrders = 0
         var invoices = 0, permits = 0, time = 0, appointments = 0, notes = 0
         var shopping = 0, documents = 0, estimates = 0, contacts = 0, vendors = 0
+        var check = ""
         var text: String {
             "\(jobs) jobs · \(spaces) spaces · \(punch) punch items · \(photos + punchPhotos) photos\n"
             + "\(changeOrders) change orders · \(expenses) expenses · \(contractors) contractors · \(payments) payments\n"
             + "\(reports) daily reports · \(invoices) invoices · \(permits) permits · \(time) time entries\n"
             + "\(appointments) appointments · \(notes) notes · \(shopping) shopping items · \(documents) documents\n"
             + "\(estimates) estimates · \(contacts) phone book contacts"
+            + (check.isEmpty ? "" : "\n\n" + check)
         }
     }
 
@@ -267,6 +269,29 @@ enum BackupExporter {
             vendors.append(["id": id("v", v.sourceID, v.name), "name": v.name, "created": now, "updatedAt": now])
             c.vendors += 1
         }
+
+        // v5.40.2: two records can share an id (copied items keep the same source id, or were made
+        // in the same millisecond). The web app merges by id, so a shared id silently drops one.
+        // Give every repeat its own id.
+        func uniq(_ rows: inout [[String: Any]]) {
+            var seen = Set<String>()
+            for i in rows.indices {
+                guard let base = rows[i]["id"] as? String else { continue }
+                var cand = base, n = 2
+                while seen.contains(cand) { cand = base + "_" + String(n); n += 1 }
+                seen.insert(cand)
+                rows[i]["id"] = cand
+            }
+        }
+        uniq(&jobs); uniq(&rooms); uniq(&punch); uniq(&photos); uniq(&expenses); uniq(&contractors); uniq(&payments)
+        uniq(&reports); uniq(&cos); uniq(&invoices); uniq(&permits); uniq(&time); uniq(&appts); uniq(&notes)
+        uniq(&shopping); uniq(&docs); uniq(&estimates); uniq(&contacts); uniq(&vendors)
+
+        // A check line per job, to compare against the web app after the restore.
+        c.check = all(Job.self).map { j in
+            let open = (j.punchItems ?? []).filter { !$0.done }.count
+            return "\(j.name): \(open) open of \(j.totalCount) · left \(Money.text(j.remaining))"
+        }.joined(separator: "\n")
 
         let db: [String: Any] = ["jobs": jobs, "rooms": rooms, "punchlist": punch, "photos": photos,
                                  "expenses": expenses, "contractors": contractors, "payments": payments,
