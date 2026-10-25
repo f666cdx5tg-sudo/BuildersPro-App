@@ -17,7 +17,7 @@ async def main():
             await pg.route('**/*', lambda r: r.abort() if any(h in r.request.url for h in ('open-meteo','nominatim','bigdatacloud','ipapi','ipwho','api.github','apple-cloudkit')) else r.continue_())
             await pg.goto('http://localhost:8808/index.html'); await pg.wait_for_timeout(2500)
             await pg.evaluate("document.getElementById('bp-lock')?.remove()")
-            ok(await pg.evaluate("APP_VERSION")=='6.1.4','version 6.1.4')
+            ok(await pg.evaluate("APP_VERSION")>='6.1.4','version 6.1.4+')
             for f in ('web.json','nat.json'):
                 async with pg.expect_file_chooser() as fc:
                     await pg.evaluate("bpRestoreFromICloud()")

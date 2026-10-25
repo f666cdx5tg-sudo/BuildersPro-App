@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.5';
+var APP_VERSION = '6.1.6';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -27939,7 +27939,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     if (!(await put('bp_db_meta', meta))) return false;
     /* tidy: photos no longer used by any record, and the old one-big-record copy */
     var live = {}; refs.forEach(function(r){ live[r] = 1; });
-    var gone = Object.keys(_idx).filter(function(r){ return !live[r]; });
+    var gone = window.__bpKeepAllPhotos ? [] : Object.keys(_idx).filter(function(r){ return !live[r]; });   /* v6.1.6: photos are never tidied away */
     if (gone.length) {
       gone.forEach(function(r){ delete _idx[r]; });
       if (await put(INDEX, Object.keys(_idx))) await delMany(gone.map(function(r){ return PREFIX + r; }));
@@ -28234,5 +28234,186 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     window.mergeIncomingDB.__v614 = 1;
   }
   console.log('[BP] v6.1.4 — restores never duplicate');
+})();
+</script>
+<script>
+/* ══ v6.1.6 — data safety net ═════════════════════════════════════════
+   Oct 24–25: jobs vanished from the web app twice. Layers added here:
+   1. RESTORE WINS OVER AN OLD DELETE. Every record brought back by
+      Sync → Restore gets a "keep" stamp. An older delete marker (from any
+      device, any sync) can no longer remove it. A NEW delete made after
+      the restore still works. Stamps sync between devices.
+   2. MISSING-JOB ALARM. The app remembers how many jobs it last had. If it
+      opens or syncs with fewer and nobody deleted one on this phone, a red
+      banner says so and offers the safety copy.
+   3. DAILY SAFETY COPIES ON THE PHONE. Once a day (and before any restore)
+      the records are copied to a dated safety slot; the last 7 are kept.
+      Photos are never tidied away any more, so a safety copy always has its
+      pictures. "Bring back yesterday" is one tap on the alarm banner.
+   4. BACKUP NUDGE. Home's "never backed up" card now also appears when the
+      last iCloud Drive backup is more than 7 days old. ═══════════════════ */
+(function(){
+  'use strict';
+  var SHIELD = 'keepStamps';
+  function ts(s){ var t = Date.parse(s || ''); return isNaN(t) ? 0 : t; }
+
+  /* ── 1. restore wins over an older delete ── */
+  function shield(){ if (!DB[SHIELD] || typeof DB[SHIELD] !== 'object') DB[SHIELD] = {}; return DB[SHIELD]; }
+  var _isT = window.bpIsTombstoned;
+  window.bpIsTombstoned = function(coll, id){
+    if (!_isT(coll, id)) return false;
+    var k = coll + ':' + id, keep = DB[SHIELD] && DB[SHIELD][k];
+    return !(keep && ts(keep) > ts(DB.tombstones[k]));
+  };
+  function legacyKept(map, coll, id){ var keep = DB[SHIELD] && DB[SHIELD][coll + ':' + id]; return keep && map && ts(keep) > ts(map[id]); }
+  window.purgeDeletedJobsLocally = function(){
+    var del = DB.deletedJobIds || {};
+    Object.keys(del).forEach(function(id){ if (!legacyKept(del, 'jobs', id) && (DB.jobs || []).some(function(j){ return j.id === id; })) stripJobFromDB(id); });
+  };
+  window.purgeDeletedPhotosLocally = function(){
+    var del = DB.deletedPhotoIds || {};
+    if (!Object.keys(del).length || !DB.photos) return;
+    DB.photos = DB.photos.filter(function(p){ return !del[p.id] || legacyKept(del, 'photos', p.id); });
+  };
+  window.purgeDeletedContractorsLocally = function(){
+    var del = DB.deletedContractorIds || {};
+    if (!Object.keys(del).length) return;
+    if (DB.contractors) DB.contractors = DB.contractors.filter(function(c){ return !del[c.id] || legacyKept(del, 'contractors', c.id); });
+    if (DB.payments) DB.payments = DB.payments.filter(function(p){ var c = del[p.contractorId]; return !c || legacyKept(del, 'contractors', p.contractorId); });
+  };
+  var restoring = 0;
+  if (typeof window.bpRestoreFromICloud === 'function' && !window.bpRestoreFromICloud.__v616) {
+    var _r = window.bpRestoreFromICloud;
+    window.bpRestoreFromICloud = function(){ restoring = Date.now() + 10 * 60000; safetyCopy('before-restore'); return _r.apply(this, arguments); };
+    window.bpRestoreFromICloud.__v616 = 1;
+  }
+  if (typeof window.mergeIncomingDB === 'function' && !window.mergeIncomingDB.__v616) {
+    var _m = window.mergeIncomingDB;
+    window.mergeIncomingDB = function(remote){
+      var inc = remote && (remote.db || remote);
+      var isRestore = Date.now() < restoring && remote && !remote.pushedAt;
+      if (isRestore && inc) {
+        try { if (typeof window.bspReconcile === 'function') window.bspReconcile(inc); } catch(e){}   /* final ids first (v6.1.4), then stamp them */
+        /* stamp first so the merge itself lets every restored record in */
+        var stamp = new Date().toISOString(), sh = shield();
+        bpAllCollections(inc).forEach(function(k){ (Array.isArray(inc[k]) ? inc[k] : []).forEach(function(x){ if (x && x.id) sh[k + ':' + x.id] = stamp; }); });
+        restoring = 0;
+      }
+      /* keep stamps travel with syncs: newest stamp wins */
+      if (inc && inc[SHIELD] && typeof inc[SHIELD] === 'object') {
+        var mine = shield();
+        Object.keys(inc[SHIELD]).forEach(function(k){ if (ts(inc[SHIELD][k]) > ts(mine[k])) mine[k] = inc[SHIELD][k]; });
+      }
+      var r = _m.apply(this, arguments);
+      setTimeout(function(){ checkCounts(); dailyCopy(); }, 50);
+      return r;
+    };
+    window.mergeIncomingDB.__v616 = 1;
+  }
+
+  /* ── 3. daily safety copies (records; photos are kept on the phone) ── */
+  var SAFE_KEYS = 'bp_safety_index';
+  function safetyCopy(why){
+    try {
+      if (!DB || !Array.isArray(DB.jobs) || !DB.jobs.length) return;   /* never save an empty copy over good ones */
+      var blobs = {}, meta = bpSplitBlobs(DB, blobs);
+      var key = 'bp_safety_' + new Date().toISOString().replace(/[:.]/g, '-');
+      idbSet(key, { at: new Date().toISOString(), why: why, jobs: DB.jobs.length, meta: meta }, function(ok){
+        if (!ok) return;
+        idbGet(SAFE_KEYS, function(list){
+          list = Array.isArray(list) ? list : [];
+          list.push({ key: key, at: new Date().toISOString(), why: why, jobs: DB.jobs.length });
+          var drop = list.length > 7 ? list.splice(0, list.length - 7) : [];
+          idbSet(SAFE_KEYS, list, function(){ drop.forEach(function(d){ idbDel(d.key); }); });
+          try { localStorage.setItem('bp_safety_last', new Date().toISOString().slice(0, 10)); localStorage.setItem('bp_safety_jobs', String(DB.jobs.length)); } catch(e){}
+        });
+      });
+    } catch(e){ console.warn('[BSP] safety copy', e); }
+  }
+  window.bspSafetyCopy = safetyCopy;
+  function dailyCopy(){
+    var last = '', lastJobs = 0; try { last = localStorage.getItem('bp_safety_last') || ''; lastJobs = +(localStorage.getItem('bp_safety_jobs') || 0); } catch(e){}
+    /* a new day, or more jobs than the newest copy holds → take a fresh copy */
+    if (last !== new Date().toISOString().slice(0, 10) || (DB.jobs || []).length > lastJobs) safetyCopy('daily');
+  }
+  window.bspRestoreSafety = function(){
+    idbGet(SAFE_KEYS, function(list){
+      list = (Array.isArray(list) ? list : []).filter(function(x){ return x.jobs > 0; });
+      if (!list.length) { alert('No safety copy on this phone yet.'); return; }
+      /* the newest copy that holds the most jobs */
+      var pick = list.reduce(function(best, x){ return (!best || x.jobs > best.jobs || (x.jobs === best.jobs && x.at > best.at)) ? x : best; }, null);
+      if (!confirm('Bring back the safety copy from ' + new Date(pick.at).toLocaleString() + ' (' + pick.jobs + ' jobs)?\n\nIt is MERGED in: nothing here is deleted.')) return;
+      idbGet(pick.key, function(rec){
+        if (!rec || !rec.meta) { alert('That safety copy could not be read.'); return; }
+        idbGet('bp_blob_index', function(index){
+          var refs = Array.isArray(index) ? index : [];
+          var out = {}, pending = refs.length;
+          function done(){
+            var db = bpJoinBlobs(rec.meta, out);
+            restoring = Date.now() + 60000;   /* treat like a restore: keep stamps, no old deletes */
+            var res = mergeIncomingDB({ db: db });
+            bpSave(); try { renderAll(); } catch(e){}
+            banner('', 'clear');
+            alert('✅ Safety copy brought back. ' + (res ? res.added + ' added, ' + res.updated + ' updated.' : ''));
+          }
+          if (!pending) { done(); return; }
+          refs.forEach(function(r){ idbGet('bpb1:' + r, function(v){ if (v) out[r] = v; if (--pending === 0) done(); }); });
+        });
+      });
+    });
+  };
+  /* photos are never tidied away any more — a safety copy must always find its pictures */
+  window.__bpKeepAllPhotos = true;
+
+  /* ── 2. missing-job alarm ── */
+  var deletedHere = 0;
+  if (typeof window.stripJobFromDB === 'function') {
+    var _strip = window.stripJobFromDB;
+    window.stripJobFromDB = function(){ deletedHere++; return _strip.apply(this, arguments); };
+  }
+  if (typeof window.deleteJobCascade === 'function') {
+    var _del = window.deleteJobCascade;
+    window.deleteJobCascade = function(){ deletedHere++; return _del.apply(this, arguments); };
+  }
+  function lastCount(){ try { return +(localStorage.getItem('bp_last_jobs') || 0); } catch(e){ return 0; } }
+  function checkCounts(){
+    var n = (DB.jobs || []).length, before = lastCount();
+    if (n < before && deletedHere === 0) {
+      banner('⚠️ ' + (before - n) + ' job' + (before - n > 1 ? 's are' : ' is') + ' missing since last time (' + before + ' → ' + n + '). Tap to bring back the safety copy.', 'err', window.bspRestoreSafety);
+      return;
+    }
+    deletedHere = 0;
+    try { localStorage.setItem('bp_last_jobs', String(n)); } catch(e){}
+  }
+  function banner(text, kind, onTap){
+    var el = document.getElementById('bp-safety-banner');
+    if (kind === 'clear') { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'bp-safety-banner'; document.body.appendChild(el); }
+    el.onclick = onTap || null;
+    el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 84px);z-index:2147483646;padding:12px 14px;border-radius:12px;font:700 14px -apple-system,sans-serif;line-height:1.35;background:#FF453A;color:#fff;cursor:pointer';
+    el.textContent = text;
+  }
+
+  /* ── 4. backup nudge after 7 days ── */
+  function backupNudge(){
+    var last = ''; try { last = localStorage.getItem('bp_icloud_last') || ''; } catch(e){}
+    var old = !last || (Date.now() - ts(last)) > 7 * 86400000;
+    window.__bpBackupOverdue = old;
+  }
+
+  /* start-up: after the data has loaded */
+  if (typeof window.loadDbAsync === 'function' && !window.loadDbAsync.__v616) {
+    var _load = window.loadDbAsync;
+    window.loadDbAsync = function(cb){
+      return _load.call(this, function(){
+        try { purgeDeletedJobsLocally(); } catch(e){}
+        var r = cb.apply(this, arguments);
+        setTimeout(function(){ checkCounts(); dailyCopy(); backupNudge(); }, 1500);
+        return r;
+      });
+    };
+    window.loadDbAsync.__v616 = 1;
+  }
+  console.log('[BP] v6.1.6 — safety net: restore beats old deletes, missing-job alarm, daily safety copies');
 })();
 </script>
