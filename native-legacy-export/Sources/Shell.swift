@@ -1439,9 +1439,15 @@ struct AllSpacesView: View {
     private func inScope(_ exterior: Bool) -> Bool {
         inOut == "All" || (inOut == "Outside") == exterior
     }
+    private static func spaceOrder(_ a: Space, _ b: Space) -> Bool {
+        let ao: Int = a.openCount, bo: Int = b.openCount
+        if ao != bo { return ao > bo }
+        return a.name.localizedCompare(b.name) == .orderedAscending
+    }
     private var spaces: [Space] {
-        scopeJobs.flatMap { $0.spaces ?? [] }.filter { inScope($0.isExterior) }
-            .sorted { $0.openCount != $1.openCount ? $0.openCount > $1.openCount : $0.name.localizedCompare($1.name) == .orderedAscending }
+        let all: [Space] = scopeJobs.flatMap { $0.spaces ?? [] }
+        let shown: [Space] = all.filter { inScope($0.isExterior) }
+        return shown.sorted(by: Self.spaceOrder)
     }
     private var items: [PunchItem] {
         scopeJobs.flatMap { $0.punchItems ?? [] }.filter { inScope($0.space?.isExterior ?? false) }
