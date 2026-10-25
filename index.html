@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.1';
+var APP_VERSION = '6.1.2';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -27848,5 +27848,235 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     window.bpPhoneBookOpen.__v611 = 1;
   }
   console.log('[BP] v6.1.1 — clients in the field phone book');
+})();
+</script>
+<script>
+/* ══ v6.1.2 — phone storage that holds, and proves it ═════════════════
+   Problem (Oct 24): a full restore (3 jobs, 179 photos, ~100 MB) showed on
+   screen, then was gone after the app reopened. Two holes:
+   1. idbSet never listened for a transaction ABORT — the way iOS reports
+      "out of space" or a write killed mid-way. The save silently never
+      finished, so no warning ever showed.
+   2. Every photo was written as ONE giant record (bp_blobs). On an iPhone a
+      single 100+ MB write can be killed before it lands, and it needs the
+      whole thing in memory at once.
+   Fix:
+   • idbSet now catches abort/error and records the reason.
+   • Photos are stored one per record (bpb1:<ref>) and only NEW ones are
+     written; then the photo index; then the records (bp_db_meta) LAST, so
+     the records never point at a photo that isn't on disk yet.
+   • Asks the phone to keep this app's storage (navigator.storage.persist).
+   • After every full save the records are READ BACK and counted.
+   • A failed save shows a red banner that stays until a save works.
+   • Sync screen gets a "Saved on this phone" card: last save, jobs read
+     back, photos stored, storage used, kept-by-phone yes/no.
+   Old phones still load: no photo index yet → read the old bp_blobs once,
+   and the next save converts it. ═══════════════════════════════════ */
+(function(){
+  'use strict';
+  var D = window.BP_SAVE_DIAG = { at:'', ok:null, err:'', jobs:null, photos:0, mode:'', persisted:null, usage:null, quota:null, busy:false };
+  var PREFIX = 'bpb1:', INDEX = 'bp_blob_index';
+  var _idx = null;            /* refs known to be on disk */
+  var _queued = false, _running = false, _waiters = [];
+
+  /* ── 1. writes that report failure ── */
+  window.idbSet = function(key, value, onDone){
+    idbOpen(function(db){
+      var done = false;
+      function fin(ok, why){ if (done) return; done = true; if (!ok) D.err = why || 'write failed'; onDone && onDone(ok); }
+      if (!db) { fin(false, 'phone storage (IndexedDB) is not available'); return; }
+      try {
+        var tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(value, key);
+        tx.oncomplete = function(){ fin(true); };
+        tx.onerror = function(){ fin(false, (tx.error && tx.error.name) || 'write error'); };
+        tx.onabort = function(){ fin(false, (tx.error && tx.error.name) || 'write stopped by the phone'); };
+      } catch(e) { fin(false, (e && e.name) || String(e)); }
+    });
+  };
+  function put(key, value){ return new Promise(function(res){ window.idbSet(key, value, res); }); }
+  function get(key){ return new Promise(function(res){ idbGet(key, res); }); }
+  function getMany(keys){
+    return new Promise(function(res){
+      idbOpen(function(db){
+        var out = {};
+        if (!db || !keys.length) { res(out); return; }
+        try {
+          var tx = db.transaction('kv', 'readonly'), st = tx.objectStore('kv');
+          keys.forEach(function(k){ var r = st.get(PREFIX + k); r.onsuccess = function(){ if (r.result) out[k] = r.result; }; });
+          tx.oncomplete = function(){ res(out); };
+          tx.onerror = tx.onabort = function(){ res(out); };
+        } catch(e) { res(out); }
+      });
+    });
+  }
+  function delMany(keys){
+    return new Promise(function(res){
+      idbOpen(function(db){
+        if (!db || !keys.length) { res(); return; }
+        try {
+          var tx = db.transaction('kv', 'readwrite'), st = tx.objectStore('kv');
+          keys.forEach(function(k){ st.delete(k); });
+          tx.oncomplete = tx.onerror = tx.onabort = function(){ res(); };
+        } catch(e) { res(); }
+      });
+    });
+  }
+
+  /* ── 2. photos one per record, records last ── */
+  async function persistOnce(){
+    var blobs = {}, meta = bpSplitBlobs(DB, blobs);
+    var refs = Object.keys(blobs);
+    if (!_idx) { var stored = await get(INDEX); _idx = {}; (stored || []).forEach(function(r){ _idx[r] = 1; }); }
+    var fresh = refs.filter(function(r){ return !_idx[r]; });
+    for (var i = 0; i < fresh.length; i++) {
+      var ok = await put(PREFIX + fresh[i], blobs[fresh[i]]);
+      if (!ok) return false;
+      _idx[fresh[i]] = 1;
+      if (fresh.length > 5 && (i % 5 === 4 || i === fresh.length - 1)) banner('Saving photos to this phone… ' + (i + 1) + ' of ' + fresh.length, 'busy');
+    }
+    if (!(await put(INDEX, Object.keys(_idx)))) return false;
+    if (!(await put('bp_db_meta', meta))) return false;
+    /* tidy: photos no longer used by any record, and the old one-big-record copy */
+    var live = {}; refs.forEach(function(r){ live[r] = 1; });
+    var gone = Object.keys(_idx).filter(function(r){ return !live[r]; });
+    if (gone.length) {
+      gone.forEach(function(r){ delete _idx[r]; });
+      if (await put(INDEX, Object.keys(_idx))) await delMany(gone.map(function(r){ return PREFIX + r; }));
+    }
+    if (!D.legacyGone) { await delMany(['bp_blobs']); D.legacyGone = true; }
+    D.photos = refs.length;
+    return true;
+  }
+  async function runQueue(){
+    if (_running) return;
+    _running = true;
+    while (_queued) {
+      _queued = false;
+      var waiters = _waiters; _waiters = [];
+      D.busy = true; D.err = '';
+      var ok = false;
+      try { ok = await persistOnce(); } catch(e) { D.err = (e && e.message) || String(e); ok = false; }
+      D.busy = false; D.ok = ok; D.at = new Date().toISOString(); D.mode = 'per-photo';
+      if (ok) {
+        var back = await get('bp_db_meta');
+        D.jobs = back && Array.isArray(back.jobs) ? back.jobs.length : 0;
+        banner('', 'clear');
+      } else {
+        banner('⚠️ NOT saved on this phone: ' + (D.err || 'unknown reason') + '. Keep the app open and tap here.', 'err');
+      }
+      paintCard();
+      waiters.forEach(function(w){ try { w(ok); } catch(e){} });
+    }
+    _running = false;
+  }
+  window.bpPersist = function(onDone){
+    _queued = true;
+    if (onDone) _waiters.push(onDone);
+    runQueue();
+  };
+  window.bpPersistNow = function(){ return new Promise(function(res){ window.bpPersist(res); }); };
+
+  /* ── load: per-photo first, then the old single record ── */
+  window.loadDbAsync = function(cb){
+    idbGet('bp_db_meta', function(meta){
+      if (!meta) { bpLoadLegacy(cb); return; }
+      idbGet(INDEX, function(index){
+        function finish(blobs){
+          DB = bpJoinBlobs(meta, blobs || {});
+          ensureDbShape();
+          idbDel('bp_db');
+          D.photos = Object.keys(blobs || {}).length;
+          D.jobs = (DB.jobs || []).length;
+          cb();
+        }
+        if (Array.isArray(index)) {
+          _idx = {}; index.forEach(function(r){ _idx[r] = 1; });
+          getMany(index).then(finish);
+        } else {
+          idbGet('bp_blobs', function(blobs){ _idx = {}; finish(blobs); window.bpPersist(); });   /* converts on first run */
+        }
+      });
+    });
+  };
+
+  /* ── 3. ask the phone to keep our storage ── */
+  async function storageInfo(){
+    try { if (navigator.storage && navigator.storage.persisted) D.persisted = await navigator.storage.persisted(); } catch(e){}
+    try { if (navigator.storage && navigator.storage.estimate) { var e = await navigator.storage.estimate(); D.usage = e.usage; D.quota = e.quota; } } catch(e){}
+  }
+  try {
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(function(v){ D.persisted = v; paintCard(); }).catch(function(){});
+  } catch(e){}
+
+  /* ── 4. the red banner ── */
+  function banner(text, kind){
+    var el = document.getElementById('bp-save-banner');
+    if (kind === 'clear') { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'bp-save-banner';
+      el.onclick = function(){ window.bpPersist(); };
+      document.body.appendChild(el);
+    }
+    var err = kind === 'err';
+    el.style.cssText = 'position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 8px);z-index:2147483646;padding:12px 14px;border-radius:12px;font:700 14px -apple-system,sans-serif;line-height:1.35;'
+      + (err ? 'background:#FF453A;color:#fff' : 'background:rgba(10,132,255,.95);color:#fff');
+    el.textContent = text;
+  }
+
+  /* ── 5. "Saved on this phone" card on the Sync screen ── */
+  function mb(n){ return n == null ? '—' : (n / 1048576 >= 1024 ? (n / 1073741824).toFixed(1) + ' GB' : Math.round(n / 1048576) + ' MB'); }
+  function paintCard(){
+    var sw = document.getElementById('storage-wrap');
+    if (!sw || !sw.parentElement || !sw.parentElement.parentElement) return;
+    var el = document.getElementById('bp-save-diag');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'bp-save-diag';
+      el.style.cssText = 'background:var(--card2);border-radius:12px;padding:14px;margin-bottom:14px';
+      var host = document.getElementById('bp-icloud-card') || sw.parentElement;
+      host.parentElement.insertBefore(el, host);
+    }
+    var when = D.at ? new Date(D.at).toLocaleTimeString([], { hour:'numeric', minute:'2-digit', second:'2-digit' }) : 'not yet this session';
+    var col = D.ok === false ? '#FF453A' : (D.ok ? '#30D158' : 'var(--muted)');
+    el.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:6px">📱 Saved on this phone</div>'
+      + '<div style="font-size:13px;font-weight:700;color:' + col + '">' + (D.busy ? 'Saving…' : D.ok === false ? 'Last save FAILED: ' + esc(D.err || '') : D.ok ? 'Last save worked · ' + when : 'No save yet this session') + '</div>'
+      + '<div style="font-size:12px;color:var(--muted);line-height:1.6;margin-top:4px">'
+      + 'Read back from the phone: <b>' + (D.jobs == null ? '—' : D.jobs) + ' jobs</b> · ' + D.photos + ' photos<br>'
+      + 'Storage used: ' + mb(D.usage) + ' of ' + mb(D.quota) + ' · Kept by phone: ' + (D.persisted == null ? '—' : D.persisted ? 'yes' : 'no') + '</div>'
+      + '<button type="button" onclick="bpSaveCheck()" style="width:100%;min-height:42px;margin-top:8px;border-radius:12px;border:1.5px solid rgba(10,132,255,.45);background:rgba(10,132,255,.10);color:#0A84FF;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">Save now and check</button>';
+  }
+  window.bpSaveCheck = async function(){ await window.bpPersistNow(); await storageInfo(); paintCard(); };
+  if (typeof window.openSync === 'function' && !window.openSync.__v612) {
+    var _os = window.openSync;
+    window.openSync = function(){ var r = _os.apply(this, arguments); storageInfo().then(paintCard); setTimeout(paintCard, 50); return r; };
+    window.openSync.__v612 = 1;
+  }
+
+  /* ── 6. a restore waits for the phone save and says so ── */
+  if (typeof window.bpRestoreFromICloud === 'function' && !window.bpRestoreFromICloud.__v612) {
+    var _alert = window.alert;
+    var _rest = window.bpRestoreFromICloud;
+    window.bpRestoreFromICloud = function(){
+      window.alert = function(msg){
+        if (/^✅ Restored/.test(String(msg))) {
+          banner('Saving the restore to this phone…', 'busy');
+          window.bpPersistNow().then(async function(ok){
+            await storageInfo(); paintCard();
+            _alert.call(window, String(msg) + (ok ? '\n\nSaved on this phone and read back: ' + D.jobs + ' jobs, ' + D.photos + ' photos.'
+                                                  : '\n\n⚠️ It did NOT save on this phone: ' + (D.err || 'unknown') + '. Do not close the app — send a screenshot of this.'));
+          });
+          window.alert = _alert;
+          return;
+        }
+        return _alert.apply(window, arguments);
+      };
+      return _rest.apply(this, arguments);
+    };
+    window.bpRestoreFromICloud.__v612 = 1;
+  }
+
+  console.log('[BP] v6.1.2 — per-photo phone storage, save read-back, save banner');
 })();
 </script>

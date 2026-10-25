@@ -28,7 +28,7 @@ async def main():
             await pg.route('**/*', lambda r: r.abort() if any(h in r.request.url for h in ('open-meteo', 'nominatim', 'bigdatacloud', 'ipapi', 'ipwho', 'api.github', 'apple-cloudkit')) else r.continue_())
             await pg.goto('http://localhost:8794/index.html'); await pg.wait_for_timeout(2500)
             await pg.evaluate("document.getElementById('bp-lock')?.remove()")
-            ok(await pg.evaluate("APP_VERSION") == '6.1.1', 'version is 6.1.1')
+            ok(await pg.evaluate("APP_VERSION") >= '6.1.1', 'version is 6.1.1+')
             await pg.evaluate(SEED); await pg.wait_for_timeout(600)
             seg = await pg.evaluate("document.getElementById('bsp-pb-seg')?.innerText||''")
             ok('Subs' in seg and 'Clients (2)' in seg, 'phone book has Subs | Clients (2): ' + seg.replace('\n', ' | '))
