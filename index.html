@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.3';
+var APP_VERSION = '6.1.4';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -28112,5 +28112,127 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     window.mergeIncomingDB.__v613 = 1;
   }
   console.log('[BP] v6.1.3 — restore adds clients to the phone book');
+})();
+</script>
+<script>
+/* ══ v6.1.4 — restores that never duplicate ═══════════════════════════
+   The old native app's export names records "nx<kind>_<original id>" and
+   gives spaces / photos brand-new ids. Restoring a web backup AND that
+   export would otherwise make every job, space, punch item and photo twice.
+   During a restore (only), each incoming record is matched to one already
+   on this phone:
+     • same id once the "nx…_" prefix is set aside (either side)
+     • jobs: same name + client      • spaces: same job + same name
+     • punch: same job + same text   • photos: same job + same picture
+   A matched record keeps the phone's id, and the two are combined field by
+   field: the incoming value is used unless it is empty, so nothing either
+   copy knew is lost. A job whose address was split into city/state/zip on
+   the phone keeps that split. The restore question says how many records
+   match and how many are new. ═════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var armed = 0;
+  function strip(id){ return String(id || '').replace(/^nx[a-z]+_/, ''); }
+  function low(s){ return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+  function empty(v){ return v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length); }
+  function picKey(src){ try { return (typeof src === 'string' && src.slice(0, 5) === 'data:') ? bpBlobHash(src) : String(src || ''); } catch(e){ return ''; } }
+
+  window.bspReconcile = function(inc){
+    var map = {}, matched = 0, fresh = 0, combined = {};
+    var cols = bpAllCollections(inc).filter(function(k){ return Array.isArray(inc[k]) && Array.isArray(DB[k]); });
+    function local(k){ return (DB[k] || []).filter(function(x){ return x && x.id; }); }
+    /* pass 1: ids, then natural keys for the kinds that have no shared id */
+    function keyFor(k, x, jobOf){
+      var j = jobOf(x.jobId);
+      if (k === 'jobs') return 'j|' + low(x.name) + '|' + low(x.client);
+      if (k === 'rooms') return 'r|' + j + '|' + low(x.name);
+      if (k === 'punchlist') return 'p|' + j + '|' + low(x.text);
+      if (k === 'photos') return 'ph|' + j + '|' + picKey(x.src);
+      return null;
+    }
+    var order = ['jobs', 'rooms'].concat(cols.filter(function(k){ return k !== 'jobs' && k !== 'rooms'; }));
+    order.forEach(function(k){
+      if (cols.indexOf(k) < 0) return;
+      var mine = local(k), byS = {}, byKey = {};
+      var jobOfLocal = function(id){ return id; };
+      var jobOfInc = function(id){ return map[id] || id; };
+      mine.forEach(function(x){
+        byS[strip(x.id)] = x;
+        var kk = keyFor(k, x, jobOfLocal); if (kk && !byKey[kk]) byKey[kk] = x;
+      });
+      inc[k].forEach(function(x){
+        if (!x || !x.id) return;
+        var hit = byS[strip(x.id)];
+        if (!hit) { var kk = keyFor(k, x, jobOfInc); if (kk) hit = byKey[kk]; }
+        if (hit && hit.id !== x.id) map[x.id] = hit.id;
+        if (hit) { matched++; combined[k + '|' + hit.id] = hit; } else fresh++;
+      });
+    });
+    /* pass 2: rename matched ids everywhere in the incoming copy (record ids and links) */
+    function swap(node){
+      if (typeof node === 'string') return map.hasOwnProperty(node) ? map[node] : node;
+      if (Array.isArray(node)) { for (var i = 0; i < node.length; i++) node[i] = swap(node[i]); return node; }
+      if (node && typeof node === 'object') { for (var key in node) if (Object.prototype.hasOwnProperty.call(node, key) && key !== 'src' && key !== 'fileSrc' && key !== 'receiptSrc') node[key] = swap(node[key]); return node; }
+      return node;
+    }
+    cols.forEach(function(k){ inc[k].forEach(function(x){ if (x && x.id) { swap(x); } }); });
+    /* pass 3: combine field by field — incoming wins unless empty; stamp so the merge takes it */
+    var stamp = new Date().toISOString();
+    cols.forEach(function(k){
+      inc[k] = inc[k].map(function(x){
+        if (!x || !x.id) return x;
+        var mineX = combined[k + '|' + x.id];
+        if (!mineX) return x;
+        var out = {};
+        Object.keys(mineX).forEach(function(f){ out[f] = mineX[f]; });
+        Object.keys(x).forEach(function(f){ if (!empty(x[f])) out[f] = x[f]; });
+        if (k === 'jobs' && !empty(mineX.city) && empty(x.city)) { out.address = mineX.address; }
+        out.id = mineX.id;
+        out.updatedAt = stamp;
+        return out;
+      });
+    });
+    return { matched: matched, fresh: fresh };
+  };
+
+  if (typeof window.bpRestoreFromICloud === 'function' && !window.bpRestoreFromICloud.__v614) {
+    var _r = window.bpRestoreFromICloud, _confirm = window.confirm;
+    window.bpRestoreFromICloud = function(){
+      armed = Date.now() + 10 * 60000;
+      /* add the match count to the "Restore this backup?" question */
+      window.confirm = function(msg){
+        window.confirm = _confirm;
+        if (/^Restore this backup\?/.test(String(msg)) && window._bspPreview) {
+          var p = window._bspPreview; window._bspPreview = null;
+          msg = String(msg) + '\n\n' + p.matched + ' records match ones already on this phone (combined, nothing doubled) · ' + p.fresh + ' new.';
+        }
+        return _confirm.call(window, msg);
+      };
+      return _r.apply(this, arguments);
+    };
+    window.bpRestoreFromICloud.__v614 = 1;
+  }
+  /* the preview needs the parsed file before the question: catch JSON.parse of a backup during a restore */
+  var _parse = JSON.parse;
+  JSON.parse = function(text){
+    var v = _parse.apply(this, arguments);
+    try {
+      if (Date.now() < armed && v && typeof v === 'object' && v.db && Array.isArray(v.db.jobs) && typeof text === 'string' && text.length > 200) {
+        window._bspPreview = window.bspReconcile(v.db);   /* same object the restore merges — no second copy in memory */
+      }
+    } catch(e){}
+    return v;
+  };
+  if (typeof window.mergeIncomingDB === 'function' && !window.mergeIncomingDB.__v614) {
+    var _m = window.mergeIncomingDB;
+    window.mergeIncomingDB = function(remote){
+      if (Date.now() < armed && remote && !remote.pushedAt) {
+        try { window.bspReconcile(remote.db || remote); } catch(e){ console.warn('[BSP] reconcile', e); }
+      }
+      return _m.apply(this, arguments);
+    };
+    window.mergeIncomingDB.__v614 = 1;
+  }
+  console.log('[BP] v6.1.4 — restores never duplicate');
 })();
 </script>
