@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.11';
+var APP_VERSION = '6.1.12';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -28518,5 +28518,44 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     setTimeout(function(){ try { inp.focus(); } catch(e){} }, 150);
   };
   console.log('[BP] v6.1.10 — token entry sheet (no prompt box)');
+})();
+</script>
+<script>
+/* ══ v6.1.12 — the red "Sync failed" pill says WHY, and fixes it in one tap ══
+   It used to say only "Sync failed". Now it shows the reason (e.g. "GitHub
+   token rejected (403)"). If the token is the problem, tapping the pill opens
+   the token paste screen directly; otherwise it opens Sync. ══ */
+(function(){
+  'use strict';
+  function reason(){
+    var e = ''; try { e = String(_lastSyncError || ''); } catch(x){}
+    var ck = ''; try { ck = String((window.bpCk && bpCk.state && bpCk.state.lastErr) || ''); } catch(x){}
+    return { gh: e, ck: ck };
+  }
+  function isToken(e){ return /\b40[13]\b|bad credentials|token|not found|scope|forbidden/i.test(e); }
+  function short(e){
+    var m = e.match(/HTTP (\d{3})/); var code = m ? m[1] : '';
+    if (isToken(e)) return 'GitHub token rejected' + (code ? ' (' + code + ')' : '') + ' — tap to fix';
+    return (e.replace(/^(Push|Pull) failed:\s*/i, '').slice(0, 60) || 'unknown') + ' — tap';
+  }
+  function paint(){
+    var chip = document.getElementById('bp-q-chip'); if (!chip || !chip.classList.contains('on')) return;
+    var r = reason(); if (!r.gh && !r.ck) return;
+    var t = '⚠️ ' + (r.gh ? short(r.gh) : 'iCloud: ' + r.ck.slice(0, 50));
+    if (chip.textContent !== t) chip.textContent = t;
+    chip.style.whiteSpace = 'normal'; chip.style.textAlign = 'left';
+  }
+  var chip0 = document.getElementById('bp-q-chip');
+  if (chip0 && !chip0.__v6112) {
+    chip0.__v6112 = 1;
+    new MutationObserver(paint).observe(chip0, { childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:['class'] });
+    chip0.addEventListener('click', function(ev){
+      var r = reason();
+      if (r.gh && isToken(r.gh) && typeof window.changeTokenPrompt === 'function') { ev.stopImmediatePropagation(); ev.preventDefault(); window.changeTokenPrompt(); }
+      else if (typeof window.openSync === 'function') { ev.stopImmediatePropagation(); ev.preventDefault(); window.openSync(); }
+    }, true);
+  }
+  setInterval(paint, 2000); paint();
+  console.log('[BP] v6.1.12 — sync pill shows the reason');
 })();
 </script>
