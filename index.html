@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.16';
+var APP_VERSION = '6.1.17';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -28804,5 +28804,25 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   var _os = window.openSync;
   if (typeof _os === 'function' && !_os.__v6116) { window.openSync = function(){ var r = _os.apply(this, arguments); setTimeout(paint, 120); return r; }; window.openSync.__v6116 = 1; }
   console.log('[BP] v6.1.16 — native BuildersPro calendar');
+})();
+</script>
+<script>
+/* ══ v6.1.17 — "never been backed up" counts every kind of backup ═══════
+   The red home banner only looked at the old iCloud save button and GitHub.
+   It now also counts iCloud sync (CloudKit) and the daily backup file. ══ */
+(function(){
+  'use strict';
+  function age(iso){ var t = Date.parse(iso || ''); return isNaN(t) ? Infinity : (Date.now() - t) / 86400000; }
+  var _d = window.bpBackupDays;
+  window.bpBackupDays = function(){
+    var best = Infinity; try { best = _d ? _d() : Infinity; } catch(e){}
+    try {
+      for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (/^bp_ck_last_/.test(k)) best = Math.min(best, age(localStorage.getItem(k))); }
+      var f = JSON.parse(localStorage.getItem('bp_daily_file_info') || '{}'); if (f && f.at && !f.err) best = Math.min(best, age(f.at));
+    } catch(e){}
+    return best;
+  };
+  try { if (window.bpPaintBackupNag) bpPaintBackupNag(); } catch(e){}
+  console.log('[BP] v6.1.17 — backup banner counts iCloud sync + daily file');
 })();
 </script>
