@@ -62,8 +62,10 @@ struct LockGate<Content: View>: View {
 
     var body: some View {
         // The app stays in place underneath, so re-locking never loses where you were.
+        // No .allowsHitTesting here: switching it off and back on around the web view can leave
+        // the page deaf to taps after Face ID / Touch ID (the "frozen after unlock" bug, v6.0.2).
+        // The opaque lock screen on top already blocks every touch while locked.
         content()
-            .allowsHitTesting(lock.unlocked)
             .accessibilityHidden(!lock.unlocked)
             .overlay {
                 if !lock.unlocked { LockScreen(lock: lock) }
@@ -79,6 +81,8 @@ private struct LockScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { }          // swallow taps so nothing reaches the app underneath
             VStack(spacing: 18) {
                 ZStack {
                     Circle().stroke(.white.opacity(0.94), lineWidth: 4).frame(width: 96, height: 96)

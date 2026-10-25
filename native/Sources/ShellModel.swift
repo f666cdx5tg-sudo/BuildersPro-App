@@ -183,7 +183,20 @@ final class ShellModel: NSObject, ObservableObject {
 
     fileprivate func alert(_ message: String, buttons: [(String, UIAlertAction.Style)], field: String? = nil,
                            done: @escaping (Int, String?) -> Void) {
-        guard let vc = topViewController() else { done(-1, nil); return }
+        // A pop-up that can't be shown must still answer, or the page waits forever (freeze).
+        guard let vc = topViewController(), vc.view.window != nil, vc.presentedViewController == nil else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                guard let self, let vc = self.topViewController(), vc.view.window != nil,
+                      vc.presentedViewController == nil else { done(-1, nil); return }
+                self.present(message, buttons: buttons, field: field, on: vc, done: done)
+            }
+            return
+        }
+        present(message, buttons: buttons, field: field, on: vc, done: done)
+    }
+
+    fileprivate func present(_ message: String, buttons: [(String, UIAlertAction.Style)], field: String?,
+                             on vc: UIViewController, done: @escaping (Int, String?) -> Void) {
         let a = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         if let field { a.addTextField { $0.text = field } }
         for (i, b) in buttons.enumerated() {
