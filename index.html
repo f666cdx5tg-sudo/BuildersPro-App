@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.13';
+var APP_VERSION = '6.1.14';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -28560,5 +28560,97 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   }
   setInterval(paint, 2000); paint();
   console.log('[BP] v6.1.12 — sync pill shows the reason');
+})();
+</script>
+<script>
+/* ══ v6.1.14 — find out exactly why GitHub says 403, and fix what we can ══
+   "Save and test" now checks three things before syncing and SHOWS them:
+   1. Does GitHub accept the token, and as which account?
+   2. Does the token have the "gist" permission?
+   3. Does the backup gist this phone is linked to belong to that account?
+      If it belongs to someone else or is gone, the phone unlinks it and
+      creates a fresh backup instead of hitting 403 forever.
+   Every GitHub failure now records which step failed (setup, photo part N)
+   and what GitHub said, and the red pill shows that. ══ */
+(function(){
+  'use strict';
+  window.BP_LAST_GH = null;
+  var _f = window.bpGitHubFetch;
+  if (typeof _f === 'function' && !_f.__v6114) {
+    window.bpGitHubFetch = bpGitHubFetch = async function(url, opts, attempt){
+      try { return await _f(url, opts, attempt); }
+      catch (e) {
+        var step = /\/gists$/.test(url) ? 'creating the backup' : (opts && opts.method === 'PATCH') ? 'uploading' : 'reading the backup';
+        try { var b = JSON.parse((opts && opts.body) || '{}'); var k = Object.keys(b.files || {})[0] || ''; var m = k.match(/bp_blobs_(\d+)/); if (m) step = 'uploading photo part ' + (+m[1] + 1); else if (k === 'bp_data.json') step = 'uploading records'; } catch(x){}
+        window.BP_LAST_GH = { at: new Date().toISOString(), url: url.replace(/[0-9a-f]{20,}/, function(g){ return g.slice(0,6) + '…'; }), status: e && e.status, step: step, msg: String(e && e.message || e).slice(0, 300) };
+        throw e;
+      }
+    };
+    window.bpGitHubFetch.__v6114 = 1;
+  }
+
+  window.bpTokenCheck = async function(token){
+    var out = { ok:false, login:'', scopes:'', gist:'', lines:[] };
+    var h = { 'Authorization':'token ' + token, 'Accept':'application/vnd.github.v3+json' };
+    var r;
+    try { r = await fetch('https://api.github.com/user', { headers: h }); }
+    catch(e){ out.lines.push('❌ Could not reach GitHub (' + (e.message || e) + '). Check the internet connection.'); return out; }
+    out.scopes = r.headers.get('x-oauth-scopes') || '';
+    if (r.status === 401) { out.lines.push('❌ GitHub does not accept this token (401). It was copied wrong, revoked, or expired.'); return out; }
+    if (!r.ok) { var t = ''; try { t = (await r.text()).slice(0,150); } catch(x){} out.lines.push('❌ GitHub answered ' + r.status + ' to the token check. ' + t); return out; }
+    var u = {}; try { u = await r.json(); } catch(x){}
+    out.login = u.login || '';
+    out.lines.push('✅ Token accepted — account ' + out.login);
+    if (!/\bgist\b/.test(out.scopes)) { out.lines.push('❌ The token is missing the "gist" permission (it has: ' + (out.scopes || 'none') + '). Regenerate it with ☑ gist.'); return out; }
+    out.lines.push('✅ Has the gist permission');
+    var gid = ''; try { gid = _syncGistId || ''; } catch(x){}
+    if (gid) {
+      var g;
+      try { g = await fetch('https://api.github.com/gists/' + gid, { headers: h }); } catch(e){ g = null; }
+      if (g && g.ok) {
+        var gj = {}; try { gj = await g.json(); } catch(x){}
+        var owner = gj.owner && gj.owner.login || '';
+        if (owner && owner.toLowerCase() !== out.login.toLowerCase()) { out.gist = 'other'; out.lines.push('⚠️ The linked backup belongs to ' + owner + ', not ' + out.login + ' — making a new backup on your account.'); }
+        else { out.gist = 'mine'; out.lines.push('✅ Linked backup found on your account'); }
+      } else {
+        out.gist = 'missing'; out.lines.push('⚠️ The linked backup was not found (' + (g ? g.status : 'no answer') + ') — making a new one.');
+      }
+    } else { out.gist = 'none'; out.lines.push('ℹ️ No backup yet — creating one now.'); }
+    out.ok = true;
+    return out;
+  };
+
+  /* Save and test: check first, show the result, then sync */
+  var _ctp = window.changeTokenPrompt;
+  window.changeTokenPrompt = function(){
+    _ctp();
+    var btn = document.getElementById('bsp-token-save'); if (!btn) return;
+    var orig = btn.onclick;
+    btn.onclick = async function(){
+      var inp = document.getElementById('bsp-token-in'), err = document.getElementById('bsp-token-err');
+      var t = String(inp.value || '').trim();
+      if (!/^gh[pousr]_[A-Za-z0-9_]{20,}$/.test(t)) { orig(); return; }   /* let the basic checks explain */
+      btn.disabled = true; btn.textContent = 'Checking with GitHub…'; err.style.color = 'var(--muted,#8e8e93)'; err.textContent = '';
+      var c = await window.bpTokenCheck(t);
+      err.style.whiteSpace = 'pre-line';
+      err.style.color = c.ok ? '#30D158' : '#FF453A';
+      err.textContent = c.lines.join('\n');
+      btn.disabled = false; btn.textContent = 'Save and test';
+      if (!c.ok) return;
+      if (c.gist === 'other' || c.gist === 'missing') { try { _syncGistId = ''; } catch(x){} }
+      setTimeout(function(){ orig(); }, 1600);   /* saves the token and syncs */
+    };
+  };
+
+  /* pill: say which step failed */
+  setInterval(function(){
+    var chip = document.getElementById('bp-q-chip'), L = window.BP_LAST_GH;
+    if (!chip || !chip.classList.contains('on') || !L) return;
+    var e = ''; try { e = _lastSyncError || ''; } catch(x){}
+    if (!e) return;
+    var extra = ' · ' + L.step + (L.status ? ' (' + L.status + ')' : '');
+    if (chip.textContent.indexOf(extra) < 0 && chip.textContent.length < 120) chip.textContent = chip.textContent.replace(/ — tap.*$/, '') + extra + ' — tap';
+  }, 2500);
+  console.log('[BP] v6.1.14 — token check + failing step');
 })();
 </script>
