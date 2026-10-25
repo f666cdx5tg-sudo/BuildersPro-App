@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.8';
+var APP_VERSION = '6.1.9';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -28433,5 +28433,45 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     if (typeof openSync === 'function') openSync();
   }, true);
   console.log('[BP] v6.1.8 — tap Sync opens the Sync screen');
+})();
+</script>
+<script>
+/* ══ v6.1.9 — Change GitHub Token is easy to find; failures say "failed" ══
+   • A full-size "🔑 Change GitHub Token" button sits at the TOP of the Sync
+     screen whenever a token is saved (it was hidden under a faint
+     "Advanced … (old method)" line inside the GitHub section).
+   • The sync status sheet said "Everything is synced" in big letters while
+     the last attempt had FAILED. It now says "Sync failed". ═════════════ */
+(function(){
+  'use strict';
+  function addBtn(){
+    var body = document.querySelector('#sheet-sync .sheet-body');
+    if (!body) return;
+    var b = document.getElementById('bsp-change-token');
+    var has = false; try { has = !!_syncToken; } catch(e){}
+    if (!has) { if (b) b.remove(); return; }
+    if (b) return;
+    b = document.createElement('button');
+    b.id = 'bsp-change-token'; b.type = 'button';
+    b.textContent = '🔑 Change GitHub Token';
+    b.style.cssText = 'width:100%;min-height:48px;margin:0 0 12px;border-radius:12px;border:1.5px solid rgba(10,132,255,.5);background:rgba(10,132,255,.12);color:#0A84FF;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer';
+    b.onclick = function(){ if (typeof changeTokenPrompt === 'function') changeTokenPrompt(); setTimeout(addBtn, 300); };
+    body.insertBefore(b, body.firstChild);
+  }
+  if (typeof window.openSync === 'function' && !window.openSync.__v619) {
+    var _os = window.openSync;
+    window.openSync = function(){ var r = _os.apply(this, arguments); setTimeout(addBtn, 60); return r; };
+    window.openSync.__v619 = 1;
+  }
+  /* the status sheet's headline: failed means failed */
+  new MutationObserver(function(){
+    var sh = document.getElementById('bp-q-sheet'); if (!sh) return;
+    var err = ''; try { err = _lastSyncError || ''; } catch(e){}
+    if (!err) return;
+    [].forEach.call(sh.querySelectorAll('div,h1,h2,h3,b,strong'), function(el){
+      if (el.childElementCount === 0 && /^Everything is synced$/.test((el.textContent || '').trim())) el.textContent = 'Sync failed';
+    });
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  console.log('[BP] v6.1.9 — Change GitHub Token button; failures labelled');
 })();
 </script>
