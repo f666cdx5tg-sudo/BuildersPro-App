@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.1.9';
+var APP_VERSION = '6.1.10';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -11336,7 +11336,53 @@ window.bpOpenPhotoReport = function(id){
     + '<style>body{font-family:-apple-system,sans-serif;padding:60px 24px;color:#555;text-align:center}'
     + '#n{font-size:15px;color:#888;margin-top:8px}</style></head><body>'
     + '<div style="font-size:17px;font-weight:700;color:#111">Building your report…</div>'
-    + '<div id="n">preparing photos</div></body></html>');
+    + '<div id="n">preparing photos</div><script>
+/* ══ v6.1.10 — token entry without a pop-up ═══════════════════════════
+   "Change GitHub Token" used the browser's prompt() box. Inside the App
+   Store app that box can fail to appear (and leave the app waiting), so the
+   button did nothing. It now opens BSP's own sheet with a paste field. ══ */
+(function(){
+  'use strict';
+  window.changeTokenPrompt = function(){
+    var old = document.getElementById('bsp-token-sheet'); if (old) old.remove();
+    var mo = document.createElement('div');
+    mo.id = 'bsp-token-sheet';
+    mo.style.cssText = 'position:fixed;inset:0;z-index:2147483645;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;padding:calc(env(safe-area-inset-top) + 60px) 16px 16px;box-sizing:border-box';
+    mo.innerHTML = '<div style="width:100%;max-width:440px;background:var(--card,#1c1c1e);border:1px solid var(--border,#333);border-radius:16px;padding:16px;box-sizing:border-box">'
+      + '<div style="font-size:17px;font-weight:800;margin-bottom:6px">🔑 GitHub token</div>'
+      + '<div style="font-size:13px;color:var(--muted,#8e8e93);line-height:1.5;margin-bottom:10px">Paste the CLASSIC token (starts with ghp_) that has only the gist box ticked.</div>'
+      + '<input id="bsp-token-in" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ghp_…" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid var(--border,#333);background:var(--card2,#2c2c2e);color:var(--text,#fff);font-size:16px;font-family:ui-monospace,monospace"/>'
+      + '<div id="bsp-token-err" style="font-size:13px;color:#FF453A;min-height:18px;margin-top:6px"></div>'
+      + '<div style="display:flex;gap:10px;margin-top:6px">'
+      + '<button type="button" id="bsp-token-cancel" style="flex:1;min-height:46px;border-radius:12px;border:1px solid var(--border,#333);background:transparent;color:var(--muted,#8e8e93);font-size:15px;font-weight:700;font-family:inherit">Cancel</button>'
+      + '<button type="button" id="bsp-token-save" style="flex:2;min-height:46px;border-radius:12px;border:none;background:#0A84FF;color:#fff;font-size:15px;font-weight:800;font-family:inherit">Save and test</button>'
+      + '</div></div>';
+    document.body.appendChild(mo);
+    var inp = document.getElementById('bsp-token-in'), err = document.getElementById('bsp-token-err');
+    inp.oninput = function(){ err.textContent = ''; };
+    document.getElementById('bsp-token-cancel').onclick = function(){ mo.remove(); };
+    document.getElementById('bsp-token-save').onclick = function(){
+      var t = String(inp.value || '').trim();
+      if (!t || t.length < 10) { err.textContent = 'Paste the token first.'; return; }
+      if (!/^gh[pousr]_|^github_pat_/.test(t)) { err.textContent = 'That does not look like a GitHub token.'; return; }
+      if (/^github_pat_/.test(t)) { err.textContent = 'That is a fine-grained token — it cannot save BSP backups. Make a CLASSIC token.'; return; }
+      _syncToken = t;
+      _suppressNextAutoPush = true;
+      _lastSyncError = '';
+      save();
+      mo.remove();
+      try { renderSyncSetupSections(); } catch(e){}
+      toast('✅ Token saved — testing it now');
+      showSyncResult('⏳ Testing the new token…', 'var(--accent)');
+      if (_syncGistId) doPull(); else doPush();
+    };
+    setTimeout(function(){ try { inp.focus(); } catch(e){} }, 150);
+  };
+  console.log('[BP] v6.1.10 — token entry sheet (no prompt box)');
+})();
+</script>
+
+</body></html>');
   w.document.close();
 
   var all   = window.bpReportPhotos(r);
