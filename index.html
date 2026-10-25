@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.2';
+var APP_VERSION = '6.1.3';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -28078,5 +28078,39 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   }
 
   console.log('[BP] v6.1.2 — per-photo phone storage, save read-back, save banner');
+})();
+</script>
+<script>
+/* ══ v6.1.3 — a restore puts clients in the phone book ════════════════
+   After Sync → Restore from iCloud, every job with a client name gets its
+   Client card (same as saving the job by hand since v6.1.0), so the BSP
+   checklist doesn't show "In contacts → Fix" on every restored job.
+   Only runs for a restore — normal syncs leave contacts alone so two
+   devices never make duplicate cards. ══════════════════════════════ */
+(function(){
+  'use strict';
+  var armedUntil = 0;
+  if (typeof window.bpRestoreFromICloud === 'function' && !window.bpRestoreFromICloud.__v613) {
+    var _r = window.bpRestoreFromICloud;
+    window.bpRestoreFromICloud = function(){ armedUntil = Date.now() + 10 * 60000; return _r.apply(this, arguments); };
+    window.bpRestoreFromICloud.__v613 = 1;
+  }
+  if (typeof window.mergeIncomingDB === 'function' && !window.mergeIncomingDB.__v613) {
+    var _m = window.mergeIncomingDB;
+    window.mergeIncomingDB = function(remote){
+      var r = _m.apply(this, arguments);
+      if (Date.now() < armedUntil && remote && !(remote.pushedAt) && typeof window.bspSyncClientContact === 'function') {
+        armedUntil = 0;
+        var n = 0;
+        (DB.jobs || []).forEach(function(j){
+          if (j && String(j.client || '').trim() && !window.bspClientContact(j)) { window.bspSyncClientContact(j); n++; }
+        });
+        if (n) console.log('[BSP] restore: added ' + n + ' client card(s)');
+      }
+      return r;
+    };
+    window.mergeIncomingDB.__v613 = 1;
+  }
+  console.log('[BP] v6.1.3 — restore adds clients to the phone book');
 })();
 </script>

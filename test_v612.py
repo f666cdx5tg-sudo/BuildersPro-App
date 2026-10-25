@@ -19,7 +19,7 @@ async def main():
             # old format first: simulate an existing phone with legacy bp_blobs
             await pg.goto('http://localhost:8806/index.html'); await pg.wait_for_timeout(2500)
             await pg.evaluate("document.getElementById('bp-lock')?.remove()")
-            ok(await pg.evaluate("APP_VERSION")=='6.1.2','version 6.1.2')
+            ok(await pg.evaluate("APP_VERSION")>='6.1.2','version 6.1.2+')
             await pg.evaluate("""new Promise(r=>{DB.jobs.push({id:'old1',name:'Old Job'});DB.photos.push({id:'op1',jobId:'old1',src:'data:image/jpeg;base64,'+'A'.repeat(5000)});
                var blobs={},meta=bpSplitBlobs(DB,blobs); idbDel('bp_blob_index',()=>idbDel('bp_db_meta',()=>{ var tx=_idbHandle.transaction('kv','readwrite');tx.objectStore('kv').put(blobs,'bp_blobs');tx.objectStore('kv').put(meta,'bp_db_meta');tx.oncomplete=r;}));})""")
             await pg.reload(); await pg.wait_for_timeout(3000); await pg.evaluate("document.getElementById('bp-lock')?.remove()")
