@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.7';
+var APP_VERSION = '6.1.8';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -28415,5 +28415,23 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     window.loadDbAsync.__v616 = 1;
   }
   console.log('[BP] v6.1.6 — safety net: restore beats old deletes, missing-job alarm, daily safety copies');
+})();
+</script>
+<script>
+/* ══ v6.1.8 — tap Sync opens the Sync screen ══════════════════════════
+   The menu's Sync button needed a long-press to reach the Sync screen; on
+   iPhone a long-press is cancelled by the slightest finger movement, so it
+   never opened. Now a plain tap opens the Sync screen, which has its own
+   big "Sync now" button at the top. ══════════════════════════════════ */
+(function(){
+  'use strict';
+  document.addEventListener('click', function(e){
+    var b = e.target && e.target.closest && e.target.closest('#bp-sync-btn');
+    if (!b) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    try { if (typeof closeNavDrawer === 'function') closeNavDrawer(); } catch(x){}
+    if (typeof openSync === 'function') openSync();
+  }, true);
+  console.log('[BP] v6.1.8 — tap Sync opens the Sync screen');
 })();
 </script>
