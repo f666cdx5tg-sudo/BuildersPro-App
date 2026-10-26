@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.23';
+var APP_VERSION = '6.1.24';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -29167,7 +29167,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     if (r.devicePhotos > r.cloudPhotos) bad.push((r.devicePhotos - r.cloudPhotos) + ' photo' + (r.devicePhotos - r.cloudPhotos === 1 ? '' : 's') + ' on ' + here + ' not in iCloud yet');
     if (bad.length) L.push('<div style="color:#FF9F0A;font-weight:800;margin-top:6px">' + bad.map(E).join('<br>') + '</div>');
     else L.push('<div style="color:var(--green,#30D158);font-weight:800;margin-top:6px">✓ Photos match</div>');
-    try { if (window.bpRecoverPlan) { var rp = bpRecoverPlan(); if (rp.total) L.push('<div style="color:#30D158;font-weight:800;margin-top:6px">' + rp.total + ' items from deleted duplicate jobs can be brought back (Recently Deleted, below)</div>'); } } catch(e){ L.push('<div style="color:#FF6961">recover check: ' + E(e && e.message) + '</div>'); }
+    try { if (window.bpRecoverPlan) { var rp = bpRecoverPlan(); if (rp.total) L.push('<div style="color:#30D158;font-weight:800;margin-top:6px">' + rp.total + ' items from deleted duplicate jobs can be brought back</div><button type="button" onclick="(async function(){ var r = bpRecoverFromDeletedJobs(); if (r && r.restored) { await new Promise(function(z){ setTimeout(z, 600); }); bpSyncCheck(); } })()" style="width:100%;margin-top:8px;padding:13px;border-radius:12px;border:none;background:#30D158;color:#000;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Bring back ' + rp.total + ' items</button>'); } } catch(e){ L.push('<div style="color:#FF6961">recover check: ' + E(e && e.message) + '</div>'); }
     L.push('<div style="color:var(--faint,#888);font-size:11px;margin-top:6px">Delete marks — iCloud: ' + r.cloudTombstones + ' / ' + r.cloudDeleteMarks + ' · ' + here + ': ' + r.deviceTombstones + ' / ' + r.deviceDeleteMarks + (r.lastErr ? ' · last error: ' + E(r.lastErr) : '') + '</div>');
     return L.join('');
   }
