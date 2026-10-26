@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.1.21';
+var APP_VERSION = '6.1.22';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -22045,5 +22045,176 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
   }
   setInterval(mount, 1000); setTimeout(mount, 50);
   console.log('[BP] v6.1.20 — Sync check');
+})();
+</script>
+<script>
+/* ══ v6.1.22 — BRING BACK WHAT A DUPLICATE-JOB DELETE TOOK ══════════════
+   Oct 26 2026, 2:24 PM: Stan deleted what looked like duplicate jobs
+   (N. Peach St, Shedwick). There were two copies of each — his original
+   and the one the old native app's export brought in (ids "nxj_…"). The
+   ORIGINALS went, and with them 193 gallery photos and 29 sub payments the
+   other copy never had. Everything was safe in Recently Deleted.
+
+   bpRecoverFromDeletedJobs() looks at Recently Deleted for records whose
+   job was deleted while a job of the same name (or same id once the
+   "nx…_" prefix is set aside) is still here, and brings back ONLY what the
+   live job doesn't already have — photos by picture, punch items by text +
+   space, payments by amount + date + sub, and so on. Nothing is doubled.
+   Each restored record gets a NEW id, pointed at the live job, its space
+   (matched by name; the space comes back too if it is missing) and its sub
+   (matched by name), so no old delete mark on any device can remove it
+   again. Jobs with no live twin (e.g. Test Kitchen Remodel) are left alone.
+   A preview with counts is shown before anything changes. ══════════════ */
+(function(){
+  'use strict';
+  if (window.__bp6122) return; window.__bp6122 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  function low(s){ return String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' '); }
+  function strip(id){ return String(id || '').replace(/^nx[a-z]+_/, ''); }
+  function day(s){ return String(s || '').slice(0, 10); }
+  function picKey(src){ try { return (typeof src === 'string' && src.slice(0, 5) === 'data:') ? bpBlobHash(src) : String(src || ''); } catch(e){ return String(src || ''); } }
+  function stamp(){ return new Date().toISOString(); }
+
+  function plan(){
+    var bin = (DB.recycle || []).filter(function(e){ return e && e.rec && e.coll; });
+    var liveJobs = (DB.jobs || []).filter(function(j){ return j && j.id; });
+    var deletedJobs = bin.filter(function(e){ return e.coll === 'jobs'; }).map(function(e){ return e.rec; });
+    /* old job id → live job id */
+    var jobMap = {};
+    deletedJobs.forEach(function(oj){
+      if (liveJobs.some(function(j){ return j.id === oj.id; })) return;               /* not actually gone */
+      var twin = liveJobs.find(function(j){ return strip(j.id) === strip(oj.id); })
+              || liveJobs.find(function(j){ return low(j.name) && low(j.name) === low(oj.name); });
+      if (twin) jobMap[oj.id] = twin.id;
+    });
+    if (!Object.keys(jobMap).length) return { jobMap: jobMap, items: [], counts: {}, total: 0 };
+
+    var roomsLive = (DB.rooms || []).filter(function(r){ return r && r.id; });
+    var roomName = {}; roomsLive.forEach(function(r){ roomName[r.id] = r.name; });
+    bin.filter(function(e){ return e.coll === 'rooms'; }).forEach(function(e){ if (!roomName[e.rec.id]) roomName[e.rec.id] = e.rec.name; });
+    var conLive = (DB.contractors || []).filter(function(c){ return c && c.id; });
+    var conName = {}; conLive.forEach(function(c){ conName[c.id] = c.name; });
+    bin.filter(function(e){ return e.coll === 'contractors'; }).forEach(function(e){ if (!conName[e.rec.id]) conName[e.rec.id] = e.rec.name; });
+
+    var J = function(id){ return jobMap[id] || id; };
+    function key(c, r, live){
+      var j = live ? r.jobId : J(r.jobId || r.__job), rn = low(roomName[r.roomId]);
+      switch (c) {
+        case 'photos': return j + '|' + picKey(r.src);
+        case 'punchlist': return j + '|' + low(r.text);   /* spaces were reorganized in the other copy — same item, different space, is still the same item */
+        case 'rooms': return j + '|' + low(r.name);
+        case 'expenses': return j + '|' + r.amount + '|' + low(r.desc) + '|' + day(r.date);
+        case 'payments': return r.amount + '|' + day(r.date) + '|' + low(conName[r.contractorId]) + '|' + low(r.note || r.memo);
+        case 'appointments': return j + '|' + r.date + '|' + low(r.title);
+        case 'documents': return j + '|' + low(r.name || r.title) + '|' + picKey(r.src);
+        case 'reports': return j + '|' + day(r.date) + '|' + low(r.summary || r.notes || '').slice(0, 60);
+        case 'contractors': case 'contacts': case 'vendors': return low(r.name) + '|' + low(r.company);
+        case 'invoices': return j + '|' + low(r.number) + '|' + r.amount;
+        case 'permits': return j + '|' + low(r.trade) + '|' + low(r.permitNumber);
+        default: return j + '|' + low(r.name || r.title || r.text || r.desc) + '|' + day(r.date);
+      }
+    }
+    /* which bin entries belong to a deleted job that has a live twin */
+    /* only what went WITH the job delete — not things deleted on purpose before it */
+    var jobGoneAt = {};
+    bin.forEach(function(e){ if (e.coll === 'jobs' && jobMap[e.rec.id]) jobGoneAt[e.rec.id] = Date.parse(e.deletedAt || '') || 0; });
+    function withJob(e, jid){ var t = Date.parse(e.deletedAt || '') || 0, g = jobGoneAt[jid]; return !!g && t >= g - 180000 && t <= g + 60000; }
+    var roomJob = {}; bin.forEach(function(e){ if (e.coll === 'rooms') roomJob[e.rec.id] = e.rec.jobId; });
+    var conJob = {}; bin.forEach(function(e){ if (e.coll === 'contractors') conJob[e.rec.id] = e.rec.jobId; });
+    var mine = bin.filter(function(e){
+      if (e.coll === 'jobs') return false;
+      var r = e.rec, jid = (r.jobId && jobMap[r.jobId]) ? r.jobId : (r.roomId && roomJob[r.roomId] && jobMap[roomJob[r.roomId]]) ? roomJob[r.roomId] : (r.contractorId && conJob[r.contractorId] && jobMap[conJob[r.contractorId]]) ? conJob[r.contractorId] : null;
+      if (!jid) { var g = Object.keys(jobGoneAt).find(function(id){ return withJob(e, id); }); if (e.coll === 'payments' && g) jid = g; }
+      if (!jid || !withJob(e, jid)) return false;
+      e.__job = jid;   /* the deleted job this item went with (an item with no job set gets it from its space) */
+      return true;
+    });
+    /* each live record covers ONE deleted record — two identical payments stay two */
+    var have = {};
+    mine.forEach(function(e){ if (!have[e.coll]) { var m = have[e.coll] = {}; (DB[e.coll] || []).forEach(function(r){ if (r && r.id) { var k = key(e.coll, r, true); m[k] = (m[k] || 0) + 1; } }); } });
+    var items = [], counts = {};
+    /* spaces first, so photos and punch items can point at a returned space */
+    mine.sort(function(a, b){ return (a.coll === 'rooms' ? 0 : 1) - (b.coll === 'rooms' ? 0 : 1); });
+    mine.forEach(function(e){
+      var k = key(e.coll, Object.assign({ __job: e.__job }, e.rec), false), m = have[e.coll];
+      if (e.coll === 'punchlist' && m[k] > 0) return;      /* punch: the job already has this item (in some space) — never a second one */
+      if (m[k] > 0) { m[k]--; return; }
+      items.push(e); counts[e.coll] = (counts[e.coll] || 0) + 1;
+    });
+    return { jobMap: jobMap, items: items, counts: counts, total: items.length, roomName: roomName, conName: conName };
+  }
+  window.bpRecoverPlan = plan;
+
+  window.bpRecoverFromDeletedJobs = function(skipConfirm){
+    var p = plan();
+    if (!p.total) { if (typeof toast === 'function') toast('Nothing missing — every deleted duplicate is already in your current jobs'); return { restored: 0 }; }
+    var names = { photos:'photos', payments:'sub payments', punchlist:'punch items', appointments:'calendar events', reports:'EOD reports', rooms:'spaces', contacts:'contacts', documents:'documents', invoices:'invoices', permits:'permits', expenses:'expenses', contractors:'subs' };
+    var lines = Object.keys(p.counts).map(function(c){ return '• ' + p.counts[c] + ' ' + (names[c] || c); }).join('\n');
+    var jobs = Object.keys(p.jobMap).map(function(o){ var j = (DB.jobs || []).find(function(x){ return x.id === p.jobMap[o]; }); return j ? j.name : ''; }).filter(Boolean).join(', ');
+    if (!skipConfirm && !confirm('Bring back ' + p.total + ' items from Recently Deleted into ' + jobs + '?\n\n' + lines + '\n\nOnly things your current jobs don\'t already have. Nothing is doubled.')) return { restored: 0, cancelled: true };
+    var idMap = {}, t = stamp(), done = 0, back = {}, extraRooms = 0;
+    p.items.forEach(function(e){ idMap[e.rec.id] = uid(); });
+    function liveRoom(oldId){
+      if (!oldId) return oldId;
+      if (idMap[oldId]) return idMap[oldId];
+      if ((DB.rooms || []).some(function(r){ return r.id === oldId; })) return oldId;
+      var nm = low(p.roomName[oldId]), oldRoom = (DB.recycle || []).find(function(e){ return e.coll === 'rooms' && e.rec && e.rec.id === oldId; });
+      var job = oldRoom ? (p.jobMap[oldRoom.rec.jobId] || oldRoom.rec.jobId) : null;
+      var hit = (DB.rooms || []).find(function(r){ return low(r.name) === nm && (!job || r.jobId === job); });
+      if (hit) return hit.id;
+      /* the space only existed in the deleted copy: bring it back too, so its photos and items aren't left unfiled */
+      if (oldRoom) {
+        var nr = JSON.parse(JSON.stringify(oldRoom.rec)), nid = uid();
+        nr.id = nid; nr.jobId = job; nr.updatedAt = t; nr.restoredAt = t; nr.restoredFrom = oldRoom.rec.id;
+        if (!Array.isArray(DB.rooms)) DB.rooms = [];
+        DB.rooms.push(nr); idMap[oldId] = nid; back[oldRoom.id] = 1; extraRooms++;
+        return nid;
+      }
+      return '';
+    }
+    function liveCon(oldId){
+      if (!oldId) return oldId;
+      if ((DB.contractors || []).some(function(c){ return c.id === oldId; })) return oldId;
+      var nm = low(p.conName[oldId]), hit = (DB.contractors || []).find(function(c){ return low(c.name) === nm; });
+      return hit ? hit.id : oldId;
+    }
+    p.items.forEach(function(e){
+      var r = JSON.parse(JSON.stringify(e.rec));
+      r.id = idMap[e.rec.id];
+      if (r.jobId && p.jobMap[r.jobId]) r.jobId = p.jobMap[r.jobId];
+      else if (!r.jobId && e.__job && p.jobMap[e.__job] && e.coll !== 'contacts' && e.coll !== 'payments') r.jobId = p.jobMap[e.__job];
+      if (r.roomId) r.roomId = liveRoom(r.roomId);
+      if (r.contractorId) r.contractorId = liveCon(r.contractorId);
+      r.updatedAt = t; r.restoredAt = t; r.restoredFrom = e.rec.id;
+      if (!Array.isArray(DB[e.coll])) DB[e.coll] = [];
+      DB[e.coll].push(r); done++; back[e.id] = 1;
+    });
+    DB.recycle = (DB.recycle || []).filter(function(e){ return !back[e.id]; });
+    try { bpSave(); } catch(e){ try { (typeof saveDB === 'function' ? saveDB : save)(); } catch(e2){} }
+    try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
+    try { if (typeof bpRefreshCurrentScreen === 'function') bpRefreshCurrentScreen(); } catch(e){}
+    try { if (typeof bpRenderRecycle === 'function') bpRenderRecycle(); } catch(e){}
+    try { if (IS_DESK && typeof renderDesktopPhotos === 'function') renderDesktopPhotos(); } catch(e){}
+    try { if (typeof window.bpICloudSync === 'function') setTimeout(function(){ window.bpICloudSync('both'); }, 1500); } catch(e){}
+    if (typeof toast === 'function') toast('↩️ Brought back ' + (done + extraRooms) + ' items into ' + jobs);
+    return { restored: done + extraRooms, counts: p.counts, extraRooms: extraRooms };
+  };
+
+  /* a card at the top of Recently Deleted, only when there is something to bring back */
+  function card(){
+    var wrap = document.getElementById('recycle-wrap'); if (!wrap) return;
+    var have = document.getElementById('bp-recover-card');
+    var p; try { p = plan(); } catch(e){ return; }
+    if (!p.total) { if (have) have.remove(); return; }
+    var top = Object.keys(p.counts).sort(function(a, b){ return p.counts[b] - p.counts[a]; }).slice(0, 3)
+      .map(function(c){ return p.counts[c] + ' ' + ({ photos:'photos', payments:'payments', punchlist:'punch items' }[c] || c); }).join(' · ');
+    var h = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">Bring back what a duplicate-job delete took</div>'
+      + '<div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:10px">' + p.total + ' items from deleted jobs aren\'t in your current jobs: ' + top + '. They go back into the matching job, nothing doubled.</div>'
+      + '<button type="button" onclick="bpRecoverFromDeletedJobs()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#30D158;color:#000;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Bring back ' + p.total + ' items</button>';
+    if (!have) { have = document.createElement('div'); have.id = 'bp-recover-card'; have.style.cssText = 'background:var(--card2,#2c2c2e);border:1.5px solid rgba(48,209,88,.45);border-radius:12px;padding:14px;margin-bottom:12px'; wrap.parentNode.insertBefore(have, wrap); }
+    if (have.getAttribute('data-h') !== h) { have.innerHTML = h; have.setAttribute('data-h', h); }
+  }
+  setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent) card(); } catch(e){} }, 1500);
+  console.log('[BP] v6.1.22 — bring back what a duplicate-job delete took');
 })();
 </script>
