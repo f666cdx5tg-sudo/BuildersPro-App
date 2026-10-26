@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.1.18';
+var APP_VERSION = '6.1.19';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -13084,7 +13084,7 @@ var BP_CK_CFG = {
     var c = await getContainer();
     if (interactive && !S.user) paint();           /* make sure #bp-ck-signin exists first */
     var u = await c.setUpAuth();
-    S.user = u || null;
+    S.user = u || null; S.authChecked = true;   /* v6.1.19: lets the red "signed out" bar know the answer is real */
     paint();
     if (!u) {
       if (interactive && !S.authTried) {
@@ -21874,5 +21874,85 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
 
   if (!setup()) document.addEventListener('DOMContentLoaded', setup);
   console.log('[BP] v6.1.18 — photo zoom (pinch, double-click, drag, − / + / Fit)');
+})();
+</script>
+<script>
+/* ══ v6.1.19 — YOU CAN SEE WHEN iCLOUD ISN'T SYNCING ══════════════════════
+   Oct 26 2026: the iPhone app had iCloud Sync switched on but was never
+   signed in to iCloud (the App Store app keeps its own settings, separate
+   from Safari). Every photo stayed on the phone and the Command Center
+   showed 0 photos, with nothing on screen saying so.
+   (1) A red bar now shows at the top of every screen whenever this device
+       is NOT sending to iCloud: iCloud Sync off, or on but signed out.
+       Tap it to open Sync. It goes away by itself once sync is working,
+       and stays out of the way while the Sync screen itself is open.
+   (2) iCloud is the sync. While it is on, a saved GitHub token is parked
+       (kept in bp_gh_parked, not deleted) so the old GitHub path can't run
+       in the background or show a false "sync failed". ══════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp6119) return; window.__bp6119 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ return null; } }
+  function ckOn(){ return ls('bp_ck_on') === '1'; }
+
+  /* (2) park the GitHub token while iCloud is the sync */
+  function park(){
+    try {
+      if (!ckOn() || typeof _syncToken === 'undefined' || !_syncToken) return;
+      ls('bp_gh_parked', _syncToken);
+      _syncToken = '';
+      try { _lastSyncError = ''; } catch(e){}
+      var s = {}; try { s = JSON.parse(ls('bp_sync') || '{}') || {}; } catch(e){}
+      s.token = ''; ls('bp_sync', JSON.stringify(s));
+      var b = document.getElementById('bsp-change-token'); if (b) b.remove();
+      var c = document.getElementById('bp-q-chip'); if (c) c.classList.remove('on');
+      console.log('[BP] v6.1.19 — GitHub token parked; iCloud is the sync');
+    } catch(e){}
+  }
+
+  /* (1) the red bar */
+  var st = document.createElement('style');
+  st.textContent = '#bp-ck-warn{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 6px);z-index:2147483000;display:none;align-items:center;gap:8px;max-width:calc(100vw - 24px);padding:10px 16px;border:0;border-radius:99px;background:#FF453A;color:#fff;font:800 14px -apple-system,system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.45);cursor:pointer;white-space:nowrap}'
+    + '#bp-ck-warn.on{display:flex}'
+    + '#bp-ck-warn span{overflow:hidden;text-overflow:ellipsis;min-width:0}'
+    + '#bp-ck-warn b{flex:none;background:rgba(255,255,255,.22);border-radius:99px;padding:4px 10px;font-size:13px}'
+    + '#bp-ck-warn svg{flex:none;width:18px;height:18px}';
+  document.head.appendChild(st);
+  var bar = document.createElement('button');
+  bar.id = 'bp-ck-warn'; bar.type = 'button'; bar.setAttribute('data-bp-nozoom', '1');
+  bar.addEventListener('click', function(){
+    try { if (IS_DESK) showView('sync'); else openSync(); } catch(e){}
+    setTimeout(paint, 300);
+  });
+  document.body.appendChild(bar);
+  var CLOUD_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.3 9.2 4.5 4.5 0 0 0 7 18z"/><path d="M3 3l18 18"/></svg>';
+
+  function cardVisible(){
+    var c = document.getElementById('bp-cksync-card'); if (!c || !c.offsetParent) return false;
+    var r = c.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight;
+  }
+  function problem(){
+    var S = window.bpCk && bpCk.state;
+    if (!window.bpCk || !bpCk.cfg || !bpCk.cfg.container) return '';
+    if (!ckOn()) return !window.BPShell ? '' : 'iCloud Sync is off — not syncing';
+    if (S && !S.user && S.authChecked) return 'iCloud signed out — not syncing';
+    return '';
+  }
+  function paint(){
+    var p = problem(), show = !!p && !cardVisible();
+    if (show) {
+      var h = CLOUD_OFF + '<span>' + p + '</span><b>Fix</b>';
+      if (bar.getAttribute('data-h') !== h) { bar.innerHTML = h; bar.setAttribute('data-h', h); }
+    }
+    bar.classList.toggle('on', show);
+  }
+  window.bpCkWarnPaint = paint;
+  window.bpCkProblem = problem;
+
+  park();
+  setInterval(function(){ park(); paint(); }, 2000);
+  setTimeout(paint, 100);
+  console.log('[BP] v6.1.19 — iCloud not-syncing warning; GitHub parked while iCloud is on');
 })();
 </script>
