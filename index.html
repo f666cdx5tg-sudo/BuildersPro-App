@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.17';
+var APP_VERSION = '6.1.18';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -28824,5 +28824,200 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   };
   try { if (window.bpPaintBackupNag) bpPaintBackupNag(); } catch(e){}
   console.log('[BP] v6.1.17 — backup banner counts iCloud sync + daily file');
+})();
+</script>
+<script>
+/* ══ v6.1.18 — ZOOM IN ON PHOTOS ═════════════════════════════════════════
+   Stan: "zoom is not working with photos" in the native app. The app became a
+   shell around the web app (v6.x) and the old native photo viewer — the one that
+   had pinch-to-zoom — went with it; the web viewer never had zoom at all.
+   Now, in the photo viewer (Command Center on the Mac, field app on iPhone/iPad):
+     • pinch on the trackpad or the screen zooms into the spot under your fingers
+     • double-click / double-tap zooms in 2.5× there, again goes back to fit
+     • drag (mouse, one finger, or two-finger scroll) moves around a zoomed photo
+     • − / + / Fit buttons in the corner, and keys + − 0 on the Mac
+   Swipe-to-next-photo is held off while zoomed so panning never changes photos.
+   Every new photo opens at fit. The Mac shell forwards trackpad pinch here
+   through window.bpPhotoPinch (WKWebView doesn't pass it to pages by itself). */
+(function(){
+  'use strict';
+  if (window.__bpPhotoZoom) return; window.__bpPhotoZoom = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  var IMG_ID = IS_DESK ? 'dphoto-viewer-img' : 'photo-viewer-img';
+  var MIN = 1, MAX = 8;
+  var S = { s:1, x:0, y:0 };
+  var img, box, ui, pct;
+
+  function isOpen(){
+    if (IS_DESK) { var m = document.getElementById('modal-photo-viewer'); return !!m && m.classList.contains('open'); }
+    var v = document.getElementById('photo-viewer'); return !!v && v.classList.contains('open');
+  }
+  function zoomed(){ return S.s > 1.01; }
+  window.bpPhotoZoomed = zoomed;
+
+  /* page zoom (Text & Button Size) scales everything: convert screen px to layout px */
+  function k(){ var r = box.getBoundingClientRect(); return (box.offsetWidth ? r.width / box.offsetWidth : 1) || 1; }
+  /* a screen point → layout px, relative to the image's own (un-zoomed) top-left */
+  function local(cx, cy){
+    var r = box.getBoundingClientRect(), f = k();
+    return { x:(cx - r.left) / f - img.offsetLeft, y:(cy - r.top) / f - img.offsetTop };
+  }
+  function clamp(){
+    var w = img.offsetWidth, h = img.offsetHeight;
+    S.x = Math.min(0, Math.max(w - w * S.s, S.x));
+    S.y = Math.min(0, Math.max(h - h * S.s, S.y));
+    if (!zoomed()) { S.s = 1; S.x = 0; S.y = 0; }
+  }
+  function paint(){
+    clamp();
+    img.style.transformOrigin = '0 0';
+    img.style.transform = zoomed() ? 'translate(' + S.x + 'px,' + S.y + 'px) scale(' + S.s + ')' : '';
+    img.style.cursor = zoomed() ? (drag ? 'grabbing' : 'grab') : 'zoom-in';
+    box.style.touchAction = zoomed() ? 'none' : 'pan-y';
+    if (pct) pct.textContent = Math.round(S.s * 100) + '%';
+    if (ui) ui.setAttribute('data-z', zoomed() ? '1' : '0');
+  }
+  function zoomAt(ns, cx, cy){
+    if (!img || !box) return;
+    ns = Math.min(MAX, Math.max(MIN, ns));
+    var p = (cx == null) ? { x:img.offsetWidth / 2, y:img.offsetHeight / 2 } : local(cx, cy);
+    S.x = p.x - (p.x - S.x) * ns / S.s;
+    S.y = p.y - (p.y - S.y) * ns / S.s;
+    S.s = ns; paint();
+  }
+  function panBy(dx, dy){ var f = k(); S.x += dx / f; S.y += dy / f; paint(); }
+  function reset(){ S = { s:1, x:0, y:0 }; if (img) paint(); }
+  window.bpPhotoZoomReset = reset;
+  window.bpPhotoZoomBy = function(f){ zoomAt(S.s * f); };
+  /* the Mac app's trackpad pinch arrives here: scale = 1 + magnification, x/y = window point */
+  window.bpPhotoPinch = function(scale, x, y){
+    if (!isOpen() || !img) return false;
+    zoomAt(S.s * scale, x, y); return true;
+  };
+
+  var drag = null, lastTap = 0, touch = null, gs = null;
+
+  function setup(){
+    img = document.getElementById(IMG_ID); if (!img || img.__bpZoom) return !!img;
+    img.__bpZoom = 1;
+    if (IS_DESK) {
+      /* wrap the picture so the zoomed image is clipped to its frame */
+      box = document.createElement('div'); box.id = 'bp-pz-box';
+      box.style.cssText = 'position:relative;overflow:hidden;border-radius:10px;display:flex;align-items:center;justify-content:center;max-height:65vh';
+      img.parentNode.insertBefore(box, img); box.appendChild(img);
+    } else {
+      box = img.parentNode; box.style.overflow = 'hidden';
+    }
+    if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
+    img.style.transition = 'none'; img.draggable = false;
+    img.setAttribute('draggable', 'false');
+
+    /* − / % / + / Fit */
+    ui = document.createElement('div'); ui.id = 'bp-pz-ui';
+    var B = 'min-width:44px;height:40px;border:none;border-radius:10px;background:rgba(20,20,20,.78);color:#fff;font-size:20px;font-weight:800;cursor:pointer;font-family:inherit;padding:0 10px;display:flex;align-items:center;justify-content:center';
+    ui.style.cssText = 'position:absolute;right:10px;bottom:10px;display:flex;gap:6px;align-items:center;z-index:3';
+    ui.innerHTML = '<button type="button" data-pz="-" aria-label="Zoom out" style="' + B + '">−</button>'
+      + '<button type="button" data-pz="fit" aria-label="Fit photo" style="' + B + ';font-size:13px;min-width:58px" id="bp-pz-pct">100%</button>'
+      + '<button type="button" data-pz="+" aria-label="Zoom in" style="' + B + '">+</button>';
+    box.appendChild(ui);
+    pct = document.getElementById('bp-pz-pct');
+    ui.addEventListener('click', function(e){
+      var b = e.target.closest('[data-pz]'); if (!b) return;
+      e.stopPropagation();
+      var a = b.getAttribute('data-pz');
+      if (a === '+') zoomAt(S.s * 1.5); else if (a === '-') zoomAt(S.s / 1.5); else reset();
+    });
+    ['touchstart','touchend','mousedown','dblclick'].forEach(function(t){ ui.addEventListener(t, function(e){ e.stopPropagation(); }, {passive:true}); });
+
+    /* new photo (swipe, arrows, Show original) → start at fit */
+    try { new MutationObserver(reset).observe(img, { attributes:true, attributeFilter:['src'] }); } catch(e){}
+    img.addEventListener('load', function(){ if (!zoomed()) paint(); });
+
+    /* trackpad pinch (Chrome/Safari send ctrl+wheel) and two-finger scroll to pan */
+    box.addEventListener('wheel', function(e){
+      if (e.ctrlKey) { e.preventDefault(); zoomAt(S.s * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY); return; }
+      if (zoomed()) { e.preventDefault(); panBy(-e.deltaX, -e.deltaY); }
+    }, { passive:false });
+    /* Safari's own pinch events */
+    box.addEventListener('gesturestart', function(e){ e.preventDefault(); gs = { s:S.s }; }, { passive:false });
+    box.addEventListener('gesturechange', function(e){ if (!gs) return; e.preventDefault(); zoomAt(gs.s * e.scale, e.clientX, e.clientY); }, { passive:false });
+    box.addEventListener('gestureend', function(e){ e.preventDefault(); gs = null; }, { passive:false });
+
+    /* mouse: double-click zooms, drag pans */
+    img.addEventListener('dblclick', function(e){ e.preventDefault(); if (zoomed()) reset(); else zoomAt(2.5, e.clientX, e.clientY); });
+    img.addEventListener('mousedown', function(e){
+      if (!zoomed() || e.button !== 0) return;
+      e.preventDefault(); drag = { x:e.clientX, y:e.clientY }; paint();
+    });
+    window.addEventListener('mousemove', function(e){ if (!drag) return; panBy(e.clientX - drag.x, e.clientY - drag.y); drag.x = e.clientX; drag.y = e.clientY; });
+    window.addEventListener('mouseup', function(){ if (drag) { drag = null; paint(); } });
+
+    /* touch: pinch, one-finger pan while zoomed, double-tap */
+    function dist(t){ var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx*dx + dy*dy) || 1; }
+    function mid(t){ return { x:(t[0].clientX + t[1].clientX) / 2, y:(t[0].clientY + t[1].clientY) / 2 }; }
+    box.addEventListener('touchstart', function(e){
+      var t = e.touches;
+      if (t.length === 2) { e.preventDefault(); e.stopPropagation(); var m = mid(t); touch = { pinch:true, d:dist(t), s:S.s, mx:m.x, my:m.y }; return; }
+      if (t.length === 1) {
+        var now = Date.now();
+        if (now - lastTap < 300) { e.preventDefault(); e.stopPropagation(); lastTap = 0; touch = { dbl:true }; if (zoomed()) reset(); else zoomAt(2.5, t[0].clientX, t[0].clientY); return; }
+        lastTap = now;
+        if (zoomed()) { e.stopPropagation(); touch = { pan:true, x:t[0].clientX, y:t[0].clientY }; }
+        else touch = null;
+      }
+    }, { passive:false });
+    box.addEventListener('touchmove', function(e){
+      if (!touch) return;
+      var t = e.touches;
+      if (touch.pinch && t.length === 2) {
+        e.preventDefault(); e.stopPropagation();
+        var m = mid(t);
+        zoomAt(touch.s * dist(t) / touch.d, m.x, m.y);
+        panBy(m.x - touch.mx, m.y - touch.my); touch.mx = m.x; touch.my = m.y;
+      } else if (touch.pan && t.length === 1) {
+        e.preventDefault(); e.stopPropagation();
+        panBy(t[0].clientX - touch.x, t[0].clientY - touch.y); touch.x = t[0].clientX; touch.y = t[0].clientY;
+      }
+    }, { passive:false });
+    function end(e){
+      if (!touch) return;
+      /* the photo-to-photo swipe listens further up — keep it out of pinches and zoomed panning */
+      if (touch.pinch || touch.pan || touch.dbl || zoomed()) e.stopPropagation();
+      if (e.touches.length === 0) touch = null;
+      else if (e.touches.length === 1 && zoomed()) touch = { pan:true, x:e.touches[0].clientX, y:e.touches[0].clientY };
+    }
+    box.addEventListener('touchend', end, { passive:true });
+    box.addEventListener('touchcancel', end, { passive:true });
+
+    window.addEventListener('resize', function(){ if (img) paint(); });
+    paint();
+    return true;
+  }
+
+  /* keys on the Mac: + / − / 0, and arrows pan while zoomed */
+  document.addEventListener('keydown', function(e){
+    if (!isOpen() || !img) return;
+    var tg = e.target && e.target.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+    var key = e.key;
+    if (key === '+' || key === '=') { e.preventDefault(); zoomAt(S.s * 1.5); }
+    else if (key === '-' || key === '_') { e.preventDefault(); zoomAt(S.s / 1.5); }
+    else if (key === '0') { e.preventDefault(); reset(); }
+    else if (zoomed() && /^Arrow/.test(key)) {
+      e.preventDefault(); e.stopPropagation();
+      var d = 60; panBy(key === 'ArrowLeft' ? d : key === 'ArrowRight' ? -d : 0, key === 'ArrowUp' ? d : key === 'ArrowDown' ? -d : 0);
+    }
+  }, true);
+
+  /* closing the viewer always leaves it at fit for next time */
+  if (IS_DESK) {
+    var oc = window.closeModal;
+    if (typeof oc === 'function') { window.closeModal = function(id){ if (id === 'modal-photo-viewer') reset(); return oc.apply(this, arguments); }; try { closeModal = window.closeModal; } catch(e){} }
+  } else {
+    var cp = window.closePhotoViewer;
+    if (typeof cp === 'function') { window.closePhotoViewer = function(){ reset(); return cp.apply(this, arguments); }; try { closePhotoViewer = window.closePhotoViewer; } catch(e){} }
+  }
+
+  if (!setup()) document.addEventListener('DOMContentLoaded', setup);
+  console.log('[BP] v6.1.18 — photo zoom (pinch, double-click, drag, − / + / Fit)');
 })();
 </script>

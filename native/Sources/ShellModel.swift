@@ -51,7 +51,7 @@ final class ShellModel: NSObject, ObservableObject {
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         cfg.userContentController = ucc
 
-        webView = WKWebView(frame: .zero, configuration: cfg)
+        webView = BPWebView(frame: .zero, configuration: cfg)
         super.init()
 
         ucc.add(WeakHandler(self), name: Bridge.handlerName)
@@ -541,4 +541,18 @@ final class CalendarSync {
         UserDefaults.standard.set(c.calendarIdentifier, forKey: key)
         return c
     }
+}
+
+/// The app's web view. On the Mac, a trackpad pinch never reaches the page on its own
+/// (WKWebView keeps it for page magnification, which is off), so it is handed to the
+/// photo viewer's zoom (window.bpPhotoPinch, v6.1.18). iPhone/iPad pinch reaches the page directly.
+final class BPWebView: WKWebView {
+    #if os(macOS)
+    override func magnify(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let y = isFlipped ? p.y : bounds.height - p.y
+        let scale = max(0.2, 1 + event.magnification)
+        evaluateJavaScript("window.bpPhotoPinch ? window.bpPhotoPinch(\(scale), \(p.x), \(y)) : false", completionHandler: nil)
+    }
+    #endif
 }
