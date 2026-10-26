@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.1.22';
+var APP_VERSION = '6.1.23';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -22022,6 +22022,7 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
     if (r.devicePhotos > r.cloudPhotos) bad.push((r.devicePhotos - r.cloudPhotos) + ' photo' + (r.devicePhotos - r.cloudPhotos === 1 ? '' : 's') + ' on ' + here + ' not in iCloud yet');
     if (bad.length) L.push('<div style="color:#FF9F0A;font-weight:800;margin-top:6px">' + bad.map(E).join('<br>') + '</div>');
     else L.push('<div style="color:var(--green,#30D158);font-weight:800;margin-top:6px">✓ Photos match</div>');
+    try { if (window.bpRecoverPlan) { var rp = bpRecoverPlan(); if (rp.total) L.push('<div style="color:#30D158;font-weight:800;margin-top:6px">' + rp.total + ' items from deleted duplicate jobs can be brought back (Recently Deleted, below)</div>'); } } catch(e){ L.push('<div style="color:#FF6961">recover check: ' + E(e && e.message) + '</div>'); }
     L.push('<div style="color:var(--faint,#888);font-size:11px;margin-top:6px">Delete marks — iCloud: ' + r.cloudTombstones + ' / ' + r.cloudDeleteMarks + ' · ' + here + ': ' + r.deviceTombstones + ' / ' + r.deviceDeleteMarks + (r.lastErr ? ' · last error: ' + E(r.lastErr) : '') + '</div>');
     return L.join('');
   }
@@ -22211,10 +22212,22 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
     var h = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">Bring back what a duplicate-job delete took</div>'
       + '<div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:10px">' + p.total + ' items from deleted jobs aren\'t in your current jobs: ' + top + '. They go back into the matching job, nothing doubled.</div>'
       + '<button type="button" onclick="bpRecoverFromDeletedJobs()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#30D158;color:#000;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Bring back ' + p.total + ' items</button>';
-    if (!have) { have = document.createElement('div'); have.id = 'bp-recover-card'; have.style.cssText = 'background:var(--card2,#2c2c2e);border:1.5px solid rgba(48,209,88,.45);border-radius:12px;padding:14px;margin-bottom:12px'; wrap.parentNode.insertBefore(have, wrap); }
+    /* v6.1.23: lives INSIDE the Recently Deleted list (first thing in it) — on the Mac app, things placed beside it got wiped */
+    if (!have) { have = document.createElement('div'); have.id = 'bp-recover-card'; have.style.cssText = 'background:var(--card2,#2c2c2e);border:1.5px solid rgba(48,209,88,.45);border-radius:12px;padding:14px;margin-bottom:12px'; }
+    if (have.parentNode !== wrap || wrap.firstChild !== have) wrap.insertBefore(have, wrap.firstChild);
     if (have.getAttribute('data-h') !== h) { have.innerHTML = h; have.setAttribute('data-h', h); }
   }
-  setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent) card(); } catch(e){} }, 1500);
+  var _plan = null, _planAt = 0;
+  var _cardRaw = card;
+  card = function(){ _cardRaw(); };
+  if (typeof window.bpRenderRecycle === 'function' && !window.bpRenderRecycle.__v6123) {
+    var _rr = window.bpRenderRecycle;
+    window.bpRenderRecycle = function(){ var r = _rr.apply(this, arguments); try { card(); } catch(e){} return r; };
+    window.bpRenderRecycle.__v6123 = 1;
+    try { bpRenderRecycle = window.bpRenderRecycle; } catch(e){}
+  }
+  setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent && (!document.getElementById('bp-recover-card') || w.firstChild !== document.getElementById('bp-recover-card'))) card(); } catch(e){} }, 700);
+  setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent) card(); } catch(e){} }, 15000);
   console.log('[BP] v6.1.22 — bring back what a duplicate-job delete took');
 })();
 </script>
