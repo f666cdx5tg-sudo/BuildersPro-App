@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.1.19';
+var APP_VERSION = '6.1.20';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -13377,7 +13377,43 @@ var BP_CK_CFG = {
     if (typeof o !== 'function') return;
     window[fn] = function(){ var r = o.apply(this, arguments); try { mount(); } catch(e){} return r; };
   });
-  window.bpCk = { cfg: BP_CK_CFG, state: S, paint: paint, mount: mount };   /* for tests + the setup step */
+  /* v6.1.20 — Sync check: READ-ONLY look at the iCloud copy vs this device. Downloads the
+     records only (no photos), changes nothing, so it is safe to run any time. */
+  async function inspect(){
+    var out = { at: nowIso() };
+    var u = S.user || await ensureSignedIn(false);
+    if (!u) { out.err = 'Not signed in to iCloud on this device.'; return out; }
+    var db = (await getContainer()).privateCloudDatabase;
+    var resp = await db.fetchRecords([STATE_NAME]); throwIfErrors(resp, true);
+    var rec = (resp.records || [])[0];
+    if (!rec) { out.err = 'iCloud has no BuildersPro copy yet.'; return out; }
+    var f = rec.fields || {}, pushId = f.pushId && f.pushId.value, n = +(f.pieces && f.pieces.value) || 0;
+    out.pushedAt = f.pushedAt && f.pushedAt.value;
+    var names = []; for (var i = 0; i < n; i++) names.push(pieceName('m_' + pushId, i));
+    var mp = await fetchPieces(db, names, 3), text = '';
+    for (var k = 0; k < names.length; k++) { if (!(names[k] in mp)) { out.err = 'Part of the iCloud copy is missing.'; return out; } text += mp[names[k]]; }
+    var meta = JSON.parse(text), R = meta.db || {}, counts = meta.blobPieces || {};
+    out.pushedBy = meta.app || '?';
+    var rp = (R.photos || []).filter(function(p){ return p && p.id; });
+    var lp = (DB.photos || []).filter(function(p){ return p && p.id; });
+    var lid = {}; lp.forEach(function(p){ lid[p.id] = 1; });
+    var jn = function(id){ var j = (DB.jobs || []).concat(R.jobs || []).find(function(x){ return x && x.id === id; }); return j ? j.name : (id ? 'unknown job' : 'no job'); };
+    var tomb = function(id){ try { return bpIsTombstoned('photos', id); } catch(e){ return !!(DB.tombstones && DB.tombstones['photos:' + id]); } };
+    var delMark = function(id){ return !!(DB.deletedPhotoIds && DB.deletedPhotoIds[id]); };
+    out.cloudPhotos = rp.length; out.devicePhotos = lp.length;
+    out.cloudByJob = {}; rp.forEach(function(p){ var j = jn(p.jobId); out.cloudByJob[j] = (out.cloudByJob[j] || 0) + 1; });
+    out.missingHere = rp.filter(function(p){ return !lid[p.id]; }).length;
+    out.blockedByTombstone = rp.filter(function(p){ return !lid[p.id] && tomb(p.id); }).length;
+    out.blockedByDeleteMark = rp.filter(function(p){ return !lid[p.id] && delMark(p.id); }).length;
+    out.noPictureData = rp.filter(function(p){ return typeof p.src === 'string' && p.src.slice(0,4) === 'bpb:' && !counts[p.src]; }).length;
+    out.cloudTombstones = Object.keys(R.tombstones || {}).filter(function(t){ return t.indexOf('photos:') === 0; }).length;
+    out.cloudDeleteMarks = Object.keys(R.deletedPhotoIds || {}).length;
+    out.deviceTombstones = Object.keys(DB.tombstones || {}).filter(function(t){ return t.indexOf('photos:') === 0; }).length;
+    out.deviceDeleteMarks = Object.keys(DB.deletedPhotoIds || {}).length;
+    out.lastErr = S.lastErr || '';
+    return out;
+  }
+  window.bpCk = { cfg: BP_CK_CFG, state: S, paint: paint, mount: mount, inspect: inspect };   /* for tests + the setup step */
   console.log('[BP] v2.65 iCloud sync ready (' + (cfgReady() ? 'configured' : 'waiting on Apple setup') + ')');
 })();
 </script>
@@ -21954,5 +21990,59 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
   setInterval(function(){ park(); paint(); }, 2000);
   setTimeout(paint, 100);
   console.log('[BP] v6.1.19 — iCloud not-syncing warning; GitHub parked while iCloud is on');
+})();
+</script>
+<script>
+/* ══ v6.1.20 — SYNC CHECK ════════════════════════════════════════════
+   Oct 26 2026: phone and Mac both said "last synced just now", yet the Mac
+   showed 0 photos while the phone had 80+. Nothing on screen said why.
+   A "Sync check" button now sits under the iCloud card on every device.
+   It reads the iCloud copy's records (no photos downloaded, nothing
+   changed) and says in plain words: how many photos iCloud holds, how many
+   this device has, and how many are being held back here — and why. ══ */
+(function(){
+  'use strict';
+  if (window.__bp6120) return; window.__bp6120 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  var here = IS_DESK ? 'this Mac' : 'this device';
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function when(iso){ try { return new Date(iso).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }); } catch(e){ return iso || '?'; } }
+  function words(r){
+    if (r.err) return '<div style="color:#FF6961;font-weight:800">⚠️ ' + E(r.err) + '</div>';
+    var L = [];
+    L.push('<div><b>iCloud copy:</b> ' + r.cloudPhotos + ' photos · saved ' + E(when(r.pushedAt)) + ' by v' + E(r.pushedBy) + '</div>');
+    var jobs = Object.keys(r.cloudByJob || {});
+    if (jobs.length) L.push('<div style="color:var(--muted)">' + jobs.map(function(j){ return E(j) + ': ' + r.cloudByJob[j]; }).join(' · ') + '</div>');
+    L.push('<div><b>On ' + here + ':</b> ' + r.devicePhotos + ' photos</div>');
+    var bad = [];
+    if (r.missingHere) bad.push(r.missingHere + ' photo' + (r.missingHere === 1 ? ' is' : 's are') + ' in iCloud but not on ' + here);
+    if (r.blockedByTombstone) bad.push(r.blockedByTombstone + ' held back by a "deleted" mark on ' + here);
+    if (r.blockedByDeleteMark) bad.push(r.blockedByDeleteMark + ' held back by an old photo-delete list on ' + here);
+    if (r.noPictureData) bad.push(r.noPictureData + ' have a record in iCloud but the picture itself never uploaded');
+    if (r.devicePhotos > r.cloudPhotos) bad.push((r.devicePhotos - r.cloudPhotos) + ' photo' + (r.devicePhotos - r.cloudPhotos === 1 ? '' : 's') + ' on ' + here + ' not in iCloud yet');
+    if (bad.length) L.push('<div style="color:#FF9F0A;font-weight:800;margin-top:6px">' + bad.map(E).join('<br>') + '</div>');
+    else L.push('<div style="color:var(--green,#30D158);font-weight:800;margin-top:6px">✓ Photos match</div>');
+    L.push('<div style="color:var(--faint,#888);font-size:11px;margin-top:6px">Delete marks — iCloud: ' + r.cloudTombstones + ' / ' + r.cloudDeleteMarks + ' · ' + here + ': ' + r.deviceTombstones + ' / ' + r.deviceDeleteMarks + (r.lastErr ? ' · last error: ' + E(r.lastErr) : '') + '</div>');
+    return L.join('');
+  }
+  window.bpSyncCheck = async function(){
+    var o = document.getElementById('bp-scheck-out'); if (o) o.innerHTML = '⏳ Checking iCloud…';
+    var r; try { r = await window.bpCk.inspect(); } catch(e){ r = { err: (e && e.message) || String(e) }; }
+    window.__bpLastSyncCheck = r;
+    o = document.getElementById('bp-scheck-out'); if (o) o.innerHTML = words(r);
+    return r;
+  };
+  function mount(){
+    var card = document.getElementById('bp-cksync-card');
+    if (!card || !window.bpCk || !bpCk.inspect) return;
+    if (document.getElementById('bp-scheck')) return;
+    var d = document.createElement('div'); d.id = 'bp-scheck';
+    d.style.cssText = 'background:var(--card2);border-radius:12px;padding:12px 14px;margin:-6px 0 14px;font-size:13px;line-height:1.5';
+    d.innerHTML = '<button type="button" onclick="bpSyncCheck()" style="width:100%;padding:11px;border-radius:10px;border:1.5px solid #0A84FF;background:transparent;color:#0A84FF;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">Sync check — compare with iCloud</button>'
+      + '<div id="bp-scheck-out" style="margin-top:8px"></div>';
+    card.parentNode.insertBefore(d, card.nextSibling);
+  }
+  setInterval(mount, 1000); setTimeout(mount, 50);
+  console.log('[BP] v6.1.20 — Sync check');
 })();
 </script>
