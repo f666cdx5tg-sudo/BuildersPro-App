@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.20';
+var APP_VERSION = '6.1.21';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -29180,12 +29180,13 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   function mount(){
     var card = document.getElementById('bp-cksync-card');
     if (!card || !window.bpCk || !bpCk.inspect) return;
-    if (document.getElementById('bp-scheck')) return;
+    var have = document.getElementById('bp-scheck');
+    if (have) { if (have.parentNode !== card) card.appendChild(have); return; }   /* v6.1.21: lives INSIDE the iCloud card, so it shows wherever the card shows */
     var d = document.createElement('div'); d.id = 'bp-scheck';
-    d.style.cssText = 'background:var(--card2);border-radius:12px;padding:12px 14px;margin:-6px 0 14px;font-size:13px;line-height:1.5';
+    d.style.cssText = 'border-top:1px solid var(--border,#38383a);margin-top:12px;padding-top:12px;font-size:13px;line-height:1.5';
     d.innerHTML = '<button type="button" onclick="bpSyncCheck()" style="width:100%;padding:11px;border-radius:10px;border:1.5px solid #0A84FF;background:transparent;color:#0A84FF;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit">Sync check — compare with iCloud</button>'
       + '<div id="bp-scheck-out" style="margin-top:8px"></div>';
-    card.parentNode.insertBefore(d, card.nextSibling);
+    card.appendChild(d);
   }
   setInterval(mount, 1000); setTimeout(mount, 50);
   console.log('[BP] v6.1.20 — Sync check');
