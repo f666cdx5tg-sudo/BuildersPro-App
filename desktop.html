@@ -1612,7 +1612,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.2.1';
+var APP_VERSION = '6.2.2';
+/* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
+function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
+
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -1708,7 +1711,7 @@ function resolveJobClientEmail(job) {
   if (!con) con = (DB.contacts||[]).find(function(c){ return c.jobId===job.id && c.email; });
   return con ? con.email : '';
 }
-function fmt$  (n) { return '$' + (+n||0).toLocaleString(); }
+function fmt$  (n) { return bpMoney((+n||0)); }
 /* v3.02: every date shown in the app is MM/DD/YYYY. Date-only strings (YYYY-MM-DD) are read
    as plain calendar dates so they never slip a day across time zones. */
 function bpSameAddr(name, addr) {
@@ -4728,6 +4731,7 @@ function openNewInvoice(){['ni2-desc','ni2-amount','ni2-notes'].forEach(function
 function saveNewInvoice(){
   var desc=document.getElementById('ni2-desc').value.trim(),amount=document.getElementById('ni2-amount').value;
   if(!desc||!amount){toast('Description and amount required');return;}
+  if (!(+amount > 0)) { toast('Amount must be more than $0'); return; }
   if(!DB.invoices)DB.invoices=[];
   DB.invoices.push({id:uid(),desc:desc,jobId:document.getElementById('ni2-job').value,amount:+amount,
     date:document.getElementById('ni2-date').value,status:document.getElementById('ni2-status').value,
@@ -4747,6 +4751,7 @@ function editInvoice(id) {
   if(btn){btn.textContent='Update Invoice';btn.onclick=function(){
     var desc=document.getElementById('ni2-desc').value.trim(),amount=document.getElementById('ni2-amount').value;
     if(!desc||!amount){toast('Description and amount required');return;}
+  if (!(+amount > 0)) { toast('Amount must be more than $0'); return; }
     var fromJob=inv.jobId;
     inv.desc=desc;
     inv.jobId=document.getElementById('ni2-job').value;
@@ -4933,6 +4938,7 @@ window.saveDelivery = function() {
   exp.desc           = desc;
   exp.vendor         = vendor;
   exp.jobId          = document.getElementById('nd-job').value || '';
+  if (!(+(document.getElementById('nd-amount').value || 0) > 0)) { toast('Amount must be more than $0'); return; }
   exp.amount         = +(document.getElementById('nd-amount').value || 0);
   exp.po             = (document.getElementById('nd-po').value||'').trim();
   exp.notes          = (document.getElementById('nd-notes').value||'').trim();
@@ -5708,6 +5714,7 @@ function openNewExpense(){
 function saveNewExpense(){
   var desc=document.getElementById('ne-desc').value.trim(),amount=document.getElementById('ne-amount').value;
   if(!desc||!amount){toast('Description and amount required');return;}
+  if (!(+amount > 0)) { toast('Amount must be more than $0'); return; }
   if(!DB.expenses)DB.expenses=[];
   DB.expenses.push({id:uid(),desc:desc,jobId:document.getElementById('ne-job').value,amount:+amount,
     category:document.getElementById('ne-cat').value,vendor:document.getElementById('ne-vendor').value.trim(),
@@ -5741,6 +5748,7 @@ function editExpense(id) {
   if(btn){btn.textContent='Update Expense';btn.onclick=function(){
     var desc=document.getElementById('ne-desc').value.trim(),amount=document.getElementById('ne-amount').value;
     if(!desc||!amount){toast('Description and amount required');return;}
+  if (!(+amount > 0)) { toast('Amount must be more than $0'); return; }
     e.desc=desc;
     e.jobId=document.getElementById('ne-job').value;
     e.amount=+amount;
@@ -15620,6 +15628,7 @@ window.bpShopAdd = function(){
   if (!text) { say('Type what you need first'); if (tx) tx.focus(); return; }
   var qty = q && q.value.trim() ? window.bpCalcEval(q.value) : 1, price = p && p.value.trim() ? window.bpCalcEval(p.value) : 0;
   if (isNaN(qty) || isNaN(price)) { say('Check the numbers — only digits and + − × ÷'); return; }
+  if (!(qty > 0) || price < 0) { say(!(qty > 0) ? 'Quantity must be more than 0' : 'Price can\'t be negative'); return; }
   DB.shopping = DB.shopping || [];
   DB.shopping.push({ id:newId(), jobId:SH.job || '', text:text, qty:qty, unit:'', price:price, store:store, bought:false, created:ts(), updatedAt:ts() });
   persist(); drawShop();
@@ -15642,6 +15651,7 @@ window.bpShopSaveNew = function(next){
   if (!name) { say('Type the item name first'); var t = document.getElementById('bp-sa-text'); if (t) t.focus(); return; }
   var qty = g('qty') ? window.bpCalcEval(g('qty')) : 1, price = g('price') ? window.bpCalcEval(g('price')) : 0;
   if (isNaN(qty) || isNaN(price)) { say('Check the numbers'); return; }
+  if (!(qty > 0) || price < 0) { say(!(qty > 0) ? 'Quantity must be more than 0' : 'Price can\'t be negative'); return; }
   DB.shopping = DB.shopping || [];
   DB.shopping.push({ id:newId(), jobId:SH.job || '', text:name, qty:qty || 1, unit:'', price:price || 0, store:SH.lastStore || '', bought:false, created:ts(), updatedAt:ts() });
   persist(); drawShop(); say('Added');
@@ -15676,6 +15686,7 @@ window.bpShopSaveEdit = function(id){
   var v = function(k){ var el = document.getElementById('bp-se-' + k); return el ? el.value : ''; };
   var qty = window.bpCalcEval(v('qty')), price = window.bpCalcEval(v('price'));
   if (isNaN(qty) || isNaN(price)) { say('Check the numbers — only digits and + − × ÷'); return; }
+  if (!(qty > 0) || price < 0) { say(!(qty > 0) ? 'Quantity must be more than 0' : 'Price can\'t be negative'); return; }
   if (!v('text').trim()) { say('Item needs a name'); return; }
   x.text = v('text').trim(); x.qty = qty; x.price = price; x.unit = v('unit').trim(); x.store = v('store').trim(); x.jobId = v('job'); x.note = v('note').trim(); x.updatedAt = ts();
   persist();

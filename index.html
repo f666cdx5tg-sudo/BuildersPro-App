@@ -1554,7 +1554,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.2.1';
+var APP_VERSION = '6.2.2';
+/* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
+function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
+
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -2781,7 +2784,7 @@ function buildJobCard(job, mini) {
   var tickLine = function(date, fn, label){
     return '<label class="bp-jc-line' + ((date && label==='Started') ? ' bp-started' : '') + '" onclick="event.stopPropagation()"><span><input type="checkbox" ' + (date?'checked':'') + ' onchange="' + fn + '(\'' + job.id + '\')"/>' + label + '</span><b>' + (date ? fmtDatePlain(date) : '—') + '</b></label>';
   };
-  var fmtM = function(n){ return '$' + (+n||0).toLocaleString(); };
+  var fmtM = function(n){ return bpMoney((+n||0)); };
   return '<div class="card card-tap" onclick="openJobDetail(\'' + job.id + '\')">'
     + '<div class="card-body">'
     + '<div class="card-row">'
@@ -2791,7 +2794,7 @@ function buildJobCard(job, mini) {
         var csz=[[job.city,job.state].filter(Boolean).join(', '),job.zip].filter(Boolean).join(' ');
         var em=(typeof clientEmailFor==='function'?clientEmailFor(job):'')||job.clientEmail||'';
         var L=function(v,st){ return '<div style="font-size:13px;color:var(--muted);padding:1px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(st||'')+'">'+(v?v:'<span style="opacity:.4">\u2014</span>')+'</div>'; };
-        return (bpSameAddr(job.name,job.address)?'':L(esc(job.address||'')))+L(esc(csz))+L(job.client?esc(job.client):'')+L(em?esc(em):'')+L(job.clientPhone?esc(bpPhone(job.clientPhone)):'')+L(contractNow?'$'+contractNow.toLocaleString()+(bpCOApproved(job.id)?' \u21b3CO':''):'','font-weight:700;color:var(--text)');
+        return (bpSameAddr(job.name,job.address)?'':L(esc(job.address||'')))+L(esc(csz))+L(job.client?esc(job.client):'')+L(em?esc(em):'')+L(job.clientPhone?esc(bpPhone(job.clientPhone)):'')+L(contractNow?bpMoney(contractNow)+(bpCOApproved(job.id)?' \u21b3CO':''):'','font-weight:700;color:var(--text)');
       })()
     + '</div>'
     + '<span class="chip ' + statusColor + '">' + job.status + '</span>'
@@ -2834,7 +2837,7 @@ function openJobDetail(jobId) {
   if (jdInfo) jdInfo.textContent = infoParts.join('  ·  ');
   var jdToggles = document.getElementById('jd-progress-toggles');
   if (jdToggles) {
-    var fd = jobFunding(job.id), fm = function(n){ return '$' + (+n||0).toLocaleString(); };
+    var fd = jobFunding(job.id), fm = function(n){ return bpMoney((+n||0)); };
     var tl = function(date, fn, label){ return '<label class="bp-jc-line' + ((date && label==='Started') ? ' bp-started' : '') + '"><span><input type="checkbox" ' + (date?'checked':'') + ' onchange="' + fn + '(\'' + job.id + '\')"/>' + label + '</span>' + ((date && label==='Started') ? '' : '<b>' + (date ? fmtDatePlain(date) : '—') + '</b>') + '</label>'; };
     jdToggles.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:0 16px;margin-top:4px';
     jdToggles.innerHTML =
@@ -6222,9 +6225,9 @@ function openRoomDetail(roomId) {
            narrower than the dollar figures in them, so the numbers spilled past
            the right edge of the screen. This wraps to two columns instead. */
         return '<div style="margin:0 16px 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px">'
-          + mkKpi('Space Contract', '$'+contractVal.toLocaleString(), 'var(--text,#f0f0f0)')
-          + mkKpi('Items Value', '$'+itemsTotal.toLocaleString(), '#FF9F0A')
-          + mkKpi('Balance', (remaining<0?'-':'')+'$'+Math.abs(remaining).toLocaleString(), remaining<0?'var(--red)':'#0A84FF')
+          + mkKpi('Space Contract', bpMoney(contractVal), 'var(--text,#f0f0f0)')
+          + mkKpi('Items Value', bpMoney(itemsTotal), '#FF9F0A')
+          + mkKpi('Balance', (remaining<0?'-':'')+bpMoney(Math.abs(remaining)), remaining<0?'var(--red)':'#0A84FF')
           + '</div>'
           + (dateChip ? '<div style="margin:0 16px 10px;display:flex;flex-direction:column;gap:4px">' + dateChip + '</div>' : '');
       })()
@@ -8346,11 +8349,11 @@ function renderSpendingTab(el, jf) {
   var totalSpent = totalExp+totalPay+totalPerm+totalTime;
 
   var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">'
-    + mkKpi('Total Spent', '$'+totalSpent.toLocaleString(), '#EF5350')
-    + mkKpi('Expenses', '$'+totalExp.toLocaleString(), '#FF9500')
-    + mkKpi('Contractor Payments', '$'+totalPay.toLocaleString(), '#0A84FF')
-    + mkKpi('Permit Costs', '$'+totalPerm.toLocaleString(), '#42A5F5')
-    + mkKpi('Time Tracked Labor', '$'+totalTime.toLocaleString(), '#AF52DE')
+    + mkKpi('Total Spent', bpMoney(totalSpent), '#EF5350')
+    + mkKpi('Expenses', bpMoney(totalExp), '#FF9500')
+    + mkKpi('Contractor Payments', bpMoney(totalPay), '#0A84FF')
+    + mkKpi('Permit Costs', bpMoney(totalPerm), '#42A5F5')
+    + mkKpi('Time Tracked Labor', bpMoney(totalTime), '#AF52DE')
     + '</div>';
 
   if (!totalSpent) {
@@ -8417,6 +8420,7 @@ window.saveInvoice = function() {
   var desc   = document.getElementById('inv-desc')?.value?.trim();
   var amount = document.getElementById('inv-amount')?.value;
   if (!desc || !amount) { toast('Description and amount required'); return; }
+  if (!(+amount > 0)) { toast('Amount must be more than $0'); return; }
   if (!DB.invoices) DB.invoices=[];
   DB.invoices.push({
     id:     uid(), desc:desc,
@@ -8473,6 +8477,7 @@ window.saveEditInvoice = function(invId) {
   var desc = (document.getElementById('ei-desc').value||'').trim();
   var amount = document.getElementById('ei-amount').value;
   if (!desc || !amount) { toast('Description and amount required'); return; }
+  if (!(+amount > 0)) { toast('Amount must be more than $0'); return; }
   var fromJob = inv.jobId;
   inv.desc   = desc;
   inv.jobId  = document.getElementById('ei-job').value || '';
@@ -8490,6 +8495,7 @@ window.saveExpense = function() {
   var desc   = document.getElementById('exp-desc')?.value?.trim();
   var amount = document.getElementById('exp-amount')?.value;
   if (!desc || !amount) { toast('Description and amount required'); return; }
+  if (!(+amount > 0)) { toast('Amount must be more than $0'); return; }
   if (!DB.expenses) DB.expenses=[];
   DB.expenses.push({
     id:         uid(), desc:desc,
@@ -8546,6 +8552,7 @@ window.saveEditExpense = function(expId) {
   var desc = (document.getElementById('exp-desc').value||'').trim();
   var amount = document.getElementById('exp-amount').value;
   if (!desc || !amount) { toast('Description and amount required'); return; }
+  if (!(+amount > 0)) { toast('Amount must be more than $0'); return; }
   exp.desc = desc;
   exp.jobId = document.getElementById('exp-job').value || '';
   exp.amount = +amount;
@@ -8597,7 +8604,7 @@ function bpDeliveryNotes(exp) {
   if (exp.po)      n.push('PO/Order #' + exp.po);
   if (exp.vendor)  n.push('Supplier: ' + exp.vendor);
   n.push('Status: ' + (exp.deliveryStatus || 'Scheduled'));
-  if (+exp.amount) n.push('$' + (+exp.amount).toLocaleString());
+  if (+exp.amount) n.push(bpMoney((+exp.amount)));
   if (exp.notes)   n.push(exp.notes);
   return n.join('\n');
 }
@@ -8843,7 +8850,7 @@ function renderDeliveriesTab(el, jf) {
       +     (e.receiptSrc?'<img src="'+e.receiptSrc+'" onclick="viewReceiptPhoto(\''+e.id+'\')" style="width:60px;height:60px;object-fit:cover;border-radius:8px;margin-top:8px;cursor:pointer;border:1px solid var(--border)"/>':'')
       +   '</div>'
       +   '<div style="text-align:right;flex:0 1 auto;min-width:0">'
-      +     '<div style="font-size:18px;font-weight:900;color:'+(+e.amount?'var(--red)':'var(--faint)')+'">'+(+e.amount?'$'+(+e.amount).toLocaleString():'—')+'</div>'
+      +     '<div style="font-size:18px;font-weight:900;color:'+(+e.amount?'var(--red)':'var(--faint)')+'">'+(+e.amount?bpMoney((+e.amount)):'—')+'</div>'
       +   '</div>'
       + '</div>'
       + '<div style="display:flex;gap:4px;margin-top:10px;flex-wrap:wrap">'
@@ -9539,7 +9546,7 @@ window.deleteChangeOrder = function(id) {
   var c = (DB.changeOrders||[]).find(function(x){ return x.id===id; });
   if (!c) return;
   if (!confirm('Delete ' + (c.number||'this change order') + '?\n\nIf it was approved, the contract value drops by ' +
-      '$' + Math.abs(+c.amount||0).toLocaleString() + '.')) return;
+      bpMoney(Math.abs(+c.amount||0)) + '.')) return;
   bpRemoveFrom('changeOrders', function(x){ return x.id!==id; });
   _coEditId = null;
   document.getElementById('co-modal') && document.getElementById('co-modal').remove();
@@ -10404,12 +10411,12 @@ renderJobDetail = function(jobId) {
   section.innerHTML =
     '<div class="section-header">Finance</div>'
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 16px 14px">'
-    + mkJdKpi('Contract', '$'+(contractVal||0).toLocaleString(), '#0A84FF', 'jd-invoices-section')
-    + mkJdKpi('Invoiced', '$'+invoiced.toLocaleString(), '#66BB6A', 'jd-invoices-section')
-    + mkJdKpi('Balance', '$'+Math.max(0,balance).toLocaleString(), balance>=0?'#0A84FF':'var(--red)', 'jd-expenses-section')
-    + mkJdKpi('Expenses', '$'+expenses.toLocaleString(), 'var(--red)', 'jd-expenses-section')
-    + mkJdKpi('Sub Costs', '$'+subCosts.toLocaleString(), '#FFAA33', 'jd-contractors-section')
-    + (timeCost ? mkKpi('Time Logged', '$'+Math.round(timeCost).toLocaleString(), '#BF5AF2') : '')
+    + mkJdKpi('Contract', bpMoney((contractVal||0)), '#0A84FF', 'jd-invoices-section')
+    + mkJdKpi('Invoiced', bpMoney(invoiced), '#66BB6A', 'jd-invoices-section')
+    + mkJdKpi('Balance', bpMoney(Math.max(0,balance)), balance>=0?'#0A84FF':'var(--red)', 'jd-expenses-section')
+    + mkJdKpi('Expenses', bpMoney(expenses), 'var(--red)', 'jd-expenses-section')
+    + mkJdKpi('Sub Costs', bpMoney(subCosts), '#FFAA33', 'jd-contractors-section')
+    + (timeCost ? mkKpi('Time Logged', bpMoney(Math.round(timeCost)), '#BF5AF2') : '')
     + '</div>';
 
   var jdAnchor = document.getElementById('jd-photos');
@@ -11692,12 +11699,12 @@ function bpSearchAll(q) {
   });
   (DB.expenses||[]).forEach(function(e){
     if (match(e.desc) || match(e.vendor)) {
-      results.push({ type:'Expense', icon:'💸', title:e.desc, sub:(e.vendor?e.vendor+' · ':'')+'$'+(+e.amount||0).toLocaleString(), action:"_financeTab='expenses';showScreen('s-finance')" });
+      results.push({ type:'Expense', icon:'💸', title:e.desc, sub:(e.vendor?e.vendor+' · ':'')+bpMoney((+e.amount||0)), action:"_financeTab='expenses';showScreen('s-finance')" });
     }
   });
   (DB.invoices||[]).forEach(function(i){
     if (match(i.desc)) {
-      results.push({ type:'Invoice', icon:'🧾', title:i.desc, sub:'$'+(+i.amount||0).toLocaleString(), action:"_financeTab='invoices';showScreen('s-finance')" });
+      results.push({ type:'Invoice', icon:'🧾', title:i.desc, sub:bpMoney((+i.amount||0)), action:"_financeTab='invoices';showScreen('s-finance')" });
     }
   });
   (DB.punchlist||[]).forEach(function(n){
@@ -18571,6 +18578,7 @@ window.bpShopSaveNew = function(next){
   name = name.charAt(0).toUpperCase() + name.slice(1);
   var qty = g('qty') ? window.bpCalcEval(g('qty')) : 1, price = g('price') ? window.bpCalcEval(g('price')) : 0;
   if (isNaN(qty) || isNaN(price)) { say('Check the numbers'); return; }
+  if (!(qty > 0) || price < 0) { say(!(qty > 0) ? 'Quantity must be more than 0' : 'Price can\'t be negative'); return; }
   DB.shopping = DB.shopping || [];
   DB.shopping.push({ id:newId(), jobId:SH.job || '', text:name, qty:qty || 1, unit:g('unit'), price:price || 0, store:SH.lastStore || '', bought:false, created:ts(), updatedAt:ts() });
   persist(); drawShop(); say('Added');
@@ -18590,6 +18598,7 @@ window.bpShopAdd = function(){
   var hasQ = !!(q && q.value.trim()), hasP = !!(p && p.value.trim());
   var qv = hasQ ? window.bpCalcEval(q.value) : null, pv = hasP ? window.bpCalcEval(p.value) : null;
   if ((hasQ && isNaN(qv)) || (hasP && isNaN(pv))) { say('Check the numbers — only digits and + − × ÷'); return; }
+  if ((hasQ && !(qv > 0)) || (hasP && pv < 0)) { say((hasQ && !(qv > 0)) ? 'Quantity must be more than 0' : 'Price can\'t be negative'); return; }
   DB.shopping = DB.shopping || [];
   var n = 0;
   lines.forEach(function(line){
@@ -23215,7 +23224,7 @@ var DEF = [
   ['photos','📷','Photos',null],
   ['notes','🗒️','Project Notes','jd-notes']
 ];
-function fm(n){ return '$' + (+n||0).toLocaleString(); }
+function fm(n){ return bpMoney((+n||0)); }
 function countFrom(node){ var h = node && node.querySelector('.section-header'); var m = h && /\((\d+)\)/.exec(h.textContent); return m ? m[1] : ''; }
 function unwrap(){
   var st = document.getElementById('jd-stack');
@@ -25898,7 +25907,7 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
     if (tr && sk && tr.value === 'General' && [].some.call(tr.options, function(o){ return o.value === sk; })) tr.value = sk;
   };
   function contractsFor(c){ return (DB.contractors || []).filter(function(k){ var kk = key(k.name); return kk && (kk === key(c.name) || (k.contact && key(k.contact) === key(c.name)) || (c.company && kk === key(c.company))); }); }
-  function money(n){ return '$' + (Math.round((+n || 0) * 100) / 100).toLocaleString(); }
+  function money(n){ return bpMoney((Math.round((+n || 0) * 100) / 100)); }
   function byName(a, b){ return String(a.name || '').toLowerCase().localeCompare(String(b.name || '').toLowerCase()); }
   function skillOf(trade){ return SKIP[key(trade)] ? [] : [trade]; }
   function ensure(name, x){

@@ -41,6 +41,7 @@ with sync_playwright() as pw:
             pg.wait_for_timeout(500)
             if v=='sync': pg.evaluate("bpRenderRecycle()")
             r=pg.evaluate(SCAN)
+            if r: pg.wait_for_timeout(1500); r=pg.evaluate(SCAN)   # the app evens rows out a moment after drawing; look again before calling it
             if r: bad[v]=r
     else:
         pg.evaluate("showScreen('s-job-detail');currentJobId='jobT';renderJobDetail('jobT')"); pg.wait_for_timeout(900)
@@ -50,6 +51,7 @@ with sync_playwright() as pw:
             try: pg.evaluate("(s)=>{try{bpOpenJobSection(s,'jobT')}catch(e){}}",sec)
             except Exception: pass
             pg.wait_for_timeout(700); r=pg.evaluate(SCAN)
+            if r: pg.wait_for_timeout(1500); r=pg.evaluate(SCAN)
             if r: bad['job:'+sec]=r
         try: pg.evaluate("bpCloseSectionFocus()")
         except Exception: pass
