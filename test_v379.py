@@ -2,7 +2,7 @@
 Run from repo root: python3 test_v379.py /path/to/test.png (needs playwright + chromium). Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
 from playwright.async_api import async_playwright
-REPO = os.path.dirname(os.path.abspath(__file__)); IMG = sys.argv[1] if len(sys.argv) > 1 else '/tmp/fakeqr.png'
+REPO = os.path.dirname(os.path.abspath(__file__)); IMG = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, 'qr.png')   # from tools/make_test_fixtures.py
 fails = []; checks = 0
 def ok(c, m):
     global checks; checks += 1

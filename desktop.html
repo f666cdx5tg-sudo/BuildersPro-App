@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.2.0';
+var APP_VERSION = '6.2.1';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -17839,6 +17839,23 @@ safe(function(){
 
 /* ── Icon set: black monoline pictograms (same look as the ramp / steps / driveway icons) ── */
 var ICONS = {
+  hourglass:'<path d="M6 3h12M6 21h12"/><path d="M7 3v3.5a5 5 0 0 0 10 0V3"/><path d="M7 21v-3.5a5 5 0 0 1 10 0V21"/>',
+  stopwatch:'<circle cx="12" cy="14" r="7"/><path d="M12 14l3-3M10 3h4M12 3v4"/>',
+  square:'<rect x="5" y="5" width="14" height="14" rx="2"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="1.5"/>',
+  undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  offline:'<path d="M3 3l18 18"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5-2.7"/><path d="M19 12.9a10 10 0 0 0-2.4-1.7"/><path d="M12 20h.01"/>',
+  circle:'<circle cx="12" cy="12" r="8"/>',
+  shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  tag:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+  alarm:'<circle cx="12" cy="13" r="7"/><path d="M12 9.5V13l2 2M5 3L2 6M19 3l3 3"/>',
+  notepad:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  bulb:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>',
+  laptop:'<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  thumbup:'<path d="M7 11v9H4v-9z"/><path d="M7 11l4-8a2 2 0 0 1 2 2v4h5a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 16.8 20H7"/>',
+  thumbdown:'<path d="M7 13V4H4v9z"/><path d="M7 13l4 8a2 2 0 0 0 2-2v-4h5a2 2 0 0 0 2-2.3l-1.2-7A2 2 0 0 0 16.8 4H7"/>',
+  dot:'<circle cx="12" cy="12" r="3"/>',
   check:'<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/>',
   xcircle:'<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
   alert:'<path d="M12 3.5L2.5 20h19z"/><path d="M12 10v5M12 17.6v.4"/>',
@@ -17941,6 +17958,7 @@ var ICONS = {
 };
 /* emoji → icon name */
 var MAP = {
+ '⏳':'hourglass','⌛':'hourglass','⏱':'stopwatch','⬜':'square','⏹':'stop','↩':'undo','📴':'offline','⭕':'circle','🛡':'shield','🆕':'tag','⏰':'alarm','🗒':'notepad','💡':'bulb','📱':'phone','ℹ':'info','🗂':'folder','👍':'thumbup','👎':'thumbdown','💻':'laptop',
  '✅':'check','❌':'xcircle','⚠':'alert','✏':'pencil','✍':'pencilline','📝':'pencilline','📋':'clipboard','🗑':'trash','📷':'camera','🏠':'home',
  '🏚':'basement','📦':'box','📅':'calendar','📄':'file','🚪':'door','🎤':'mic','🎙':'mic','🧱':'bricks','📤':'upload','📥':'download','📧':'mail',
  '📎':'clip','☁':'cloud','👷':'hardhat','⬇':'arrowdown','⬆':'arrowup','↗':'ext','🔧':'wrench','✂':'scissors','🏁':'flag','⚡':'bolt',
@@ -17953,7 +17971,8 @@ var MAP = {
  '🚫':'ban','☑':'checklist','🪚':'saw','🔒':'lock','📞':'tel','💬':'chat','🔄':'refresh','🧤':'glove','🖼':'image','🛒':'cart','🏪':'store','✨':'sparkle','🛖':'roof','🪣':'gutter','🏭':'chimney'
 };
 var keys = Object.keys(MAP).sort(function(a,b){ return b.length - a.length; });
-var EMO = new RegExp('(?:' + keys.join('|') + ')\\uFE0F?', 'gu');
+/* v6.2.1: plus a catch-all — ANY other emoji becomes a line icon too (never raw), except plain text marks like ✓ ✕ © ™ and arrows */
+var EMO = new RegExp('(?:' + keys.join('|') + ')\\uFE0F?|(?![\\u00A9\\u00AE\\u203C\\u2049\\u2122\\u2190-\\u21FF\\u2713-\\u2718\\u2B05-\\u2B07])\\p{Extended_Pictographic}\\uFE0F?', 'gu');
 function iconHtml(name, ch){
   return '<span class="bp-ic" role="img" aria-label="' + name + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + ICONS[name] + '</svg><i class="bp-ic-t">' + ch + '</i></span>';
 }
@@ -17969,7 +17988,7 @@ function inSkip(n){
 var ISOQ = /\d{4}-\d{2}-\d{2}/;
 function fixText(n){
   var v = n.nodeValue;
-  if (!v) return;
+  if (!v || !n.parentNode) return;   /* v6.2.1: text already replaced by a newer redraw — skip it (it used to throw and abort the whole batch) */
   if (ISOQ.test(v) && v.length < 600 && !inSkip(n)) {
     var w = window.bpIsoToMDY ? window.bpIsoToMDY(v) : v;
     if (w !== v) { n.nodeValue = w; v = w; }
@@ -17987,7 +18006,7 @@ function fixText(n){
     if (m.index > last) frag.appendChild(document.createTextNode(v.slice(last, m.index)));
     var base = m[0].replace(/️/g, '');
     var h = document.createElement('span');
-    h.innerHTML = iconHtml(MAP[base] || MAP[m[0]] || 'sparkle', m[0]);
+    h.innerHTML = iconHtml(MAP[base] || MAP[m[0]] || 'dot', m[0]);
     frag.appendChild(h.firstChild);
     last = m.index + m[0].length;
   }
@@ -18010,8 +18029,10 @@ var mo = new MutationObserver(function(ms){
   try {
     for (var i = 0; i < ms.length; i++) {
       var m = ms[i];
-      if (m.type === 'characterData') { fixText(m.target); continue; }
-      for (var j = 0; j < m.addedNodes.length; j++) walk(m.addedNodes[j]);
+      try {   /* v6.2.1: one bad record can no longer stop the rest of the batch */
+        if (m.type === 'characterData') { fixText(m.target); continue; }
+        for (var j = 0; j < m.addedNodes.length; j++) walk(m.addedNodes[j]);
+      } catch(e){ console.warn('[BP icons] skipped one change', e); }
     }
   } catch(e){ console.warn('[BP v3.02 icons]', e); }
   busy = false;
@@ -22229,6 +22250,40 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
   setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent && (!document.getElementById('bp-recover-card') || w.firstChild !== document.getElementById('bp-recover-card'))) card(); } catch(e){} }, 700);
   setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent) card(); } catch(e){} }, 15000);
   console.log('[BP] v6.1.22 — bring back what a duplicate-job delete took');
+})();
+</script>
+<script>
+/* ══ v6.2.1 — NO EMOJI ANYWHERE: line icons only ═══════════════════════
+   Stan (Oct 26 2026): "All emoji should be line-icon."
+   • On screen: the shared emoji→line-icon converter now knows every emoji
+     the app uses (⏳ ⏱ ⬜ ⏹ ↩ 📴 ⭕ 🛡 🆕 ⏰ 🗒 💡 📱 ℹ 🗂 👍 👎 💻 added) and has
+     a catch-all, so any emoji added later still shows as a line icon.
+   • Places that can't hold an icon — pop-up messages (alert / confirm /
+     prompt), the grey hint text in empty boxes, the window title — get the
+     emoji taken out instead of shown raw. Same code in both apps. ══════ */
+(function(){
+  'use strict';
+  if (window.__bp621) return; window.__bp621 = 1;
+  var RE = new RegExp('(?![\\u00A9\\u00AE\\u203C\\u2049\\u2122\\u2190-\\u21FF\\u2713-\\u2718\\u2B05-\\u2B07])\\p{Extended_Pictographic}\\uFE0F?[ \\u00A0]?', 'gu');
+  function clean(t){ return typeof t === 'string' ? t.replace(RE, '').replace(/^[  ]+/, '').replace(/\n[  ]+/g, '\n') : t; }
+  window.bpNoEmoji = clean;
+  ['alert', 'confirm', 'prompt'].forEach(function(fn){
+    var o = window[fn];
+    if (typeof o !== 'function' || o.__v621) return;
+    var w = function(){ var a = [].slice.call(arguments); a[0] = clean(a[0]); return o.apply(window, a); };
+    w.__v621 = 1; window[fn] = w;
+  });
+  var t = 0;
+  function sweep(){
+    t = 0;
+    document.querySelectorAll('[placeholder],[title],[aria-label]').forEach(function(el){
+      ['placeholder', 'title'].forEach(function(a){ var v = el.getAttribute(a); if (v) { var c = clean(v); if (c !== v) el.setAttribute(a, c); } });
+    });
+    if (document.title !== clean(document.title)) document.title = clean(document.title);
+  }
+  try { new MutationObserver(function(){ if (!t) t = setTimeout(sweep, 250); }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['placeholder', 'title'] }); } catch(e){}
+  sweep();
+  console.log('[BP] v6.2.1 — no emoji anywhere: line icons only');
 })();
 </script>
 <!-- PORTED FROM FIELD APP: START (tools/port_to_mac.py — do not edit by hand) -->

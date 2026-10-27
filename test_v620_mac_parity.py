@@ -26,7 +26,7 @@ async def main():
             await pg.route('**/*', lambda r: r.abort() if any(h in r.request.url for h in BLOCK) else r.continue_())
             await pg.goto('http://localhost:%d/desktop.html' % PORT); await pg.wait_for_timeout(3000)
             await pg.evaluate("document.getElementById('bp-lock') && document.getElementById('bp-lock').remove(); window.bpICloudSync = undefined;")
-            v = await pg.evaluate("APP_VERSION"); ok(v == '6.2.0', 'Mac on v6.2.0 (%s)' % v)
+            v = await pg.evaluate("APP_VERSION"); ok(tuple(map(int, v.split('.'))) >= (6, 2, 0), 'Mac on v6.2.0 or newer (%s)' % v)
 
             print('\nBSP intake check on a new Mac job (same as the field app)')
             await pg.evaluate("openModal('modal-new-job')")

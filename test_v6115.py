@@ -1,6 +1,6 @@
 import subprocess, time, asyncio, json
 from playwright.async_api import async_playwright
-SP='/tmp/claude-0/-home-claude/36b7ed2b-3899-580c-a32c-1b39e4ccef9b/scratchpad/'
+SP=__import__('os').path.dirname(__import__('os').path.abspath(__file__))+'/'   # big.json from tools/make_test_fixtures.py
 SHIM = """
 window.__bk = {parts:[], begin:null};
 window.BPShell = {version:'t'};

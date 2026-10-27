@@ -1,4 +1,4 @@
-"""BuildersPro v3.46 swipe-to-delete test.  Run: python3 test_v343.py  (needs playwright + chromium)
+"""BuildersPro v3.46 swipe-to-delete test.  Run: python3 test_v346.py  (needs playwright + chromium)
 Serves the repo folder itself, so run it from the repo root. Exit code 0 = all pass."""
 import sys, os, subprocess, time
 import asyncio, re, json

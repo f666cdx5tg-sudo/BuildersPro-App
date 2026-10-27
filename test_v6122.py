@@ -10,6 +10,8 @@ def ok(c,m):
     print(('PASS ' if c else 'FAIL ')+m)
     if not c: fails.append(m)
 async def main():
+    if not os.path.exists(REAL):
+        print('SKIPPED — needs a private copy of real records (pass its path as the first argument)'); return
     real=open(REAL).read()
     srv=subprocess.Popen(['python3','-m','http.server','8826'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); time.sleep(1)
     try:
