@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.2.3';
+var APP_VERSION = '6.2.4';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -27498,6 +27498,18 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   window.bspSignedContract = function(jobId){
     return (DB.documents || []).find(function(d){ return d && d.jobId === jobId && d.category === 'Contract'; }) || null;
   };
+  /* v6.2.4 (Stan, Oct 27): "Xfinity agreement is not supposed to be there." The Xfinity
+     cable paper on N. Peach St was filed as a Contract in September, before the BSP check
+     existed, so it counted as the client's signed contract. Move it to Other, once. */
+  (function fixXfinity(n){
+    try {
+      /* storage and iCloud load after this runs, so keep looking for the first two minutes */
+      var d = (typeof DB !== 'undefined' && DB && DB.documents || []).find(function(x){ return x && x.id === 'nxf_pb58_v50l' && x.category === 'Contract' && /XFIN/i.test(x.name || ''); });
+      if (!d) { if (n < 24) setTimeout(function(){ fixXfinity(n + 1); }, 5000); return; }
+      d.category = 'Other'; d.updatedAt = new Date().toISOString();
+      if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB();
+    } catch(e){}
+  })(0);
   window.bspAddSignedContract = function(jobId){
     if (typeof openAddDocument !== 'function') return;
     openAddDocument(jobId);
@@ -27569,9 +27581,10 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     if (bspSyncClientContact(job)) { save(); toast('Client added to contacts'); renderJobDetail(jobId); }
   };
   window.bspToggleChecklist = function(){
-    try { localStorage.setItem('bp_bsp_open', localStorage.getItem('bp_bsp_open') === '1' ? '0' : '1'); } catch(e){}
+    window._bspPeek = '';                                  /* tap the header to fold it back to the tag */
     if (currentJobId) renderJobDetail(currentJobId);
   };
+  window.bspPeek = function(jobId){ window._bspPeek = jobId; if (currentJobId) renderJobDetail(currentJobId); };
   function renderCard(jobId){
     var host = document.getElementById('bsp-ready');
     if (!host) {
@@ -27583,8 +27596,15 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     var rows = bspChecklist(jobId);
     if (!rows.length) { host.innerHTML = ''; return; }
     var left = rows.filter(function(r){ return !r.done; }).length;
-    var open = false; try { open = localStorage.getItem('bp_bsp_open') === '1'; } catch(e){}
-    var showRows = left > 0 || open;
+    /* v6.2.4 (Stan, Oct 27: "Why is this here"): once all are green the card goes away —
+       a small green "BSP all set" tag stays. Tap it to look; it comes back on its own
+       the moment anything goes missing. */
+    if (!left && window._bspPeek !== jobId) {
+      host.innerHTML = '<button type="button" class="bsp-ok" onclick="bspPeek(\'' + jobId + '\')" style="display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 12px;border-radius:99px;border:1px solid ' + GREEN + '55;background:' + GREEN + '14;color:' + GREEN + ';font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">'
+        + '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>BSP all set</button>';
+      return;
+    }
+    var showRows = true;
     var head = '<div onclick="bspToggleChecklist()" style="display:flex;align-items:center;gap:8px;min-height:34px;cursor:pointer">'
       + '<span style="font-size:13px;font-weight:800;letter-spacing:.04em">BSP</span>'
       + '<span style="font-size:13px;font-weight:700;color:' + (left ? RED : GREEN) + '">' + (left ? left + ' to do before work starts' : 'All set') + '</span>'

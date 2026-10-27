@@ -79,7 +79,11 @@ async def main():
             ok(bool(await pg.evaluate("DB.jobs.find(j=>j.id==='%s').startDate" % jid)), 'job started')
             await pg.evaluate("openJobDetail('%s')" % jid); await pg.wait_for_timeout(400)
             card = await pg.evaluate("document.getElementById('bsp-ready')?.innerText||''")
-            ok('All set' in card and 'Signed contract' not in card, 'all done = one compact "All set" line: ' + card.replace('\n', ' | '))
+            ok('BSP all set' in card and 'Signed contract' not in card, 'all done = just a small "BSP all set" tag: ' + card.replace('\n', ' | '))
+
+            await pg.evaluate("bspPeek('%s')" % jid); await pg.wait_for_timeout(300)
+            ok('Signed contract' in await pg.evaluate("document.getElementById('bsp-ready')?.innerText||''"), 'tapping the tag shows the six checks')
+            await pg.evaluate("openJobDetail('%s')" % jid); await pg.wait_for_timeout(300)
 
             # ---- 4. signed change order gate ----
             await pg.evaluate("openNewChangeOrder('%s')" % jid); await pg.wait_for_timeout(500)
