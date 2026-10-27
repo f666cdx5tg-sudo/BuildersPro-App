@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.2.2';
+var APP_VERSION = '6.2.3';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -29518,5 +29518,312 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   try { new MutationObserver(function(){ if (!t) t = setTimeout(sweep, 250); }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['placeholder', 'title'] }); } catch(e){}
   sweep();
   console.log('[BP] v6.2.1 — no emoji anywhere: line icons only');
+})();
+</script>
+<script>
+/* ══ v6.2.3 — SPACES: PHOTOS ON TOP, OPEN / COMPLETE, DONE = TICKED + LINED ══
+   Stan (Oct 26):
+   • "In spaces. Photos should be on top in a stack. That opens upon request.
+      Then checklist with filter for open or complete."
+   • "When any item is complete put a check in the check box as well as line
+      the items name."
+   • "Taps are too slow and unresponsive. Start date and completion date cells
+      are not the same size."
+   What this does:
+   1. Space page: the photos sit right under the action buttons as a small
+      stack of the newest three. Tap the stack to open the full grid; tap
+      again to close it. Closed, the grid isn't drawn at all, so the page
+      opens faster.
+   2. The checklist's Status menu is now two buttons, Open and Complete, with
+      counts. One tap, no menu.
+   3. An item you tick stays on screen (ticked and lined through) until you
+      leave the space, so you see it happen instead of it vanishing.
+   4. Everywhere an item is complete — space list, job page, Punch tab — the
+      box is ticked AND the name is lined through.
+   5. A tick on the space page no longer rebuilds the whole page a second
+      later; only the list, counts and progress bar are redrawn.
+   6. Started / Done and Start / Completion date boxes are always the same
+      size, empty or filled (iPhone shrinks an empty date box otherwise).
+   ══════════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp623 || document.getElementById('modal-new-room')) return; window.__bp623 = 1;
+  var F = window._bpClFilter = window._bpClFilter || {};
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  var st = document.createElement('style'); st.id = 'bp-v623-css';
+  st.textContent =
+    /* same-size date boxes (iOS draws an empty date input shorter and narrower) */
+      'input[type=date],input[type=time],input[type=datetime-local]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:48px;line-height:1.2;text-align:left}'
+    + 'input[type=date]::-webkit-date-and-time-value,input[type=time]::-webkit-date-and-time-value,input[type=datetime-local]::-webkit-date-and-time-value{text-align:left;min-height:1.2em}'
+    + '.field input[type=date]{height:54px}'
+    /* Started / Done: label over date, both cells the same height */
+    + 'label.bp-jc-line{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;min-height:50px;flex-wrap:nowrap}'
+    + 'label.bp-jc-line b{margin-left:26px!important;font-size:13px}'
+    /* the photo stack */
+    + '#bp-rd-photos{margin:2px 16px 14px}'
+    + '.bp-pst{display:flex;align-items:center;gap:16px;width:100%;padding:12px 14px;border-radius:14px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-family:inherit;text-align:left;touch-action:manipulation;-webkit-tap-highlight-color:transparent}'
+    + '.bp-pst-pile{position:relative;width:86px;height:72px;flex-shrink:0}'
+    + '.bp-pst-pile img{position:absolute;top:6px;left:8px;width:66px;height:58px;object-fit:cover;border-radius:9px;border:2px solid var(--card);box-shadow:0 2px 8px rgba(0,0,0,.45);background:var(--card2)}'
+    + '.bp-pst-pile img:nth-child(1){transform:rotate(-8deg) translate(-6px,2px)}'
+    + '.bp-pst-pile img:nth-child(2){transform:rotate(6deg) translate(6px,0)}'
+    + '.bp-pst-pile img:nth-child(3){transform:none}'
+    + '.bp-pst-t{flex:1;min-width:0}.bp-pst-t b{display:block;font-size:16px;font-weight:800}.bp-pst-t i{font-style:normal;font-size:13px;color:#0A84FF;font-weight:700}'
+    + '.bp-pst-chev{width:22px;height:22px;flex-shrink:0;fill:none;stroke:var(--muted);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}'
+    + '#bp-rd-photos.open .bp-pst-chev{transform:rotate(180deg)}'
+    + '#bp-rd-photos .bp-pst-grid{display:none;margin-top:10px}#bp-rd-photos.open .bp-pst-grid{display:block}'
+    /* Open / Complete */
+    + '.bp-seg{flex:1;min-width:0;display:flex;gap:4px;padding:4px;border-radius:12px;border:1px solid var(--border);background:var(--card);min-height:46px;box-sizing:border-box}'
+    + '.bp-seg button{flex:1;min-width:0;border:none;border-radius:9px;background:transparent;color:var(--muted);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;white-space:nowrap}'
+    + '.bp-seg button b{font-weight:800;opacity:.75;margin-left:4px}'
+    + '.bp-seg button.on{background:rgba(10,132,255,.18);color:#0A84FF}'
+    + '.bp-seg button.on.done{background:rgba(48,209,88,.16);color:#30D158}';
+  document.head.appendChild(st);
+
+  /* ── 4. complete = ticked + lined, on the job page and Punch tab rows too ── */
+  if (typeof window.buildPunchItemRow === 'function' && !window.buildPunchItemRow.__v623) {
+    var _row = window.buildPunchItemRow;
+    window.buildPunchItemRow = function(it){
+      var h = _row.apply(this, arguments);
+      if (!it || !it.done) return h;
+      return h.replace('<div style="font-size:14px;font-weight:600;color:var(--text)">', '<div class="bp-cl-name" style="font-size:14px;font-weight:600;color:var(--faint);text-decoration:line-through">');
+    };
+    window.buildPunchItemRow.__v623 = 1;
+    try { buildPunchItemRow = window.buildPunchItemRow; } catch(e){}
+  }
+
+  /* ── 3. what you ticked on this space stays in view until you leave ── */
+  var keep = {}, keepRoom = '';
+  if (typeof window.bpApplyClFilter === 'function' && !window.bpApplyClFilter.__v623) {
+    var _apply = window.bpApplyClFilter;
+    window.bpApplyClFilter = function(items){
+      var out = _apply.apply(this, arguments);
+      if (F.show !== 'open' || !keepRoom) return out;
+      var extra = (items || []).filter(function(it){ return it && keep[it.id] && it.roomId === keepRoom && out.indexOf(it) < 0; });
+      if (!extra.length) return out;
+      var all = out.concat(extra), pos = new Map(); (items || []).forEach(function(it, i){ pos.set(it, i); });
+      return all.sort(function(a, b){ return pos.get(a) - pos.get(b); });
+    };
+    window.bpApplyClFilter.__v623 = 1;
+  }
+
+  /* ── 2. Open / Complete as two buttons ── */
+  function counts(roomId){
+    var trade = window._bpRoomTradeFilter || '';
+    var all = (DB.punchlist || []).filter(function(n){ return n && n.roomId === roomId && (!trade || (n.trade || 'Other') === trade); });
+    var d = all.filter(function(n){ return n.done; }).length;
+    return { open: all.length - d, done: d };
+  }
+  if (typeof window.bpClFilterBar === 'function' && !window.bpClFilterBar.__v623) {
+    var _bar = window.bpClFilterBar;
+    window.bpClFilterBar = function(scope, id){
+      var h = _bar.apply(this, arguments);
+      if (scope !== 'room' || !id) return h;
+      try {
+        var c = counts(id), a = "'room','" + id + "'", done = F.show === 'done';
+        var seg = '<div class="bp-seg" role="tablist">'
+          + '<button type="button" role="tab" data-bp-show="open" class="' + (done ? '' : 'on') + '" onclick="bpSpaceShow(\'open\',' + a + ')">Open<b>' + c.open + '</b></button>'
+          + '<button type="button" role="tab" data-bp-show="done" class="' + (done ? 'on done' : '') + '" onclick="bpSpaceShow(\'done\',' + a + ')">Complete<b>' + c.done + '</b></button>'
+          + '</div>';
+        var tmp = document.createElement('div'); tmp.innerHTML = h;
+        var pm = tmp.querySelector('.bp-pm'); if (!pm) return h;
+        var s = document.createElement('div'); s.innerHTML = seg;
+        pm.parentNode.replaceChild(s.firstChild, pm);
+        return tmp.innerHTML;
+      } catch(e){ return h; }
+    };
+    for (var k in _bar) if (Object.prototype.hasOwnProperty.call(_bar, k)) window.bpClFilterBar[k] = _bar[k];
+    window.bpClFilterBar.__v623 = 1;
+  }
+  window.bpSpaceShow = function(show, scope, id){
+    keep = {};                                   /* switching view = a fresh look */
+    if (typeof window.bpClSet === 'function') window.bpClSet('show', show, scope, id);
+  };
+
+  /* ── 1. photos on top, as a stack ── */
+  var openStack = {};
+  var CHEV = '<svg class="bp-pst-chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>';
+  function stackLabel(n, open){ return '<b>Photos (' + n + ')</b><i>' + (open ? 'Tap to close' : 'Tap to open') + '</i>'; }
+  function pileFrom(grid){
+    var imgs = [].slice.call(grid.querySelectorAll('.photo-thumb img')).slice(0, 3).reverse();
+    return imgs.map(function(i){ return '<img alt="" src="' + E(i.getAttribute('src') || '') + '"/>'; }).join('');
+  }
+  window.bpSpaceStackToggle = function(roomId){
+    var w = document.getElementById('bp-rd-photos'); if (!w) return;
+    var open = !w.classList.contains('open');
+    openStack[roomId] = open;
+    w.classList.toggle('open', open);
+    var t = w.querySelector('.bp-pst-t'); if (t) t.innerHTML = stackLabel(+w.getAttribute('data-n') || 0, open);
+    var b = w.querySelector('.bp-pst'); if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  function stackPhotos(roomId){
+    var scr = document.getElementById('s-room-detail'); if (!scr) return;
+    if (document.getElementById('bp-rd-photos')) return;
+    var hdr = [].slice.call(scr.querySelectorAll('.section-header')).find(function(h){ return /^Photos\b/.test(h.textContent.trim()); });
+    if (!hdr) return;
+    var body = hdr.nextElementSibling;
+    var n = (typeof bpPhotoEntries === 'function') ? bpPhotoEntries({ roomId: roomId }).length : (body ? body.querySelectorAll('.photo-thumb').length : 0);
+    var acts = scr.querySelector('.bp-act-row');
+    if (!n) { hdr.remove(); if (body) body.remove(); return; }   /* nothing to stack — the camera button is right there */
+    var w = document.createElement('div'); w.id = 'bp-rd-photos'; w.setAttribute('data-n', n);
+    var open = !!openStack[roomId];
+    if (open) w.className = 'open';
+    w.innerHTML = '<button type="button" class="bp-pst" aria-expanded="' + open + '" onclick="bpSpaceStackToggle(\'' + roomId + '\')">'
+      + '<span class="bp-pst-pile">' + (body ? pileFrom(body) : '') + '</span>'
+      + '<span class="bp-pst-t">' + stackLabel(n, open) + '</span>' + CHEV + '</button>'
+      + '<div class="bp-pst-grid"></div>';
+    hdr.remove();
+    if (body) { body.style.margin = '0'; w.querySelector('.bp-pst-grid').appendChild(body); }
+    if (acts && acts.parentNode) acts.parentNode.insertBefore(w, acts.nextSibling);
+    else scr.insertBefore(w, scr.firstChild.nextSibling);
+    /* photos that are still loading from storage: refresh the pile when they land */
+    [400, 1500].forEach(function(ms){ setTimeout(function(){
+      var p = w.querySelector('.bp-pst-pile'); if (p && body && w.isConnected) p.innerHTML = pileFrom(body);
+    }, ms); });
+  }
+  function fixMeta(roomId){
+    var room = (DB.rooms || []).find(function(r){ return r.id === roomId; });
+    var m = document.querySelector('#s-room-detail .detail-meta'); if (!m || !room) return;
+    if (/^undefined\b/.test(m.textContent)) {
+      var job = room.jobId ? (DB.jobs || []).find(function(j){ return j.id === room.jobId; }) : null;
+      m.textContent = (room.type ? room.type + (job ? ' · ' : '') : '') + (job ? job.name : '');
+    }
+  }
+  if (typeof window.openRoomDetail === 'function' && !window.openRoomDetail.__v623) {
+    var _ord = window.openRoomDetail;
+    window.openRoomDetail = function(roomId){
+      if (roomId !== keepRoom) { keep = {}; keepRoom = roomId; }
+      var r = _ord.apply(this, arguments);
+      try { fixMeta(roomId); } catch(e){}
+      try { stackPhotos(roomId); } catch(e){ console.warn('[BP] v6.2.3 stack', e); }
+      return r;
+    };
+    for (var k2 in _ord) if (Object.prototype.hasOwnProperty.call(_ord, k2)) window.openRoomDetail[k2] = _ord[k2];
+    window.openRoomDetail.__v623 = 1;
+    try { openRoomDetail = window.openRoomDetail; } catch(e){}
+  }
+  if (typeof window.closeRoomDetail === 'function' && !window.closeRoomDetail.__v623) {
+    var _crd = window.closeRoomDetail;
+    window.closeRoomDetail = function(){ keep = {}; keepRoom = ''; return _crd.apply(this, arguments); };
+    window.closeRoomDetail.__v623 = 1;
+    try { closeRoomDetail = window.closeRoomDetail; } catch(e){}
+  }
+
+  /* ── 5. a tick on the space page: remember it, redraw only what changed ── */
+  if (typeof window.toggleChecklistItem === 'function' && !window.toggleChecklistItem.__v623) {
+    var _tog = window.toggleChecklistItem;
+    window.toggleChecklistItem = function(id){
+      var a = document.querySelector('.screen.active');
+      if (a && a.id === 's-room-detail') keep[id] = 1;
+      return _tog.apply(this, arguments);
+    };
+    window.toggleChecklistItem.__v623 = 1;
+    try { toggleChecklistItem = window.toggleChecklistItem; } catch(e){}
+  }
+  function paintProgress(roomId){
+    var scr = document.getElementById('s-room-detail'); if (!scr) return;
+    var items = (DB.punchlist || []).filter(function(n){ return n && n.roomId === roomId; });
+    var d = items.filter(function(n){ return n.done; }).length, pct = items.length ? Math.round(d / items.length * 100) : 0;
+    [].slice.call(scr.querySelectorAll('span')).forEach(function(s){
+      if (/^\d+%\s+\(\d+\/\d+\)/.test(s.textContent.trim())) s.textContent = pct + '%  (' + d + '/' + items.length + ')' + (d < items.length ? ' · ' + (items.length - d) + ' left ›' : ' ✓');
+    });
+    var bar = scr.querySelector('.detail-header div[style*="height:6px"] > div[style*="height:6px"]');
+    if (bar) bar.style.width = pct + '%';
+    var h = [].slice.call(scr.querySelectorAll('.section-header span')).find(function(x){ return /^Checklist \(/.test(x.textContent); });
+    if (h) h.textContent = 'Checklist (' + items.length + ')';
+  }
+  if (typeof window.refreshChecklistViews === 'function' && !window.refreshChecklistViews.__v623) {
+    var _ref = window.refreshChecklistViews;
+    window.refreshChecklistViews = function(){
+      var a = document.querySelector('.screen.active');
+      var host = document.getElementById('rd-cl-items');
+      if (a && a.id === 's-room-detail' && host) {
+        var rid = a.getAttribute('data-room-id');
+        try {
+          var y = a.scrollTop, wy = window.scrollY;
+          host.innerHTML = bpRoomChecklistItemsHtml(rid);
+          var bar = document.getElementById('bp-clf-room');
+          if (bar) { var t = document.createElement('div'); t.innerHTML = bpClFilterBar('room', rid); bar.parentNode.replaceChild(t.firstChild, bar); }
+          paintProgress(rid);
+          a.scrollTop = y; if (window.scrollY !== wy) window.scrollTo(0, wy);
+          /* the job page behind this one catches up when the phone is idle */
+          if (window.currentJobId && typeof renderJobDetail === 'function') {
+            var job = currentJobId;
+            (window.requestIdleCallback || function(f){ return setTimeout(f, 300); })(function(){ try { renderJobDetail(job); } catch(e){} });
+          }
+          return;
+        } catch(e){ console.warn('[BP] v6.2.3 light refresh', e); }
+      }
+      return _ref.apply(this, arguments);
+    };
+    window.refreshChecklistViews.__v623 = 1;
+    try { refreshChecklistViews = window.refreshChecklistViews; } catch(e){}
+  }
+
+  /* ── 6. job page: Started shows its date too, same as Done ── */
+  if (typeof window.renderJobDetail === 'function' && !window.renderJobDetail.__v623) {
+    var _rjd = window.renderJobDetail;
+    window.renderJobDetail = function(id){
+      var r = _rjd.apply(this, arguments);
+      try {
+        var job = (DB.jobs || []).find(function(j){ return j.id === id; });
+        var t = document.getElementById('jd-progress-toggles');
+        if (job && t) [].slice.call(t.querySelectorAll('label.bp-jc-line')).forEach(function(l){
+          if (!l.querySelector('b')) { var b = document.createElement('b'); b.textContent = job.startDate ? fmtDatePlain(job.startDate) : '—'; l.appendChild(b); }
+        });
+      } catch(e){}
+      return r;
+    };
+    window.renderJobDetail.__v623 = 1;
+    try { renderJobDetail = window.renderJobDetail; } catch(e){}
+  }
+
+  /* ── 7. tap speed: the job page no longer draws every photo it owns ──
+     With 190+ photos, each job-page redraw (any tick, Started, Done, a save
+     from another device) pushed every full-size picture into the page — about
+     a second of frozen screen on an iPhone. Photos are drawn only when the
+     Photos section is opened, and drawn again only while it stays open. */
+  if (typeof window.bpPaintJobPhotos === 'function' && !window.bpPaintJobPhotos.__v623) {
+    var _paint = window.bpPaintJobPhotos, lazyJob = '';
+    var photosOpen = function(){ var a = document.querySelector('#jd-stack .bp-acc[data-k="photos"]'); return !!(a && a.classList.contains('open')); };
+    window.bpPaintJobPhotos = function(jobId){
+      lazyJob = jobId;
+      var el = document.getElementById('jd-photos');
+      if (photosOpen()) return _paint.apply(this, arguments);
+      if (el) { el.innerHTML = ''; el.setAttribute('data-bp-lazy', jobId || ''); }
+      /* the section stack is built after this runs — check again once it is */
+      requestAnimationFrame(function(){ if (photosOpen() && el && el.getAttribute('data-bp-lazy') === jobId) { el.removeAttribute('data-bp-lazy'); _paint.call(window, jobId); } });
+    };
+    window.bpPaintJobPhotos.__v623 = 1;
+    if (typeof window.bpJobAccToggle === 'function') {
+      var _acc = window.bpJobAccToggle;
+      window.bpJobAccToggle = function(key){
+        var r = _acc.apply(this, arguments);
+        if (key === 'photos' && photosOpen()) { var el = document.getElementById('jd-photos'); if (el && el.hasAttribute('data-bp-lazy')) { el.removeAttribute('data-bp-lazy'); _paint.call(window, lazyJob || window.currentJobId); } }
+        return r;
+      };
+    }
+  }
+
+  /* ── 8. tap speed: money figures are fitted once per frame, on screen only ──
+     Every render called this several times over, and each pass measured and
+     resized every dollar figure on every screen one by one. */
+  if (typeof window.bpFitNums === 'function' && !window.bpFitNums.__v623) {
+    var fitQueued = 0;
+    var fitNow = function(){
+      fitQueued = 0;
+      try {
+        var els = [].slice.call(document.querySelectorAll('.bp-kpi-num')).filter(function(el){ return el.offsetParent || el.getClientRects().length; });
+        els.forEach(function(el){ if (!el.getAttribute('data-bp-base')) el.setAttribute('data-bp-base', parseFloat(getComputedStyle(el).fontSize) || 18); });
+        els.forEach(function(el){ el.style.fontSize = el.getAttribute('data-bp-base') + 'px'; });                       /* write all */
+        var m = els.map(function(el){ return [el.clientWidth, el.scrollWidth]; });                                     /* read all */
+        els.forEach(function(el, i){ var a = m[i][0], n = m[i][1]; if (a && n && n > a) el.style.fontSize = Math.max(12, Math.floor(+el.getAttribute('data-bp-base') * (a / n)) - 1) + 'px'; });
+      } catch(e){}
+    };
+    window.bpFitNums = function(){ if (!fitQueued) fitQueued = requestAnimationFrame(fitNow); };
+    window.bpFitNums.now = fitNow;
+    window.bpFitNums.__v623 = 1;
+  }
+  console.log('[BP] v6.2.3 — space photos stacked on top, Open / Complete, done = ticked + lined');
 })();
 </script>

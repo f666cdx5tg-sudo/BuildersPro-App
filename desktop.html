@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.2.2';
+var APP_VERSION = '6.2.3';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -9399,17 +9399,33 @@ function renderDesktopJobDetail(jobId) {
   html += '<div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between">Photos ('+photos.length+')'
     + '<label class="btn btn-ghost" style="font-size:12px;padding:6px 10px;cursor:pointer">+ Add Photo<input type="file" accept="image/*" multiple style="display:none" onchange="bpAddPhotoToJob(this,\''+jobId+'\')"/></label>'
     + '</div>'
-    + '<div class="grid grid-4" style="margin-bottom:8px">'
-    + (photos.length ? photos.slice().reverse().map(function(ph){
-        return '<div style="position:relative;border-radius:10px;overflow:hidden;background:var(--card);border:1px solid var(--border);cursor:pointer" onclick="viewPhoto(\''+ph.id+'\')">'
-          + '<img src="'+ph.src+'" style="width:100%;aspect-ratio:1;object-fit:cover;display:block"/>'
-          + (ph.date?'<div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.7));padding:6px 8px;font-size:10px;font-weight:700;color:#fff">'+fmtDate(ph.date)+'</div>':'')
-          + '</div>';
-      }).join('') : '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--muted);padding:20px">No photos yet</div>')
-    + '</div>';
+    /* v6.2.3: a stack of the newest three — click to open the grid. Drawing every
+       photo on each job-page refresh is what made the page slow with 190+ photos. */
+    + (photos.length
+        ? '<div id="bp-mjd-photos" data-job="'+jobId+'" style="margin-bottom:8px"><button type="button" class="bp-pst" onclick="bpMacJobStackToggle(\''+jobId+'\')"><span class="bp-pst-pile">'
+          + photos.slice(-3).map(function(ph){ return '<img alt="" src="'+ph.src+'"/>'; }).join('')
+          + '</span><span class="bp-pst-t"><b>Photos ('+photos.length+')</b><i>Click to open</i></span><svg class="bp-pst-chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>'
+          + '<div class="grid grid-4 bp-mjd-grid" style="display:none;margin-top:10px"></div></div>'
+        : '<div class="card" style="text-align:center;color:var(--muted);padding:20px;margin-bottom:8px">No photos yet</div>');
 
   document.getElementById('jd2-content').innerHTML = html;
+  if (window._bpMacJobPhotosOpen && document.getElementById('bp-mjd-photos')) bpMacJobStackToggle(jobId);
 }
+window.bpMacJobStackToggle = function(jobId){
+  var w = document.getElementById('bp-mjd-photos'); if (!w) return;
+  var g = w.querySelector('.bp-mjd-grid'), open = g.style.display === 'none';
+  window._bpMacJobPhotosOpen = open;
+  if (open && !g.childElementCount) g.innerHTML = (DB.photos||[]).filter(function(p){ return p.jobId===jobId; }).slice().reverse().map(function(ph){
+    return '<div style="position:relative;border-radius:10px;overflow:hidden;background:var(--card);border:1px solid var(--border);cursor:pointer" onclick="viewPhoto(\''+ph.id+'\')">'
+      + '<img loading="lazy" src="'+ph.src+'" style="width:100%;aspect-ratio:1;object-fit:cover;display:block"/>'
+      + (ph.date?'<div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.7));padding:6px 8px;font-size:10px;font-weight:700;color:#fff">'+fmtDate(ph.date)+'</div>':'')
+      + '</div>';
+  }).join('');
+  g.style.display = open ? 'grid' : 'none';
+  w.classList.toggle('open', open);
+  var t = w.querySelector('.bp-pst-t i'); if (t) t.textContent = open ? 'Click to close' : 'Click to open';
+};
+
 
 /* ── "Open the right add-flow, pre-scoped to this job" wrappers. Each
    underlying open function already resets/populates its own modal; the only
@@ -22295,6 +22311,138 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
   try { new MutationObserver(function(){ if (!t) t = setTimeout(sweep, 250); }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['placeholder', 'title'] }); } catch(e){}
   sweep();
   console.log('[BP] v6.2.1 — no emoji anywhere: line icons only');
+})();
+</script>
+<script>
+/* ══ v6.2.3 (Mac) — SPACES: PHOTOS ON TOP, OPEN / COMPLETE ═════════════════
+   Same as the field app's v6.2.3: the space window shows its photos at the
+   top as a stack (click to open the grid), and the checklist has Open /
+   Complete buttons. A box you tick stays in view, ticked and lined through,
+   until you close the space. Date boxes are the same size, empty or filled. */
+(function(){
+  'use strict';
+  if (window.__bp623mac || !document.getElementById('modal-new-room')) return; window.__bp623mac = 1;
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  var st = document.createElement('style'); st.id = 'bp-v623-css';
+  st.textContent =
+      'input[type=date],input[type=time],input[type=datetime-local]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:44px;line-height:1.2;text-align:left}'
+    + 'input[type=date]::-webkit-date-and-time-value{text-align:left;min-height:1.2em}'
+    + '#bp-mrd-photos{margin:0 0 16px}'
+    + '.bp-pst{display:flex;align-items:center;gap:16px;width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-family:inherit;text-align:left}'
+    + '.bp-pst-pile{position:relative;width:80px;height:64px;flex-shrink:0}'
+    + '.bp-pst-pile img{position:absolute;top:5px;left:8px;width:60px;height:52px;object-fit:cover;border-radius:8px;border:2px solid var(--card);box-shadow:0 2px 8px rgba(0,0,0,.45);background:var(--card2)}'
+    + '.bp-pst-pile img:nth-child(1){transform:rotate(-8deg) translate(-6px,2px)}.bp-pst-pile img:nth-child(2){transform:rotate(6deg) translate(6px,0)}'
+    + '.bp-pst-t{flex:1;min-width:0}.bp-pst-t b{display:block;font-size:15px;font-weight:800}.bp-pst-t i{font-style:normal;font-size:12px;color:#0A84FF;font-weight:700}'
+    + '.bp-pst-chev{width:20px;height:20px;flex-shrink:0;fill:none;stroke:var(--muted);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}'
+    + '#bp-mrd-photos.open .bp-pst-chev,#bp-mjd-photos.open .bp-pst-chev{transform:rotate(180deg)}'
+    + '#bp-mrd-photos .bp-pst-grid{display:none;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:10px;max-height:340px;overflow:auto}'
+    + '#bp-mrd-photos.open .bp-pst-grid{display:grid}'
+    + '.bp-pst-grid div{position:relative;border-radius:8px;overflow:hidden;cursor:pointer;background:var(--card2)}.bp-pst-grid img{width:100%;aspect-ratio:1;object-fit:cover;display:block}'
+    + '.bp-pst-grid span{position:absolute;top:4px;left:4px;color:#000;font-size:9px;font-weight:900;padding:2px 6px;border-radius:6px}'
+    + '.bp-seg{display:flex;gap:4px;padding:4px;border-radius:10px;border:1px solid var(--border);background:var(--card);margin:8px 0;max-width:360px}'
+    + '.bp-seg button{flex:1;border:none;border-radius:7px;background:transparent;color:var(--muted);font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;padding:7px 10px}'
+    + '.bp-seg button b{opacity:.75;margin-left:4px}.bp-seg button.on{background:rgba(10,132,255,.18);color:#0A84FF}.bp-seg button.on.done{background:rgba(48,209,88,.16);color:#30D158}'
+    + '#modal-room-detail[data-show=open] #bp-desk-checklist > div:has(input[type=checkbox]:checked){display:none!important}'
+    + '#modal-room-detail[data-show=done] #bp-desk-checklist > div:has(input[type=checkbox]:not(:checked)){display:none!important}';
+  document.head.appendChild(st);
+  var keepSt = document.createElement('style'); keepSt.id = 'bp-v623-keep'; document.head.appendChild(keepSt);
+
+  var show = 'open', keep = {}, room = '', openStack = {};
+  function paintKeep(){
+    keepSt.textContent = Object.keys(keep).map(function(id){
+      return '#modal-room-detail[data-show=open] #bp-desk-checklist > div:has(input[type=checkbox][onchange*="\'' + id.replace(/["\\]/g, '') + '\'"]:checked)';
+    }).join(',') + (Object.keys(keep).length ? '{display:flex!important}' : '');
+  }
+  function photosOf(roomId){
+    var out = (DB.photos || []).filter(function(p){ return p && p.roomId === roomId && p.src; })
+      .map(function(p){ return { id:p.id, src:p.src, date:p.date || '', tag:'' }; });
+    (DB.punchlist || []).forEach(function(it){
+      if (!it || it.roomId !== roomId) return;
+      [['photosBefore','BEFORE'],['photosAfter','AFTER']].forEach(function(k){
+        (Array.isArray(it[k[0]]) ? it[k[0]] : []).forEach(function(p){ if (p && p.src) out.push({ src:p.src, date:p.date || it.created || '', tag:k[1] }); });
+      });
+      if (it.completionPhoto) out.push({ src:it.completionPhoto, date:it.completionPhotoDate || it.completedAt || '', tag:'DONE' });
+    });
+    return out.sort(function(a, b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+  }
+  var TAGC = { BEFORE:'#FF9F0A', AFTER:'#30D158', DONE:'#0A84FF' };
+  function src(s){ return typeof window.bpImgSrc === 'function' ? bpImgSrc(s) : s; }
+  window.bpMacStackToggle = function(roomId){
+    var w = document.getElementById('bp-mrd-photos'); if (!w) return;
+    var o = !w.classList.contains('open'); openStack[roomId] = o; w.classList.toggle('open', o);
+    var g = w.querySelector('.bp-pst-grid');
+    if (o && g && !g.childElementCount) g.innerHTML = photosOf(roomId).map(function(p){
+      return '<div' + (p.id ? ' onclick="viewPhoto(\'' + p.id + '\')"' : '') + '><img loading="lazy" alt="" src="' + E(src(p.src)) + '"/>' + (p.tag ? '<span style="background:' + TAGC[p.tag] + '">' + p.tag + '</span>' : '') + '</div>';
+    }).join('');
+    var t = w.querySelector('.bp-pst-t i'); if (t) t.textContent = o ? 'Click to close' : 'Click to open';
+  };
+  window.bpMacSpaceShow = function(v){
+    show = v === 'done' ? 'done' : 'open'; keep = {}; paintKeep();
+    var m = document.getElementById('modal-room-detail'); if (m) m.setAttribute('data-show', show);
+    paintSeg(room);
+  };
+  function counts(roomId){
+    var all = (DB.punchlist || []).filter(function(n){ return n && n.roomId === roomId; });
+    var d = all.filter(function(n){ return n.done; }).length; return { open: all.length - d, done: d };
+  }
+  function paintSeg(roomId){
+    var s = document.getElementById('bp-mrd-seg'); if (!s) return;
+    var c = counts(roomId);
+    s.innerHTML = '<button type="button" data-bp-show="open" class="' + (show === 'open' ? 'on' : '') + '" onclick="bpMacSpaceShow(\'open\')">Open<b>' + c.open + '</b></button>'
+      + '<button type="button" data-bp-show="done" class="' + (show === 'done' ? 'on done' : '') + '" onclick="bpMacSpaceShow(\'done\')">Complete<b>' + c.done + '</b></button>';
+  }
+  function decorate(roomId){
+    var m = document.getElementById('modal-room-detail'); if (!m) return;
+    m.setAttribute('data-show', show);
+    var modal = m.querySelector('.modal'); if (!modal) return;
+    if (!document.getElementById('bp-mrd-photos')) {
+      var ph = photosOf(roomId);
+      if (ph.length) {
+        var w = document.createElement('div'); w.id = 'bp-mrd-photos';
+        w.innerHTML = '<button type="button" class="bp-pst" onclick="bpMacStackToggle(\'' + roomId + '\')"><span class="bp-pst-pile">'
+          + ph.slice(0, 3).reverse().map(function(p){ return '<img alt="" src="' + E(src(p.src)) + '"/>'; }).join('')
+          + '</span><span class="bp-pst-t"><b>Photos (' + ph.length + ')</b><i>Click to open</i></span><svg class="bp-pst-chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button><div class="bp-pst-grid"></div>';
+        var hdr = modal.querySelector('.modal-header');
+        var sub = hdr && hdr.nextElementSibling;
+        modal.insertBefore(w, sub ? sub.nextSibling : modal.firstChild);
+        if (openStack[roomId]) { openStack[roomId] = false; bpMacStackToggle(roomId); }
+      }
+    }
+    /* the Open / Complete buttons ride in the Checklist header row, so the list
+       stays the header's next box (the trade filter finds the list that way) */
+    var hdr2 = [].slice.call(modal.querySelectorAll('.sec-hdr')).filter(function(h){ return /checklist/i.test(h.textContent); })[0];
+    if (hdr2 && !document.getElementById('bp-desk-checklist') && hdr2.nextElementSibling) hdr2.nextElementSibling.id = 'bp-desk-checklist';
+    if (hdr2 && !document.getElementById('bp-mrd-seg')) {
+      var s = document.createElement('div'); s.id = 'bp-mrd-seg'; s.className = 'bp-seg';
+      s.style.cssText = 'flex:1;margin:0 12px;text-transform:none;letter-spacing:0';
+      hdr2.insertBefore(s, hdr2.lastElementChild);
+    }
+    paintSeg(roomId);
+  }
+  if (typeof window.openRoomDetail === 'function' && !window.openRoomDetail.__v623) {
+    var _ord = window.openRoomDetail;
+    window.openRoomDetail = function(roomId){
+      if (roomId !== room) { keep = {}; show = 'open'; paintKeep(); room = roomId; }
+      var r = _ord.apply(this, arguments);
+      try { decorate(roomId); } catch(e){ console.warn('[BP Mac] v6.2.3', e); }
+      setTimeout(function(){ try { decorate(roomId); } catch(e){} }, 120);   /* after the trade filter rebuilds the list */
+      return r;
+    };
+    for (var k in _ord) if (Object.prototype.hasOwnProperty.call(_ord, k)) window.openRoomDetail[k] = _ord[k];
+    window.openRoomDetail.__v623 = 1;
+    try { openRoomDetail = window.openRoomDetail; } catch(e){}
+  }
+  if (typeof window.toggleCheckInRoomDetail === 'function' && !window.toggleCheckInRoomDetail.__v623) {
+    var _tc = window.toggleCheckInRoomDetail;
+    window.toggleCheckInRoomDetail = function(itemId, roomId){ keep[itemId] = 1; paintKeep(); return _tc.apply(this, arguments); };
+    window.toggleCheckInRoomDetail.__v623 = 1;
+    try { toggleCheckInRoomDetail = window.toggleCheckInRoomDetail; } catch(e){}
+  }
+  /* closing the window ends the visit */
+  document.addEventListener('click', function(e){
+    if (e.target && e.target.closest && e.target.closest('#modal-room-detail .modal-close')) { keep = {}; room = ''; paintKeep(); }
+  }, true);
+  console.log('[BP Mac] v6.2.3 — space photos stacked on top, Open / Complete');
 })();
 </script>
 <!-- PORTED FROM FIELD APP: START (tools/port_to_mac.py — do not edit by hand) -->
