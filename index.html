@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.2.4';
+var APP_VERSION = '6.2.5';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -2780,7 +2780,7 @@ function buildJobCard(job, mini) {
   var contractNow = (job.contract || bpCOApproved(job.id)) ? bpRevisedContract(job.id) : 0;
   var cline = [];
   if (job.client) cline.push('👤 ' + esc(job.client));
-  if (contractNow) cline.push('<b style="color:var(--text)">$' + contractNow.toLocaleString() + (bpCOApproved(job.id) ? ' \u21b3CO' : '') + '</b>');
+  if (contractNow) cline.push('<b style="color:var(--text)">' + bpMoney(contractNow) + (bpCOApproved(job.id) ? ' \u21b3CO' : '') + '</b>');
   var tickLine = function(date, fn, label){
     return '<label class="bp-jc-line' + ((date && label==='Started') ? ' bp-started' : '') + '" onclick="event.stopPropagation()"><span><input type="checkbox" ' + (date?'checked':'') + ' onchange="' + fn + '(\'' + job.id + '\')"/>' + label + '</span><b>' + (date ? fmtDatePlain(date) : '—') + '</b></label>';
   };
@@ -6622,9 +6622,9 @@ renderJobDetail = function(jobId) {
           + '<span style="font-size:22px;flex-shrink:0">' + icon + '</span>'
           + '<div style="flex:1;min-width:0">'
           + '<div style="font-size:14px;font-weight:700;overflow-wrap:break-word">' + esc(room.name) + '</div>'
-          + '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + done + '/' + items.length + ' checklist items · ' + pct + '%' + (contractVal ? ' · $'+contractVal.toLocaleString()+' contract' : '') + (conCount ? ' · '+conCount+' contractor'+(conCount!==1?'s':'') : '') + '</div>'
+          + '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + done + '/' + items.length + ' checklist items · ' + pct + '%' + (contractVal ? ' · ' + bpMoney(contractVal)+' contract' : '') + (conCount ? ' · '+conCount+' contractor'+(conCount!==1?'s':'') : '') + '</div>'
           + (items.length ? '<div style="height:3px;background:var(--border);border-radius:99px;overflow:hidden;margin-top:5px"><div style="height:3px;width:' + pct + '%;background:var(--accent)"></div></div>' : '')
-          + (contractVal ? '<div style="font-size:11px;margin-top:3px;color:' + (remaining<0?'var(--red)':'#0A84FF') + '">$' + Math.abs(remaining).toLocaleString() + (remaining<0?' over':' balance') + '</div>' : '')
+          + (contractVal ? '<div style="font-size:11px;margin-top:3px;color:' + (remaining<0?'var(--red)':'#0A84FF') + '">' + bpMoney(Math.abs(remaining)) + (remaining<0?' over':' balance') + '</div>' : '')
           + '</div>'
           + '<span style="color:var(--accent);font-size:18px">›</span>'
           + '</div>';
@@ -7061,7 +7061,7 @@ function buildChecklistLineItem(item) {
   html += '<div onclick="toggleChecklistExpand(\''+item.id+'\')" style="flex:1;min-width:0;cursor:pointer">';
   html += '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">';
   html += '<span style="font-size:14px;font-weight:600;text-decoration:'+(item.done?'line-through':'none')+';color:'+(item.done?'var(--faint)':'var(--text)')+'">'+esc(item.text)+'</span>';
-  if (item.value) html += ' <span style="font-size:12px;color:#FF9F0A;font-weight:700">$'+(+item.value).toLocaleString()+'</span>';
+  if (item.value) html += ' <span style="font-size:12px;color:#FF9F0A;font-weight:700">' + bpMoney((+item.value))+'</span>';
   if (hasExtra) html += ' <span style="font-size:11px;color:var(--faint)">▾</span>';
   html += '</div>';
   html += bpClDatesLine(item);   /* v2.53: added / done dates */
@@ -7102,7 +7102,7 @@ function buildChecklistCard(item) {
   html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:5px">';
   if (job) html += '<span class="chip">📋 '+esc(job.name)+'</span>';
   if (room) html += '<span class="chip">🏠 '+esc(room.name)+'</span>';
-  if (item.value) html += '<span class="chip" style="color:#FF9F0A;border-color:#FF9F0A44">$'+(+item.value).toLocaleString()+'</span>';
+  if (item.value) html += '<span class="chip" style="color:#FF9F0A;border-color:#FF9F0A44">' + bpMoney((+item.value))+'</span>';
   if (item.priority&&item.priority!=='Normal') html += '<span class="chip" style="color:'+priColor+';border-color:'+priColor+'44">'+item.priority+'</span>';
   if (item.done&&item.completedAt) html += '<span class="chip green">✅ '+new Date(item.completedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'})+'</span>';
   html += '</div></div>';
@@ -7837,7 +7837,7 @@ function renderFinanceSummary() {
 
   function fmt(n) {
     n = +n || 0;
-    return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+    return (n < 0 ? '-' : '') + '' + bpMoney(Math.abs(n));
   }
 
   var strip = document.getElementById('finance-strip-text');
@@ -7926,7 +7926,7 @@ function mkKpi(label, val, color, tileKind) {
        switching tabs, which could only ever land you on one of the two.
    ══════════════════════════════════════════════════════════════════════════ */
 function bpMoneyFmt(n) {
-  return '$' + (+n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+  return '' + bpMoney((+n||0));
 }
 
 /* One place that knows what each tile is made of, so a tile and its drill-down
@@ -8126,7 +8126,7 @@ function renderFinanceContent() {
         +(inv.notes?'<div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5">'+esc(inv.notes)+'</div>':'')
         +'</div>'
         +'<div style="text-align:right;flex:0 1 auto;min-width:0">'
-        +'<div style="font-size:18px;font-weight:900;color:var(--accent)">$'+(+inv.amount||0).toLocaleString()+'</div>'
+        +'<div style="font-size:18px;font-weight:900;color:var(--accent)">' + bpMoney((+inv.amount||0))+'</div>'
         +'<div style="font-size:11px;font-weight:700;color:'+(statusColor[inv.status]||'var(--muted)')+'">'+inv.status+'</div>'
         +'<div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end;flex-wrap:wrap">'
         +'<button onclick="cycleInvoiceStatus(\''+inv.id+'\')" style="background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:6px;color:#0A84FF;font-size:10px;font-weight:700;padding:3px 7px;cursor:pointer">Mark Paid</button>'
@@ -8143,7 +8143,7 @@ function renderFinanceContent() {
     var total = items.reduce(function(s,e){return s+(+e.amount||0);},0);
     el.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">'
       + '<button onclick="bpExportJobItems('+(jf?"'"+jf+"'":'\'\'')+')" style="background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:8px;color:#0A84FF;font-size:11px;font-weight:700;padding:6px 10px;cursor:pointer">⬇️ Export Items CSV</button>'
-      + '<div style="font-size:13px;font-weight:700;color:var(--red)">Total: $'+total.toLocaleString()+'</div>'
+      + '<div style="font-size:13px;font-weight:700;color:var(--red)">Total: ' + bpMoney(total)+'</div>'
       + '</div>'
       + items.slice().reverse().map(function(exp) {
         var job = exp.jobId ? DB.jobs.find(function(j){return j.id===exp.jobId;}) : null;
@@ -8162,11 +8162,11 @@ function renderFinanceContent() {
           +'</div>'
           +(exp.receiptSrc?'<img src="'+exp.receiptSrc+'" onclick="viewReceiptPhoto(\''+exp.id+'\')" style="width:60px;height:60px;object-fit:cover;border-radius:8px;margin-top:8px;cursor:pointer;border:1px solid var(--border)"/>':'')
           +(its.length?'<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">'
-            + its.map(function(it){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:2px 0"><span>'+esc(it.name)+'</span><span>$'+(+it.cost||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span></div>'; }).join('')
+            + its.map(function(it){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:2px 0"><span>'+esc(it.name)+'</span><span>' + bpMoney((+it.cost||0))+'</span></div>'; }).join('')
             + '</div>' : '')
           +'</div>'
           +'<div style="text-align:right;flex-shrink:0">'
-          +'<div style="font-size:18px;font-weight:900;color:var(--red)">$'+(+exp.amount||0).toLocaleString()+'</div>'
+          +'<div style="font-size:18px;font-weight:900;color:var(--red)">' + bpMoney((+exp.amount||0))+'</div>'
           +'<div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">'
           +'<button onclick="'+((exp.isDelivery||exp.category==='Delivery')?'openEditDelivery':'openEditExpense')+'(\''+exp.id+'\')" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;font-weight:700;padding:3px 7px;cursor:pointer">✏️ Edit</button>'
           +'<button onclick="'+((exp.isDelivery||exp.category==='Delivery')?'deleteDelivery(\''+exp.id+'\')':'deleteFinItem(\'expenses\',\''+exp.id+'\')')+'" style="background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer">×</button>'
@@ -8186,7 +8186,7 @@ function renderFinanceContent() {
     if (!items.length) { el.innerHTML = _tg + '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">No contractors</div><div class="empty-sub">Tap + to add a sub or contractor</div></div>'; return; }
     var total = items.reduce(function(s,c){return s+(+c.value||0);},0);
     var statusColor = {Active:'#0A84FF',Pending:'var(--accent)',Completed:'var(--muted)','On Hold':'var(--red)'};
-    el.innerHTML = _tg + '<div style="font-size:13px;font-weight:700;color:#FFAA33;margin-bottom:8px;text-align:right">Total Sub Costs: $'+total.toLocaleString()+'</div>'
+    el.innerHTML = _tg + '<div style="font-size:13px;font-weight:700;color:#FFAA33;margin-bottom:8px;text-align:right">Total Sub Costs: ' + bpMoney(total)+'</div>'
       + items.map(function(con) {
         var job = con.jobId ? DB.jobs.find(function(j){return j.id===con.jobId;}) : null;
         var pays = contractorPayments(con.id), paid = pays.reduce(function(s,p){return s+(+p.amount||0);},0), bal = (+con.value||0)-paid;
@@ -8201,7 +8201,7 @@ function renderFinanceContent() {
           +(window.bpSubThumbsCon ? bpSubThumbsCon(con) : '')
           +'</div>'
           +'<div style="text-align:right;flex-shrink:0">'
-          +'<div style="font-size:20px;font-weight:900;color:#FFAA33">$'+(+con.value||0).toLocaleString()+'</div>'
+          +'<div style="font-size:20px;font-weight:900;color:#FFAA33">' + bpMoney((+con.value||0))+'</div>'
           +'<div style="font-size:11px;font-weight:700;color:'+(statusColor[con.status]||'var(--muted)')+'">'+con.status+'</div>'
           +'<div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">'
           +'<button onclick="openEditContractor(\''+con.id+'\')" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;font-weight:700;padding:3px 7px;cursor:pointer">✏️ Edit</button>'
@@ -8212,15 +8212,15 @@ function renderFinanceContent() {
           +(con.start||con.end?'<div style="font-size:11px;color:var(--faint);margin-top:6px">'+(con.start?'Start: '+con.start:'')+(con.end?' · End: '+con.end:'')+'</div>':'')
           +'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">'
           +'<div style="display:flex;flex-wrap:wrap;gap:6px 16px;min-width:0">'
-          +'<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px">Paid</div><div style="font-size:15px;font-weight:800;color:#0A84FF">$'+paid.toLocaleString()+'</div></div>'
-          +'<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px">Balance</div><div style="font-size:15px;font-weight:800;color:'+(bal>0?'#FF9500':'var(--muted)')+'">$'+bal.toLocaleString()+'</div></div>'
+          +'<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px">Paid</div><div style="font-size:15px;font-weight:800;color:#0A84FF">' + bpMoney(paid)+'</div></div>'
+          +'<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px">Balance</div><div style="font-size:15px;font-weight:800;color:'+(bal>0?'#FF9500':'var(--muted)')+'">' + bpMoney(bal)+'</div></div>'
           +'</div>'
           +'<button onclick="openLogPayment(\''+con.id+'\')" style="background:rgba(10,132,255,.14);border:1px solid rgba(10,132,255,.4);border-radius:8px;color:#0A84FF;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer">+ Log Payment</button>'
           +'</div>'
           +(pays.length?'<div style="margin-top:4px">'+pays.map(function(p){
             return '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 10px;font-size:12px;padding:6px 0;border-top:1px solid var(--border)">'
               +'<div style="color:var(--muted);min-width:0;flex:1 1 140px;overflow-wrap:anywhere">'+esc(p.date||'')+' · '+esc(p.method||'')+(p.notes?' · '+esc(p.notes):'')+'</div>'
-              +'<div style="display:flex;align-items:center;gap:10px"><span style="font-weight:700">$'+(+p.amount||0).toLocaleString()+'</span>'
+              +'<div style="display:flex;align-items:center;gap:10px"><span style="font-weight:700">' + bpMoney((+p.amount||0))+'</span>'
               +'<button onclick="openEditPayment(\''+p.id+'\')" style="background:none;border:none;color:var(--faint);font-size:13px;cursor:pointer">✏️</button>'
               +'<button onclick="deletePayment(\''+p.id+'\')" style="background:none;border:none;color:var(--faint);font-size:15px;cursor:pointer">×</button></div>'
               +'</div>';}).join('')+'</div>':'')
@@ -8232,7 +8232,7 @@ function renderFinanceContent() {
     var items = jf ? (DB.permits||[]).filter(function(p){return p.jobId===jf;}) : (DB.permits||[]);
     if (!items.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No permits</div><div class="empty-sub">Tap + to add a permit</div></div>'; return; }
     var total = items.reduce(function(s,p){return s+(+p.cost||0);},0);
-    el.innerHTML = '<div style="font-size:13px;font-weight:700;color:#42A5F5;margin-bottom:8px;text-align:right">Total Permit Cost: $'+total.toLocaleString()+'</div>'
+    el.innerHTML = '<div style="font-size:13px;font-weight:700;color:#42A5F5;margin-bottom:8px;text-align:right">Total Permit Cost: ' + bpMoney(total)+'</div>'
       + items.slice().reverse().map(function(p) {
         var job = p.jobId ? DB.jobs.find(function(j){return j.id===p.jobId;}) : null;
         var info = permitExpiryInfo(p);
@@ -8247,7 +8247,7 @@ function renderFinanceContent() {
           +'<div style="margin-top:8px;display:flex;align-items:center;gap:8px">'+buildPermitDocCell(p)+(p.docSrc?'<span style="font-size:11px;color:var(--muted)">'+esc(p.docName||'Scan attached')+'</span>':'<span style="font-size:11px;color:var(--faint)">Tap to attach scan</span>')+'</div>'
           +'</div>'
           +'<div style="text-align:right;flex-shrink:0">'
-          +'<div style="font-size:18px;font-weight:900;color:#42A5F5">$'+(+p.cost||0).toLocaleString()+'</div>'
+          +'<div style="font-size:18px;font-weight:900;color:#42A5F5">' + bpMoney((+p.cost||0))+'</div>'
           +'<button onclick="deleteFinItem(\'permits\',\''+p.id+'\')" style="background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer;margin-top:4px">×</button>'
           +'</div></div></div>';
       }).join('');
@@ -8371,7 +8371,7 @@ function renderSpendingTab(el, jf) {
       var pct = contract ? Math.round(spent/contract*100) : null;
       var status, color;
       if (!contract) { status='No budget set'; color='var(--muted)'; }
-      else if (spent>contract) { status='OVER BUDGET by $'+(spent-contract).toLocaleString(); color='var(--red)'; }
+      else if (spent>contract) { status='OVER BUDGET by ' + bpMoney((spent-contract)); color='var(--red)'; }
       else if (spent>=contract*0.85) { status='Approaching budget ('+pct+'%)'; color='#FF9500'; }
       else { status='On track ('+(pct!==null?pct:0)+'%)'; color='#0A84FF'; }
       var jobBudget = (DB.budgets||{})[x.job.id] || {};
@@ -8382,14 +8382,14 @@ function renderSpendingTab(el, jf) {
         var cpct = budgeted ? Math.round(actual/budgeted*100) : 0;
         var ccolor = actual>budgeted ? 'var(--red)' : (actual>=budgeted*0.85 ? '#FF9500' : '#0A84FF');
         return '<div style="margin-top:8px">'
-          + '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:700;color:var(--muted)">'+esc(cat)+'</span><span style="color:'+ccolor+';font-weight:700">$'+actual.toLocaleString()+' / $'+budgeted.toLocaleString()+'</span></div>'
+          + '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:700;color:var(--muted)">'+esc(cat)+'</span><span style="color:'+ccolor+';font-weight:700">' + bpMoney(actual)+' / ' + bpMoney(budgeted)+'</span></div>'
           + '<div style="height:5px;background:var(--border);border-radius:99px;overflow:hidden"><div style="height:5px;border-radius:99px;width:'+Math.min(100,cpct)+'%;background:'+ccolor+'"></div></div>'
           + '</div>';
       }).join('');
       return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:8px">'
         + '<div style="display:flex;justify-content:space-between;align-items:center">'
-        + '<div><div style="font-size:15px;font-weight:700">'+esc(x.job.name)+'</div><div style="font-size:11px;color:var(--faint)">Contract $'+contract.toLocaleString()+'</div></div>'
-        + '<div style="text-align:right"><div style="font-size:17px;font-weight:900">$'+spent.toLocaleString()+'</div><div style="font-size:11px;font-weight:700;color:'+color+'">'+status+'</div></div>'
+        + '<div><div style="font-size:15px;font-weight:700">'+esc(x.job.name)+'</div><div style="font-size:11px;color:var(--faint)">Contract ' + bpMoney(contract)+'</div></div>'
+        + '<div style="text-align:right"><div style="font-size:17px;font-weight:900">' + bpMoney(spent)+'</div><div style="font-size:11px;font-weight:700;color:'+color+'">'+status+'</div></div>'
         + '</div>'
         + (contract ? '<div style="height:6px;background:var(--border);border-radius:99px;overflow:hidden;margin-top:8px"><div style="height:6px;border-radius:99px;width:'+Math.min(100,pct)+'%;background:'+color+'"></div></div>' : '')
         + (budgetRows ? '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"><div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);margin-bottom:2px">Budget vs Actual</div>' + budgetRows + '</div>' : '')
@@ -8407,7 +8407,7 @@ function renderSpendingTab(el, jf) {
   html += catList.map(function(c){
     var pct = totalSpent ? Math.round(c.amount/totalSpent*100) : 0;
     return '<div style="margin-bottom:12px">'
-      + '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="font-weight:700">'+esc(c.name)+'</span><span style="color:var(--muted)">$'+c.amount.toLocaleString()+' · '+pct+'%</span></div>'
+      + '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="font-weight:700">'+esc(c.name)+'</span><span style="color:var(--muted)">' + bpMoney(c.amount)+' · '+pct+'%</span></div>'
       + '<div style="height:6px;background:var(--border);border-radius:99px;overflow:hidden"><div style="height:6px;border-radius:99px;width:'+pct+'%;background:#0A84FF"></div></div>'
       + '</div>';
   }).join('');
@@ -8864,7 +8864,7 @@ function renderDeliveriesTab(el, jf) {
 
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
     + '<button onclick="bpExportDeliveries('+(jf?"'"+jf+"'":"''")+')" style="background:rgba(255,159,10,.1);border:1px solid rgba(255,159,10,.35);border-radius:8px;color:#FF9F0A;font-size:11px;font-weight:700;padding:6px 10px;cursor:pointer">⬇️ Export CSV</button>'
-    + '<div style="font-size:12px;font-weight:700;color:var(--muted);text-align:right">Scheduled: <span style="color:#FF9F0A">$'+pending.toLocaleString()+'</span> · All: <span style="color:var(--red)">$'+total.toLocaleString()+'</span></div>'
+    + '<div style="font-size:12px;font-weight:700;color:var(--muted);text-align:right">Scheduled: <span style="color:#FF9F0A">' + bpMoney(pending)+'</span> · All: <span style="color:var(--red)">' + bpMoney(total)+'</span></div>'
     + '</div>';
 
   if (late) html += '<div style="padding:10px 12px;border-radius:10px;background:rgba(255,69,58,.1);border:1px solid rgba(255,69,58,.35);color:#FF453A;font-size:12px;font-weight:800;margin-bottom:10px">⚠️ '+late+' deliver'+(late===1?'y is':'ies are')+' past due and not marked received</div>';
@@ -9169,7 +9169,7 @@ function bpSigHasInk() { return !!_sigDirty; }
    route carries the full text and says a signed copy follows.
    ══════════════════════════════════════════════════════════════════════ */
 function bpCOMoney(n) {
-  return (n<0?'-':'') + '$' + Math.abs(+n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return (n<0?'-':'') + '' + bpMoney(Math.abs(+n||0));
 }
 
 window.emailChangeOrder = function(id) {
@@ -9477,7 +9477,7 @@ function bpRenderCOImpact() {
   var st  = (document.getElementById('co-status')||{}).value || 'Draft';
   var job = (DB.jobs||[]).find(function(j){ return j.id===jid; });
   if (!job) { box.innerHTML = '<span style="color:var(--muted)">Pick a job to see the contract impact.</span>'; return; }
-  function f(n){ return (n<0?'-':'') + '$' + Math.abs(+n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
+  function f(n){ return (n<0?'-':'') + '' + bpMoney(Math.abs(+n||0)); }
   var orig = +job.contract || 0;
   // Exclude the CO being edited from the existing total, so editing doesn't double-count.
   var others = bpChangeOrders(jid).filter(function(c){ return c.id !== _coEditId; });
@@ -9576,7 +9576,7 @@ function renderChangeOrdersTab(el, jf) {
     return;
   }
   items = items.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||'') || (b.created||'').localeCompare(a.created||''); });
-  function f(n){ return (n<0?'-':'') + '$' + Math.abs(+n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
+  function f(n){ return (n<0?'-':'') + '' + bpMoney(Math.abs(+n||0)); }
 
   var approved = items.filter(function(c){ return c.status==='Approved'; }).reduce(function(s,c){ return s+(+c.amount||0); },0);
   var pending  = items.filter(function(c){ return c.status==='Draft'||c.status==='Submitted'; }).reduce(function(s,c){ return s+(+c.amount||0); },0);
@@ -9865,7 +9865,7 @@ function getCalendarEvents(year, month) {
     if (inMonth(c.end)) events.push({id:c.id,date:c.end,time:'',title:c.name+' Ends',kind:'con-end',color:'#BF5AF2',jobId:c.jobId||'',notes:c.trade||'',source:'contractor',editable:false,screen:'s-finance'});
   });
   (DB.invoices||[]).forEach(function(inv){
-    if (inv.status!=='Paid' && inMonth(inv.date)) events.push({id:inv.id,date:inv.date,time:'',title:'Invoice Due: '+inv.desc+' ($'+(+inv.amount||0).toLocaleString()+')',kind:'invoice-due',color:'#5E5CE6',jobId:inv.jobId||'',notes:'',source:'invoice',editable:false,screen:'s-finance'});
+    if (inv.status!=='Paid' && inMonth(inv.date)) events.push({id:inv.id,date:inv.date,time:'',title:'Invoice Due: '+inv.desc+' (' + bpMoney((+inv.amount||0))+')',kind:'invoice-due',color:'#5E5CE6',jobId:inv.jobId||'',notes:'',source:'invoice',editable:false,screen:'s-finance'});
   });
   events.sort(function(a,b){ return a.date.localeCompare(b.date) || (a.time||'').localeCompare(b.time||''); });
   return events;
@@ -10084,10 +10084,10 @@ window.emailInvoice = function(id) {
   var inv = (DB.invoices||[]).find(function(i){return i.id===id;});
   if (!inv) return;
   var job = inv.jobId ? DB.jobs.find(function(j){return j.id===inv.jobId;}) : null;
-  var subject = 'Invoice' + (job?' – '+job.name:'') + ' – $' + (+inv.amount||0).toLocaleString();
+  var subject = 'Invoice' + (job?' – '+job.name:'') + ' – ' + bpMoney((+inv.amount||0));
   var body = 'Hi' + (job&&job.client?' '+job.client:'') + ',\n\n'
     + 'Here is the invoice for ' + (inv.desc||'services rendered') + ':\n\n'
-    + 'Amount: $' + (+inv.amount||0).toLocaleString() + '\n'
+    + 'Amount: ' + bpMoney((+inv.amount||0)) + '\n'
     + (inv.date?'Date: '+fmtDatePlain(inv.date)+'\n':'')
     + (inv.notes?'\n'+inv.notes+'\n':'')
     + '\nThanks,\n';
@@ -10253,7 +10253,7 @@ function renderExpItemsUI() {
       }).join('')
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">'
     + '<button type="button" onclick="addExpItemRow()" style="padding:8px 12px;border-radius:8px;border:1px dashed var(--border);background:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Add item</button>'
-    + '<div style="font-size:12px;font-weight:800;color:var(--text)">Items total: $'+runningTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</div>'
+    + '<div style="font-size:12px;font-weight:800;color:var(--text)">Items total: ' + bpMoney(runningTotal)+'</div>'
     + '</div>';
 }
 window.updateExpItem = function(idx, field, val) {
@@ -10317,7 +10317,7 @@ window.scanReceiptOCR = async function() {
       res.style.borderColor = 'rgba(10,132,255,.3)';
       res.style.color = '#0A84FF';
       res.innerHTML =
-        (parsed.total ? '✅ Found total: <strong>$' + parsed.total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</strong><br>' : '⚠️ Could not find a total — enter it manually.<br>')
+        (parsed.total ? '✅ Found total: <strong>' + bpMoney(parsed.total) + '</strong><br>' : '⚠️ Could not find a total — enter it manually.<br>')
         + (parsed.vendor ? esc(parsed.vendor) + '<br>' : '')
         + (parsed.date ? parsed.date + '<br>' : '')
         + (foundItems.length ? foundItems.length + ' item(s) found below — check them over.<br>' : 'No line items recognized — add them manually below if you want an itemized spreadsheet for this receipt.<br>')
@@ -10348,7 +10348,7 @@ window.viewReceiptPhoto = function(expId) {
   _viewerList = []; _viewerIdx = -1; updateViewerNav(); // single image — no swipe arrows
   document.getElementById('photo-viewer-img').src = exp.receiptSrc;
   document.getElementById('photo-dl').href = exp.receiptSrc;
-  document.getElementById('photo-viewer-cap').textContent = 'Receipt: ' + esc(exp.desc) + ' · $' + (+exp.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + (exp.receiptGeo?' · '+exp.receiptGeo:'') + (exp.receiptWeather?' · '+exp.receiptWeather:'');
+  document.getElementById('photo-viewer-cap').textContent = 'Receipt: ' + esc(exp.desc) + ' · ' + bpMoney((+exp.amount||0)) + (exp.receiptGeo?' · '+exp.receiptGeo:'') + (exp.receiptWeather?' · '+exp.receiptWeather:'');
   document.getElementById('photo-viewer').classList.add('open');
   setPhotoViewerDeleteVisible(false);
 };
@@ -10416,7 +10416,7 @@ renderJobDetail = function(jobId) {
     + mkJdKpi('Balance', bpMoney(Math.max(0,balance)), balance>=0?'#0A84FF':'var(--red)', 'jd-expenses-section')
     + mkJdKpi('Expenses', bpMoney(expenses), 'var(--red)', 'jd-expenses-section')
     + mkJdKpi('Sub Costs', bpMoney(subCosts), '#FFAA33', 'jd-contractors-section')
-    + (timeCost ? mkKpi('Time Logged', bpMoney(Math.round(timeCost)), '#BF5AF2') : '')
+    + (timeCost ? mkKpi('Time Logged', bpMoney(timeCost), '#BF5AF2') : '')
     + '</div>';
 
   var jdAnchor = document.getElementById('jd-photos');
@@ -10487,10 +10487,10 @@ renderJobDetail = function(jobId) {
               + '<div style="flex:1;min-width:0;overflow-wrap:anywhere">'
               + '<div style="font-size:15px;font-weight:800">'+esc(con.name)+'</div>'
               + '<div style="font-size:12px;color:var(--muted);margin-top:2px">🔧 '+esc(con.trade)+(con.phone?' · 📞 '+esc(bpPhone(con.phone)):'')+'</div>'
-              + '<div style="font-size:11px;font-weight:700;margin-top:3px;color:'+(statusColor[con.status]||'var(--muted)')+'">'+con.status+' · $'+paid.toLocaleString()+' paid / $'+Math.max(0,bal).toLocaleString()+' remaining</div>'
+              + '<div style="font-size:11px;font-weight:700;margin-top:3px;color:'+(statusColor[con.status]||'var(--muted)')+'">'+con.status+' · ' + bpMoney(paid)+' paid / ' + bpMoney(Math.max(0,bal))+' remaining</div>'
               + '</div>'
               + '<div style="text-align:right;flex-shrink:0">'
-              + '<div style="font-size:17px;font-weight:900;color:#FFAA33">$'+(+con.value||0).toLocaleString()+'</div>'
+              + '<div style="font-size:17px;font-weight:900;color:#FFAA33">' + bpMoney((+con.value||0))+'</div>'
               + '<div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">'
               + '<button onclick="openEditContractor(\''+con.id+'\')" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;font-weight:700;padding:3px 7px;cursor:pointer">✏️ Edit</button>'
               + '<button onclick="deleteFinItem(\'contractors\',\''+con.id+'\')" style="background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer">×</button>'
@@ -10520,7 +10520,7 @@ renderJobDetail = function(jobId) {
               + (inv.date?'<div style="font-size:12px;color:var(--faint);margin-top:2px">📅 '+fmtDatePlain(inv.date)+'</div>':'')
               + '</div>'
               + '<div style="text-align:right;flex-shrink:1;min-width:0;max-width:62%">'
-              + '<div style="font-size:17px;font-weight:900;color:var(--accent)">$'+(+inv.amount||0).toLocaleString()+'</div>'
+              + '<div style="font-size:17px;font-weight:900;color:var(--accent)">' + bpMoney((+inv.amount||0))+'</div>'
               + '<div style="font-size:11px;font-weight:700;color:'+(statusColor[inv.status]||'var(--muted)')+'">'+inv.status+'</div>'
               + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;justify-content:flex-end">'
               + '<button onclick="cycleInvoiceStatus(\''+inv.id+'\')" style="background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:6px;color:#0A84FF;font-size:10px;font-weight:700;padding:3px 7px;cursor:pointer">Mark Paid</button>'
@@ -10553,7 +10553,7 @@ renderJobDetail = function(jobId) {
               + (exp.date?'<div style="font-size:12px;color:var(--faint);margin-top:2px">📅 '+fmtDatePlain(exp.date)+'</div>':'')
               + '</div>'
               + '<div style="text-align:right;flex-shrink:0">'
-              + '<div style="font-size:17px;font-weight:900;color:var(--red)">$'+(+exp.amount||0).toLocaleString()+'</div>'
+              + '<div style="font-size:17px;font-weight:900;color:var(--red)">' + bpMoney((+exp.amount||0))+'</div>'
               + '<div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">'
               + '<button onclick="openEditExpense(\''+exp.id+'\')" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;font-weight:700;padding:3px 7px;cursor:pointer">✏️ Edit</button>'
               + '<button onclick="deleteFinItem(\'expenses\',\''+exp.id+'\')" style="background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer">×</button>'
@@ -10642,7 +10642,7 @@ renderJobDetail = function(jobId) {
               + '<div style="font-size:12px;font-weight:700;margin-top:3px;color:'+info.color+'">⏰ '+info.label+'</div>'
               + '</div>'
               + '<div style="text-align:right;flex-shrink:0">'
-              + '<div style="font-size:15px;font-weight:900;color:#42A5F5">$'+(+p.cost||0).toLocaleString()+'</div>'
+              + '<div style="font-size:15px;font-weight:900;color:#42A5F5">' + bpMoney((+p.cost||0))+'</div>'
               + '<button onclick="deleteFinItem(\'permits\',\''+p.id+'\');renderJobDetail(\''+jobId+'\')" style="background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer">×</button>'
               + '</div></div>'
               + '<div style="margin-top:8px;display:flex;align-items:center;gap:8px">'+buildPermitDocCell(p)+(p.docSrc?'<span style="font-size:11px;color:var(--muted)">'+esc(p.docName||'Scan attached')+'</span>':'<span style="font-size:11px;color:var(--faint)">Tap to attach scan</span>')+'</div>'
@@ -11646,7 +11646,7 @@ function bpAttentionItems() {
     if (!j.contract) return;
     var spend = jobActualSpend(j.id).total;
     var over = spend - bpRevisedContract(j.id);
-    if (over > 0) items.push({ icon:'💸', text: esc(j.name) + ' is $' + Math.round(over).toLocaleString() + ' over budget', color:'var(--red)', bg:'rgba(255,59,48,.12)', border:'rgba(255,59,48,.35)', action:"openJobDetail('"+j.id+"')" });
+    if (over > 0) items.push({ icon:'💸', text: esc(j.name) + ' is ' + bpMoney(over) + ' over budget', color:'var(--red)', bg:'rgba(255,59,48,.12)', border:'rgba(255,59,48,.35)', action:"openJobDetail('"+j.id+"')" });
   });
 
   var openPunch = (DB.punchlist||[]).filter(function(p){ return !p.done; }).length;
@@ -11793,7 +11793,7 @@ function buildEstimateCard(e) {
     + '</div>'
     + '<span class="chip" style="color:'+statusColor+';border-color:'+statusColor+'44">'+e.status+'</span>'
     + '</div>'
-    + '<div style="font-size:20px;font-weight:900;margin-top:8px;color:#0A84FF">$'+total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+'</div>'
+    + '<div style="font-size:20px;font-weight:900;margin-top:8px;color:#0A84FF">' + bpMoney(total)+'</div>'
     + '<div style="display:flex;gap:8px;margin-top:10px">'
     + '<button onclick="openEditEstimate(\''+e.id+'\')" style="flex:1;padding:9px;border-radius:9px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✏️ Edit</button>'
     + '<button onclick="emailEstimate(\''+e.id+'\')" style="padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--card2);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📧</button>'
@@ -11862,7 +11862,7 @@ function renderEstItemsRows() {
 window.bpEstAddLine = function() { _estLineItems.push({ desc:'', qty:1, price:0 }); renderEstItemsRows(); };
 window.bpEstRemoveLine = function(idx) { if (_estLineItems.length<=1) { _estLineItems[0]={desc:'',qty:1,price:0}; } else { _estLineItems.splice(idx,1); } renderEstItemsRows(); };
 window.bpEstUpdateLine = function(idx, field, val) { if (!_estLineItems[idx]) return; _estLineItems[idx][field] = (field==='desc') ? val : (+val||0); bpEstRecalcTotal(); };
-function bpEstRecalcTotal() { var t=document.getElementById('est-total'); if (t) t.textContent = '$'+bpEstTotal(_estLineItems).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function bpEstRecalcTotal() { var t=document.getElementById('est-total'); if (t) t.textContent = '' + bpMoney(bpEstTotal(_estLineItems)); }
 
 window.saveEstimateModal = function() {
   var title = (document.getElementById('est-title').value||'').trim();
@@ -11893,14 +11893,14 @@ window.emailEstimate = function(id) {
   var e = (DB.estimates||[]).find(function(x){ return x.id===id; });
   if (!e) return;
   var total = bpEstTotal(e.lineItems);
-  var subject = 'Estimate: ' + e.title + ' – $' + total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  var subject = 'Estimate: ' + e.title + ' – ' + bpMoney(total);
   var lines = (e.lineItems||[]).filter(function(li){return li.desc||li.qty||li.price;}).map(function(li){
-    return '  • ' + (li.desc||'Item') + '  x' + (li.qty||1) + '  $' + (+li.price||0).toLocaleString();
+    return '  • ' + (li.desc||'Item') + '  x' + (li.qty||1) + '  ' + bpMoney((+li.price||0));
   }).join('\n');
   var body = 'Hi' + (e.client?' '+e.client:'') + ',\n\n'
     + 'Here is the estimate for ' + e.title + ':\n\n'
     + (lines?lines+'\n\n':'')
-    + 'Total: $' + total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + '\n'
+    + 'Total: ' + bpMoney(total) + '\n'
     + (e.notes?'\n'+e.notes+'\n':'')
     + '\nThanks,\n';
   sendEmail(e.clientEmail, subject, body);
@@ -12040,7 +12040,7 @@ function bpRenderTimeLog() {
       + '</div>'
       + '<div style="text-align:right;flex-shrink:0">'
       + '<div style="font-size:16px;font-weight:900">'+hrs+' hrs</div>'
-      + (earn ? '<div style="font-size:12px;color:#0A84FF;font-weight:700">$'+earn.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+'</div>' : '')
+      + (earn ? '<div style="font-size:12px;color:#0A84FF;font-weight:700">' + bpMoney(earn)+'</div>' : '')
       + '<button onclick="bpDeleteTimeEntry(\''+e.id+'\')" style="background:none;border:none;color:var(--faint);font-size:14px;cursor:pointer;margin-top:4px">🗑</button>'
       + '</div></div></div>';
   }).join('');
@@ -19341,7 +19341,7 @@ console.log('[BP] v2.85 time clock hidden');
 'use strict';
 if (document.getElementById('modal-new-room')) return;           /* phone/iPad only */
 function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-function money(n){ n = Math.round(+n || 0); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US'); }
+function money(n){ return bpMoney(n); }
 function today(){ return (typeof todayStr === 'function') ? todayStr() : new Date().toISOString().slice(0,10); }
 
 /* ── CSS ── */
@@ -19510,7 +19510,7 @@ console.log('[BP] v2.86 Home clean-up ready');
 'use strict';
 if (document.getElementById('modal-new-room')) return;
 function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-function money(n){ n = Math.round(+n || 0); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US'); }
+function money(n){ return bpMoney(n); }
 function today(){ return (typeof todayStr === 'function') ? todayStr() : new Date().toISOString().slice(0,10); }
 function dk(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 function onSite(){ try { var id = bpActiveJob(); return (DB.jobs||[]).find(function(j){ return j.id === id; }) || null; } catch(e){ return null; } }
@@ -20157,7 +20157,7 @@ function ts(){ return (typeof now === 'function') ? now() : new Date().toISOStri
 function newId(){ return (typeof uid === 'function') ? uid() : 'bp' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function say(m){ try { toast(m); } catch(e){} }
 function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
-function money(n){ n = +n || 0; return '$' + n.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+function money(n){ n = +n || 0; return '' + bpMoney(n); }
 function jobs(){ return (DB.jobs||[]).filter(function(j){ return j && !(DB.archiveState && DB.archiveState[j.id] && DB.archiveState[j.id].archived); }); }
 function jobName(id){ var j = id && (DB.jobs||[]).find(function(x){ return x.id === id; }); return j ? j.name : ''; }
 function roomsOf(job){ return (DB.rooms||[]).filter(function(r){ return r && r.jobId === job; }); }
@@ -22961,7 +22961,7 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
       + (it.done ? '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#fff;fill:none;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>' : '') + '</div>';
     h += '<div onclick="toggleChecklistExpand(\'' + it.id + '\')" style="flex:1;min-width:0;cursor:pointer">';
     h += '<div class="bp-cl-name" style="text-decoration:' + (it.done ? 'line-through' : 'none') + ';color:' + (it.done ? 'var(--faint)' : 'var(--text)') + '">' + E(it.text);
-    if (it.value) h += ' <span style="font-size:12px;color:#FF9F0A;font-weight:700">$' + (+it.value).toLocaleString() + '</span>';
+    if (it.value) h += ' <span style="font-size:12px;color:#FF9F0A;font-weight:700">' + bpMoney((+it.value)) + '</span>';
     if (hasExtra) h += ' <span style="font-size:11px;color:var(--faint)">▾</span>';
     h += '</div>';
     if (typeof bpClDatesLine === 'function') h += bpClDatesLine(it);
@@ -27369,7 +27369,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
 (function(){
   var PURPLE = '#BF5AF2';
   function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-  function money(n){ n = Math.round(+n || 0); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US'); }
+  function money(n){ return bpMoney(n); }
   var ICO = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0;stroke:' + PURPLE + ';fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>';
 
   /* ── On Site card: one purple row under the three tiles ── */
@@ -27439,7 +27439,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   var RED = '#FF453A', GREEN = '#30D158', BLUE = '#0A84FF', PURPLE = '#BF5AF2';
   function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function val(id){ var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
-  function money(n){ return '$' + (Math.round(+n || 0)).toLocaleString('en-US'); }
+  function money(n){ return bpMoney(n); }
 
   /* ── 1 + 2: intake gate and client contact ───────────────────── */
   var FIELDS = [['client','client name'],['address','address'],['clientEmail','email'],['clientPhone','cell']];

@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.2.4';
+var APP_VERSION = '6.2.5';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -2572,7 +2572,7 @@ function bpAttentionItems() {
     if (!j.contract) return;
     var spend = jobActualSpend(j.id).total;
     var over = spend - bpRevisedContract(j.id);
-    if (over > 0) items.push({ icon:'💸', text: esc(j.name) + ' is ' + fmt$(Math.round(over)) + ' over budget', color:'#EF5350', bg:'rgba(255,59,48,.12)', border:'rgba(255,59,48,.35)', action:"showView('finance')" });
+    if (over > 0) items.push({ icon:'💸', text: esc(j.name) + ' is ' + fmt$(over) + ' over budget', color:'#EF5350', bg:'rgba(255,59,48,.12)', border:'rgba(255,59,48,.35)', action:"showView('finance')" });
   });
 
   var openPunch = (DB.punchlist||[]).filter(function(p){ return !p.done; }).length;
@@ -4529,7 +4529,7 @@ function renderDesktopFinance() {
         +'</div></div>'
         +'</div>'
         +((exp.items||[]).length?'<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">'+exp.items.map(function(it){
-          return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:2px 0"><span>'+esc(it.name)+'</span><span>$'+(+it.cost||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+'</span></div>';
+          return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:2px 0"><span>'+esc(it.name)+'</span><span>' + bpMoney((+it.cost||0))+'</span></div>';
         }).join('')+'</div>':'')
         +'</div>';}).join('');
 
@@ -5230,7 +5230,7 @@ function bpSigHasInk() { return !!_sigDirty; }
    route carries the full text and says a signed copy follows.
    ══════════════════════════════════════════════════════════════════════ */
 function bpCOMoney(n) {
-  return (n<0?'-':'') + '$' + Math.abs(+n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return (n<0?'-':'') + '' + bpMoney(Math.abs(+n||0));
 }
 
 window.emailChangeOrder = function(id) {
@@ -5496,7 +5496,7 @@ window.bpRenderCOImpact = function() {
   var st  = (document.getElementById('co-status')||{}).value || 'Draft';
   var job = (DB.jobs||[]).find(function(j){ return j.id===jid; });
   if (!job) { box.innerHTML = '<span style="color:var(--muted)">Pick a job to see the contract impact.</span>'; return; }
-  function f(n){ return (n<0?'-':'') + '$' + Math.abs(+n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
+  function f(n){ return (n<0?'-':'') + '' + bpMoney(Math.abs(+n||0)); }
   var orig = +job.contract || 0;
   var others = bpChangeOrders(jid).filter(function(c){ return c.id !== _coEditId; });
   var approvedOthers = others.filter(function(c){ return c.status==='Approved'; })
@@ -5559,8 +5559,7 @@ window.saveChangeOrder = function() {
 window.deleteChangeOrder = function(id) {
   var c = (DB.changeOrders||[]).find(function(x){ return x.id===id; });
   if (!c) return;
-  if (!confirm('Delete ' + (c.number||'this change order') + '?\n\nIf it was approved, the contract value drops by $'
-    + Math.abs(+c.amount||0).toLocaleString() + '.')) return;
+  if (!confirm('Delete ' + (c.number||'this change order') + '?\n\nIf it was approved, the contract value drops by ' + bpMoney(Math.abs(+c.amount||0)) + '.')) return;
   bpRemoveFrom('changeOrders', function(x){ return x.id!==id; });
   _coEditId = null;
   closeModal('modal-change-order');
@@ -5591,7 +5590,7 @@ function renderChangeOrdersBoard() {
     return;
   }
   items = items.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-  function f(n){ return (n<0?'-':'') + '$' + Math.abs(+n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
+  function f(n){ return (n<0?'-':'') + '' + bpMoney(Math.abs(+n||0)); }
   var approved = bpCOApproved(''), pending = bpCOPending('');
   var nPending = items.filter(function(c){ return c.status==='Draft'||c.status==='Submitted'; }).length;
 
@@ -5859,7 +5858,7 @@ function renderDeskExpItemsUI(){
       }).join('')
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">'
     + '<button type="button" onclick="addDeskExpItemRow()" style="padding:8px 12px;border-radius:8px;border:1px dashed var(--border);background:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Add item</button>'
-    + '<div style="font-size:12px;font-weight:800;color:var(--text)">Items total: $'+runningTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</div>'
+    + '<div style="font-size:12px;font-weight:800;color:var(--text)">Items total: ' + bpMoney(runningTotal)+'</div>'
     + '</div>';
 }
 window.updateDeskExpItem=function(idx,field,val){
@@ -5947,7 +5946,7 @@ window.scanDesktopReceiptOCR=async function(){
     if(res){
       res.style.display='block';
       res.style.background='rgba(10,132,255,.08)';res.style.borderColor='rgba(10,132,255,.3)';res.style.color='#0A84FF';
-      res.innerHTML=(parsed.total?'✅ Found total: <strong>$'+parsed.total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong><br>':'⚠️ Could not find a total — enter it manually.<br>')
+      res.innerHTML=(parsed.total?'✅ Found total: <strong>' + bpMoney(parsed.total)+'</strong><br>':'⚠️ Could not find a total — enter it manually.<br>')
         +(parsed.vendor?esc(parsed.vendor)+'<br>':'')+(parsed.date?parsed.date+'<br>':'')
         +(foundItems.length?foundItems.length+' item(s) found below — check them over.<br>':'No line items recognized — add them manually below if you want an itemized spreadsheet for this receipt.<br>')
         +'<span style="opacity:.7">On-device OCR — double-check the fields before saving.</span>';
@@ -9239,7 +9238,7 @@ function renderDesktopJobDetail(jobId) {
     + jdKpi('Balance', fmt$(Math.max(0,balance)), balance>=0?'#0A84FF':'#EF5350')
     + jdKpi('Expenses', fmt$(expenses), '#EF5350')
     + jdKpi('Sub Costs', fmt$(subCosts), '#FFAA33')
-    + (timeCost ? jdKpi('Time Logged', fmt$(Math.round(timeCost)), '#AF52DE') : '')
+    + (timeCost ? jdKpi('Time Logged', fmt$(timeCost), '#AF52DE') : '')
     + '</div>';
 
   // ── Progress ──
@@ -9386,7 +9385,7 @@ function renderDesktopJobDetail(jobId) {
 
   // ── Time Logged ──
   if (timeEntries.length) {
-    html += '<div class="sec-hdr">Time Logged ('+timeEntries.length+' · '+fmt$(Math.round(timeCost))+')</div>'
+    html += '<div class="sec-hdr">Time Logged ('+timeEntries.length+' · '+fmt$(timeCost)+')</div>'
       + '<div class="card" style="margin-bottom:16px;padding:0"><table class="tbl"><thead><tr><th>Who</th><th>Date</th><th>Hours</th><th>Cost</th><th></th></tr></thead><tbody>'
       + timeEntries.map(function(t){
           var hrs = bpEntryHours(t);
@@ -16309,7 +16308,7 @@ console.log('[BP] v2.85 time clock hidden');
 'use strict';
 if (document.getElementById('modal-new-room')) return;           /* phone/iPad only */
 function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-function money(n){ n = Math.round(+n || 0); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US'); }
+function money(n){ return bpMoney(n); }
 function today(){ return (typeof todayStr === 'function') ? todayStr() : new Date().toISOString().slice(0,10); }
 
 /* ── CSS ── */
@@ -16482,7 +16481,7 @@ console.log('[BP] v2.86 Home clean-up ready');
 'use strict';
 if (document.getElementById('modal-new-room')) return;
 function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-function money(n){ n = Math.round(+n || 0); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US'); }
+function money(n){ return bpMoney(n); }
 function today(){ return (typeof todayStr === 'function') ? todayStr() : new Date().toISOString().slice(0,10); }
 function dk(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 function onSite(){ try { var id = bpActiveJob(); return (DB.jobs||[]).find(function(j){ return j.id === id; }) || null; } catch(e){ return null; } }
@@ -17121,7 +17120,7 @@ function ts(){ return (typeof now === 'function') ? now() : new Date().toISOStri
 function newId(){ return (typeof uid === 'function') ? uid() : 'bp' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function say(m){ try { toast(m); } catch(e){} }
 function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
-function money(n){ n = +n || 0; return '$' + n.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+function money(n){ n = +n || 0; return '' + bpMoney(n); }
 function jobs(){ return (DB.jobs||[]).filter(function(j){ return j && !(DB.archiveState && DB.archiveState[j.id] && DB.archiveState[j.id].archived); }); }
 function jobName(id){ var j = id && (DB.jobs||[]).find(function(x){ return x.id === id; }); return j ? j.name : ''; }
 function roomsOf(job){ return (DB.rooms||[]).filter(function(r){ return r && r.jobId === job; }); }
@@ -22445,6 +22444,34 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
   console.log('[BP Mac] v6.2.3 — space photos stacked on top, Open / Complete');
 })();
 </script>
+<script>
+/* ══ v6.2.5 (Mac) — THE SIDE MENU SCROLLS ALL THE WAY DOWN ════════════════
+   Stan (Oct 27): "scrolling in command center I can not scroll past the
+   settings on the side bar." The menu's height came from the grid row; in
+   the Mac app's web view that row can run past the bottom of the window, so
+   Archived Jobs and Sync sat below the edge with nothing left to scroll.
+   The menu is now held to exactly the visible height under the header, with
+   room at the bottom, and it scrolls on its own. ═════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp625mac || !document.getElementById('modal-new-room')) return; window.__bp625mac = 1;
+  var st = document.createElement('style');
+  st.textContent = '@media (min-width:981px){aside.sidebar{min-height:0;align-self:start;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))!important}}';
+  document.head.appendChild(st);
+  function fit(){
+    var s = document.querySelector('aside.sidebar'); if (!s) return;
+    if (window.innerWidth <= 980) { s.style.height = ''; s.style.maxHeight = ''; return; }
+    var top = Math.max(0, s.getBoundingClientRect().top);
+    var h = Math.max(200, Math.floor((window.visualViewport ? window.visualViewport.height : window.innerHeight) - top));
+    s.style.height = h + 'px'; s.style.maxHeight = h + 'px';
+  }
+  window.bpFitSidebar = fit;
+  window.addEventListener('resize', fit);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
+  fit(); setTimeout(fit, 500); setTimeout(fit, 2000);
+  console.log('[BP Mac] v6.2.5 — side menu scrolls to the bottom');
+})();
+</script>
 <!-- PORTED FROM FIELD APP: START (tools/port_to_mac.py — do not edit by hand) -->
 <script>
 /* ═══ PORTED: Security section (field v3.77) — generated from index.html by tools/port_to_mac.py ═══ */
@@ -22660,7 +22687,7 @@ console.log('[BP Mac] v3.77 job Security section ready (same code as the field a
   var RED = '#FF453A', GREEN = '#30D158', BLUE = '#0A84FF', PURPLE = '#BF5AF2';
   function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function val(id){ var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
-  function money(n){ return '$' + (Math.round(+n || 0)).toLocaleString('en-US'); }
+  function money(n){ return bpMoney(n); }
 
   /* ── 1 + 2: intake gate and client contact ───────────────────── */
   var FIELDS = [['client','client name'],['address','address'],['clientEmail','email'],['clientPhone','cell']];
