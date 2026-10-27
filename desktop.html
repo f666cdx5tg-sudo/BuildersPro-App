@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.2.5';
+var APP_VERSION = '6.2.6';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -10586,19 +10586,22 @@ window.renderDesktopPunchlist = function(){
   if (window._bpPunchArea) {
     var room = (DB.rooms||[]).find(function(r){ return r.id === window._bpPunchArea; });
     var isUn = window._bpPunchArea === 'UNASSIGNED';
+    var isAll = window._bpPunchArea === '__ALL';   /* v6.2.6: every item on the job, open or done */
     var all  = DB.punchlist || [];
     var keep = all.filter(function(n){
+      if (isAll) { var jf = punchJobFilter(); return !jf || n.jobId === jf; }
       return isUn ? (!n.roomId || !(DB.rooms||[]).some(function(r){ return r.id===n.roomId; }))
                   : n.roomId === window._bpPunchArea;
     });
-    var c = isUn
+    var c = (isUn || isAll)
       ? { open: keep.filter(function(n){return !n.done;}).length, done: keep.filter(function(n){return n.done;}).length }
       : window.bpAreaCounts(window._bpPunchArea);
+    var show = (window._bpDF && window._bpDF.show) || 'all';
+    var pill = function(k, n, col){ var on = show === k; return '<button type="button" class="btn btn-ghost bp-pshow" data-show="'+k+'" onclick="bpDeskPunchShow(\''+k+'\')" style="font-size:13px;font-weight:800;padding:6px 12px;color:'+col+';border-color:'+(on?col:'var(--border)')+';background:'+(on?col+'22':'transparent')+'">'+n+' '+k+'</button>'; };
     hostH.innerHTML = '<button class="btn btn-ghost" onclick="bpClosePunchArea()">‹ All Spaces</button>'
       + '<div style="font-size:17px;font-weight:900;margin-left:6px">'
-      + (isUn ? '❓ Unassigned' : BPX.icon(room)+' '+esc(room?room.name:'')) + '</div>'
-      + '<div style="font-size:13px;font-weight:800;color:'+(c.open?'#FF453A':'#30D158')+'">'+c.open+' open</div>'
-      + '<div style="font-size:13px;font-weight:800;color:var(--muted)">'+c.done+' done</div>';
+      + (isAll ? (show === 'done' ? 'All done items' : show === 'open' ? 'All open items' : 'All items') : isUn ? '❓ Unassigned' : BPX.icon(room)+' '+esc(room?room.name:'')) + '</div>'
+      + pill('open', c.open, c.open ? '#FF453A' : '#30D158') + pill('done', c.done, '#30D158');
     DB.punchlist = keep;
     try { _prevRenderDesktopPunchlist(); } finally { DB.punchlist = all; }
     return;
@@ -10616,7 +10619,8 @@ window.renderDesktopPunchlist = function(){
   var sub = document.getElementById('punchlist-sub');
   var scopeItems = (DB.punchlist||[]).filter(function(n){ return !jobId || n.jobId === jobId; });
   var doneN = scopeItems.filter(function(n){ return n.done; }).length;
-  if (sub) sub.textContent = doneN + '/' + scopeItems.length + ' complete · ' + rooms.length + ' spaces';
+  if (sub) sub.innerHTML = '<span class="bp-pc" role="button" style="cursor:pointer;color:#FF453A;font-weight:800;text-decoration:underline;text-underline-offset:3px" onclick="bpDeskPunchShowAll(\'open\')">' + (scopeItems.length - doneN) + ' open</span> · '
+    + '<span class="bp-pc" role="button" style="cursor:pointer;color:#30D158;font-weight:800;text-decoration:underline;text-underline-offset:3px" onclick="bpDeskPunchShowAll(\'done\')">' + doneN + ' done</span> · ' + rooms.length + ' spaces';
 
   if (!rooms.length && !unassigned.length) {
     wrap.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>'
@@ -10656,7 +10660,18 @@ window.bpOpenPunchArea = function(rid){
   if (typeof showView === 'function') showView('punchlist');
   renderDesktopPunchlist();
 };
-window.bpClosePunchArea = function(){ window._bpPunchArea = null; renderDesktopPunchlist(); };
+window.bpClosePunchArea = function(){ window._bpPunchArea = null; if (window._bpDF && window._bpDeskShowPicked) { window._bpDF.show = 'all'; window._bpDeskShowPicked = false; } renderDesktopPunchlist(); };
+/* v6.2.6: tap "open" / "done" to see just those — tap it again to see both */
+window.bpDeskPunchShow = function(k){
+  if (!window._bpDF) return;
+  window._bpDF.show = window._bpDF.show === k ? 'all' : k; window._bpDeskShowPicked = true;
+  renderDesktopPunchlist();
+};
+window.bpDeskPunchShowAll = function(k){
+  if (!window._bpDF) return;
+  window._bpDF.show = k; window._bpDeskShowPicked = true; window._bpPunchArea = '__ALL';
+  renderDesktopPunchlist();
+};
 
 /* ── Filing tools ──────────────────────────────────────────────────── */
 function areaSheet(title, jobId, onPick){
@@ -22470,6 +22485,49 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
   if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
   fit(); setTimeout(fit, 500); setTimeout(fit, 2000);
   console.log('[BP Mac] v6.2.5 — side menu scrolls to the bottom');
+})();
+</script>
+<script>
+/* ══ v6.2.6 (Mac) — PUNCH: TAP A HEADING TO SEE OPEN OR DONE ══════════════
+   Same as the field app: click OPEN or DONE on a space card to open it
+   showing just those; click "N open" / "N done" under Punchlist for every
+   open (or done) item on the job; inside a space window, click its name to
+   flip between Open and Complete. ══════════════════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp626mac || !document.getElementById('modal-new-room')) return; window.__bp626mac = 1;
+  var st = document.createElement('style');
+  st.textContent = '#view-punchlist .bp-tapstat{cursor:pointer;border-radius:8px;padding:2px 4px;margin:-2px -4px}#view-punchlist .bp-tapstat:hover{background:rgba(255,255,255,.08)}'
+    + '#modal-room-detail .modal-title{cursor:pointer}';
+  document.head.appendChild(st);
+  document.addEventListener('click', function(e){
+    var s = e.target && e.target.closest && e.target.closest('#view-punchlist .bp-area-box .bp-tapstat');
+    if (s && window._bpDF) { window._bpDF.show = s.getAttribute('data-show'); window._bpDeskShowPicked = true; }
+    var t = e.target && e.target.closest && e.target.closest('#modal-room-detail .modal-title');
+    if (t && typeof window.bpMacSpaceShow === 'function') {
+      var on = document.querySelector('#bp-mrd-seg button.on');
+      bpMacSpaceShow(on && on.getAttribute('data-bp-show') === 'done' ? 'open' : 'done');
+    }
+  }, true);
+  function markStats(){
+    document.querySelectorAll('#view-punchlist .bp-area-box').forEach(function(box){
+      [].slice.call(box.querySelectorAll('span')).forEach(function(lb){
+        var t = lb.textContent.trim();
+        if ((t !== 'OPEN' && t !== 'DONE') || lb.parentNode.classList.contains('bp-tapstat')) return;
+        var num = lb.previousElementSibling; if (!num) return;
+        var w = document.createElement('span'); w.className = 'bp-tapstat'; w.setAttribute('data-show', t === 'DONE' ? 'done' : 'open');
+        w.style.cssText = 'display:inline-flex;align-items:baseline;gap:inherit';
+        lb.parentNode.insertBefore(w, num); w.appendChild(num); w.appendChild(lb);
+      });
+    });
+  }
+  if (typeof window.renderDesktopPunchlist === 'function' && !window.renderDesktopPunchlist.__v626) {
+    var _r = window.renderDesktopPunchlist;
+    window.renderDesktopPunchlist = function(){ var r = _r.apply(this, arguments); try { markStats(); } catch(e){} return r; };
+    window.renderDesktopPunchlist.__v626 = 1;
+    try { renderDesktopPunchlist = window.renderDesktopPunchlist; } catch(e){}
+  }
+  console.log('[BP Mac] v6.2.6 — tap a punch heading to see open or done');
 })();
 </script>
 <!-- PORTED FROM FIELD APP: START (tools/port_to_mac.py — do not edit by hand) -->

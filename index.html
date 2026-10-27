@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.2.5';
+var APP_VERSION = '6.2.6';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -29845,5 +29845,105 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     window.bpFitNums.__v623 = 1;
   }
   console.log('[BP] v6.2.3 — space photos stacked on top, Open / Complete, done = ticked + lined');
+})();
+</script>
+<script>
+/* ══ v6.2.6 — PUNCH: TAP A HEADING TO SEE OPEN OR DONE ═════════════════════
+   Stan (Oct 27): "punch-list I want to be tap on the heading name for it
+   should filter it to open or close." Three places, same idea:
+   1. On a space card, tap OPEN to see only its open items, DONE for only
+      its done items.
+   2. Tap "10 open" or "160 done" under the Punch title to see every open
+      (or done) item on the job, grouped by space.
+   3. Inside a space, tap its name to flip the checklist between Open and
+      Complete. Same on the Mac. ═══════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp626 || document.getElementById('modal-new-room')) return; window.__bp626 = 1;
+  var F = window._bpClFilter = window._bpClFilter || {};
+  var st = document.createElement('style');
+  st.textContent = '.bp-tapstat{cursor:pointer;border-radius:8px;padding:2px 4px;margin:-2px -4px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}'
+    + '.bp-tapstat:active{background:rgba(255,255,255,.08)}'
+    + '#punch-count .bp-pc{cursor:pointer;font-weight:800;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;-webkit-tap-highlight-color:transparent}'
+    + '#punch-count .bp-pc.o{color:#FF453A}#punch-count .bp-pc.d{color:#30D158}'
+    + '#s-room-detail .detail-title{cursor:pointer;-webkit-tap-highlight-color:transparent}';
+  document.head.appendChild(st);
+
+  /* 1. OPEN / DONE on a space card: pick the view, then let the card open as usual */
+  document.addEventListener('click', function(e){
+    var box = e.target && e.target.closest && e.target.closest('#s-punch .bp-area-box');
+    if (!box) return;
+    var s = e.target.closest('.bp-tapstat'); if (!s) return;
+    F.show = s.getAttribute('data-show') === 'done' ? 'done' : 'open';
+    window._bpPunchShowPick = F.show;
+  }, true);
+  function markStats(){
+    document.querySelectorAll('#s-punch .bp-area-box').forEach(function(box){
+      [].slice.call(box.querySelectorAll('span')).forEach(function(lb){
+        var t = lb.textContent.trim();
+        if ((t !== 'OPEN' && t !== 'DONE') || lb.parentNode.classList.contains('bp-tapstat')) return;
+        var num = lb.previousElementSibling; if (!num) return;
+        var w = document.createElement('span'); w.className = 'bp-tapstat'; w.setAttribute('data-show', t === 'DONE' ? 'done' : 'open');
+        w.setAttribute('role', 'button'); w.setAttribute('aria-label', 'Show ' + (t === 'DONE' ? 'done' : 'open') + ' items');
+        w.style.cssText = 'display:inline-flex;align-items:baseline;gap:inherit';
+        lb.parentNode.insertBefore(w, num); w.appendChild(num); w.appendChild(lb);
+      });
+    });
+  }
+
+  /* 2. "10 open · 160 done" → every open / done item on the job */
+  var allMode = '';
+  window.bpPunchShowAll = function(show){
+    allMode = show === 'done' ? 'done' : 'open';
+    F.show = allMode; F.space = '';
+    window._bpPunchArea = '__ALL';
+    bpRenderPunch();
+    var s = document.getElementById('s-punch'); if (s) s.scrollTop = 0;
+  };
+  function paintCount(){
+    var c = document.getElementById('punch-count'); if (!c || c.querySelector('.bp-pc')) return;
+    var m = /^(\d+) open · (\d+) done$/.exec(c.textContent.trim()); if (!m) return;
+    c.innerHTML = '<span class="bp-pc o" role="button" onclick="bpPunchShowAll(\'open\')">' + m[1] + ' open</span> · <span class="bp-pc d" role="button" onclick="bpPunchShowAll(\'done\')">' + m[2] + ' done</span>';
+  }
+  if (typeof window.bpRenderPunch === 'function' && !window.bpRenderPunch.__v626) {
+    var _rp = window.bpRenderPunch;
+    window.bpRenderPunch = function(){
+      var all = window._bpPunchArea === '__ALL';
+      if (all) { window._bpPunchArea = '__GEN'; F.space = ''; F.show = allMode || F.show; }
+      var r;
+      try { r = _rp.apply(this, arguments); } finally { if (all) window._bpPunchArea = '__ALL'; }
+      try {
+        if (all) {
+          /* the bar the area view adds says "General" — make it say what this is */
+          var body = document.getElementById('punch-body');
+          var bar = body && [].slice.call(body.children).find(function(k){ return k.querySelector && k.querySelector('button[onclick="bpClosePunchArea()"]'); });
+          var nm = bar && bar.children[1];
+          if (nm) nm.textContent = F.show === 'done' ? 'All done items' : 'All open items';
+        }
+        markStats(); paintCount();
+      } catch(e){}
+      return r;
+    };
+    window.bpRenderPunch.__v626 = 1;
+    try { bpRenderPunch = window.bpRenderPunch; } catch(e){}
+  }
+  if (typeof window.bpClosePunchArea === 'function' && !window.bpClosePunchArea.__v626) {
+    var _cpa = window.bpClosePunchArea;
+    window.bpClosePunchArea = function(){ allMode = ''; window._bpPunchShowPick = ''; return _cpa.apply(this, arguments); };
+    window.bpClosePunchArea.__v626 = 1;
+    try { bpClosePunchArea = window.bpClosePunchArea; } catch(e){}
+  }
+
+  /* 3. inside a space: tap its name to flip Open ↔ Complete */
+  document.addEventListener('click', function(e){
+    var t = e.target && e.target.closest && e.target.closest('#s-room-detail .detail-title');
+    if (!t) return;
+    var scr = document.getElementById('s-room-detail'), id = scr && scr.getAttribute('data-room-id');
+    if (!id || typeof window.bpSpaceShow !== 'function') return;
+    var next = F.show === 'done' ? 'open' : 'done';
+    bpSpaceShow(next, 'room', id);
+    if (typeof toast === 'function') toast(next === 'done' ? 'Showing complete items' : 'Showing open items');
+  });
+  console.log('[BP] v6.2.6 — tap a punch heading to see open or done');
 })();
 </script>
