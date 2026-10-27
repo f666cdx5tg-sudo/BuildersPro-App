@@ -9,3 +9,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Field app, Command Center and native app must match
         run: bash check_versions.sh
+      - name: Mac copies of field-app features are current
+        run: bash tools/check_parity.sh

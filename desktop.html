@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.1.24';
+var APP_VERSION = '6.2.0';
 
 /* ══ DB & STORAGE ════════════════════════════════════════════ */
 var DB = { jobs:[], rooms:[], tasks:[], photos:[], notes:[], invoices:[], expenses:[], contractors:[], payments:[], appointments:[], reports:[], nextId:1 };
@@ -22229,5 +22229,1076 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
   setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent && (!document.getElementById('bp-recover-card') || w.firstChild !== document.getElementById('bp-recover-card'))) card(); } catch(e){} }, 700);
   setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent) card(); } catch(e){} }, 15000);
   console.log('[BP] v6.1.22 — bring back what a duplicate-job delete took');
+})();
+</script>
+<!-- PORTED FROM FIELD APP: START (tools/port_to_mac.py — do not edit by hand) -->
+<script>
+/* ═══ PORTED: Security section (field v3.77) — generated from index.html by tools/port_to_mac.py ═══ */
+/* ══ v3.77 — SECURITY section on every job ═══════════════════════════════════════
+   Stan (Oct 8, 2026): "Add a security section to each job to store door codes, wifi
+   passwords, camera access."
+   Saved on the job record itself (job.security = [{id,kind,label,user,secret,notes}]) so it
+   rides the normal job sync and stays strictly inside that job. Values are masked until
+   tapped (so nothing shows over a shoulder), with one-tap Copy. Duplicate Job does NOT carry
+   a job's codes to the copy, and Client Update / Email Update never read this field.
+   v3.79: each entry can carry photos of its QR code / barcode (stored on the entry — never in the
+   Photos gallery or in client updates). Tap a photo to enlarge it on a white screen so it can be scanned.
+   Field app only. */
+(function(){
+'use strict';
+if (window.__bpSec377) return; window.__bpSec377 = 1;
+var IC = window.BP_ICONS || {};
+IC.wifi   = IC.wifi   || '<path d="M12 18l.01 0"/><path d="M9.172 15.172a4 4 0 0 1 5.656 0"/><path d="M6.343 12.343a8 8 0 0 1 11.314 0"/><path d="M3.515 9.515c4.686 -4.687 12.284 -4.687 17 0"/>';
+IC.bell   = IC.bell   || '<path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>';
+IC.copy   = IC.copy   || '<path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/>';
+IC.shield = IC.shield || '<path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"/><path d="M12 11m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12l0 2.5"/>';
+IC.plus   = IC.plus   || '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>';
+IC.chev   = IC.chev   || '<path d="M9 6l6 6l-6 6"/>';
+function ic(n, px){ return '<span class="bp-ic" aria-hidden="true" style="width:' + (px||20) + 'px;height:' + (px||20) + 'px;flex:none"><svg viewBox="0 0 24 24">' + (IC[n]||'') + '</svg></span>'; }
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+var KINDS = [
+  { k:'door',    icon:'door', label:'Door / gate code', user:'',                      secret:'Code' },
+  { k:'wifi',    icon:'wifi', label:'Wi-Fi',            user:'Network name',          secret:'Password' },
+  { k:'camera',  icon:'camera', label:'Camera / DVR',     user:'Username / app / link', secret:'Password' },
+  { k:'alarm',   icon:'bell', label:'Alarm',            user:'',                      secret:'Code' },
+  { k:'lockbox', icon:'key', label:'Lockbox / key',    user:'',                      secret:'Code' },
+  { k:'other',   icon:'lock', label:'Other',            user:'Username',              secret:'Password / code' }
+];
+function kind(k){ return KINDS.find(function(x){ return x.k === k; }) || KINDS[KINDS.length-1]; }
+function job(id){ return (DB.jobs||[]).find(function(j){ return j.id === id; }); }
+var openFor = {}, timers = {}, editing = null, editJob = '', draft = [];
+var MAXPH = 6;
+
+function paint(jobId){
+  var old = document.getElementById('jd-security-section'); if (old) old.remove();
+  var scr = document.getElementById('view-job-detail'); if (!scr) return;
+  var anchor = document.getElementById('bsp-ready') || document.getElementById('jd2-actions'); if (!anchor) return;
+  var j = job(jobId); if (!j) return;
+  var L = j.security || [], isOpen = !!openFor[jobId];
+  var s = document.createElement('div'); s.id = 'jd-security-section'; s.style.cssText = 'margin:12px 0 0;max-width:720px';
+  var head = '<div onclick="bpSecToggle(\'' + jobId + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;min-height:52px;padding:0 14px;background:var(--card);border:1px solid var(--border);border-radius:14px;font-size:15px;font-weight:800">'
+    + ic('shield',22) + '<span style="flex:1;min-width:0">Security' + (L.length ? ' <span style="color:var(--muted);font-weight:700">(' + L.length + ')</span>' : '') + '</span>'
+    + '<span style="color:var(--muted);display:flex;transform:rotate(' + (isOpen ? '90' : '0') + 'deg);transition:transform .15s">' + ic('chev',20) + '</span></div>';
+  var body = '';
+  if (isOpen) {
+    body = '<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">'
+      + (L.length ? L.map(function(it){
+          var K = kind(it.kind);
+          return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px">'
+            + '<div style="display:flex;align-items:center;gap:8px">' + ic(K.icon,22) + ''
+            + '<div style="flex:1;min-width:0;font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(it.label || K.label) + '</div>'
+            + '<button onclick="bpSecEdit(\'' + jobId + '\',\'' + it.id + '\')" aria-label="Edit" style="min-width:44px;min-height:44px;background:none;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center">' + ic('pencil',20) + '</button></div>'
+            + (it.user ? '<div style="font-size:13px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(K.user || 'Username') + ': <b style="color:var(--text)">' + E(it.user) + '</b></div>' : '')
+            + ((it.secret || !(it.photos||[]).length) ? '<div style="display:flex;gap:8px;margin-top:8px">'
+            + '<div data-sec-val="' + it.id + '" onclick="bpSecReveal(this,\'' + jobId + '\',\'' + it.id + '\')" style="flex:1;min-width:0;cursor:pointer;display:flex;align-items:center;min-height:44px;padding:0 12px;border-radius:10px;background:var(--card2,#222);border:1px solid var(--border);font-family:ui-monospace,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:.08em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (it.secret ? '••••••••' : '<span style="color:var(--faint);font-family:inherit;letter-spacing:0;font-size:14px">— none —</span>') + '</div>'
+            + '<button onclick="bpSecCopy(\'' + jobId + '\',\'' + it.id + '\')" style="min-width:76px;min-height:44px;border-radius:10px;border:1px solid var(--border);background:var(--card2,#222);color:var(--accent,#0A84FF);font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' + ic('copy',18) + 'Copy</button></div>' : '')
+            + ((it.photos||[]).length ? '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' + it.photos.map(function(src, n){ return '<img src="' + src + '" alt="Code photo ' + (n+1) + '" onclick="bpSecView(\'' + jobId + '\',\'' + it.id + '\',' + n + ')" style="width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer"/>'; }).join('') + '</div><div style="font-size:11.5px;color:var(--faint);margin-top:4px">Tap a photo to enlarge it for scanning</div>' : '')
+            + (it.notes ? '<div style="font-size:13px;color:var(--muted);margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere">' + E(it.notes) + '</div>' : '')
+            + '</div>';
+        }).join('') : '<div style="padding:14px;text-align:center;color:var(--faint);font-size:14px;background:var(--card);border:1px solid var(--border);border-radius:14px">No codes yet — tap Add</div>')
+      + '<button onclick="bpSecAdd(\'' + jobId + '\')" style="min-height:48px;border-radius:12px;border:1px solid rgba(10,132,255,.4);background:rgba(10,132,255,.1);color:#409CFF;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' + ic('plus',18) + 'Add</button>'
+      + '<div style="font-size:11.5px;color:var(--faint);line-height:1.35;padding:0 4px 2px">Tap a code to show it for 8 seconds. Saved in this app and in your private sync — not encrypted, so keep banking-level secrets out.</div>'
+      + '</div>';
+  }
+  s.innerHTML = head + body;
+  anchor.parentNode.insertBefore(s, anchor.nextSibling);
+}
+window.bpSecToggle = function(jobId){ openFor[jobId] = !openFor[jobId]; paint(jobId); };
+window.bpSecReveal = function(el, jobId, id){
+  var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !it.secret) return;
+  clearTimeout(timers[id]);
+  el.textContent = it.secret;
+  timers[id] = setTimeout(function(){ if (el.isConnected) el.textContent = '••••••••'; }, 8000);
+};
+window.bpSecCopy = function(jobId, id){
+  var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !it.secret) { toast('Nothing to copy'); return; }
+  try { navigator.clipboard.writeText(it.secret).then(function(){ toast('Copied'); }, function(){ toast('Tap the code to read it'); }); }
+  catch(e){ toast('Tap the code to read it'); }
+};
+
+function modal(){
+  var it = editing ? ((job(editJob)||{}).security||[]).find(function(x){ return x.id === editing; }) : null;
+  var m0 = document.getElementById('bp-sec-modal'); if (m0) m0.remove();
+  var inp = 'width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit';
+  var lb = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px';
+  var cur = it ? kind(it.kind) : KINDS[0];
+  var mo = document.createElement('div'); mo.id = 'bp-sec-modal';
+  mo.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:flex-end;justify-content:center;font-family:inherit;padding-top:var(--safe-top);box-sizing:border-box';
+  mo.innerHTML = '<div style="background:var(--card,#1a1a1a);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-width:480px;max-height:100%;overflow-y:auto">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid var(--border,#2a2a2a)"><div style="font-size:17px;font-weight:700">' + (it ? 'Edit' : 'Add') + ' security info</div>'
+    + '<button onclick="bpSecClose()" style="width:36px;height:36px;border-radius:50%;background:var(--card2);border:none;color:var(--muted);font-size:18px;cursor:pointer">x</button></div>'
+    + '<div style="padding:4px 18px 18px">'
+    + '<div style="' + lb + '">Type</div><select id="bpsec-kind" onchange="bpSecKindChange()" style="' + inp + '">' + KINDS.map(function(k){ return '<option value="' + k.k + '"' + (k.k === cur.k ? ' selected' : '') + '>' + k.label + '</option>'; }).join('') + '</select>'
+    + '<div style="' + lb + '">Label</div><input id="bpsec-label" type="text" placeholder="e.g. Front door, Basement router" value="' + E(it ? it.label : '') + '" style="' + inp + '"/>'
+    + '<div id="bpsec-user-wrap"><div id="bpsec-user-lb" style="' + lb + '"></div><input id="bpsec-user" type="text" autocapitalize="off" autocorrect="off" value="' + E(it ? it.user : '') + '" style="' + inp + '"/></div>'
+    + '<div id="bpsec-secret-lb" style="' + lb + '"></div><input id="bpsec-secret" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + E(it ? it.secret : '') + '" style="' + inp + ';font-family:ui-monospace,Menlo,monospace"/>'
+    + '<div style="' + lb + '">Notes</div><textarea id="bpsec-notes" rows="2" placeholder="e.g. code changes after punch-out, app is Reolink" style="' + inp + ';resize:vertical">' + E(it ? it.notes : '') + '</textarea>'
+    + '<div style="' + lb + '">Photos of QR code / barcode</div><div id="bpsec-ph" style="display:flex;flex-wrap:wrap;gap:8px"></div>'
+    + '<label style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;min-height:48px;border-radius:12px;border:1px solid rgba(10,132,255,.4);background:rgba(10,132,255,.1);color:#409CFF;font-size:15px;font-weight:800;cursor:pointer">' + ic('camera',20) + 'Add photo<input type="file" accept="image/*" multiple style="display:none" onchange="bpSecPick(this)"/></label>'
+    + '<button onclick="bpSecSave()" style="width:100%;margin-top:18px;padding:14px;border-radius:12px;border:none;background:#0A84FF;color:#000;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Save</button>'
+    + (it ? '<button onclick="bpSecDelete()" style="width:100%;margin-top:10px;padding:13px;border-radius:12px;border:1px solid rgba(255,69,58,.4);background:none;color:#FF6961;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Delete</button>' : '')
+    + '</div></div>';
+  document.body.appendChild(mo);
+  window.bpSecKindChange();
+  drawDraft();
+}
+function drawDraft(){
+  var el = document.getElementById('bpsec-ph'); if (!el) return;
+  el.innerHTML = draft.map(function(src, n){
+    return '<div style="position:relative;width:76px;height:76px"><img src="' + src + '" style="width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);background:#fff"/>'
+      + '<button onclick="bpSecDropPhoto(' + n + ')" aria-label="Remove photo" style="position:absolute;top:-8px;right:-8px;width:28px;height:28px;border-radius:50%;border:none;background:#FF453A;color:#fff;font-size:15px;font-weight:800;cursor:pointer;line-height:1">×</button></div>';
+  }).join('');
+}
+window.bpSecDropPhoto = function(n){ draft.splice(n, 1); drawDraft(); };
+window.bpSecPick = function(input){
+  if (!input.files) return;
+  Array.from(input.files).forEach(function(f){
+    if (!f.type || f.type.indexOf('image/') !== 0) return;
+    if (draft.length >= MAXPH) { toast('Up to ' + MAXPH + ' photos per entry'); return; }
+    var r = new FileReader();
+    r.onload = function(e){
+      var raw = e.target.result; if (!raw) return;
+      var put = function(src){ if (draft.length < MAXPH) { draft.push(src); drawDraft(); } };
+      try { bpCompressFor('doc', raw, put); } catch(err){ put(raw); }   /* "doc" preset: 1800px — keeps a QR / barcode scannable */
+    };
+    r.readAsDataURL(f);
+  });
+  input.value = '';
+};
+var viewState = null;
+window.bpSecView = function(jobId, id, n){
+  var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); if (!it || !(it.photos||[]).length) return;
+  viewState = { jobId:jobId, id:id, n:n };
+  var v = document.getElementById('bp-sec-view'); if (v) v.remove();
+  v = document.createElement('div'); v.id = 'bp-sec-view';
+  v.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#fff;color:#000;display:flex;flex-direction:column;font-family:inherit;padding-top:max(env(safe-area-inset-top),14px);padding-bottom:env(safe-area-inset-bottom);box-sizing:border-box';
+  document.body.appendChild(v); viewDraw();
+};
+function viewDraw(){
+  var v = document.getElementById('bp-sec-view'); if (!v || !viewState) return;
+  var it = ((job(viewState.jobId)||{}).security||[]).find(function(x){ return x.id === viewState.id; }); if (!it) { v.remove(); return; }
+  var P = it.photos, n = Math.max(0, Math.min(viewState.n, P.length - 1)); viewState.n = n;
+  v.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px 8px">'
+    + '<div style="flex:1;min-width:0;font-size:17px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(it.label || kind(it.kind).label) + '</div>'
+    + (P.length > 1 ? '<span style="flex:none;color:#666;font-size:15px;font-weight:700">' + (n+1) + '/' + P.length + '</span>' : '')
+    + (P.length > 1 ? '<button onclick="bpSecViewStep(-1)" aria-label="Previous" style="min-width:48px;min-height:48px;border:none;background:#eee;border-radius:12px;color:#000;display:flex;align-items:center;justify-content:center;transform:rotate(180deg)">' + ic('chev',22) + '</button><button onclick="bpSecViewStep(1)" aria-label="Next" style="min-width:48px;min-height:48px;border:none;background:#eee;border-radius:12px;color:#000;display:flex;align-items:center;justify-content:center">' + ic('chev',22) + '</button>' : '')
+    + '<button onclick="bpSecViewClose()" style="min-width:72px;min-height:48px;border:none;background:#0A84FF;color:#fff;border-radius:12px;font-size:16px;font-weight:800;font-family:inherit">Done</button></div>'
+    + '<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px"><img src="' + P[n] + '" style="max-width:100%;max-height:100%;object-fit:contain"/></div>';
+}
+window.bpSecViewStep = function(d){ var it = ((job(viewState.jobId)||{}).security||[]).find(function(x){ return x.id === viewState.id; }); if (!it) return; viewState.n = (viewState.n + d + it.photos.length) % it.photos.length; viewDraw(); };
+window.bpSecViewClose = function(){ var v = document.getElementById('bp-sec-view'); if (v) v.remove(); viewState = null; };
+window.bpSecKindChange = function(){
+  var K = kind(document.getElementById('bpsec-kind').value);
+  var w = document.getElementById('bpsec-user-wrap'); if (w) w.style.display = K.user ? '' : 'none';
+  var ul = document.getElementById('bpsec-user-lb'); if (ul) ul.textContent = K.user;
+  var sl = document.getElementById('bpsec-secret-lb'); if (sl) sl.textContent = K.secret;
+};
+window.bpSecAdd  = function(jobId){ editing = null; editJob = jobId; draft = []; modal(); };
+window.bpSecEdit = function(jobId, id){ editing = id; editJob = jobId; var it = ((job(jobId)||{}).security||[]).find(function(x){ return x.id === id; }); draft = (it && it.photos) ? it.photos.slice() : []; modal(); };
+window.bpSecClose = function(){ var m = document.getElementById('bp-sec-modal'); if (m) m.remove(); };
+window.bpSecSave = function(){
+  var j = job(editJob); if (!j) return;
+  var k = document.getElementById('bpsec-kind').value, K = kind(k);
+  var d = { kind:k, label:(document.getElementById('bpsec-label').value||'').trim(), user:K.user ? (document.getElementById('bpsec-user').value||'').trim() : '',
+            secret:(document.getElementById('bpsec-secret').value||'').trim(), notes:(document.getElementById('bpsec-notes').value||'').trim(), photos:draft.slice() };
+  if (!d.label && !d.secret && !d.user && !d.photos.length) { toast('Enter a label, a code or a photo'); return; }
+  j.security = j.security || [];
+  var it = editing ? j.security.find(function(x){ return x.id === editing; }) : null;
+  if (it) Object.assign(it, d); else j.security.push(Object.assign({ id:uid(), created:now() }, d));
+  j.updatedAt = now(); openFor[editJob] = true;
+  bpSave(); bpSecClose(); paint(editJob); toast('Saved');
+};
+window.bpSecDelete = function(){
+  var j = job(editJob); if (!j || !editing) return;
+  if (!confirm('Delete this entry?')) return;
+  j.security = (j.security||[]).filter(function(x){ return x.id !== editing; });
+  j.updatedAt = now(); bpSave(); bpSecClose(); paint(editJob);
+};
+
+var orig = window.renderDesktopJobDetail;
+window.renderDesktopJobDetail = function(jobId){ var r = orig.apply(this, arguments); try { paint(jobId); } catch(e){ console.warn('[BP] security (Mac)', e); } return r; };
+try { renderDesktopJobDetail = window.renderDesktopJobDetail; } catch(e){}
+console.log('[BP Mac] v3.77 job Security section ready (same code as the field app)');
+})();
+</script>
+<script>
+/* ═══ PORTED: BSP phase 1 (field v6.1.0) — generated from index.html by tools/port_to_mac.py ═══ */
+/* ══ v6.1.0 — BSP, phase 1 ═══════════════════════════════════════
+   BSP (BuildersPro) starts acting as Stan's assistant from the first
+   walk-through on:
+   1. Intake gate — a new or edited job is checked for client name,
+      address, email and cell. Anything missing is named before saving.
+   2. Phone book link — every job with a client name gets a Client card
+      in DB.contacts (one per job, kept in step with the job's fields).
+   3. Signed contract gate — marking a job Started asks first when no
+      document filed as "Contract" is on that job.
+   4. Signed change order gate — a change order can't be saved as
+      Approved without the owner's signature.
+   5. BSP checklist card on the job page — red = still open, green = done,
+      blue = the fix. Scoped to that one job only.
+   6. Pick-two pie on estimates — Fast / Good / Cheap, equal fixed slices,
+      the client taps exactly two. BSP suggests a price and days for each
+      combo from the estimate total; every number can be edited.
+   Colors follow BSP's meanings: red open, green done, blue actions,
+   purple change orders. ═══════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var RED = '#FF453A', GREEN = '#30D158', BLUE = '#0A84FF', PURPLE = '#BF5AF2';
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function val(id){ var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
+  function money(n){ return '$' + (Math.round(+n || 0)).toLocaleString('en-US'); }
+
+  /* ── 1 + 2: intake gate and client contact ───────────────────── */
+  var FIELDS = [['client','client name'],['address','address'],['clientEmail','email'],['clientPhone','cell']];
+  function missingFrom(o){ return FIELDS.filter(function(f){ return !String(o[f[0]] || '').trim(); }).map(function(f){ return f[1]; }); }
+  function listWords(a){ return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  function intakeOk(o){
+    var miss = missingFrom(o);
+    if (!miss.length) return true;
+    return confirm('BSP: this job is missing the client ' + listWords(miss) + '.\n\nOK = save anyway (it stays red on the job until it\'s filled in)\nCancel = go back and add it');
+  }
+  window.bspClientContact = function(job){
+    if (!job) return null;
+    return (DB.contacts || []).find(function(c){ return c && c.type === 'Client' && c.jobId === job.id; }) || null;
+  };
+  window.bspSyncClientContact = function(job){
+    if (!job || !String(job.client || '').trim()) return null;
+    if (!DB.contacts) DB.contacts = [];
+    var c = bspClientContact(job);
+    if (!c) { c = { id: uid(), type: 'Client', role: 'Client', company: '', notes: '', jobId: job.id, created: now() }; DB.contacts.push(c); }
+    c.name = job.client;
+    c.email = job.clientEmail || '';
+    c.phone = job.clientPhone || '';
+    c.address = [job.address, job.city, [job.state, job.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    c.updated = now(); c.updatedAt = c.updated;
+    return c;
+  };
+
+  if (typeof window.saveNewJob === 'function' && !window.saveNewJob.__v610) {
+    var _saveJob = window.saveNewJob;
+    window.saveNewJob = function(){
+      if (!val('nj-name')) return _saveJob.apply(this, arguments);   /* original says "Job name required" */
+      var draft = { client: val('nj-client'), address: val('nj-address'), clientEmail: val('nj-client-email'), clientPhone: val('nj-client-phone') };
+      if (!intakeOk(draft)) return;
+      var before = (DB.jobs || []).length;
+      var r = _saveJob.apply(this, arguments);
+      if (DB.jobs.length > before && bspSyncClientContact(DB.jobs[DB.jobs.length - 1])) bpSave();
+      return r;
+    };
+    window.saveNewJob.__v610 = 1; try { saveNewJob = window.saveNewJob; } catch(e){}
+  }
+  if (typeof window.saveEditJob === 'function' && !window.saveEditJob.__v610) {
+    var _saveEditJob = window.saveEditJob;
+    window.saveEditJob = function(jobId){
+      if (!val('ej-name')) return _saveEditJob.apply(this, arguments);
+      var draft = { client: val('ej-client'), address: val('ej-address'), clientEmail: val('ej-client-email'), clientPhone: val('ej-client-phone') };
+      if (!intakeOk(draft)) return;
+      var r = _saveEditJob.apply(this, arguments);
+      var job = (DB.jobs || []).find(function(j){ return j.id === jobId; });
+      if (bspSyncClientContact(job)) { bpSave(); if (currentJobId === jobId && typeof renderJobDetail === 'function') renderDesktopJobDetail(jobId); }
+      return r;
+    };
+    window.saveEditJob.__v610 = 1;
+  }
+
+  /* ── 3: signed contract gate ─────────────────────────────────── */
+  window.bspSignedContract = function(jobId){
+    return (DB.documents || []).find(function(d){ return d && d.jobId === jobId && d.category === 'Contract'; }) || null;
+  };
+  window.bspAddSignedContract = function(jobId){
+    if (typeof openAddDocument !== 'function') return;
+    openAddDocument(jobId);
+    var c = document.getElementById('doc-category'); if (c) c.value = 'Contract';
+    var n = document.getElementById('doc-name'); if (n && !n.value) n.value = 'Signed contract';
+  };
+  if (typeof window.toggleJobStarted === 'function' && !window.toggleJobStarted.__v610) {
+    var _toggleStarted = window.toggleJobStarted;
+    window.toggleJobStarted = function(id){
+      var j = (DB.jobs || []).find(function(x){ return x.id === id; });
+      if (j && !j.startDate && !bspSignedContract(id)) {
+        if (!confirm('BSP: there is no signed contract on file for ' + (j.name || 'this job') + '.\n\nOK = start anyway\nCancel = don\'t start yet')) { try { renderDesktopJobDetail(id); } catch(e){} return; }
+      }
+      return _toggleStarted.apply(this, arguments);
+    };
+    window.toggleJobStarted.__v610 = 1;
+  }
+
+  /* ── 4: signed change order gate ─────────────────────────────── */
+  if (typeof window.saveChangeOrder === 'function' && !window.saveChangeOrder.__v610) {
+    var _saveCO = window.saveChangeOrder;
+    window.saveChangeOrder = function(){
+      if (val('co-status') === 'Approved' && val('co-title')) {
+        var editing = (typeof _coEditId !== 'undefined' && _coEditId) ? (DB.changeOrders || []).find(function(c){ return c.id === _coEditId; }) : null;
+        var hasSig = (editing && editing.signature) || (typeof bpSigHasInk === 'function' && bpSigHasInk());
+        if (!hasSig) {
+          toast('BSP: get the owner\'s signature before marking this Approved');
+          var pad = document.getElementById('co-sig-pad');
+          if (pad) { pad.style.display = ''; pad.style.outline = '2px solid ' + RED; pad.style.borderRadius = '12px'; pad.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+          return;
+        }
+      }
+      return _saveCO.apply(this, arguments);
+    };
+    window.saveChangeOrder.__v610 = 1;
+  }
+
+  /* ── 5: BSP checklist card on the job page ───────────────────── */
+  function rowHtml(done, label, value, fix){
+    return '<div style="display:flex;align-items:center;gap:10px;min-height:38px;border-top:1px solid var(--border)">'
+      + '<span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:' + (done ? GREEN : RED) + '"></span>'
+      + '<span style="font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0">' + E(label) + '</span>'
+      + '<span style="margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;text-align:right">' + (done ? E(value) : '') + '</span>'
+      + (!done && fix ? '<button type="button" onclick="' + fix + '" style="flex-shrink:0;min-height:30px;padding:0 12px;border-radius:9px;border:1px solid ' + BLUE + '66;background:transparent;color:' + BLUE + ';font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">' + (label === 'Signed contract' ? 'Add' : 'Fix') + '</button>' : '')
+      + '</div>';
+  }
+  window.bspChecklist = function(jobId){
+    var job = (DB.jobs || []).find(function(j){ return j.id === jobId; });
+    if (!job) return [];
+    var edit = "editJob('" + jobId + "')";
+    var rows = [
+      { done: !!String(job.client || '').trim(), label: 'Client name', value: job.client, fix: edit },
+      { done: !!String(job.address || '').trim(), label: 'Address', value: job.address, fix: edit },
+      { done: !!String(job.clientEmail || '').trim(), label: 'Email', value: job.clientEmail, fix: edit },
+      { done: !!String(job.clientPhone || '').trim(), label: 'Cell', value: job.clientPhone, fix: edit },
+      { done: !!bspClientContact(job), label: 'In contacts', value: 'Client card saved', fix: String(job.client || '').trim() ? "bspAddContactNow('" + jobId + "')" : edit }
+    ];
+    var doc = bspSignedContract(jobId);
+    rows.push({ done: !!doc, label: 'Signed contract', value: doc ? (doc.name || 'On file') : '', fix: "bspAddSignedContract('" + jobId + "')" });
+    var cos = (DB.changeOrders || []).filter(function(c){ return c.jobId === jobId && c.status === 'Approved'; });
+    if (cos.length) {
+      var unsigned = cos.filter(function(c){ return !c.signature; });
+      rows.push({ done: !unsigned.length, label: 'Signed change orders', value: cos.length + ' of ' + cos.length + ' signed', fix: unsigned.length ? "openEditChangeOrder('" + unsigned[0].id + "')" : '' });
+    }
+    return rows;
+  };
+  window.bspAddContactNow = function(jobId){
+    var job = (DB.jobs || []).find(function(j){ return j.id === jobId; });
+    if (bspSyncClientContact(job)) { bpSave(); toast('Client added to contacts'); renderDesktopJobDetail(jobId); }
+  };
+  window.bspToggleChecklist = function(){
+    try { localStorage.setItem('bp_bsp_open', localStorage.getItem('bp_bsp_open') === '1' ? '0' : '1'); } catch(e){}
+    if (currentJobId) renderDesktopJobDetail(currentJobId);
+  };
+  function renderCard(jobId){
+    var host = document.getElementById('bsp-ready');
+    if (!host) {
+      var hdr = document.getElementById('jd2-actions');
+      if (!hdr) return;
+      host = document.createElement('div'); host.id = 'bsp-ready'; host.style.cssText = 'padding:12px 0 0;max-width:720px';
+      hdr.insertAdjacentElement('afterend', host);
+    }
+    var rows = bspChecklist(jobId);
+    if (!rows.length) { host.innerHTML = ''; return; }
+    var left = rows.filter(function(r){ return !r.done; }).length;
+    var open = false; try { open = localStorage.getItem('bp_bsp_open') === '1'; } catch(e){}
+    var showRows = left > 0 || open;
+    var head = '<div onclick="bspToggleChecklist()" style="display:flex;align-items:center;gap:8px;min-height:34px;cursor:pointer">'
+      + '<span style="font-size:13px;font-weight:800;letter-spacing:.04em">BSP</span>'
+      + '<span style="font-size:13px;font-weight:700;color:' + (left ? RED : GREEN) + '">' + (left ? left + ' to do before work starts' : 'All set') + '</span>'
+      + '<span style="margin-left:auto;font-size:12px;color:var(--muted)">' + (rows.length - left) + ' of ' + rows.length + '</span>'
+      + '</div>';
+    host.innerHTML = '<div class="card" style="padding:4px 14px 6px;margin:0">' + head
+      + (showRows ? rows.map(function(r){ return rowHtml(r.done, r.label, r.value, r.fix); }).join('') : '') + '</div>';
+  }
+  if (typeof window.renderDesktopJobDetail === 'function' && !window.renderDesktopJobDetail.__v610) {
+    var _rjd = window.renderDesktopJobDetail;
+    window.renderDesktopJobDetail = function(jobId){
+      var r = _rjd.apply(this, arguments);
+      try { renderCard(jobId); } catch(e){ console.warn('[BSP] checklist', e); }
+      return r;
+    };
+    window.renderDesktopJobDetail.__v610 = 1; try { renderDesktopJobDetail = window.renderDesktopJobDetail; } catch(e){}
+  }
+
+  /* ── 6: pick-two pie on estimates ────────────────────────────── */
+  var COMBOS = {
+    fg: { label: 'Fast + Good',  note: 'costs more',     keys: ['fast','good'] },
+    gc: { label: 'Good + Cheap', note: 'takes longer',   keys: ['good','cheap'] },
+    fc: { label: 'Fast + Cheap', note: 'basic finishes', keys: ['fast','cheap'] }
+  };
+  /* BSP's starting suggestions, as a share of the estimate total and of the normal schedule. */
+  var SUGGEST = { fg: { price: 1.20, days: 0.75 }, gc: { price: 1.00, days: 1.30 }, fc: { price: 0.90, days: 0.75 } };
+  window.BSP_PICK_LINE = 'Code, safety and workmanship are the same on every option.';
+  function comboOf(pick){
+    if (!pick || pick.length !== 2) return '';
+    var s = pick.slice().sort().join(',');
+    return s === 'fast,good' ? 'fg' : s === 'cheap,good' ? 'gc' : s === 'cheap,fast' ? 'fc' : '';
+  }
+  window.bspComboOf = comboOf;
+  var P = null;   /* working state while the estimate sheet is open */
+
+  function suggest(){
+    if (!P) return;
+    var T = (typeof bpEstTotal === 'function' && typeof _estLineItems !== 'undefined') ? bpEstTotal(_estLineItems) : 0;
+    var D = +P.baseDays || 0;
+    Object.keys(COMBOS).forEach(function(k){
+      var o = P.opts[k];
+      if (!o.editedPrice) o.price = Math.round(T * SUGGEST[k].price);
+      if (!o.editedDays) o.days = D ? Math.ceil(D * SUGGEST[k].days) : '';
+      var pi = document.getElementById('p2-price-' + k); if (pi && document.activeElement !== pi) pi.value = o.price || '';
+      var di = document.getElementById('p2-days-' + k);  if (di && document.activeElement !== di) di.value = o.days || '';
+    });
+  }
+  function slicePath(i){
+    var cx = 110, cy = 110, r = 100;
+    function pt(deg){ var a = (deg - 90) * Math.PI / 180; return (cx + r * Math.cos(a)).toFixed(1) + ' ' + (cy + r * Math.sin(a)).toFixed(1); }
+    return 'M' + cx + ' ' + cy + ' L' + pt(i * 120) + ' A' + r + ' ' + r + ' 0 0 1 ' + pt(i * 120 + 120) + ' Z';
+  }
+  function labelPos(i){ var a = (i * 120 + 60 - 90) * Math.PI / 180; return [(110 + 58 * Math.cos(a)).toFixed(1), (110 + 58 * Math.sin(a)).toFixed(1)]; }
+  function paintPie(){
+    if (!P) return;
+    ['fast','good','cheap'].forEach(function(k){
+      var on = P.pick.indexOf(k) > -1, locked = P.pick.length === 2 && !on;
+      var p = document.getElementById('p2-s-' + k), t = document.getElementById('p2-t-' + k);
+      if (p) { p.setAttribute('fill', on ? 'rgba(48,209,88,.22)' : 'var(--card2)'); p.setAttribute('stroke', on ? GREEN : 'var(--border)'); p.parentNode.style.opacity = locked ? .35 : 1; }
+      if (t) t.setAttribute('fill', on ? GREEN : 'var(--text)');
+    });
+    var c = comboOf(P.pick);
+    Object.keys(COMBOS).forEach(function(k){
+      var row = document.getElementById('p2-row-' + k);
+      if (row) { row.style.borderColor = k === c ? GREEN : 'var(--border)'; row.style.background = k === c ? 'rgba(48,209,88,.08)' : 'transparent'; }
+    });
+    var m = document.getElementById('p2-msg');
+    if (m) {
+      m.style.color = 'var(--muted)';
+      m.textContent = P.pick.length < 2 ? 'Client taps ' + (2 - P.pick.length) + ' more slice' + (P.pick.length ? '' : 's') : COMBOS[c].label + ' — ' + COMBOS[c].note + '. ' + BSP_PICK_LINE;
+    }
+  }
+  window.bspPickTap = function(k){
+    if (!P) return;
+    var i = P.pick.indexOf(k);
+    if (i > -1) P.pick.splice(i, 1);
+    else if (P.pick.length < 2) P.pick.push(k);
+    else { var m = document.getElementById('p2-msg'); if (m) { m.textContent = 'Only 2. Tap a green slice to swap it out.'; m.style.color = RED; } return; }
+    paintPie();
+  };
+  window.bspPickEdit = function(k, field, el){
+    if (!P) return;
+    var o = P.opts[k]; var v = el.value === '' ? '' : +el.value;
+    if (field === 'price') { o.price = v; o.editedPrice = el.value !== ''; }
+    else { o.days = v; o.editedDays = el.value !== ''; }
+  };
+  window.bspPickBaseDays = function(el){ if (!P) return; P.baseDays = el.value === '' ? '' : +el.value; suggest(); };
+  window.bspPickResuggest = function(){
+    if (!P) return;
+    Object.keys(P.opts).forEach(function(k){ P.opts[k].editedPrice = false; P.opts[k].editedDays = false; });
+    suggest(); toast('BSP suggestions refreshed');
+  };
+
+  function pieSection(){
+    var inp = 'box-sizing:border-box;width:100%;padding:9px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:14px;font-family:inherit;text-align:right';
+    var lbl = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px';
+    var names = ['fast','good','cheap'], titles = { fast: 'Fast', good: 'Good', cheap: 'Cheap' };
+    var svg = '<svg viewBox="0 0 220 220" width="190" height="190" style="display:block;margin:0 auto" role="img" aria-label="Pick two: fast, good, cheap">'
+      + names.map(function(k, i){
+          var lp = labelPos(i);
+          return '<g style="cursor:pointer" onclick="bspPickTap(\'' + k + '\')">'
+            + '<path id="p2-s-' + k + '" d="' + slicePath(i) + '" fill="var(--card2)" stroke="var(--border)" stroke-width="1.5"/>'
+            + '<text id="p2-t-' + k + '" x="' + lp[0] + '" y="' + lp[1] + '" text-anchor="middle" dominant-baseline="central" fill="var(--text)" style="font-size:16px;font-weight:800;pointer-events:none">' + titles[k] + '</text></g>';
+        }).join('') + '</svg>';
+    var rows = Object.keys(COMBOS).map(function(k){
+      return '<div id="p2-row-' + k + '" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px">'
+        + '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + COMBOS[k].label + '</div>'
+        + '<div style="font-size:11px;color:var(--muted);white-space:nowrap">' + COMBOS[k].note + '</div></div>'
+        + '<div style="width:92px;flex-shrink:0"><input id="p2-price-' + k + '" type="number" inputmode="decimal" placeholder="$" oninput="bspPickEdit(\'' + k + '\',\'price\',this)" style="' + inp + '"/></div>'
+        + '<div style="width:58px;flex-shrink:0"><input id="p2-days-' + k + '" type="number" inputmode="numeric" placeholder="days" oninput="bspPickEdit(\'' + k + '\',\'days\',this)" style="' + inp + '"/></div>'
+        + '</div>';
+    }).join('');
+    return '<div id="bsp-pick2" style="margin-bottom:16px">'
+      + '<div style="' + lbl + '">Client picks 2</div>'
+      + svg
+      + '<div id="p2-msg" style="font-size:13px;text-align:center;min-height:36px;padding:6px 4px 10px;line-height:1.4"></div>'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:13px;color:var(--muted);flex:1">Normal schedule (days)</span>'
+      + '<div style="width:58px"><input id="p2-basedays" type="number" inputmode="numeric" placeholder="days" oninput="bspPickBaseDays(this)" style="' + inp + '"/></div></div>'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;font-size:11px;color:var(--muted);padding:0 8px 4px"><span style="width:92px;text-align:right">Price</span><span style="width:58px;text-align:right">Days</span></div>'
+      + rows
+      + '<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font-size:11px;color:var(--muted);flex:1;line-height:1.4">BSP suggests these from the total. Type over any number to set your own.</span>'
+      + '<button type="button" onclick="bspPickResuggest()" style="flex-shrink:0;min-height:30px;padding:0 10px;border-radius:9px;border:1px solid ' + BLUE + '66;background:transparent;color:' + BLUE + ';font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Re-suggest</button></div>'
+      + '</div>';
+  }
+
+  if (typeof window.buildEstimateModalDesktop === 'function' && !window.buildEstimateModalDesktop.__v610) {
+    var _bem = window.buildEstimateModalDesktop;
+    window.buildEstimateModalDesktop = function(e){
+      P = null;
+      var r = _bem.apply(this, arguments);
+      try {
+        var saved = (e && e.pickOptions) || {};
+        P = { pick: (e && e.pick ? e.pick.slice(0, 2) : []), baseDays: e && e.baseDays != null ? e.baseDays : '', opts: {} };
+        Object.keys(COMBOS).forEach(function(k){
+          var s = saved[k] || {};
+          P.opts[k] = { price: s.price != null ? s.price : '', days: s.days != null ? s.days : '', editedPrice: !!s.editedPrice, editedDays: !!s.editedDays };
+        });
+        var notes = document.getElementById('est-notes');
+        var anchor = notes && notes.parentNode;
+        if (anchor) {
+          anchor.insertAdjacentHTML('beforebegin', pieSection());
+          var bd = document.getElementById('p2-basedays'); if (bd) bd.value = P.baseDays;
+          Object.keys(COMBOS).forEach(function(k){
+            var pi = document.getElementById('p2-price-' + k); if (pi) pi.value = P.opts[k].price;
+            var di = document.getElementById('p2-days-' + k);  if (di) di.value = P.opts[k].days;
+          });
+          suggest(); paintPie();
+        }
+      } catch(err){ console.warn('[BSP] pick-two', err); }
+      return r;
+    };
+    window.buildEstimateModalDesktop.__v610 = 1; try { buildEstimateModalDesktop = window.buildEstimateModalDesktop; } catch(e){}
+  }
+  if (typeof window.bpEstRecalcTotal === 'function' && !window.bpEstRecalcTotal.__v610) {
+    var _recalc = window.bpEstRecalcTotal;
+    window.bpEstRecalcTotal = function(){ var r = _recalc.apply(this, arguments); try { suggest(); } catch(e){} return r; };
+    window.bpEstRecalcTotal.__v610 = 1;
+  }
+  if (typeof window.saveEstimateModalDesktop === 'function' && !window.saveEstimateModalDesktop.__v610) {
+    var _sem = window.saveEstimateModalDesktop;
+    window.saveEstimateModalDesktop = function(){
+      var state = P ? JSON.parse(JSON.stringify(P)) : null;
+      var target = (typeof _editingEstId !== 'undefined') ? _editingEstId : null;
+      var before = (DB.estimates || []).length;
+      var r = _sem.apply(this, arguments);
+      if (state && !document.getElementById('modal-estimate')) {
+        var est = target ? (DB.estimates || []).find(function(x){ return x.id === target; })
+                         : (DB.estimates.length > before ? DB.estimates[DB.estimates.length - 1] : null);
+        if (est) {
+          est.pick = state.pick.length === 2 ? state.pick : [];
+          est.baseDays = state.baseDays;
+          est.pickOptions = state.opts;
+          est.updatedAt = now();
+          bpSave(); if (typeof renderDesktopEstimates === 'function') renderDesktopEstimates();
+        }
+        P = null;
+      }
+      return r;
+    };
+    window.saveEstimateModalDesktop.__v610 = 1; try { saveEstimateModalDesktop = window.saveEstimateModalDesktop; } catch(e){}
+  }
+  window.bspEstChoice = function(e){
+    var k = e && comboOf(e.pick);
+    if (!k) return null;
+    var o = (e.pickOptions || {})[k] || {};
+    return { key: k, label: COMBOS[k].label, note: COMBOS[k].note, price: +o.price || 0, days: o.days };
+  };
+  if (typeof window.buildEstimateCard === 'function' && !window.buildEstimateCard.__v610) {
+    var _bec = window.buildEstimateCard;
+    window.buildEstimateCard = function(e){
+      var h = _bec.apply(this, arguments);
+      var ch = bspEstChoice(e);
+      var line = ch
+        ? '<div style="font-size:13px;font-weight:700;color:' + GREEN + ';margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Client pick: ' + E(ch.label) + (ch.price ? ' · ' + money(ch.price) : '') + (ch.days ? ' · ' + E(ch.days) + ' days' : '') + '</div>'
+        : '<div style="font-size:13px;font-weight:600;color:' + RED + ';margin-top:6px">Client hasn\'t picked 2 yet</div>';
+      var i = h.indexOf('<div style="display:flex;gap:8px;margin-top:10px">');
+      return i < 0 ? h : h.slice(0, i) + line + h.slice(i);
+    };
+    window.buildEstimateCard.__v610 = 1;
+  }
+  if (typeof window.emailEstimateDesktop === 'function' && !window.emailEstimateDesktop.__v610) {
+    var _ee = window.emailEstimateDesktop;
+    window.emailEstimateDesktop = function(id){
+      var e = (DB.estimates || []).find(function(x){ return x.id === id; });
+      var opts = e && e.pickOptions;
+      var hasOpts = opts && Object.keys(COMBOS).some(function(k){ return opts[k] && +opts[k].price; });
+      if (!hasOpts || typeof window.sendEmail !== 'function') return _ee.apply(this, arguments);
+      var ch = bspEstChoice(e);
+      var block = '\nYour options (pick 2 of fast, good, cheap):\n'
+        + Object.keys(COMBOS).map(function(k){
+            var o = opts[k] || {};
+            return '  ' + (ch && ch.key === k ? '[x] ' : '[ ] ') + COMBOS[k].label + ' (' + COMBOS[k].note + '): ' + money(o.price) + (o.days ? ', about ' + o.days + ' days' : '');
+          }).join('\n')
+        + '\n' + BSP_PICK_LINE + '\n'
+        + (ch ? 'You picked: ' + ch.label + '.\n' : '');
+      var _send = window.sendEmail;
+      window.sendEmail = function(to, subject, body){
+        var i = body.indexOf('\nThanks,');
+        body = i < 0 ? body + block : body.slice(0, i) + block + body.slice(i);
+        return _send.call(this, to, subject, body);
+      };
+      try { return _ee.apply(this, arguments); } finally { window.sendEmail = _send; }
+    };
+    window.emailEstimateDesktop.__v610 = 1; try { emailEstimateDesktop = window.emailEstimateDesktop; } catch(e){}
+  }
+  if (typeof window.convertEstimateToJobDesktop === 'function' && !window.convertEstimateToJobDesktop.__v610) {
+    var _conv = window.convertEstimateToJobDesktop;
+    window.convertEstimateToJobDesktop = function(id){
+      var e = (DB.estimates || []).find(function(x){ return x.id === id; });
+      if (e && !bspEstChoice(e) && e.pickOptions && !confirm('BSP: the client hasn\'t picked 2 of fast, good, cheap yet.\n\nOK = convert anyway\nCancel = go back')) return;
+      var r = _conv.apply(this, arguments);
+      var job = e && e.convertedJobId && (DB.jobs || []).find(function(j){ return j.id === e.convertedJobId; });
+      if (job) {
+        if (e.clientEmail && !job.clientEmail) job.clientEmail = e.clientEmail;
+        var ch = bspEstChoice(e);
+        if (ch) {
+          job.pick = ch.label;
+          if (ch.price) job.contract = ch.price;
+          job.notes = ((job.notes ? job.notes + '\n' : '') + 'Client pick: ' + ch.label + ' (' + ch.note + '). ' + BSP_PICK_LINE).trim();
+        }
+        bspSyncClientContact(job);
+        job.updatedAt = now();
+        bpSave(); try { renderDesktopJobDetail(job.id); } catch(err){}
+      }
+      return r;
+    };
+    window.convertEstimateToJobDesktop.__v610 = 1; try { convertEstimateToJobDesktop = window.convertEstimateToJobDesktop; } catch(e){}
+  }
+
+  console.log('[BP Mac] v6.1.0 — BSP phase 1 (same code as the field app)');
+})();
+</script>
+<script>
+/* ═══ PORTED: Restore adds clients (field v6.1.3) — generated from index.html by tools/port_to_mac.py ═══ */
+/* ══ v6.1.3 — a restore puts clients in the phone book ════════════════
+   After Sync → Restore from iCloud, every job with a client name gets its
+   Client card (same as saving the job by hand since v6.1.0), so the BSP
+   checklist doesn't show "In contacts → Fix" on every restored job.
+   Only runs for a restore — normal syncs leave contacts alone so two
+   devices never make duplicate cards. ══════════════════════════════ */
+(function(){
+  'use strict';
+  var armedUntil = 0;
+  if (typeof window.bpRestoreFromICloud === 'function' && !window.bpRestoreFromICloud.__v613) {
+    var _r = window.bpRestoreFromICloud;
+    window.bpRestoreFromICloud = function(){ armedUntil = Date.now() + 10 * 60000; return _r.apply(this, arguments); };
+    window.bpRestoreFromICloud.__v613 = 1;
+  }
+  if (typeof window.mergeIncomingDB === 'function' && !window.mergeIncomingDB.__v613) {
+    var _m = window.mergeIncomingDB;
+    window.mergeIncomingDB = function(remote){
+      var r = _m.apply(this, arguments);
+      if (Date.now() < armedUntil && remote && !(remote.pushedAt) && typeof window.bspSyncClientContact === 'function') {
+        armedUntil = 0;
+        var n = 0;
+        (DB.jobs || []).forEach(function(j){
+          if (j && String(j.client || '').trim() && !window.bspClientContact(j)) { window.bspSyncClientContact(j); n++; }
+        });
+        if (n) console.log('[BSP] restore: added ' + n + ' client card(s)');
+      }
+      return r;
+    };
+    window.mergeIncomingDB.__v613 = 1;
+  }
+  console.log('[BP] v6.1.3 — restore adds clients to the phone book');
+})();
+</script>
+<script>
+/* ═══ PORTED: Notes with photos + recordings (field v3.62) — generated from index.html by tools/port_to_mac.py ═══ */
+/* ══ v3.62 — NOTES: home button, auto title, photos, recordings ════════════
+   - Home: a Notes icon beside Shopping List and Daily Log.
+   - New note starts BLANK. The title fills itself: today's date + the space.
+   - Add photos (camera / library) and record voice memos (kept as audio you
+     can play back). Works from the home Notes list and from a job's Project
+     Notes. Stored on the note (DB.jobNotes), so it syncs like before. */
+(function(){
+'use strict';
+function E(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function say(m){ try { toast(m); } catch(e){} }
+function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else save(); } catch(e){} }
+function iso(){ return new Date().toISOString(); }
+function nid(){ return (typeof uid === 'function') ? uid() : 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function mdy(d){ d = d ? new Date(d) : new Date(); if (isNaN(d)) d = new Date(); return ('0'+(d.getMonth()+1)).slice(-2) + '/' + ('0'+d.getDate()).slice(-2) + '/' + d.getFullYear(); }
+function activeJob(){ try { return (typeof bpActiveJob === 'function' && bpActiveJob()) || window.currentJobId || ''; } catch(e){ return ''; } }
+function roomsOf(j){ return (DB.rooms||[]).filter(function(r){ return r && r.jobId === j; }); }
+function roomName(id){ var r = (DB.rooms||[]).find(function(x){ return x.id === id; }); return r ? r.name : ''; }
+function jobName(id){ var j = (DB.jobs||[]).find(function(x){ return x.id === id; }); return j ? j.name : ''; }
+function autoTitle(n){ var sp = n.roomId ? roomName(n.roomId) : ''; return mdy(n.created) + (sp ? ' · ' + sp : ' · Whole job'); }
+function titleOf(n){ return n.title || autoTitle(n); }
+
+var st = document.createElement('style');
+st.textContent = '#bp-notes-ov{position:fixed;inset:0;z-index:9990;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:var(--safe-top) 16px 40px;box-sizing:border-box}'
+ + '#bp-notes-ov .nh{display:flex;align-items:center;gap:10px;padding:10px 0;position:sticky;top:0;background:var(--bg);z-index:2}'
+ + '#bp-notes-ov .nh h2{margin:0;font-size:22px;font-weight:900;flex:1}'
+ + '#bp-notes-ov .nb{min-width:44px;min-height:44px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:18px;font-weight:800;cursor:pointer;font-family:inherit;padding:0 14px}'
+ + '#bp-notes-ov .nb.pri{background:#0A84FF;border-color:#0A84FF;color:#fff}'
+ + '#bp-notes-ov .nin{width:100%;box-sizing:border-box;padding:13px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:17px;font-family:inherit}'
+ + '#bp-notes-ov .nl{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px}'
+ + '#bp-notes-ov .nc{padding:12px 14px;margin-bottom:8px;border-radius:12px;background:var(--card);border:1px solid var(--border);cursor:pointer}'
+ + '#bp-notes-ov .ng{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}'
+ + '#bp-notes-ov .nt{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--card2)}#bp-notes-ov .nt img{width:100%;height:100%;object-fit:cover}'
+ + '#bp-notes-ov .nx{position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:16px;cursor:pointer}'
+ + '#bp-notes-ov .na{display:flex;align-items:center;gap:8px;margin-bottom:8px}#bp-notes-ov .na audio{flex:1;min-width:0;height:40px}'
+ + '#bp-notes-ov .rec{background:#FF453A !important;border-color:#FF453A !important;color:#fff !important}'
+ + '#bp-notes-ov .nrow{display:flex;gap:8px;margin-top:14px}#bp-notes-ov .nrow .nb{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;font-size:15px;padding:0 6px;white-space:nowrap}'
+ + '#bp-notes-ov .nfr{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--border)}'
+ + '#bp-notes-ov .nfr .nfi{font-size:24px;color:#0A84FF;flex:none}'
+ + '#bp-notes-ov .nfr .nfn{flex:1;min-width:0;cursor:pointer}'
+ + '#bp-notes-ov .nfr .nfn b{display:block;font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+ + '#bp-notes-ov .nfr .nfn span{font-size:12px;color:var(--muted)}';
+document.head.appendChild(st);
+
+/* v3.86: files on a note. Line icons (no emoji) — paperclip for the button/count, document for each file row. */
+var IC_CLIP = '<span class="bp-ic" role="img" aria-label="files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l-6.5 6.5a1.5 1.5 0 003 3l6.5-6.5a3 3 0 00-6-6l-6.5 6.5a4.5 4.5 0 009 9l6.5-6.5"/></svg></span>';
+var IC_DOC  = '<span class="bp-ic" role="img" aria-label="file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3v4a1 1 0 001 1h4M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z"/></svg></span>';
+var MAX_FILE = 15 * 1024 * 1024;   /* 15 MB per file keeps a note small enough to sync */
+function fmtSize(b){ b = +b || 0; return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' B'; }
+
+var N = null;            /* editor state */
+var listJob = null;      /* job shown in the list ('' = general) */
+var R = { mr:null, stream:null, chunks:[], t0:0, tick:null };
+
+function ov(){ var o = document.getElementById('bp-notes-ov'); if (!o) { o = document.createElement('div'); o.id = 'bp-notes-ov'; o.setAttribute('role','dialog'); document.body.appendChild(o); } return o; }
+function closeOv(){ stopRec(true); var o = document.getElementById('bp-notes-ov'); if (o) o.remove(); N = null; try { if (window.bpRenderJobNotes) window.bpRenderJobNotes(); } catch(e){} try { if (typeof bpPaintDailyBars === 'function') bpPaintDailyBars(); } catch(e){} }
+window.bpNotesClose = closeOv;
+
+function cardHtml(n){
+  var np = (n.photos||[]).length, na = (n.audio||[]).length, nf = (n.files||[]).length;
+  var prev = (n.text||'').trim();
+  return '<div class="nc" onclick="bpNoteEdit(\'' + E(n.id) + '\')">'
+    + '<div style="font-size:15px;font-weight:800">' + E(titleOf(n)) + '</div>'
+    + (prev ? '<div style="font-size:14px;line-height:1.35;margin-top:4px;white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + E(prev) + '</div>' : '')
+    + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (nf ? IC_CLIP + ' ' + nf + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
+}
+function notesFor(j){ return (DB.jobNotes||[]).filter(function(n){ return n && (n.jobId||'') === (j||''); }).sort(function(a,b){ return String(a.created||'') < String(b.created||'') ? 1 : -1; }); }
+
+/* ── list (home Notes button) ── */
+window.bpOpenNotes = function(jobId){
+  stopRec(true); N = null;
+  listJob = (jobId === undefined) ? (listJob === null ? activeJob() : listJob) : jobId;
+  var L = notesFor(listJob);
+  var jobs = (DB.jobs||[]).slice().reverse();
+  ov().innerHTML = '<div class="nh"><h2>Notes</h2><button class="nb pri" aria-label="New note" onclick="bpNoteEdit(\'\',bpNotesListJob())">＋</button><button class="nb" aria-label="Close" onclick="bpNotesClose()">✕</button></div>'
+    + '<select class="nin" aria-label="Job" onchange="bpOpenNotes(this.value)" style="font-weight:800;margin-bottom:12px"><option value="">General (no job)</option>'
+    + jobs.map(function(j){ return '<option value="' + E(j.id) + '"' + (j.id === listJob ? ' selected' : '') + '>' + E(j.name) + '</option>'; }).join('') + '</select>'
+    + (L.length ? L.map(cardHtml).join('') : '<div style="padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:12px">No notes yet — tap ＋</div>');
+};
+window.bpNotesListJob = function(){ return listJob || ''; };
+
+/* ── editor ── */
+function sync(){
+  if (!N) return;
+  var t = document.getElementById('bpn-title'), x = document.getElementById('bpn-text'), r = document.getElementById('bpn-room'), j = document.getElementById('bpn-job');
+  if (j) N.jobId = j.value;
+  if (r) N.roomId = r.value;
+  if (x) N.text = x.value;
+  if (t) { if (t.value !== N.autoShown) { N.title = t.value; N.titleEdited = true; } }
+}
+function draw(){
+  if (!N) return;
+  var rooms = roomsOf(N.jobId);
+  var auto = autoTitle({ created:N.created, roomId:N.roomId });
+  if (!N.titleEdited) N.title = auto;
+  N.autoShown = N.titleEdited ? N.autoShown : auto;
+  var jobs = (DB.jobs||[]).slice().reverse();
+  var rec = !!R.mr;
+  ov().innerHTML = '<div class="nh"><button class="nb" aria-label="Back" onclick="bpNoteBack()">‹</button><h2>' + (N.id ? 'Note' : 'New note') + '</h2><button class="nb pri" onclick="bpNoteSave2()">Save</button></div>'
+    + '<div class="nl" style="margin-top:6px">Title</div><input id="bpn-title" class="nin" value="' + E(N.title) + '" placeholder="Date + space"/>'
+    + '<div class="nl">Job</div><select id="bpn-job" class="nin" onchange="bpNoteJob()"><option value="">General (no job)</option>' + jobs.map(function(j){ return '<option value="' + E(j.id) + '"' + (j.id === N.jobId ? ' selected' : '') + '>' + E(j.name) + '</option>'; }).join('') + '</select>'
+    + '<div class="nl">Space</div><select id="bpn-room" class="nin" onchange="bpNoteSpace()"><option value="">Whole job</option>' + rooms.map(function(r){ return '<option value="' + E(r.id) + '"' + (r.id === N.roomId ? ' selected' : '') + '>' + E(r.name) + '</option>'; }).join('') + '</select>'
+    + '<div class="nl">Note</div><textarea id="bpn-text" class="nin" rows="6" placeholder="" style="resize:vertical;line-height:1.4">' + E(N.text) + '</textarea>'
+    + '<div class="nrow">'
+    +   '<label class="nb" style="cursor:pointer" aria-label="Add photos">📷 Photos<input id="bpn-file" type="file" accept="image/*" multiple style="display:none" onchange="bpNotePhotos(this)"/></label>'
+    +   '<label class="nb" style="cursor:pointer" aria-label="Add files">' + IC_CLIP + ' Files<input id="bpn-files" type="file" multiple style="display:none" onchange="bpNoteFiles(this)"/></label>'
+    +   '<button id="bpn-rec" class="nb' + (rec ? ' rec' : '') + '" onclick="bpNoteRec()" aria-label="' + (rec ? 'Stop recording' : 'Record') + '">' + (rec ? '⏹ <span id="bpn-timer">0:00</span>' : '🎙 Record') + '</button></div>'
+    + (N.photos.length ? '<div class="nl">Photos (' + N.photos.length + ')</div><div class="ng">' + N.photos.map(function(p,i){ return '<div class="nt"><img src="' + p + '" alt=""/><button class="nx" aria-label="Remove photo" onclick="bpNoteDelPhoto(' + i + ')">✕</button></div>'; }).join('') + '</div>' : '')
+    + (N.audio.length ? '<div class="nl">Recordings (' + N.audio.length + ')</div>' + N.audio.map(function(a,i){ return '<div class="na"><audio controls preload="metadata" src="' + a.src + '"></audio><button class="nb" style="color:#FF453A" aria-label="Remove recording" onclick="bpNoteDelAudio(' + i + ')">🗑</button></div>'; }).join('') : '')
+    + (N.files.length ? '<div class="nl">Files (' + N.files.length + ')</div>' + N.files.map(function(f,i){ return '<div class="nfr"><span class="nfi">' + IC_DOC + '</span><div class="nfn" onclick="bpNoteOpenFile(' + i + ')"><b>' + E(f.name) + '</b><span>' + E(fmtSize(f.size)) + ' · tap to open</span></div><button class="nb" style="color:#FF453A" aria-label="Remove file" onclick="bpNoteDelFile(' + i + ')">✕</button></div>'; }).join('') : '')
+    + (N.id ? '<button class="nb" style="width:100%;margin-top:22px;color:#FF453A;border-color:#FF453A" onclick="bpNoteDel2()">Delete note</button>' : '');
+}
+window.bpNoteEdit = function(id, jobId){
+  stopRec(true);
+  var n = id ? (DB.jobNotes||[]).find(function(x){ return x.id === id; }) : null;
+  if (jobId === undefined) jobId = n ? (n.jobId||'') : (window.currentJobId || activeJob());
+  N = n ? { id:n.id, jobId:n.jobId||'', roomId:n.roomId||'', title:n.title || autoTitle(n), titleEdited:!!n.title, created:n.created || iso(), text:n.text||'', photos:(n.photos||[]).slice(), audio:(n.audio||[]).slice(), files:(n.files||[]).slice(), from:ov().innerHTML && document.getElementById('bp-notes-ov') && document.getElementById('bp-notes-ov').dataset.list ? 1 : 0 }
+         : { id:'', jobId:jobId||'', roomId:'', title:'', titleEdited:false, created:iso(), text:'', photos:[], audio:[], files:[] };
+  var o = ov(); o.dataset.list = (document.querySelector('#bp-notes-ov .nc') || document.querySelector('#bp-notes-ov select[aria-label=Job]')) ? '1' : '';
+  draw();
+};
+window.bpNoteBack = function(){ stopRec(true); N = null; if (document.getElementById('bp-notes-ov').dataset.list) window.bpOpenNotes(listJob); else closeOv(); };
+window.bpNoteJob = function(){ sync(); N.roomId = ''; draw(); };
+window.bpNoteSpace = function(){ sync(); draw(); };
+window.bpNotePhotos = function(inp){
+  sync();
+  var files = Array.prototype.slice.call(inp.files || []).filter(function(f){ return /^image\//.test(f.type); });
+  if (!files.length) return;
+  bpPhotosSerial(files, function(src){ N && N.photos.push(src); }, function(){ draw(); });
+};
+window.bpNoteDelPhoto = function(i){ sync(); N.photos.splice(i,1); draw(); };
+window.bpNoteDelAudio = function(i){ sync(); N.audio.splice(i,1); draw(); };
+window.bpNoteDelFile = function(i){ sync(); N.files.splice(i,1); draw(); };
+window.bpNoteFiles = function(inp){
+  sync();
+  var picked = Array.prototype.slice.call(inp.files || []);
+  try { inp.value = ''; } catch(e){}
+  if (!picked.length || !N) return;
+  var left = picked.length, skipped = [];
+  function fin(){ draw(); if (skipped.length) say(skipped.length === 1 ? skipped[0] + ' is over 15 MB — too big to sync' : skipped.length + ' files over 15 MB were skipped'); }
+  picked.forEach(function(f){
+    if (f.size > MAX_FILE) { skipped.push(f.name || 'File'); if (--left === 0) fin(); return; }
+    var r = new FileReader();
+    r.onload = function(e){
+      if (N) N.files.push({ id:nid(), name:f.name || 'File', type:f.type || '', size:f.size || 0, src:e.target.result, date:iso() });
+      if (--left === 0) fin();
+    };
+    r.onerror = function(){ skipped.push(f.name || 'File'); if (--left === 0) fin(); };
+    r.readAsDataURL(f);
+  });
+};
+window.bpNoteOpenFile = function(i){
+  sync();
+  var f = N && N.files[i]; if (!f) return;
+  if (!/^data:/.test(String(f.src || ''))) { say('File is still loading — try again in a moment'); return; }
+  fetch(f.src).then(function(r){ return r.blob(); }).then(function(b){
+    var url = URL.createObjectURL(new Blob([b], { type: f.type || b.type || 'application/octet-stream' }));
+    var a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(e){} }, 120000);
+  }).catch(function(){ say('Could not open that file'); });
+};
+
+function stopRec(discard){
+  clearInterval(R.tick);
+  if (R.mr) { try { R.mr.__discard = !!discard; if (R.mr.state !== 'inactive') R.mr.stop(); } catch(e){} }
+  if (R.stream) { try { R.stream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){} }
+  R.mr = null; R.stream = null;
+}
+window.bpNoteRec = function(){
+  if (R.mr) { var mr = R.mr; clearInterval(R.tick); try { mr.stop(); } catch(e){} return; }
+  sync();
+  if (!navigator.mediaDevices || !window.MediaRecorder) { say('Recording is not available on this device'); return; }
+  navigator.mediaDevices.getUserMedia({ audio:true }).then(function(stream){
+    var type = ['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(function(t){ try { return MediaRecorder.isTypeSupported(t); } catch(e){ return false; } }) || '';
+    var mr;
+    try { mr = new MediaRecorder(stream, type ? { mimeType:type, audioBitsPerSecond:32000 } : { audioBitsPerSecond:32000 }); } catch(e){ mr = new MediaRecorder(stream); }
+    R.mr = mr; R.stream = stream; R.chunks = []; R.t0 = Date.now();
+    mr.ondataavailable = function(e){ if (e.data && e.data.size) R.chunks.push(e.data); };
+    mr.onstop = function(){
+      var discard = mr.__discard, dur = Math.round((Date.now() - R.t0)/1000), chunks = R.chunks.slice();
+      try { stream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
+      if (R.mr === mr) R.mr = null; R.stream = null; clearInterval(R.tick);
+      if (discard || !chunks.length || !N) return;
+      var blob = new Blob(chunks, { type: mr.mimeType || type || 'audio/webm' });
+      var fr = new FileReader();
+      fr.onload = function(){ if (!N) return; N.audio.push({ id:nid(), src:fr.result, dur:dur, date:iso() }); draw(); };
+      fr.readAsDataURL(blob);
+    };
+    mr.start(1000);
+    draw();
+    R.tick = setInterval(function(){
+      var s = Math.round((Date.now() - R.t0)/1000), el = document.getElementById('bpn-timer');
+      if (el) el.textContent = Math.floor(s/60) + ':' + ('0'+(s%60)).slice(-2);
+      if (s >= 180) window.bpNoteRec();   /* 3-minute cap keeps notes small enough to sync */
+    }, 500);
+  }).catch(function(){ say('Microphone blocked — allow it in Settings'); });
+};
+window.bpNoteSave2 = function(){
+  if (R.mr) { say('Stop the recording first'); return; }
+  sync();
+  if (!N.text.trim() && !N.photos.length && !N.audio.length && !N.files.length) { say('Add a note, photo, file or recording first'); return; }
+  DB.jobNotes = DB.jobNotes || [];
+  var n = N.id ? DB.jobNotes.find(function(x){ return x.id === N.id; }) : null;
+  var title = N.titleEdited ? N.title.trim() : '';
+  if (n) { n.jobId = N.jobId; n.roomId = N.roomId; n.title = title; n.text = N.text; n.photos = N.photos; n.audio = N.audio; n.files = N.files; n.updatedAt = iso(); }
+  else DB.jobNotes.push({ id:nid(), jobId:N.jobId, roomId:N.roomId, title:title, text:N.text, photos:N.photos, audio:N.audio, files:N.files, createdBy:(typeof _userName !== 'undefined' && _userName) || '', created:N.created, updatedAt:iso() });
+  persist(); say('Note saved');
+  var fromList = document.getElementById('bp-notes-ov').dataset.list;
+  N = null;
+  if (fromList) window.bpOpenNotes(listJob); else closeOv();
+};
+window.bpNoteDel2 = function(){
+  if (!confirm('Delete this note?')) return;
+  var id = N.id;
+  if (typeof bpRemoveFrom === 'function') bpRemoveFrom('jobNotes', function(x){ return x.id !== id; });
+  else DB.jobNotes = (DB.jobNotes||[]).filter(function(x){ return x.id !== id; });
+  persist(); var fromList = document.getElementById('bp-notes-ov').dataset.list; N = null;
+  if (fromList) window.bpOpenNotes(listJob); else closeOv();
+};
+
+/* ── job page "Project Notes": same cards, same editor ── */
+window.bpRenderJobNotes = function(){
+  var el = document.getElementById('jd-notes'); if (!el) return;
+  var jobId = window.currentJobId; if (!jobId) { el.innerHTML = ''; return; }
+  var L = notesFor(jobId);
+  el.innerHTML = '<div class="section-header" style="display:flex;align-items:center">Project Notes (' + L.length + ')'
+    + '<button onclick="bpNoteEdit(\'\',\'' + E(jobId) + '\')" style="margin-left:auto;background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.4);border-radius:9px;color:#0A84FF;font-size:13px;font-weight:800;padding:8px 14px;cursor:pointer;font-family:inherit">+ Add Note</button></div>'
+    + '<div style="margin:0 16px 14px">' + (L.length ? L.map(function(n){
+      var np = (n.photos||[]).length, na = (n.audio||[]).length, nf = (n.files||[]).length, prev = (n.text||'').trim();
+      return '<div onclick="bpNoteEdit(\'' + E(n.id) + '\',\'' + E(jobId) + '\')" style="padding:12px 14px;margin-bottom:8px;border-radius:12px;background:var(--card,#1c1c1e);border:1px solid var(--border,#2a2a2a);cursor:pointer">'
+        + '<div style="font-size:15px;font-weight:800">' + E(titleOf(n)) + '</div>'
+        + (prev ? '<div style="font-size:14px;line-height:1.35;margin-top:4px;white-space:pre-wrap;word-break:break-word">' + E(prev) + '</div>' : '')
+        + '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + (np ? '📷 ' + np + '  ' : '') + (na ? '🎙 ' + na + '  ' : '') + (nf ? IC_CLIP + ' ' + nf + '  ' : '') + (n.createdBy ? E(n.createdBy) : '') + '</div></div>';
+    }).join('') : '<div style="padding:16px;text-align:center;color:var(--muted);border:1px dashed var(--border,#333);border-radius:12px;font-size:14px">No notes yet — tap + Add Note</div>') + '</div>';
+};
+try { window.bpRenderJobNotes(); } catch(e){}
+console.log('[BP] v3.62 notes ready');
+})();
+</script>
+<!-- PORTED FROM FIELD APP: END -->
+<script>
+/* ══ v6.2.0 — ONE APP ON THREE SCREENS ══════════════════════════════════
+   Stan (Oct 26 2026): "Whatever we do to the field app it must match the
+   Command Center. They are extensions of one another. Wherever I left off,
+   I should be able to continue on my iPad, Mac or iPhone."
+   Same code in BOTH apps:
+   1. RESTORE STICKS. Restoring something from Recently Deleted used to clear
+      the delete mark only on that device; the next sync brought the mark back
+      from iCloud and deleted it again everywhere. A restore now leaves a
+      "keep" stamp (the v6.1.6 mechanism) that travels with the sync and
+      outranks the older delete mark on every device.
+   2. THE JOB YOU'RE ON FOLLOWS YOU. Picking or opening a job is remembered in
+      the synced data (DB.workingOn). Open the app on another device and it is
+      already on that job — the newest choice wins. ═══════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp620) return; window.__bp620 = 1;
+  function ts(){ return new Date().toISOString(); }
+  function T(s){ var t = Date.parse(s || ''); return isNaN(t) ? 0 : t; }
+  function persist(){ try { bpSave(); } catch(e){} }
+
+  /* 1 ── restore sticks on every device */
+  if (typeof window.bpRestore === 'function' && !window.bpRestore.__v620) {
+    var _restore = window.bpRestore;
+    window.bpRestore = function(entryId){
+      var e = (DB.recycle || []).find(function(x){ return x && x.id === entryId; });
+      var ok = _restore.apply(this, arguments);
+      if (ok && e && e.coll && e.rec && e.rec.id) {
+        if (!DB.keepStamps || typeof DB.keepStamps !== 'object') DB.keepStamps = {};
+        DB.keepStamps[e.coll + ':' + e.rec.id] = ts();
+        persist();
+      }
+      return ok;
+    };
+    window.bpRestore.__v620 = 1;
+    try { bpRestore = window.bpRestore; } catch(e){}
+  }
+
+  /* 2 ── the job you're on follows you */
+  var incoming = false;
+  if (typeof window.bpSetActiveJob === 'function' && !window.bpSetActiveJob.__v620) {
+    var _set = window.bpSetActiveJob;
+    window.bpSetActiveJob = function(id){
+      var r = _set.apply(this, arguments);
+      if (!incoming) {
+        var cur = DB.workingOn && DB.workingOn.jobId;
+        if ((id || '') !== (cur || '')) { DB.workingOn = { jobId: id || '', at: ts() }; persist(); }
+      }
+      return r;
+    };
+    window.bpSetActiveJob.__v620 = 1;
+    try { bpSetActiveJob = window.bpSetActiveJob; } catch(e){}
+  }
+  function adopt(w){
+    if (!w || typeof w !== 'object') return;
+    if (DB.workingOn && T(DB.workingOn.at) >= T(w.at)) return;
+    if (w.jobId && !(DB.jobs || []).some(function(j){ return j.id === w.jobId; })) return;   /* job not here (yet) */
+    DB.workingOn = { jobId: w.jobId || '', at: w.at };
+    var mine = ''; try { mine = localStorage.getItem('bp_active_job') || ''; } catch(e){}
+    if (mine === (w.jobId || '')) return;
+    incoming = true;
+    try { window.bpSetActiveJob(w.jobId || '', true); } catch(e){} finally { incoming = false; }
+    try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
+    try { if (typeof bpRefreshCurrentScreen === 'function') bpRefreshCurrentScreen(); } catch(e){}
+  }
+  window.bpAdoptWorkingOn = adopt;
+  if (typeof window.mergeIncomingDB === 'function' && !window.mergeIncomingDB.__v620) {
+    var _m = window.mergeIncomingDB;
+    window.mergeIncomingDB = function(remote){
+      var w = remote && (remote.db || remote) && (remote.db || remote).workingOn;
+      var r = _m.apply(this, arguments);
+      try { adopt(w); } catch(e){ console.warn('[BP] v6.2.0 workingOn', e); }
+      return r;
+    };
+    window.mergeIncomingDB.__v620 = 1;
+    try { mergeIncomingDB = window.mergeIncomingDB; } catch(e){}
+  }
+  console.log('[BP] v6.2.0 — one app on three screens: restore sticks, the job you\'re on follows you');
+})();
+</script>
+<script>
+/* ══ v6.2.0 (Mac) — the Command Center's job page matches the field app ══
+   The field app's Security section, BSP checklist + gates, fast/good/cheap pie
+   and notes-with-photos now run on the Mac from the SAME code (the PORTED
+   block above, built by tools/port_to_mac.py). This adds the Mac-only glue:
+   • Edit Job on the Mac gets the same BSP intake check and keeps the
+     client's phone-book card in step (the field app's saveEditJob does this).
+   • The job page gets the field app's quick actions: Change order (purple)
+     and Notes, plus the job's notes list. ═════════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp620mac || !document.getElementById('modal-new-room')) return; window.__bp620mac = 1;
+  var PURPLE = '#BF5AF2', GREEN = '#30D158';
+  function val(id){ var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
+  var FIELDS = [['client','client name'],['address','address'],['clientEmail','email'],['clientPhone','cell']];
+  function listWords(a){ return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  function intakeOk(o){
+    var miss = FIELDS.filter(function(f){ return !String(o[f[0]] || '').trim(); }).map(function(f){ return f[1]; });
+    if (!miss.length) return true;
+    return confirm('BSP: this job is missing the client ' + listWords(miss) + '.\n\nOK = save anyway (it stays red on the job until it\'s filled in)\nCancel = go back and add it');
+  }
+
+  /* Edit Job: same intake check + client card as the field app */
+  if (typeof window.editJob === 'function' && !window.editJob.__v620) {
+    var _edit = window.editJob;
+    window.editJob = function(id){
+      var r = _edit.apply(this, arguments);
+      var btn = document.querySelector('#modal-new-job .btn-primary');
+      if (btn && typeof btn.onclick === 'function' && !btn.onclick.__v620) {
+        var go = btn.onclick;
+        btn.onclick = function(){
+          if (val('nj-name')) {
+            var draft = { client: val('nj-client'), address: val('nj-address'), clientEmail: val('nj-client-email'), clientPhone: val('nj-client-phone') };
+            if (!intakeOk(draft)) return;
+          }
+          var out = go.apply(this, arguments);
+          try {
+            var job = (DB.jobs || []).find(function(j){ return j.id === id; });
+            if (job && typeof window.bspSyncClientContact === 'function' && bspSyncClientContact(job)) { bpSave(); if (currentJobId === id) renderDesktopJobDetail(id); }
+          } catch(e){ console.warn('[BP Mac] edit job contact', e); }
+          return out;
+        };
+        btn.onclick.__v620 = 1;
+      }
+      return r;
+    };
+    window.editJob.__v620 = 1;
+    try { editJob = window.editJob; } catch(e){}
+  }
+
+  /* job page: Change order + Notes, and the notes list */
+  function decorate(jobId){
+    var acts = document.getElementById('jd2-actions'); if (!acts) return;
+    try { if (jobId && window.currentJobId !== jobId) currentJobId = jobId; } catch(e){}   /* notes list follows the job on screen */
+    if (!acts.querySelector('[data-bp620="co"]') && typeof window.openNewChangeOrder === 'function') {
+      var b = document.createElement('button'); b.className = 'btn btn-ghost'; b.setAttribute('data-bp620', 'co');
+      b.style.cssText = 'color:' + PURPLE + ';border-color:' + PURPLE + '66';
+      b.textContent = '+ Change order';
+      b.onclick = function(){ openNewChangeOrder(jobId); };
+      acts.insertBefore(b, acts.firstChild);
+    }
+    if (!acts.querySelector('[data-bp620="notes"]') && typeof window.bpNoteEdit === 'function') {
+      var n = document.createElement('button'); n.className = 'btn btn-ghost'; n.setAttribute('data-bp620', 'notes');
+      n.style.cssText = 'color:' + GREEN + ';border-color:' + GREEN + '66';
+      n.textContent = '+ Note';
+      n.onclick = function(){ bpNoteEdit(null, jobId); };
+      acts.insertBefore(n, acts.firstChild.nextSibling);
+    }
+    var host = document.getElementById('jd-notes');
+    if (!host) {
+      host = document.createElement('div'); host.id = 'jd-notes'; host.style.cssText = 'margin:12px 0 0;max-width:720px';
+      var after = document.getElementById('jd-security-section') || document.getElementById('bsp-ready') || acts;
+      after.parentNode.insertBefore(host, after.nextSibling);
+    }
+    try { if (typeof window.bpRenderJobNotes === 'function') bpRenderJobNotes(); } catch(e){}
+  }
+  if (typeof window.renderDesktopJobDetail === 'function' && !window.renderDesktopJobDetail.__v620) {
+    var _rjd = window.renderDesktopJobDetail;
+    window.renderDesktopJobDetail = function(jobId){
+      var r = _rjd.apply(this, arguments);
+      try { decorate(jobId); } catch(e){ console.warn('[BP Mac] job page', e); }
+      return r;
+    };
+    window.renderDesktopJobDetail.__v620 = 1;
+    try { renderDesktopJobDetail = window.renderDesktopJobDetail; } catch(e){}
+  }
+  /* same names as the field app, so nothing has to be learned twice */
+  var RENAME = { 'Dashboard': 'Home', 'Punchlist': 'Punch', 'Finance': 'Money', 'Contacts': 'Phone book', 'Sync Settings': 'Sync' };
+  function relabel(){
+    document.querySelectorAll('.sidebar .ni, .view-title, .nav-section').forEach(function(el){
+      var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), t;
+      while ((t = w.nextNode())) { var k = t.nodeValue.trim(); if (RENAME[k]) t.nodeValue = t.nodeValue.replace(k, RENAME[k]); }
+    });
+    document.querySelectorAll('.view-sub').forEach(function(el){ if (/GitHub Gist/.test(el.textContent)) el.textContent = 'iCloud keeps your iPhone, iPad and Mac in step'; });
+  }
+  window.bpMacRelabel = relabel;
+  relabel(); setTimeout(relabel, 1500);
+  console.log('[BP Mac] v6.2.0 — job page matches the field app; same names as the field app');
 })();
 </script>

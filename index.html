@@ -1554,7 +1554,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.1.24';
+var APP_VERSION = '6.2.0';
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
 window.bpHMenu = function(label, items, opts){
@@ -29374,5 +29374,85 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent && (!document.getElementById('bp-recover-card') || w.firstChild !== document.getElementById('bp-recover-card'))) card(); } catch(e){} }, 700);
   setInterval(function(){ try { var w = document.getElementById('recycle-wrap'); if (w && w.offsetParent) card(); } catch(e){} }, 15000);
   console.log('[BP] v6.1.22 — bring back what a duplicate-job delete took');
+})();
+</script>
+<script>
+/* ══ v6.2.0 — ONE APP ON THREE SCREENS ══════════════════════════════════
+   Stan (Oct 26 2026): "Whatever we do to the field app it must match the
+   Command Center. They are extensions of one another. Wherever I left off,
+   I should be able to continue on my iPad, Mac or iPhone."
+   Same code in BOTH apps:
+   1. RESTORE STICKS. Restoring something from Recently Deleted used to clear
+      the delete mark only on that device; the next sync brought the mark back
+      from iCloud and deleted it again everywhere. A restore now leaves a
+      "keep" stamp (the v6.1.6 mechanism) that travels with the sync and
+      outranks the older delete mark on every device.
+   2. THE JOB YOU'RE ON FOLLOWS YOU. Picking or opening a job is remembered in
+      the synced data (DB.workingOn). Open the app on another device and it is
+      already on that job — the newest choice wins. ═══════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp620) return; window.__bp620 = 1;
+  function ts(){ return new Date().toISOString(); }
+  function T(s){ var t = Date.parse(s || ''); return isNaN(t) ? 0 : t; }
+  function persist(){ try { bpSave(); } catch(e){} }
+
+  /* 1 ── restore sticks on every device */
+  if (typeof window.bpRestore === 'function' && !window.bpRestore.__v620) {
+    var _restore = window.bpRestore;
+    window.bpRestore = function(entryId){
+      var e = (DB.recycle || []).find(function(x){ return x && x.id === entryId; });
+      var ok = _restore.apply(this, arguments);
+      if (ok && e && e.coll && e.rec && e.rec.id) {
+        if (!DB.keepStamps || typeof DB.keepStamps !== 'object') DB.keepStamps = {};
+        DB.keepStamps[e.coll + ':' + e.rec.id] = ts();
+        persist();
+      }
+      return ok;
+    };
+    window.bpRestore.__v620 = 1;
+    try { bpRestore = window.bpRestore; } catch(e){}
+  }
+
+  /* 2 ── the job you're on follows you */
+  var incoming = false;
+  if (typeof window.bpSetActiveJob === 'function' && !window.bpSetActiveJob.__v620) {
+    var _set = window.bpSetActiveJob;
+    window.bpSetActiveJob = function(id){
+      var r = _set.apply(this, arguments);
+      if (!incoming) {
+        var cur = DB.workingOn && DB.workingOn.jobId;
+        if ((id || '') !== (cur || '')) { DB.workingOn = { jobId: id || '', at: ts() }; persist(); }
+      }
+      return r;
+    };
+    window.bpSetActiveJob.__v620 = 1;
+    try { bpSetActiveJob = window.bpSetActiveJob; } catch(e){}
+  }
+  function adopt(w){
+    if (!w || typeof w !== 'object') return;
+    if (DB.workingOn && T(DB.workingOn.at) >= T(w.at)) return;
+    if (w.jobId && !(DB.jobs || []).some(function(j){ return j.id === w.jobId; })) return;   /* job not here (yet) */
+    DB.workingOn = { jobId: w.jobId || '', at: w.at };
+    var mine = ''; try { mine = localStorage.getItem('bp_active_job') || ''; } catch(e){}
+    if (mine === (w.jobId || '')) return;
+    incoming = true;
+    try { window.bpSetActiveJob(w.jobId || '', true); } catch(e){} finally { incoming = false; }
+    try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
+    try { if (typeof bpRefreshCurrentScreen === 'function') bpRefreshCurrentScreen(); } catch(e){}
+  }
+  window.bpAdoptWorkingOn = adopt;
+  if (typeof window.mergeIncomingDB === 'function' && !window.mergeIncomingDB.__v620) {
+    var _m = window.mergeIncomingDB;
+    window.mergeIncomingDB = function(remote){
+      var w = remote && (remote.db || remote) && (remote.db || remote).workingOn;
+      var r = _m.apply(this, arguments);
+      try { adopt(w); } catch(e){ console.warn('[BP] v6.2.0 workingOn', e); }
+      return r;
+    };
+    window.mergeIncomingDB.__v620 = 1;
+    try { mergeIncomingDB = window.mergeIncomingDB; } catch(e){}
+  }
+  console.log('[BP] v6.2.0 — one app on three screens: restore sticks, the job you\'re on follows you');
 })();
 </script>
