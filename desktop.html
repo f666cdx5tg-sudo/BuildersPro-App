@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.2.7';
+var APP_VERSION = '6.2.8';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -23619,5 +23619,56 @@ console.log('[BP] v3.62 notes ready');
   window.bpMacRelabel = relabel;
   relabel(); setTimeout(relabel, 1500);
   console.log('[BP Mac] v6.2.0 — job page matches the field app; same names as the field app');
+})();
+</script>
+<script id="v628">
+/* ══ v6.2.8 — Space checklist: Open / Complete / Select roomier and one-tap ══
+   Stan (Oct 28, 2026), circling Open 0 · Complete 12 · Select on (F) Bathroom: "Too cramped" + "Tapping doesn't work".
+   1. Cramped: at the larger text sizes "Complete 12" ran past its button into Select. Select is now a square
+      line-icon button (same check-box icon), so Open and Complete get the room back. Same height, nothing added.
+   2. Taps: a thumb tap that drifts a little was read as the start of a scroll and dropped. Like the check
+      boxes in v6.0.1, these three now answer on touch-up with 16px of wiggle, once (no double tap). */
+(function(){
+  'use strict';
+  if (window.__bp628) return; window.__bp628 = 1;
+  var st = document.createElement('style'); st.id = 'bp-v628-css';
+  st.textContent =
+      '.bp-pmrow:has(.bp-seg) .bp-selbtn{width:46px;min-width:46px;padding:0 !important;justify-content:center;gap:0;font-size:0 !important;flex:0 0 46px}'
+    + '.bp-pmrow:has(.bp-seg) .bp-selbtn svg{width:22px;height:22px}'
+    + '.bp-seg button{padding:0 3px;overflow:hidden;text-overflow:ellipsis;font-size:calc(15px * min(1, 1.25 / var(--bp-zoom, 1)))}'
+    + '.bp-seg button b{margin-left:5px}';
+  document.head.appendChild(st);
+
+  function label(){
+    [].forEach.call(document.querySelectorAll('.bp-pmrow .bp-selbtn'), function(b){
+      if (b.closest('.bp-pmrow').querySelector('.bp-seg') && !b.getAttribute('aria-label')) { b.setAttribute('aria-label', 'Select'); b.title = 'Select'; }
+    });
+  }
+  new MutationObserver(function(){ label(); }).observe(document.documentElement, { childList: true, subtree: true });
+
+  var T = null, WIGGLE = 16;
+  function target(el){ return el && el.closest ? el.closest('.bp-seg button, .bp-pmrow .bp-selbtn') : null; }
+  document.addEventListener('touchstart', function(e){
+    var b = e.touches.length === 1 ? target(e.target) : null;
+    if (!b || !b.closest('.bp-pmrow') || !b.closest('.bp-pmrow').querySelector('.bp-seg')) { T = null; return; }
+    T = { b: b, x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true, capture: true });
+  document.addEventListener('touchcancel', function(){ T = null; }, { passive: true, capture: true });
+  document.addEventListener('touchend', function(e){
+    if (!T) return; var s = T; T = null;
+    var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
+    if (Math.abs(t.clientX - s.x) > WIGGLE || Math.abs(t.clientY - s.y) > WIGGLE) return;
+    if (!s.b.isConnected || typeof s.b.onclick !== 'function') return;
+    if (e.cancelable) e.preventDefault();          /* we answer now — the browser's own click would be a second tap */
+    fired = Date.now();
+    try { s.b.onclick.call(s.b, e); } catch(er){ console.warn('[BP] v6.2.8 tap', er); }
+  }, { passive: false, capture: true });
+  var fired = 0;
+  document.addEventListener('click', function(e){
+    if (Date.now() - fired > 700 || !target(e.target)) return;
+    fired = 0; e.stopPropagation(); e.preventDefault();   /* the browser's late click for a tap already answered */
+  }, true);
+  label();
+  console.log('[BP] v6.2.8 — Open / Complete / Select: roomier, one tap');
 })();
 </script>

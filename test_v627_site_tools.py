@@ -43,7 +43,7 @@ async def open_field(b, shell):
 async def field(b):
     print('\nBrowser (no app)')
     ctx, pg, errs = await open_field(b, False)
-    ok(await pg.evaluate("APP_VERSION") == '6.2.7', 'field app is v6.2.7')
+    ok(await pg.evaluate("APP_VERSION") >= '6.2.7', 'field app is v6.2.7')
     ok(await pg.evaluate("getComputedStyle(document.getElementById('nav-measure')).display") == 'none', 'Measure hidden in a plain browser')
     ok(await pg.evaluate("getComputedStyle(document.getElementById('nav-roomscan')).display") == 'none', 'Room scan hidden in a plain browser')
 
@@ -118,7 +118,7 @@ async def mac(b):
     pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
     await pg.route('**/*', lambda r: r.abort() if any(h in r.request.url for h in BLOCK) else r.continue_())
     await pg.goto('http://localhost:%d/desktop.html' % PORT); await pg.wait_for_timeout(2500)
-    ok(await pg.evaluate("APP_VERSION") == '6.2.7', 'Command Center is v6.2.7')
+    ok(await pg.evaluate("APP_VERSION") >= '6.2.7', 'Command Center is v6.2.7')
     ok(not errs, 'no page errors %s' % errs[:2]); await ctx.close()
 
 async def main():
