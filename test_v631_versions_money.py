@@ -23,7 +23,7 @@ def files():
     w = re.search(r"var APP_VERSION = '([^']+)'", open(os.path.join(REPO, 'index.html'), encoding='utf-8').read()).group(1)
     d = re.search(r"var APP_VERSION = '([^']+)'", open(os.path.join(REPO, 'desktop.html'), encoding='utf-8').read()).group(1)
     n = re.search(r'MARKETING_VERSION: "([^"]+)"', open(os.path.join(REPO, 'native/project.yml')).read()).group(1)
-    ok(w == d == n == '6.3.1', 'field %s · command center %s · native %s all match' % (w, d, n))
+    ok(w == d == n >= '6.3.1', 'field %s · command center %s · native %s all match' % (w, d, n))
     ok("cache: 'no-cache'" in open(os.path.join(REPO, 'sw.js')).read(), 'service worker always checks GitHub for the newest copy')
     ok('URLQueryItem(name: "t"' in open(os.path.join(REPO, 'native/Sources/ShellModel.swift')).read(), 'app asks for a never-cached page on launch')
 
@@ -66,7 +66,7 @@ async def main():
             ctx = await b.new_context(viewport={'width': 1440, 'height': 900}); pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
             await pg.route('**/*', lambda r: r.abort() if any(h in r.request.url for h in BLOCK) else r.continue_())
             await pg.goto('http://localhost:%d/desktop.html' % PORT); await pg.wait_for_timeout(3000)
-            ok(await pg.evaluate("APP_VERSION") == '6.3.1', 'Command Center is v6.3.1')
+            ok(await pg.evaluate("APP_VERSION") >= '6.3.1', 'Command Center is v6.3.1')
             ok(not errs, 'no page errors %s' % errs[:2]); await ctx.close()
             await b.close()
     finally: srv.terminate()

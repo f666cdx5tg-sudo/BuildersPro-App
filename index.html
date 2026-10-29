@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.3.1';
+var APP_VERSION = '6.3.2';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -30363,6 +30363,134 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   console.log('[BP] v6.3.1 — auto-update in the app, money fits its tile');
 })();
 </script>
+<script id="v632">
+/* ══ v6.3.2 — MONEY CHECK ════════════════════════════════════════════════════
+   Stan (Oct 28, 2026): "where are you pulling money from? it seems as if you
+   doubling and tripling the invoices and expenditures". Decided: Money Left keeps
+   subtracting each sub's FULL contract value (what you owe, paid or not).
+   Tapping Money Left now opens a sheet that shows every line behind the number:
+     contract + approved change orders
+     − every expense on the job (date, what, vendor, amount)
+     − every sub's contract value (with what's been paid so far, for reference)
+     = Money left — the same math as the tile, line for line.
+   Lines that look counted twice are marked red with the reason:
+     • two expenses with the same amount on the same day (or same vendor within 3 days)
+     • an exact copy of another expense (a sync / restore duplicate)
+     • an expense that looks like a sub payment (Subcontractor / Labor / Contractor
+       Payments category, the sub's name in it, or the same amount as a logged payment)
+       — that sub is already counted in full through its contract value.
+   Client invoices are money coming in and are never subtracted; the sheet says so.
+   Tap an expense to open it and fix or delete it yourself — nothing is changed
+   for you. Same sheet on the Command Center. */
+(function(){
+  'use strict';
+  if (window.__bp632) return; window.__bp632 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function M(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '−$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function cents(n){ return Math.round((+n || 0) * 100); }
+  function day(s){ var d = String(s || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : ''; }
+  function dayNum(s){ var d = day(s); return d ? Date.UTC(+d.slice(0,4), +d.slice(5,7) - 1, +d.slice(8,10)) / 864e5 : null; }
+  function low(s){ return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+  function fdate(s){ var d = day(s); return d ? d.slice(5,7) + '/' + d.slice(8,10) + '/' + d.slice(0,4) : ''; }
+  var SUBCATS = { 'subcontractor':1, 'labor':1, 'contractor payments':1 };
+
+  window.bpMoneyCheckData = function(jobId){
+    var job = (DB.jobs || []).find(function(j){ return j.id === jobId; }) || {};
+    var base = +job.contract || 0;
+    var co = (typeof bpCOApproved === 'function') ? (+bpCOApproved(jobId) || 0) : 0;
+    var exps = (DB.expenses || []).filter(function(e){ return e && e.jobId === jobId; });
+    var subs = (DB.contractors || []).filter(function(c){ return c && c.jobId === jobId; });
+    var pays = (DB.payments || []).filter(function(p){ return subs.some(function(s){ return s.id === p.contractorId; }); });
+    var flags = {};
+    function flag(id, why){ (flags[id] = flags[id] || []).indexOf(why) < 0 && flags[id].push(why); }
+    for (var i = 0; i < exps.length; i++) for (var k = i + 1; k < exps.length; k++) {
+      var a = exps[i], b = exps[k];
+      if (cents(a.amount) !== cents(b.amount) || !cents(a.amount)) continue;
+      var exact = low(a.desc) === low(b.desc) && low(a.vendor) === low(b.vendor) && day(a.date) === day(b.date);
+      var da = dayNum(a.date), db = dayNum(b.date);
+      var sameDay = da != null && da === db;
+      var nearVendor = low(a.vendor) && low(a.vendor) === low(b.vendor) && da != null && db != null && Math.abs(da - db) <= 3;
+      if (exact) { flag(a.id, 'Exact copy of another expense'); flag(b.id, 'Exact copy of another expense'); }
+      else if (sameDay) { flag(a.id, 'Same amount on the same day as another expense'); flag(b.id, 'Same amount on the same day as another expense'); }
+      else if (nearVendor) { flag(a.id, 'Same amount, same vendor within 3 days'); flag(b.id, 'Same amount, same vendor within 3 days'); }
+    }
+    exps.forEach(function(e){
+      var txt = low(e.desc) + ' ' + low(e.vendor);
+      var sub = subs.find(function(s){ var n = low(s.name), c = low(s.company); return (n.length > 2 && txt.indexOf(n) >= 0) || (c.length > 2 && txt.indexOf(c) >= 0); });
+      var payMatch = pays.some(function(p){ return cents(p.amount) && cents(p.amount) === cents(e.amount); });
+      if (sub) flag(e.id, 'Looks like a payment to ' + (sub.name || sub.company) + ', who is already counted in full');
+      else if (payMatch) flag(e.id, 'Same amount as a payment logged to a sub, who is already counted in full');
+      else if (subs.length && SUBCATS[low(e.category)]) flag(e.id, low(e.category) === 'labor' ? 'Labor expense: if this paid a sub, that sub is already counted in full' : 'Sub payment logged as an expense; subs are already counted in full');
+    });
+    var expTotal = exps.reduce(function(s, e){ return s + (+e.amount || 0); }, 0);
+    var subTotal = subs.reduce(function(s, c){ return s + (+c.value || 0); }, 0);
+    var flagged = exps.filter(function(e){ return flags[e.id]; });
+    return {
+      job: job, base: base, co: co, contract: base + co, exps: exps.slice().sort(function(a, b){ return day(b.date) < day(a.date) ? -1 : day(b.date) > day(a.date) ? 1 : 0; }),
+      subs: subs.map(function(s){ return { s: s, paid: pays.filter(function(p){ return p.contractorId === s.id; }).reduce(function(t, p){ return t + (+p.amount || 0); }, 0) }; }),
+      expTotal: expTotal, subTotal: subTotal, left: base + co - expTotal - subTotal,
+      flags: flags, flaggedCount: flagged.length, flaggedTotal: flagged.reduce(function(s, e){ return s + (+e.amount || 0); }, 0)
+    };
+  };
+
+  function close(){ var o = document.getElementById('bp-mcheck'); if (o) o.remove(); }
+  window.bpMoneyCheckClose = close;
+  window.bpMoneyCheckEdit = function(id){
+    close();
+    try { if (typeof window.openEditExpense === 'function') return window.openEditExpense(id); } catch(e){}
+    try { if (typeof editExpense === 'function') return editExpense(id); } catch(e){}
+  };
+  window.bpMoneyCheck = function(jobId){
+    var d = window.bpMoneyCheckData(jobId); close();
+    var R = 'display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--border,#2a2a2a);font-size:15px';
+    var NM = 'flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    var AM = 'font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums';
+    var H = 'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:16px 2px 4px;display:flex;justify-content:space-between';
+    var FLAG = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0;fill:none;stroke:#FF453A;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M5 21V4h11l-2 4 2 4H5"/></svg>';
+    var h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px"><div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:900">Money check</div>'
+      + '<div style="font-size:14px;color:var(--muted,#8e8e93);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + E(d.job.name || 'Job') + '</div></div>'
+      + '<button type="button" onclick="bpMoneyCheckClose()" aria-label="Close" style="width:44px;height:44px;border-radius:50%;border:1px solid var(--border,#333);background:transparent;color:var(--text,#f0f0f0);cursor:pointer;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>';
+    if (d.flaggedCount) h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.45);margin-top:10px">' + FLAG
+      + '<div data-bp-wrap="1" style="font-size:14.5px;line-height:1.4"><b style="color:#FF453A">' + d.flaggedCount + ' line' + (d.flaggedCount === 1 ? '' : 's') + ' may be counted twice · ' + M(d.flaggedTotal) + '</b><br>Tap a red line to open it, then fix or delete it if it\'s a repeat.</div></div>';
+    else h += '<div style="padding:12px;border-radius:12px;background:rgba(48,209,88,.12);border:1px solid rgba(48,209,88,.45);margin-top:10px;font-size:14.5px"><b style="color:#30D158">No doubles found.</b> Every line below is counted once.</div>';
+    h += '<div style="' + H + '"><span>Contract</span></div>'
+      + '<div style="' + R + '"><span style="' + NM + '">Contract</span><span style="' + AM + '">' + M(d.base) + '</span></div>'
+      + (d.co ? '<div style="' + R + '"><span style="' + NM + ';color:#BF5AF2">Approved change orders</span><span style="' + AM + ';color:#BF5AF2">+' + M(d.co) + '</span></div>' : '');
+    h += '<div style="' + H + '"><span>Expenses (' + d.exps.length + ')</span><span>−' + M(d.expTotal) + '</span></div>';
+    if (!d.exps.length) h += '<div style="' + R + ';color:var(--muted,#8e8e93)">No expenses on this job</div>';
+    d.exps.forEach(function(e){
+      var f = d.flags[e.id];
+      h += '<div role="button" tabindex="0" onclick="bpMoneyCheckEdit(\'' + E(e.id) + '\')" style="' + R + ';cursor:pointer;flex-wrap:wrap' + (f ? ';background:rgba(255,69,58,.08);border-radius:8px;padding-left:6px;padding-right:6px' : '') + '">'
+        + (f ? FLAG : '')
+        + '<span style="flex:1;min-width:0"><b style="display:block;font-weight:700;' + NM + '">' + E(e.desc || e.category || 'Expense') + '</b><span style="display:block;color:var(--muted,#8e8e93);font-size:13px;' + NM + '">' + E([fdate(e.date), e.vendor, e.category].filter(Boolean).join(' · ')) + '</span></span>'
+        + '<span style="' + AM + (f ? ';color:#FF453A' : '') + '">' + M(e.amount) + '</span>'
+        + (f ? '<div data-bp-wrap="1" style="flex-basis:100%;font-size:13px;font-weight:700;color:#FF453A;padding-left:26px;line-height:1.35;white-space:normal;overflow:visible;text-overflow:clip;font-size:13px">' + E(f.join(' · ')) + '</div>' : '')
+        + '</div>';
+    });
+    h += '<div style="' + H + '"><span>Subs, full contract (' + d.subs.length + ')</span><span>−' + M(d.subTotal) + '</span></div>';
+    if (!d.subs.length) h += '<div style="' + R + ';color:var(--muted,#8e8e93)">No subs on this job</div>';
+    d.subs.forEach(function(x){
+      h += '<div style="' + R + '"><span style="flex:1;min-width:0"><b style="display:block;font-weight:700;' + NM + '">' + E(x.s.name || x.s.company || 'Sub') + '</b><span style="display:block;color:var(--muted,#8e8e93);font-size:13px">Paid so far ' + M(x.paid) + '</span></span><span style="' + AM + '">' + M(x.s.value) + '</span></div>';
+    });
+    h += '<div style="display:flex;align-items:center;gap:10px;padding:14px 2px 4px;margin-top:6px;border-top:2px solid var(--border,#333);font-size:18px"><b style="flex:1">Money left</b><b style="' + AM + ';color:' + (d.left < 0 ? '#FF453A' : '#30D158') + '">' + M(d.left) + '</b></div>'
+      + '<div data-bp-wrap="1" style="font-size:12.5px;color:var(--muted,#8e8e93);line-height:1.45;margin-top:6px">Contract + approved change orders − expenses − each sub\'s full contract value. Client invoices are money coming in and are not subtracted.</div>'
+      + '<button type="button" onclick="bpMoneyCheckClose();bpMoneyCheckOpenMoney(\'' + E(d.job.id || '') + '\')" style="width:100%;min-height:50px;margin-top:12px;border-radius:14px;border:1.5px solid rgba(10,132,255,.5);background:transparent;color:#0A84FF;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer">Open Money screen</button>';
+    var o = document.createElement('div'); o.id = 'bp-mcheck';
+    o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:' + (IS_DESK ? 'center' : 'flex-end') + ';justify-content:center';
+    o.innerHTML = '<div class="bp-mcheck-card" style="width:100%;max-width:' + (IS_DESK ? '620px' : '560px') + ';max-height:calc(' + (IS_DESK ? '86vh' : '92vh') + ' / var(--bp-zoom, 1));overflow-y:auto;background:color-mix(in srgb,var(--card,#1c1c1e) 88%,transparent);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);color:var(--text,#f0f0f0);border-radius:' + (IS_DESK ? '18px' : '18px 18px 0 0') + ';padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box">' + h + '</div>';
+    o.addEventListener('click', function(e){ if (e.target === o) close(); });
+    document.body.appendChild(o);
+  };
+  var _openMoney = window.bpOnSiteMoney;
+  window.bpMoneyCheckOpenMoney = function(id){ if (typeof _openMoney === 'function') _openMoney(id); };
+  window.bpOnSiteMoney = function(id){ window.bpMoneyCheck(id); };
+  try { bpOnSiteMoney = window.bpOnSiteMoney; } catch(e){}
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); });
+  console.log('[BP] v6.3.2 — Money check');
+})();
+</script>
+
 <style id="v630-glass">
 /* ══ v6.3.0 — GLASS EVERYWHERE ══════════════════════════════════════════════
    Stan (Oct 28, 2026), after the side-by-side preview: "everywhere".
