@@ -18,7 +18,7 @@ self.addEventListener('fetch', function(e){
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   e.respondWith(
-    fetch(req).then(function(res){
+    fetch(req, { cache: 'no-cache' }).then(function(res){   /* v6.3.1: always check GitHub for a newer copy, never reuse its 10-minute cache */
       if (res && res.ok && res.type === 'basic') { var copy = res.clone(); caches.open(CACHE).then(function(c){ c.put(keyFor(req), copy); }); }
       return res;
     }).catch(function(){

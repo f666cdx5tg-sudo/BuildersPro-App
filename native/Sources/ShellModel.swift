@@ -86,7 +86,13 @@ final class ShellModel: NSObject, ObservableObject {
     private func load(_ p: BPPage, fromCache: Bool = false) {
         offline = false
         triedCache = fromCache
-        let url = Self.site.appendingPathComponent(p.rawValue)
+        var url = Self.site.appendingPathComponent(p.rawValue)
+        // v6.3.1: a URL the cache has never seen, so a launch always gets the newest published version
+        // (GitHub Pages lets copies sit for up to 10 minutes). Offline still opens the saved copy.
+        if !fromCache, var c = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            c.queryItems = [URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970)))]
+            url = c.url ?? url
+        }
         let req = URLRequest(url: url,
                              cachePolicy: fromCache ? .returnCacheDataDontLoad : .reloadIgnoringLocalCacheData,
                              timeoutInterval: fromCache ? 10 : 20)

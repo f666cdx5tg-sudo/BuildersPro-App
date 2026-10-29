@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.3.0';
+var APP_VERSION = '6.3.1';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -30290,6 +30290,77 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   }, true);
   label();
   console.log('[BP] v6.2.8 — Open / Complete / Select: roomier, one tap');
+})();
+</script>
+<script id="v631">
+/* ══ v6.3.1 — One version everywhere + money that fits its tile ═════════════
+   Stan (Oct 28, 2026): "discrepancy the command center is 6.3.0 the field app is
+   6.2.9 i want all apps have the same v." + circled -$9,293.90 spilling out of
+   the Money Left tile (it also shoved the whole Home screen off the left edge).
+   1. Inside the App Store app, a newer published version now loads by itself the
+      moment the app comes back to the front (no banner to tap), unless you are in
+      the middle of typing. The service worker also stops reusing GitHub's
+      10-minute cached copy, and the app always asks for a fresh page on launch.
+   2. Money and count tiles: a number shrinks to fit its tile whenever the tile
+      changes size (screen shown, text size changed, number updated), and a
+      number can never push the page sideways again. Pennies stay. */
+(function(){
+  'use strict';
+  if (window.__bp631) return; window.__bp631 = 1;
+  function inShell(){ try { return !!(window.BPShell && window.webkit && webkit.messageHandlers && webkit.messageHandlers.bp); } catch(e){ return false; } }
+  function typing(){ var a = document.activeElement; return !!(a && ((a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && String(a.value || '').length || a.isContentEditable)); }   /* only when something is actually being typed */
+  var _show = window.bpShowUpdateBanner;
+  if (typeof _show === 'function') {
+    window.bpShowUpdateBanner = function(latest){
+      if (inShell() && !typing() && typeof window.bpApplyUpdate === 'function') { window.bpApplyUpdate(latest); return; }
+      return _show.apply(this, arguments);
+    };
+    try { bpShowUpdateBanner = window.bpShowUpdateBanner; } catch(e){}
+  }
+  /* back in front: check right away, not up to 5 minutes later */
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden || typeof window.bpCheckForUpdate !== 'function') return;
+    try { _bpLastUpdateCheck = 0; } catch(e){}
+    window.bpCheckForUpdate(false);
+  });
+
+  var st = document.createElement('style'); st.id = 'bp-v631-css';
+  st.textContent = '.bp-kpi-num{overflow:hidden;text-overflow:clip;max-width:100%}'
+    + '[data-onsite]{overflow:hidden;min-width:0}'
+    + '.screen{overflow-x:hidden}'
+    + '[data-onsite].bp-kpi-wide{grid-column:1/-1}';
+  document.head.appendChild(st);
+
+  /* A dollar figure that would have to drop below 16px to fit a third of the row gets the whole row
+     instead (pennies stay, and it stays readable). Decided from the narrow width, so it never flip-flops. */
+  function wideCheck(){
+    [].forEach.call(document.querySelectorAll('[data-onsite] > .bp-kpi-num'), function(el){
+      var tile = el.parentElement, grid = tile.parentElement; if (!grid || !grid.clientWidth) return;
+      var gap = parseFloat(getComputedStyle(grid).columnGap) || 8;
+      var inner = (grid.clientWidth - 2 * gap) / 3 - 24;
+      var base = parseFloat(el.getAttribute('data-bp-base')) || 24;
+      var keep = [el.style.fontSize, el.style.width, el.style.maxWidth];
+      el.style.fontSize = base + 'px'; el.style.width = 'max-content'; el.style.maxWidth = 'none';
+      var nat = el.offsetWidth;
+      el.style.fontSize = keep[0]; el.style.width = keep[1]; el.style.maxWidth = keep[2];
+      var wide = nat > 0 && base * inner / nat < 16;
+      if (tile.classList.contains('bp-kpi-wide') !== wide) tile.classList.toggle('bp-kpi-wide', wide);
+    });
+  }
+  function fit(){ try { wideCheck(); } catch(e){} try { if (typeof window.bpFitNums === 'function') window.bpFitNums(); } catch(e){} }
+  var t = 0; function soon(){ clearTimeout(t); t = setTimeout(fit, 60); }
+  var ro = ('ResizeObserver' in window) ? new ResizeObserver(soon) : null;
+  var seen = new WeakSet();
+  function watch(){
+    [].forEach.call(document.querySelectorAll('.bp-kpi-num'), function(el){
+      var box = el.parentElement || el;
+      if (ro && !seen.has(box)) { seen.add(box); ro.observe(box); }
+    });
+  }
+  new MutationObserver(function(){ watch(); soon(); }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  window.addEventListener('resize', soon);
+  watch(); soon();
+  console.log('[BP] v6.3.1 — auto-update in the app, money fits its tile');
 })();
 </script>
 <style id="v630-glass">
