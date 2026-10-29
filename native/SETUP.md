@@ -9,6 +9,7 @@ no Xcode rebuild. You only rebuild in Xcode when this `native` folder changes.
 - Face ID opens the app (the web passcode screen is skipped inside the app).
 - Share, Save, Print, pop-ups, camera and microphone all go to the real iPhone/Mac features.
 - Sync is the web app's own sync (iCloud or GitHub). **One sync for everything.**
+- **Measure** (AR / LiDAR tape) and **Room scan** (RoomPlan floor plan) live here, under Tools on iPhone / iPad (v6.2.7). Room scan needs a Pro iPhone or iPad Pro (LiDAR). Results save to a job as photos; 3D models go to Files › BuildersPro › Room Scans.
 
 ## First time on each device
 The app keeps its own copy of your data, separate from Safari / the Home-Screen web app.

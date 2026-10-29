@@ -10,7 +10,7 @@ enum Bridge {
     static let startScript = #"""
     (function(){
       if (window.BPShell) return;
-      window.BPShell = { version: '__VERSION__' };
+      window.BPShell = { version: '__VERSION__', caps: __CAPS__ };
 
       /* Face ID is handled by the app before the page is shown, so the web passcode screen is skipped. */
       try {

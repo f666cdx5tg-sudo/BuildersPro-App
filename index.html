@@ -1138,6 +1138,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   <div class="bp-drawer-h">Tools</div>
   <button type="button" class="nav-btn bp-tool" id="nav-level" onclick="closeNavDrawer();bpLevelOpen()"><svg viewBox="0 0 24 24"><rect x="2" y="8" width="20" height="8" rx="2.5"/><circle cx="12" cy="12" r="2"/><line x1="7.5" y1="8" x2="7.5" y2="10.5"/><line x1="16.5" y1="8" x2="16.5" y2="10.5"/></svg><span class="bp-lbl">Level</span></button>
   <button type="button" class="nav-btn bp-tool" id="nav-colormatch" onclick="closeNavDrawer();bpColorOpen()"><svg viewBox="0 0 24 24"><path d="M12 3s6 6.2 6 10.5A6 6 0 0 1 6 13.5C6 9.2 12 3 12 3z"/><path d="M9.5 14.5a2.7 2.7 0 0 0 2.5 2"/></svg><span class="bp-lbl">Paint match</span></button>
+  <button type="button" class="nav-btn bp-tool" id="nav-measure" style="display:none" onclick="closeNavDrawer();bpMeasureOpen()"><svg viewBox="0 0 24 24"><rect x="2" y="9" width="20" height="7" rx="1.5"/><line x1="6" y1="9" x2="6" y2="12"/><line x1="10" y1="9" x2="10" y2="13.5"/><line x1="14" y1="9" x2="14" y2="12"/><line x1="18" y1="9" x2="18" y2="13.5"/></svg><span class="bp-lbl">Measure</span></button>
+  <button type="button" class="nav-btn bp-tool" id="nav-roomscan" style="display:none" onclick="closeNavDrawer();bpRoomScanOpen()"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M4 12h7v8"/><path d="M15 4v6h5"/><path d="M11 15.5h2"/></svg><span class="bp-lbl">Room scan</span></button>
   <div class="bp-drawer-sep"></div>
   <button class="nav-btn" id="nav-feedback" onclick="closeNavDrawer();bpSendFeedback()">
     <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -1554,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.2.6';
+var APP_VERSION = '6.2.7';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -25622,6 +25624,10 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
 .bp-lv-num{font-size:64px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
 .bp-lv-ok .bp-lv-num,.bp-lv-num.ok{color:#30D158}
 .bp-lv-sub{font-size:16px;font-weight:700;color:var(--muted,#8e8e93);text-align:center;min-height:22px}
+.bp-lv-chips{display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:nowrap}
+.bp-lv-chip{min-width:64px;min-height:48px;padding:4px 10px;border-radius:12px;border:1.5px solid var(--border,#444);background:transparent;color:var(--muted,#8e8e93);font-size:16px;font-weight:900;font-family:inherit;cursor:pointer;line-height:1.1;white-space:nowrap}
+.bp-lv-chip small{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.bp-lv-chip.on{border-color:#0A84FF;color:#0A84FF;background:rgba(10,132,255,.12)}
 .bp-cm-cam{position:relative;flex:1;min-height:0;background:#000;overflow:hidden}
 .bp-cm-cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .bp-cm-ret{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.6),inset 0 0 0 2px rgba(0,0,0,.6);pointer-events:none}
@@ -25691,7 +25697,32 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
     var st = document.getElementById('bp-lv-stage'); if (!st) return;
     st.innerHTML = (shape === 'flat' ? '<div class="bp-lv-flat" id="bp-lv-vial"><div class="bp-lv-ring"></div><div class="bp-lv-bub" id="bp-lv-bub"></div></div>'
         : '<div class="bp-lv-tube' + (shape === 'v' ? ' v' : '') + '" id="bp-lv-vial"><div class="bp-lv-bub" id="bp-lv-bub"></div></div>')
-      + '<div class="bp-lv-num" id="bp-lv-num">0.0°</div><div class="bp-lv-sub" id="bp-lv-sub"></div>';
+      + '<div class="bp-lv-num" id="bp-lv-num">0.0°</div><div class="bp-lv-sub" id="bp-lv-sub"></div>'
+      + (shape === 'flat' ? '' : lvChips());
+  }
+  /* v6.2.7 — pipe slope: pick a target fall per foot; the reading turns green when the pipe is on grade */
+  var SLOPES = [['', 'Level'], ['0.125', '1/8"'], ['0.25', '1/4"'], ['0.5', '1/2"']];
+  function lvTarget(){ var t = parseFloat(lsGet('bp_lvl_target') || ''); return t > 0 ? t : 0; }
+  function lvChips(){
+    var cur = lsGet('bp_lvl_target') || '';
+    return '<div class="bp-lv-chips" role="group" aria-label="Pipe slope per foot">' + SLOPES.map(function(o){
+      return '<button type="button" class="bp-lv-chip' + (o[0] === cur ? ' on' : '') + '" data-slope="' + o[0] + '" onclick="bpLevelSlope(this.getAttribute(\'data-slope\'))">' + o[1] + (o[0] ? '<small>per ft</small>' : '') + '</button>';
+    }).join('') + '</div>';
+  }
+  window.bpLevelSlope = function(v){
+    lsSet('bp_lvl_target', v || '');
+    [].forEach.call(document.querySelectorAll('.bp-lv-chip'), function(b){ b.classList.toggle('on', b.getAttribute('data-slope') === (v || '')); });
+  };
+  function fmtFall(inPerFt){
+    var e = Math.round(inPerFt * 32), w = Math.floor(e / 32), r = e % 32, g = 32;
+    while (r && r % 2 === 0) { r /= 2; g /= 2; }
+    return (w ? w + (r ? ' ' : '') : '') + (r ? r + '/' + g : (w ? '' : '0')) + '"';
+  }
+  function onGrade(deg, lowWord){
+    var t = lvTarget(); if (!t) return null;
+    var fall = 12 * Math.tan(Math.abs(deg) * Math.PI / 180), d = fall - t;
+    if (Math.abs(d) <= 1 / 32) return { ok: true, sub: 'ON GRADE · ' + fmtFall(t) + ' per ft · ' + lowWord };
+    return { ok: false, sub: (d < 0 ? 'Needs more fall' : 'Too steep') + ' · ' + fmtFall(fall) + ' per ft · ' + lowWord };
   }
   function fracIn(deg){ var r = Math.abs(deg) * Math.PI / 180; return (r < 0.0005 ? '0' : (12 * Math.tan(r)).toFixed(2)) + ' in / ft'; }
   function lvFrame(){
@@ -25718,12 +25749,14 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
       num = Math.abs(e); ok = num < 0.5;
       bx = clamp(-e * 22, -112, 112);
       sub = ok ? 'LEVEL / PLUMB' : (e > 0 ? 'Right side low' : 'Left side low') + ' · ' + fracIn(num);
+      var gh = onGrade(e, e > 0 ? 'right side low' : 'left side low'); if (gh) { ok = gh.ok; sub = gh.sub; }
     } else {
       shape = 'v';
       var ev = Math.asin(clamp(py, -1, 1)) * R; LV.raw.ev = ev; ev -= (cal.ev || 0);
       num = Math.abs(ev); ok = num < 0.5;
       by = clamp(ev * 22, -112, 112);
       sub = ok ? 'LEVEL / PLUMB' : (ev < 0 ? 'Bottom low' : 'Top low') + ' · ' + fracIn(num);
+      var gv = onGrade(ev, ev < 0 ? 'bottom low' : 'top low'); if (gv) { ok = gv.ok; sub = gv.sub; }
     }
     lvShape(shape);
     var st = document.getElementById('bp-lv-stage'); if (!st) return;
@@ -29945,5 +29978,145 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     if (typeof toast === 'function') toast(next === 'done' ? 'Showing complete items' : 'Showing open items');
   });
   console.log('[BP] v6.2.6 — tap a punch heading to see open or done');
+})();
+</script>
+<script id="v627">
+/* ══ v6.2.7 — Measure (LiDAR / AR tape) + Room scan (RoomPlan floor plan) + pipe slope on the Level ══
+   Stan (Oct 28, 2026): "Start" — on adding Apple's measuring tools to BSP.
+   These run in the App Store app on iPhone / iPad (the native shell has ARKit and RoomPlan; a web page can't).
+   The shell says what the device can do in window.BPShell.caps; the buttons show only where they work.
+   Every result is saved as a photo on a job (and an area if picked) with the numbers in its caption,
+   so it syncs and shows on the Command Center like any other job photo. */
+(function(){
+  'use strict';
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function post(m){ try { window.webkit.messageHandlers.bp.postMessage(m); return true; } catch(e){ return false; } }
+  function caps(){ try { return (window.BPShell && window.BPShell.caps) || {}; } catch(e){ return {}; } }
+  function say(t){ try { if (typeof toast === 'function') toast(t); } catch(e){} }
+  function now(){ return new Date().toISOString(); }
+  function newId(){ try { if (typeof uid === 'function') return uid(); } catch(e){} return 'pb' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+
+  function showButtons(){
+    var c = caps();
+    var m = document.getElementById('nav-measure'); if (m) m.style.display = c.measure ? '' : 'none';
+    var r = document.getElementById('nav-roomscan'); if (r) r.style.display = c.roomScan ? '' : 'none';
+  }
+
+  window.bpMeasureOpen = function(){
+    if (!caps().measure) { say('Measure works in the BuildersPro app on iPhone or iPad'); return; }
+    try { if (window.bpLevelClose) bpLevelClose(); if (window.bpColorClose) bpColorClose(); } catch(e){}
+    post({ kind: 'measure' });
+  };
+  window.bpRoomScanOpen = function(){
+    if (!caps().roomScan) { say('Room scan needs an iPhone Pro or iPad Pro (LiDAR) in the BuildersPro app'); return; }
+    try { if (window.bpLevelClose) bpLevelClose(); if (window.bpColorClose) bpColorClose(); } catch(e){}
+    post({ kind: 'roomScan' });
+  };
+  window.bpShare3D = function(name){ if (name) post({ kind: 'roomShare3D', name: name }); };
+
+  /* What the result says, in words — this becomes the photo's caption */
+  function describe(r){
+    if (r.tool === 'measure') {
+      var L = r.lengths || [];
+      return 'Measure: ' + (L.length === 1 ? L[0] : L.map(function(x, i){ return (i + 1) + ') ' + x; }).join('  '));
+    }
+    var f = [];
+    if (r.areaSqFt) f.push(Number(r.areaSqFt).toFixed(1) + ' sq ft');
+    if (r.ceiling) f.push('ceiling ' + r.ceiling);
+    if (r.perimeter) f.push('walls total ' + r.perimeter);
+    f.push((r.wallCount || 0) + ' walls, ' + (r.doors || 0) + ' doors, ' + (r.windows || 0) + ' windows');
+    return 'Room scan: ' + f.join(' · ');
+  }
+
+  function jobsList(){ return (window.DB && DB.jobs || []).filter(function(j){ return j && !j.archived; }); }
+  function roomsOf(jobId){
+    var list = (window.DB && DB.rooms || []).filter(function(r){ return r.jobId === jobId; });
+    try { if (window.bpRoomCmp) list = list.map(function(r,i){ return {r:r,i:i}; }).sort(function(x,y){ return window.bpRoomCmp(x.r, y.r) || x.i - y.i; }).map(function(o){ return o.r; }); } catch(e){}
+    return list;
+  }
+  function jobOpts(sel){
+    return jobsList().map(function(j){ return '<option value="' + E(j.id) + '"' + (j.id === sel ? ' selected' : '') + '>' + E(j.name || j.address || 'Job') + '</option>'; }).join('');
+  }
+  function roomOpts(jobId, sel){
+    return '<option value="">No area</option>' + roomsOf(jobId).map(function(r){ return '<option value="' + E(r.id) + '"' + (r.id === sel ? ' selected' : '') + '>' + E(r.name) + '</option>'; }).join('');
+  }
+
+  var PEND = null;
+  function closeSheet(){ var o = document.getElementById('bp-tool-save'); if (o) o.remove(); PEND = null; }
+
+  window.bpNativeDone = function(r){
+    r = r || {};
+    if (r.tool !== 'measure' && r.tool !== 'room') { if (r.err) say(r.err); return; }
+    if (!r.ok) { if (r.err) say(r.err); return; }
+    if (!r.image) { say('Nothing to save — the picture did not come back'); return; }
+    PEND = r;
+    var active = (typeof bpActiveJob === 'function') ? bpActiveJob() : '';
+    if (!jobsList().some(function(j){ return j.id === active; })) active = (jobsList()[0] || {}).id || '';
+    var roomNow = '';
+    try { var sc = document.getElementById('s-room-detail'); if (sc && sc.classList.contains('active')) roomNow = sc.getAttribute('data-room-id') || ''; } catch(e){}
+    if (roomNow && !roomsOf(active).some(function(x){ return x.id === roomNow; })) roomNow = '';
+
+    var LBL = 'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:12px 0 6px';
+    var SEL = 'width:100%;min-height:48px;border-radius:12px;border:1.5px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-weight:700;padding:0 12px;font-family:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    var BTN = 'flex:1;min-height:52px;border:none;border-radius:14px;font-size:16px;font-weight:900;font-family:inherit;cursor:pointer';
+    var facts = '';
+    if (r.tool === 'room') {
+      var rows = [];
+      if (r.areaSqFt) rows.push(['Floor area', Number(r.areaSqFt).toFixed(1) + ' sq ft']);
+      if (r.ceiling) rows.push(['Ceiling', r.ceiling]);
+      if (r.perimeter) rows.push(['Walls total', r.perimeter]);
+      rows.push(['Found', (r.wallCount || 0) + ' walls · ' + (r.doors || 0) + ' doors · ' + (r.windows || 0) + ' windows']);
+      facts = rows.map(function(x){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border,#2a2a2a);font-size:15px"><span style="color:var(--muted,#8e8e93);font-weight:700;white-space:nowrap">' + E(x[0]) + '</span><b style="white-space:nowrap">' + E(x[1]) + '</b></div>'; }).join('');
+    } else {
+      facts = (r.lengths || []).map(function(x, i){ return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border,#2a2a2a);font-size:16px"><span style="color:var(--muted,#8e8e93);font-weight:700">' + ((r.lengths.length > 1) ? 'Length ' + (i + 1) : 'Length') + '</span><b>' + E(x) + '</b></div>'; }).join('');
+    }
+    var o = document.createElement('div'); o.id = 'bp-tool-save';
+    o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.65);display:flex;align-items:flex-end;justify-content:center';
+    o.innerHTML = '<div style="width:100%;max-width:520px;max-height:92vh;overflow-y:auto;background:var(--card,#1c1c1e);color:var(--text,#f0f0f0);border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))">'
+      + '<div style="font-size:19px;font-weight:900;margin-bottom:10px">' + (r.tool === 'room' ? 'Room scan' : 'Measurement') + '</div>'
+      + '<img src="' + r.image + '" alt="" style="width:100%;border-radius:12px;display:block;background:#fff"/>'
+      + '<div style="margin-top:8px">' + facts + '</div>'
+      + '<div style="font-size:12.5px;color:var(--muted,#8e8e93);margin-top:8px">Good for layout and estimates. Tape-check before you cut.</div>'
+      + '<div style="' + LBL + '">Job</div><select id="bp-ts-job" style="' + SEL + '">' + jobOpts(active) + '</select>'
+      + '<div style="' + LBL + '">Area</div><select id="bp-ts-room" style="' + SEL + '">' + roomOpts(active, roomNow) + '</select>'
+      + '<div style="' + LBL + '">Note</div><input id="bp-ts-cap" style="' + SEL + ';font-weight:600" value="' + E(describe(r)) + '"/>'
+      + (r.usdz ? '<button type="button" onclick="bpShare3D(' + E(JSON.stringify(r.usdz)) + ')" style="' + BTN + ';width:100%;margin-top:12px;background:transparent;border:1.5px solid rgba(10,132,255,.5);color:#0A84FF">Share 3D model (for CAD)</button>' : '')
+      + '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" id="bp-ts-cancel" style="' + BTN + ';background:var(--card2,#2a2a2a);color:var(--text,#f0f0f0)">Discard</button>'
+      + '<button type="button" id="bp-ts-save" style="' + BTN + ';background:#30D158;color:#fff">Save to job</button></div></div>';
+    document.body.appendChild(o);
+    var js = document.getElementById('bp-ts-job');
+    js.addEventListener('change', function(){ document.getElementById('bp-ts-room').innerHTML = roomOpts(js.value, ''); });
+    document.getElementById('bp-ts-cancel').onclick = function(){ if (confirm('Discard this ' + (PEND && PEND.tool === 'room' ? 'room scan' : 'measurement') + '?')) closeSheet(); };
+    document.getElementById('bp-ts-save').onclick = window.bpToolSave;
+    if (!jobsList().length) { var sv = document.getElementById('bp-ts-save'); sv.disabled = true; sv.style.opacity = '.45'; say('Add a job first, then save'); }
+  };
+
+  window.bpToolSave = function(){
+    var r = PEND; if (!r) return;
+    var jobId = (document.getElementById('bp-ts-job') || {}).value || '';
+    if (!jobId) { say('Pick a job'); return; }
+    var roomId = (document.getElementById('bp-ts-room') || {}).value || '';
+    var cap = ((document.getElementById('bp-ts-cap') || {}).value || '').trim() || describe(r);
+    var t = now();
+    var photo = { id: newId(), src: r.image, jobId: jobId, roomId: roomId, date: t, created: t, updatedAt: t,
+      size: Math.round(r.image.length * 0.75 / 1024) + 'KB', caption: cap,
+      tags: [r.tool === 'room' ? 'Room scan' : 'Measure'],
+      createdBy: (typeof _userName !== 'undefined' && _userName) || '' };
+    if (r.tool === 'room') {
+      photo.scan = { areaSqFt: r.areaSqFt || 0, ceiling: r.ceiling || '', perimeter: r.perimeter || '', perimeterFt: r.perimeterFt || 0,
+                     walls: r.walls || [], doors: r.doors || 0, windows: r.windows || 0, usdz: r.usdz || '' };
+    } else {
+      photo.measure = { lengths: r.lengths || [], inches: r.inches || [], lidar: !!r.lidar };
+    }
+    DB.photos = DB.photos || []; DB.photos.push(photo);
+    try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); } catch(e){}
+    closeSheet();
+    try { if (typeof renderPhotos === 'function') renderPhotos(); } catch(e){}
+    try { var rd = document.getElementById('s-room-detail'); if (roomId && rd && rd.classList.contains('active') && typeof openRoomDetail === 'function') openRoomDetail(roomId); } catch(e){}
+    say((r.tool === 'room' ? 'Room scan' : 'Measurement') + ' saved to the job');
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showButtons); else showButtons();
+  console.log('[BP] v6.2.7 — Measure, Room scan, pipe slope');
 })();
 </script>
