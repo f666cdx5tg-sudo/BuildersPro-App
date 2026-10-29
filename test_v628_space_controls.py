@@ -24,7 +24,7 @@ async def run(b, zoom):
     await pg.evaluate("(z) => { document.getElementById('bp-lock') && document.getElementById('bp-lock').remove(); window.bpICloudSync = undefined; localStorage.setItem('bp_zoom', z); try { bpApplyZoom(); } catch(e){} }", str(zoom))
     await pg.evaluate(SEED); await pg.evaluate("openRoomDetail('r1')"); await pg.wait_for_timeout(800)
     await pg.evaluate("document.querySelector('#s-room-detail .bp-seg').scrollIntoView({block:'center'})"); await pg.wait_for_timeout(300)
-    ok(await pg.evaluate("APP_VERSION") == '6.2.8', 'on v6.2.8')
+    ok(await pg.evaluate("APP_VERSION") >= '6.2.8', 'on v6.2.8')
     fit = await pg.evaluate("[].map.call(document.querySelectorAll('#s-room-detail .bp-seg button'), function(b){ return b.scrollWidth <= b.clientWidth + 1; })")
     fw = await pg.evaluate("[].map.call(document.querySelectorAll('#s-room-detail .bp-seg button'), function(b){ return [b.scrollWidth, b.clientWidth]; })"); ok(fit == [True, True], str(fw) + ' ' + '"Open 0" and "Complete 12" fit inside their buttons')
     sel = await pg.evaluate("(function(){ var b=document.querySelector('#s-room-detail .bp-selbtn'), s=document.querySelector('#s-room-detail .bp-seg'); var r=b.getBoundingClientRect(), q=s.getBoundingClientRect(); return [Math.round(r.width/ (parseFloat(getComputedStyle(document.body).zoom)||1)), b.getAttribute('aria-label'), q.right <= r.left, !!b.querySelector('svg')]; })()")
@@ -56,7 +56,7 @@ async def mac(b):
     ctx = await b.new_context(viewport={'width': 1440, 'height': 900}); pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
     await pg.route('**/*', lambda r: r.abort() if any(h in r.request.url for h in BLOCK) else r.continue_())
     await pg.goto('http://localhost:%d/desktop.html' % PORT); await pg.wait_for_timeout(2500)
-    ok(await pg.evaluate("APP_VERSION") == '6.2.8', 'Command Center is v6.2.8')
+    ok(await pg.evaluate("APP_VERSION") >= '6.2.8', 'Command Center is v6.2.8')
     ok(not errs, 'no page errors %s' % errs[:2]); await ctx.close()
 
 async def main():

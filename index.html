@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.2.8';
+var APP_VERSION = '6.2.9';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -25628,6 +25628,29 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
 .bp-lv-chip{min-width:64px;min-height:48px;padding:4px 10px;border-radius:12px;border:1.5px solid var(--border,#444);background:transparent;color:var(--muted,#8e8e93);font-size:16px;font-weight:900;font-family:inherit;cursor:pointer;line-height:1.1;white-space:nowrap}
 .bp-lv-chip small{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
 .bp-lv-chip.on{border-color:#0A84FF;color:#0A84FF;background:rgba(10,132,255,.12)}
+.bp-lv-stage{gap:12px!important}
+.bp-lv-read{display:flex;align-items:baseline;gap:8px;margin-top:6px}
+.bp-lv-unit{font-size:18px;font-weight:800;color:var(--muted,#8e8e93)}
+.bp-lv-meta{font-size:15px;font-weight:800;color:var(--text,#f0f0f0);opacity:.8;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bp-lv-tk{position:absolute;top:0;height:14px;width:1.5px;margin-left:-.75px;background:var(--muted,#8e8e93);opacity:.7;z-index:1}
+.bp-lv-tk.big{height:22px;opacity:1}
+.bp-lv-tube .bp-lv-tk:after{content:"";position:absolute;left:0;width:100%;height:inherit;top:calc(72px - 6px - 100%);background:inherit}
+.bp-lv-tube.v .bp-lv-tk{left:0;top:auto;width:14px;height:1.5px;margin:-.75px 0 0}
+.bp-lv-tube.v .bp-lv-tk.big{width:22px}
+.bp-lv-tube.v .bp-lv-tk:after{top:0;height:100%;left:calc(72px - 6px - 100%);width:inherit}
+.bp-lv-tg{display:none;position:absolute;top:0;bottom:0;width:3px;margin-left:-1.5px;background:#0A84FF;z-index:1}
+.bp-lv-tube.v .bp-lv-tg{left:0!important;right:0;top:auto;bottom:auto;width:auto;height:3px;margin:-1.5px 0 0}
+.bp-lv-ring2{position:absolute;left:50%;top:50%;width:150px;height:150px;margin:-75px 0 0 -75px;border-radius:50%;border:1.5px dashed var(--border,#444);z-index:1}
+.bp-lv-run{display:flex;align-items:center;justify-content:center;gap:4px 10px;margin-top:4px;flex-wrap:wrap;max-width:94vw}
+.bp-lv-run label{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;color:var(--muted,#8e8e93);flex-shrink:0}
+.bp-lv-run input{width:64px;min-height:44px;border-radius:10px;border:1.5px solid var(--border,#444);background:var(--card,#1a1a1a);color:var(--text,#f0f0f0);font-size:17px;font-weight:800;text-align:center;font-family:inherit}
+.bp-lv-drop{font-size:15px;font-weight:700;color:var(--muted,#8e8e93);width:100%;text-align:center}
+.bp-lv-drop b{color:var(--text,#f0f0f0);white-space:nowrap}.bp-lv-drop b.g{color:#30D158}.bp-lv-drop b.r{color:#FF453A}
+.bp-tl-btn.on{background:#FF9F0A;border-color:#FF9F0A;color:#000}
+.bp-lv-held .bp-lv-num{color:#FF9F0A!important}
+.bp-tl-btn.bp-lv-save{padding:0 10px;display:inline-flex;align-items:center}
+.bp-tl-btn.bp-lv-save svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#bp-level .bp-tl-top{gap:6px}#bp-level .bp-tl-btn{padding:0 11px}
 .bp-cm-cam{position:relative;flex:1;min-height:0;background:#000;overflow:hidden}
 .bp-cm-cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .bp-cm-ret{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.6),inset 0 0 0 2px rgba(0,0,0,.6);pointer-events:none}
@@ -25669,7 +25692,7 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
   window.bpLevelOpen = function(){
     bpLevelClose(); bpColorClose();
     var o = document.createElement('div'); o.id = 'bp-level'; o.className = 'bp-tl';
-    o.innerHTML = '<div class="bp-tl-top"><button type="button" class="bp-tl-x" aria-label="Close" onclick="bpLevelClose()">✕</button><b>Level</b><span style="display:flex;gap:6px"><button type="button" class="bp-tl-btn" id="bp-lv-reset" style="display:none" onclick="bpLevelZero(true)">Reset</button><button type="button" class="bp-tl-btn" onclick="bpLevelZero(false)">Zero</button></span></div>'
+    o.innerHTML = '<div class="bp-tl-top"><button type="button" class="bp-tl-x" aria-label="Close" onclick="bpLevelClose()">✕</button><b>Level</b><span style="display:flex;gap:6px"><button type="button" class="bp-tl-btn" id="bp-lv-reset" style="display:none" onclick="bpLevelZero(true)">Reset</button><button type="button" class="bp-tl-btn" onclick="bpLevelZero(false)">Zero</button><button type="button" class="bp-tl-btn" id="bp-lv-hold" onclick="bpLevelHold()">Hold</button><button type="button" class="bp-tl-btn bp-lv-save" onclick="bpLevelSave()" aria-label="Save reading to job"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button></span></div>'
       + '<div class="bp-lv-stage" id="bp-lv-stage"><div class="bp-lv-sub" id="bp-lv-msg">Starting sensor…</div></div>';
     document.body.appendChild(o);
     LV = { d: null, mode: 'flat', got: false, raw: { fx:0, fy:0, e:0, ev:0 }, cal: lvCal(), shape: '' };
@@ -25695,10 +25718,12 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
     if (LV.shape === shape) return;
     LV.shape = shape;
     var st = document.getElementById('bp-lv-stage'); if (!st) return;
-    st.innerHTML = (shape === 'flat' ? '<div class="bp-lv-flat" id="bp-lv-vial"><div class="bp-lv-ring"></div><div class="bp-lv-bub" id="bp-lv-bub"></div></div>'
-        : '<div class="bp-lv-tube' + (shape === 'v' ? ' v' : '') + '" id="bp-lv-vial"><div class="bp-lv-bub" id="bp-lv-bub"></div></div>')
-      + '<div class="bp-lv-num" id="bp-lv-num">0.0°</div><div class="bp-lv-sub" id="bp-lv-sub"></div>'
-      + (shape === 'flat' ? '' : lvChips());
+    st.innerHTML = (shape === 'flat' ? '<div class="bp-lv-flat" id="bp-lv-vial"><div class="bp-lv-ring2"></div><div class="bp-lv-ring"></div><div class="bp-lv-bub" id="bp-lv-bub"></div></div>'
+        : '<div class="bp-lv-tube' + (shape === 'v' ? ' v' : '') + '" id="bp-lv-vial">' + lvTicks(shape) + '<div class="bp-lv-bub" id="bp-lv-bub"></div></div>')
+      + '<div class="bp-lv-read"><div class="bp-lv-num" id="bp-lv-num">0"</div><div class="bp-lv-unit">per ft</div></div>'
+      + '<div class="bp-lv-meta" id="bp-lv-meta">0.0° · 0.00%</div>'
+      + '<div class="bp-lv-sub" id="bp-lv-sub"></div>'
+      + (shape === 'flat' ? '' : lvChips() + lvRunRow());
   }
   /* v6.2.7 — pipe slope: pick a target fall per foot; the reading turns green when the pipe is on grade */
   var SLOPES = [['', 'Level'], ['0.125', '1/8"'], ['0.25', '1/4"'], ['0.5', '1/2"']];
@@ -25709,20 +25734,88 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
       return '<button type="button" class="bp-lv-chip' + (o[0] === cur ? ' on' : '') + '" data-slope="' + o[0] + '" onclick="bpLevelSlope(this.getAttribute(\'data-slope\'))">' + o[1] + (o[0] ? '<small>per ft</small>' : '') + '</button>';
     }).join('') + '</div>';
   }
+  /* v6.2.9 — vial marks: a tick every 1/8" per ft (every 4th one longer), and two blue marks at the picked grade */
+  var PXDEG = 22;
+  function lvTicks(shape){
+    var h = '', v = shape === 'v';
+    for (var i = 1; i <= 8; i++) {
+      var deg = Math.atan(i / 8 / 12) * 180 / Math.PI, off = deg * PXDEG, big = i % 2 === 0;
+      [-1, 1].forEach(function(sg){
+        h += '<i class="bp-lv-tk' + (big ? ' big' : '') + '" style="' + (v ? 'top' : 'left') + ':calc(50% + ' + (sg * off).toFixed(1) + 'px)"></i>';
+      });
+    }
+    return h + '<i class="bp-lv-tg" id="bp-lv-tg1"></i><i class="bp-lv-tg" id="bp-lv-tg2"></i>';
+  }
+  function lvPlaceTarget(){
+    var t = lvTarget(), v = LV && LV.shape === 'v';
+    var off = t ? Math.atan(t / 12) * 180 / Math.PI * PXDEG : 0;
+    ['bp-lv-tg1', 'bp-lv-tg2'].forEach(function(id, i){
+      var el = document.getElementById(id); if (!el) return;
+      el.style.display = t ? 'block' : 'none';
+      el.style[v ? 'top' : 'left'] = 'calc(50% + ' + ((i ? 1 : -1) * off).toFixed(1) + 'px)';
+      el.style[v ? 'left' : 'top'] = '';
+    });
+  }
+  function lvRun(){ var r = parseFloat(lsGet('bp_lvl_run') || ''); return r > 0 ? r : 0; }
+  function lvRunRow(){
+    var r = lvRun();
+    return '<div class="bp-lv-run"><label>Run<input id="bp-lv-runin" type="number" inputmode="decimal" min="0" step="0.5" placeholder="ft" value="' + (r || '') + '" oninput="bpLevelRun(this.value)"/><span>ft</span></label>'
+      + '<div class="bp-lv-drop" id="bp-lv-drop">' + (r ? '' : 'Enter the run to see total drop') + '</div></div>';
+  }
+  window.bpLevelRun = function(v){ lsSet('bp_lvl_run', String(parseFloat(v) > 0 ? parseFloat(v) : '')); };
+  window.bpLevelHold = function(){
+    if (!LV) return;
+    LV.hold = !LV.hold;
+    var b = document.getElementById('bp-lv-hold'); if (b) { b.textContent = LV.hold ? 'Held' : 'Hold'; b.classList.toggle('on', !!LV.hold); }
+    var st = document.getElementById('bp-lv-stage'); if (st) st.classList.toggle('bp-lv-held', !!LV.hold);
+  };
+  function buzz(){
+    try { if (window.webkit && webkit.messageHandlers && webkit.messageHandlers.bp) webkit.messageHandlers.bp.postMessage({ kind: 'haptic', style: 'success' }); } catch(e){}
+    try { if (navigator.vibrate) navigator.vibrate(40); } catch(e){}
+  }
+  /* Save: holds the reading, takes a photo, stamps the reading on it, then the same save sheet as Measure */
+  window.bpLevelSave = function(){
+    if (!LV || !LV.out) { toast('Wait for a reading'); return; }
+    if (!LV.hold) bpLevelHold();
+    var o = LV.out, inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.setAttribute('capture', 'environment'); inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.onchange = function(){
+      var f = inp.files && inp.files[0]; inp.remove(); if (!f) return;
+      var url = URL.createObjectURL(f), img = new Image();
+      img.onload = function(){
+        var W = Math.min(1600, img.naturalWidth), H = Math.round(img.naturalHeight * W / img.naturalWidth), band = Math.round(W * 0.16);
+        var c = document.createElement('canvas'); c.width = W; c.height = H + band;
+        var x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H);
+        x.fillStyle = '#111'; x.fillRect(0, H, W, band);
+        x.fillStyle = o.ok ? '#30D158' : '#fff'; x.textBaseline = 'middle';
+        x.font = '900 ' + Math.round(band * 0.42) + 'px -apple-system,Helvetica,Arial,sans-serif';
+        x.fillText(o.big, band * 0.25, H + band * 0.36);
+        x.fillStyle = '#bbb'; x.font = '700 ' + Math.round(band * 0.2) + 'px -apple-system,Helvetica,Arial,sans-serif';
+        x.fillText(o.line, band * 0.25, H + band * 0.78);
+        URL.revokeObjectURL(url);
+        if (typeof window.bpNativeDone === 'function') window.bpNativeDone({ tool: 'level', ok: true, image: c.toDataURL('image/jpeg', 0.85), level: o });
+      };
+      img.src = url;
+    };
+    inp.click();
+  };
   window.bpLevelSlope = function(v){
     lsSet('bp_lvl_target', v || '');
+    try { lvPlaceTarget(); } catch(e){}
     [].forEach.call(document.querySelectorAll('.bp-lv-chip'), function(b){ b.classList.toggle('on', b.getAttribute('data-slope') === (v || '')); });
   };
-  function fmtFall(inPerFt){
-    var e = Math.round(inPerFt * 32), w = Math.floor(e / 32), r = e % 32, g = 32;
+  function fmtFall(inPerFt, den){
+    den = den || 32;
+    var e = Math.round(inPerFt * den), w = Math.floor(e / den), r = e % den, g = den;
     while (r && r % 2 === 0) { r /= 2; g /= 2; }
     return (w ? w + (r ? ' ' : '') : '') + (r ? r + '/' + g : (w ? '' : '0')) + '"';
   }
   function onGrade(deg, lowWord){
     var t = lvTarget(); if (!t) return null;
     var fall = 12 * Math.tan(Math.abs(deg) * Math.PI / 180), d = fall - t;
-    if (Math.abs(d) <= 1 / 32) return { ok: true, sub: 'ON GRADE · ' + fmtFall(t) + ' per ft · ' + lowWord };
-    return { ok: false, sub: (d < 0 ? 'Needs more fall' : 'Too steep') + ' · ' + fmtFall(fall) + ' per ft · ' + lowWord };
+    if (Math.abs(d) <= 1 / 32) return { ok: true, sub: 'ON GRADE ' + fmtFall(t, 16) + ' · ' + lowWord };
+    return { ok: false, sub: (d < 0 ? 'Needs more fall' : 'Too steep') + ' · ' + lowWord };
   }
   function fracIn(deg){ var r = Math.abs(deg) * Math.PI / 180; return (r < 0.0005 ? '0' : (12 * Math.tan(r)).toFixed(2)) + ' in / ft'; }
   function lvFrame(){
@@ -25737,32 +25830,53 @@ svg.bp-dots circle{fill:#fff !important;stroke:none !important}
       var ax = Math.asin(clamp(px, -1, 1)) * R, ay = Math.asin(clamp(py, -1, 1)) * R;
       LV.raw.fx = ax; LV.raw.fy = ay;
       ax -= (cal.fx || 0); ay -= (cal.fy || 0);
-      num = Math.sqrt(ax * ax + ay * ay); ok = num < 0.5;
+      num = Math.sqrt(ax * ax + ay * ay); ok = num < 0.2;
       var rad = (document.getElementById('bp-lv-vial') ? document.getElementById('bp-lv-vial').clientWidth : 300) / 2 - 26;
       var k = rad / 8;
       bx = clamp(-ax * k, -rad, rad); by = clamp(ay * k, -rad, rad);
       var m = Math.sqrt(bx * bx + by * by); if (m > rad) { bx *= rad / m; by *= rad / m; }
-      sub = ok ? 'LEVEL' : (Math.abs(ax) >= Math.abs(ay) ? (ax > 0 ? 'Right side low' : 'Left side low') : (ay < 0 ? 'Bottom low' : 'Top low')) + ' · ' + fracIn(num);
+      sub = ok ? 'LEVEL' : (Math.abs(ax) >= Math.abs(ay) ? (ax > 0 ? 'Right side low' : 'Left side low') : (ay < 0 ? 'Bottom low' : 'Top low'));
     } else if (Math.abs(py) >= Math.abs(px)) {
       shape = 'h';
       var e = Math.asin(clamp(px, -1, 1)) * R; LV.raw.e = e; e -= (cal.e || 0);
-      num = Math.abs(e); ok = num < 0.5;
+      num = Math.abs(e); ok = num < 0.1;
       bx = clamp(-e * 22, -112, 112);
-      sub = ok ? 'LEVEL / PLUMB' : (e > 0 ? 'Right side low' : 'Left side low') + ' · ' + fracIn(num);
+      sub = ok ? 'LEVEL / PLUMB' : (e > 0 ? 'Right side low' : 'Left side low');
       var gh = onGrade(e, e > 0 ? 'right side low' : 'left side low'); if (gh) { ok = gh.ok; sub = gh.sub; }
     } else {
       shape = 'v';
       var ev = Math.asin(clamp(py, -1, 1)) * R; LV.raw.ev = ev; ev -= (cal.ev || 0);
-      num = Math.abs(ev); ok = num < 0.5;
+      num = Math.abs(ev); ok = num < 0.1;
       by = clamp(ev * 22, -112, 112);
-      sub = ok ? 'LEVEL / PLUMB' : (ev < 0 ? 'Bottom low' : 'Top low') + ' · ' + fracIn(num);
+      sub = ok ? 'LEVEL / PLUMB' : (ev < 0 ? 'Bottom low' : 'Top low');
       var gv = onGrade(ev, ev < 0 ? 'bottom low' : 'top low'); if (gv) { ok = gv.ok; sub = gv.sub; }
     }
+    if (LV.hold) return;
     lvShape(shape);
+    if (LV.tShape !== shape + lvTarget()) { LV.tShape = shape + lvTarget(); lvPlaceTarget(); }
     var st = document.getElementById('bp-lv-stage'); if (!st) return;
     st.classList.toggle('bp-lv-ok', ok);
+    if (ok && !LV.wasOk && Date.now() - (LV.buzzAt || 0) > 800) { LV.buzzAt = Date.now(); buzz(); }
+    LV.wasOk = ok;
+    var fall = 12 * Math.tan(num * Math.PI / 180), pct = 100 * Math.tan(num * Math.PI / 180);
+    var big = num < 0.05 ? '0"' : fmtFall(fall, 16);
+    var line = num.toFixed(1) + '° · ' + pct.toFixed(2) + '% · ' + fall.toFixed(3) + '" per ft';
+    var mt = document.getElementById('bp-lv-meta'); if (mt) mt.textContent = line;
+    var run = shape === 'flat' ? 0 : lvRun(), dropTxt = '';
+    if (run) {
+      var drop = fall * run, t = lvTarget();
+      dropTxt = 'Drop over ' + run + ' ft: <b>' + fmtFall(drop, 16) + '</b>';
+      if (t) {
+        var need = t * run, diff = drop - need;
+        dropTxt += ' · need ' + fmtFall(need, 16) + (Math.abs(diff) < 1 / 16 ? ' <b class="g">on</b>' : ' <b class="' + (diff < 0 ? 'r' : 'r') + '">' + fmtFall(Math.abs(diff), 16) + (diff < 0 ? ' short' : ' over') + '</b>');
+      }
+    }
+    var dp = document.getElementById('bp-lv-drop'); if (dp && run) dp.innerHTML = dropTxt;
+    else if (dp) dp.textContent = 'Enter the run to see total drop';
+    LV.out = { ok: ok, deg: +num.toFixed(2), pct: +pct.toFixed(2), inPerFt: +fall.toFixed(3), fall: big, big: big + ' per ft', status: sub, run: run, target: lvTarget(),
+               line: [sub, line, dropTxt.replace(/<[^>]+>/g, '')].filter(Boolean).join('  ·  ') };
     var bub = document.getElementById('bp-lv-bub'); if (bub) bub.style.transform = 'translate(' + bx.toFixed(1) + 'px,' + by.toFixed(1) + 'px)';
-    var nm = document.getElementById('bp-lv-num'); if (nm) nm.textContent = num.toFixed(1) + '°';
+    var nm = document.getElementById('bp-lv-num'); if (nm) nm.textContent = big;
     var sb = document.getElementById('bp-lv-sub'); if (sb) sb.textContent = sub;
     var rs = document.getElementById('bp-lv-reset'); if (rs) rs.style.display = (cal.fx || cal.fy || cal.e || cal.ev) ? '' : 'none';
   }
@@ -30016,6 +30130,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
 
   /* What the result says, in words — this becomes the photo's caption */
   function describe(r){
+    if (r.tool === 'level') { var L = r.level || {}; return 'Level: ' + (L.big || '') + (L.status ? ' · ' + L.status : '') + (L.deg != null ? ' · ' + L.deg + '°' : ''); }
     if (r.tool === 'measure') {
       var L = r.lengths || [];
       return 'Measure: ' + (L.length === 1 ? L[0] : L.map(function(x, i){ return (i + 1) + ') ' + x; }).join('  '));
@@ -30046,7 +30161,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
 
   window.bpNativeDone = function(r){
     r = r || {};
-    if (r.tool !== 'measure' && r.tool !== 'room') { if (r.err) say(r.err); return; }
+    if (r.tool !== 'measure' && r.tool !== 'room' && r.tool !== 'level') { if (r.err) say(r.err); return; }
     if (!r.ok) { if (r.err) say(r.err); return; }
     if (!r.image) { say('Nothing to save — the picture did not come back'); return; }
     PEND = r;
@@ -30060,7 +30175,11 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     var SEL = 'width:100%;min-height:48px;border-radius:12px;border:1.5px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-weight:700;padding:0 12px;font-family:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
     var BTN = 'flex:1;min-height:52px;border:none;border-radius:14px;font-size:16px;font-weight:900;font-family:inherit;cursor:pointer';
     var facts = '';
-    if (r.tool === 'room') {
+    if (r.tool === 'level') {
+      var Lv = r.level || {}, lrows = [['Fall', Lv.big || ''], ['Angle', (Lv.deg || 0) + '° · ' + (Lv.pct || 0) + '%'], ['Reading', Lv.status || '']];
+      if (Lv.run) lrows.push(['Run', Lv.run + ' ft']);
+      facts = lrows.map(function(x){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border,#2a2a2a);font-size:15px"><span style="color:var(--muted,#8e8e93);font-weight:700;white-space:nowrap">' + E(x[0]) + '</span><b style="text-align:right">' + E(x[1]) + '</b></div>'; }).join('');
+    } else if (r.tool === 'room') {
       var rows = [];
       if (r.areaSqFt) rows.push(['Floor area', Number(r.areaSqFt).toFixed(1) + ' sq ft']);
       if (r.ceiling) rows.push(['Ceiling', r.ceiling]);
@@ -30073,7 +30192,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     var o = document.createElement('div'); o.id = 'bp-tool-save';
     o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.65);display:flex;align-items:flex-end;justify-content:center';
     o.innerHTML = '<div style="width:100%;max-width:520px;max-height:92vh;overflow-y:auto;background:var(--card,#1c1c1e);color:var(--text,#f0f0f0);border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))">'
-      + '<div style="font-size:19px;font-weight:900;margin-bottom:10px">' + (r.tool === 'room' ? 'Room scan' : 'Measurement') + '</div>'
+      + '<div style="font-size:19px;font-weight:900;margin-bottom:10px">' + (r.tool === 'room' ? 'Room scan' : r.tool === 'level' ? 'Level reading' : 'Measurement') + '</div>'
       + '<img src="' + r.image + '" alt="" style="width:100%;border-radius:12px;display:block;background:#fff"/>'
       + '<div style="margin-top:8px">' + facts + '</div>'
       + '<div style="font-size:12.5px;color:var(--muted,#8e8e93);margin-top:8px">Good for layout and estimates. Tape-check before you cut.</div>'
@@ -30086,7 +30205,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     document.body.appendChild(o);
     var js = document.getElementById('bp-ts-job');
     js.addEventListener('change', function(){ document.getElementById('bp-ts-room').innerHTML = roomOpts(js.value, ''); });
-    document.getElementById('bp-ts-cancel').onclick = function(){ if (confirm('Discard this ' + (PEND && PEND.tool === 'room' ? 'room scan' : 'measurement') + '?')) closeSheet(); };
+    document.getElementById('bp-ts-cancel').onclick = function(){ if (confirm('Discard this ' + (PEND && PEND.tool === 'room' ? 'room scan' : PEND && PEND.tool === 'level' ? 'level reading' : 'measurement') + '?')) closeSheet(); };
     document.getElementById('bp-ts-save').onclick = window.bpToolSave;
     if (!jobsList().length) { var sv = document.getElementById('bp-ts-save'); sv.disabled = true; sv.style.opacity = '.45'; say('Add a job first, then save'); }
   };
@@ -30100,11 +30219,13 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     var t = now();
     var photo = { id: newId(), src: r.image, jobId: jobId, roomId: roomId, date: t, created: t, updatedAt: t,
       size: Math.round(r.image.length * 0.75 / 1024) + 'KB', caption: cap,
-      tags: [r.tool === 'room' ? 'Room scan' : 'Measure'],
+      tags: [r.tool === 'room' ? 'Room scan' : r.tool === 'level' ? 'Level' : 'Measure'],
       createdBy: (typeof _userName !== 'undefined' && _userName) || '' };
     if (r.tool === 'room') {
       photo.scan = { areaSqFt: r.areaSqFt || 0, ceiling: r.ceiling || '', perimeter: r.perimeter || '', perimeterFt: r.perimeterFt || 0,
                      walls: r.walls || [], doors: r.doors || 0, windows: r.windows || 0, usdz: r.usdz || '' };
+    } else if (r.tool === 'level') {
+      photo.level = r.level || {};
     } else {
       photo.measure = { lengths: r.lengths || [], inches: r.inches || [], lidar: !!r.lidar };
     }
@@ -30113,7 +30234,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     closeSheet();
     try { if (typeof renderPhotos === 'function') renderPhotos(); } catch(e){}
     try { var rd = document.getElementById('s-room-detail'); if (roomId && rd && rd.classList.contains('active') && typeof openRoomDetail === 'function') openRoomDetail(roomId); } catch(e){}
-    say((r.tool === 'room' ? 'Room scan' : 'Measurement') + ' saved to the job');
+    say((r.tool === 'room' ? 'Room scan' : r.tool === 'level' ? 'Level reading' : 'Measurement') + ' saved to the job');
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showButtons); else showButtons();
