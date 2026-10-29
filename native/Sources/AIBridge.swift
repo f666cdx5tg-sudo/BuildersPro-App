@@ -65,15 +65,16 @@ extension ShellModel {
 
 enum AIClient {
     static let url = URL(string: "https://api.anthropic.com/v1/messages")!
-    static let version = "2023-06-01"
+    /// Newest API version first; if the account's endpoint rejects it, retry once with the long-standing one.
+    static let versions = ["2026-10-21", "2023-06-01"]
 
-    static func send(_ body: [String: Any], done: @escaping ([String: Any]) -> Void) {
+    static func send(_ body: [String: Any], attempt: Int = 0, done: @escaping ([String: Any]) -> Void) {
         guard let key = AIKey.get() else { done(["ok": false, "err": "nokey"]); return }
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { done(["ok": false, "err": "Could not build the request"]); return }
         var r = URLRequest(url: url, timeoutInterval: 90)
         r.httpMethod = "POST"
         r.setValue(key, forHTTPHeaderField: "x-api-key")
-        r.setValue(version, forHTTPHeaderField: "anthropic-version")
+        r.setValue(versions[min(attempt, versions.count - 1)], forHTTPHeaderField: "anthropic-version")
         r.setValue("application/json", forHTTPHeaderField: "content-type")
         r.httpBody = data
         URLSession.shared.dataTask(with: r) { d, resp, err in
@@ -82,6 +83,12 @@ enum AIClient {
             let obj = (d.flatMap { try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any] ?? [:]
             if code != 200 {
                 let msg = ((obj["error"] as? [String: Any])?["message"] as? String) ?? "HTTP \(code)"
+                if code == 400, attempt + 1 < versions.count, msg.lowercased().contains("version") {
+                    send(body, attempt: attempt + 1, done: done); return
+                }
+                if code == 400, msg.lowercased().contains("workspace") {
+                    done(["ok": false, "err": "This key needs a workspace. Make a new key and pick the Default workspace when you create it.", "status": code]); return
+                }
                 done(["ok": false, "err": code == 401 ? "The AI key was not accepted. Check it in Settings › AI." : msg, "status": code])
                 return
             }
