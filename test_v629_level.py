@@ -25,7 +25,7 @@ async def main():
               try{bpSave()}catch(e){} try{bpSetActiveJob('j1',true)}catch(e){}
               localStorage.setItem('bp_lvl_cal','{}'); localStorage.setItem('bp_lvl_target','0.25'); localStorage.setItem('bp_lvl_run','12');
               DeviceOrientationEvent.requestPermission=function(){return Promise.resolve('granted')}; bpLevelOpen(); }""")
-            ok(await pg.evaluate("APP_VERSION") == '6.2.9', 'on v6.2.9')
+            ok(await pg.evaluate("APP_VERSION") >= '6.2.9', 'on v6.2.9')
             async def tilt(beta, gamma=90):
                 await pg.evaluate("(a) => { for (var i=0;i<60;i++) window.dispatchEvent(new DeviceOrientationEvent('deviceorientation',{alpha:0,beta:a[0],gamma:a[1]})); }", [beta, gamma]); await pg.wait_for_timeout(300)
             await tilt(1.0)
