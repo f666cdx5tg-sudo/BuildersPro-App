@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.4.2';
+var APP_VERSION = '6.5.0';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -30414,6 +30414,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
       if (exact) { flag(a.id, 'Exact copy of another expense'); flag(b.id, 'Exact copy of another expense'); }
       else if (sameDay) { flag(a.id, 'Same amount on the same day as another expense'); flag(b.id, 'Same amount on the same day as another expense'); }
       else if (nearVendor) { flag(a.id, 'Same amount, same vendor within 3 days'); flag(b.id, 'Same amount, same vendor within 3 days'); }
+      else if (da != null && db != null && Math.abs(da - db) <= 7 && cents(a.amount) >= 5000) { flag(a.id, 'Same amount within a week of another expense'); flag(b.id, 'Same amount within a week of another expense'); }   /* v6.5.0: $50+ */
     }
     exps.forEach(function(e){
       var txt = low(e.desc) + ' ' + low(e.vendor);
@@ -30576,7 +30577,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     return new Promise(function(res){
       if (!inApp()) return res({ ok: false, err: 'app' });
       var id = 'ai' + Date.now() + Math.random().toString(36).slice(2, 6);
-      var timer = setTimeout(function(){ if (PENDING[id]) { delete PENDING[id]; res({ ok: false, err: 'The AI took too long. Try again.' }); } }, 95000);
+      var timer = setTimeout(function(){ if (PENDING[id]) { delete PENDING[id]; res({ ok: false, err: 'The AI took too long. Try again.' }); } }, 185000);
       PENDING[id] = function(r){ clearTimeout(timer); if (r && r.err === 'nokey') { KEY.known = true; KEY.has = false; } res(r); };
       var body = { model: opts.model || FAST, max_tokens: opts.max || 1500, messages: [{ role: 'user', content: opts.content }] };
       if (opts.system) body.system = opts.system;
@@ -30693,14 +30694,15 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
       subPayments: pays.map(function(p){ var s = subs.find(function(x){ return x.id === p.contractorId; }) || {}; return { sub: s.name || s.company || '', date: p.date || '', amount: +p.amount || 0 }; })
     };
     var box = document.getElementById('bp-mcheck-ai');
-    if (box) box.innerHTML = loading('AI is reading ' + exps.length + ' expenses…');
-    window.bpAIAsk({ model: FAST, max: 2500,
+    if (box) box.innerHTML = loading('AI is reading all ' + exps.length + ' expenses. This can take up to a minute…');
+    window.bpAIAsk({ model: SMART, max: 16000,   /* v6.5.0: the bigger model and room for a long list */
       system: 'You audit job-cost records for a plumbing and general contractor. Money Left = contract − every expense − each sub\'s full contract value. Find expenses that are probably the same money entered more than once: identical or near-identical entries, a receipt scan plus a typed or shopping-list entry for the same purchase, a delivery plus the receipt for it, the same items in two expenses, or an expense that pays a sub who is already counted through their full contract value. Do not flag normal repeat purchases from the same store on different days unless the items match. Answer with JSON only.',
       content: 'Records:\n' + JSON.stringify(data) + '\n\nReturn JSON: {"repeats":[{"keep":"<expense id to keep>","extra":["<expense ids that look like the same money again>"],"why":"<one short sentence a contractor understands>","sure":"high|medium"}],"subDoubles":[{"id":"<expense id>","why":"..."}],"summary":"<one sentence>"}. Use only ids from the records. Empty arrays if nothing looks doubled.'
     }).then(function(r){
       var b = document.getElementById('bp-mcheck-ai'); if (!b) return;
       if (!r.ok) { b.innerHTML = '<div data-bp-wrap="1" style="color:#FF453A;font-weight:700;padding:10px 2px">' + E(errText(r)) + '</div>'; return; }
-      var j = json(r.text) || {}, byId = {}; exps.forEach(function(e){ byId[e.id] = e; });
+      var j = json(r.text), byId = {}; exps.forEach(function(e){ byId[e.id] = e; });
+      if (!j) { b.innerHTML = '<div data-bp-wrap="1" style="color:#FF453A;font-weight:700;padding:10px 2px">' + (r.stop === 'max_tokens' ? 'The AI ran out of room before it finished. Tap Ask AI again.' : 'The AI answered, but not in a form BSP can read. Tap Ask AI again.') + '</div>'; return; }
       var marks = {}, total = 0;
       (j.repeats || []).forEach(function(g){ (g.extra || []).forEach(function(id){ if (byId[id] && !marks[id]) { marks[id] = (g.sure === 'high' ? '' : 'Maybe: ') + (g.why || 'Looks entered twice'); total += +byId[id].amount || 0; } }); });
       (j.subDoubles || []).forEach(function(g){ if (byId[g.id] && !marks[g.id]) { marks[g.id] = g.why || 'Pays a sub already counted in full'; total += +byId[g.id].amount || 0; } });
@@ -30708,9 +30710,34 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
       var n = Object.keys(marks).length;
       b.innerHTML = '<div data-bp-wrap="1" style="padding:12px;border-radius:12px;background:rgba(191,90,242,.12);border:1px solid rgba(191,90,242,.45);font-size:14.5px;line-height:1.45">'
         + '<b style="color:#BF5AF2">AI: ' + (n ? n + ' expense' + (n === 1 ? '' : 's') + ' look like money counted again · ' + M(total) : 'nothing looks counted twice') + '</b>'
-        + (j.summary ? '<br>' + E(j.summary) : '') + (n ? '<br>Marked with the purple star below. If AI is right, Money Left would be ' + M(window.bpMoneyCheckData(jobId).left + total) + '.' : '') + '</div>';
+        + (j.summary ? '<br>' + E(j.summary) : '') + (n ? '<br>Marked with the purple star below. If AI is right, Money Left would be ' + M(window.bpMoneyCheckData(jobId).left + total) + '.' : '<br>Checked all ' + exps.length + ' expenses.') + '</div>'
+        + (n ? '<button type="button" id="bp-mcheck-fix" style="' + BTN + ';width:100%;margin-top:10px;border:none;background:#BF5AF2;color:#fff">Review and remove the ' + n + ' extra' + (n === 1 ? '' : 's') + '</button>' : '');
+      var fx = document.getElementById('bp-mcheck-fix'); if (fx) fx.onclick = function(){ window.bpAIFixMoney(jobId); };
       paintAIMarks(jobId);
     });
+  };
+  /* v6.5.0: let the AI's findings be fixed — you tick which extras go; they go to the Recycle Bin (can be put back) */
+  window.bpAIFixMoney = function(jobId){
+    var marks = (window._bpAIMarks || {})[jobId] || {};
+    var list = (DB.expenses || []).filter(function(e){ return e && marks[e.id]; });
+    if (!list.length) { say('Nothing to remove'); return; }
+    var s = sheet('bp-mfix', 'Remove extra expenses', '<div data-bp-wrap="1" style="font-size:14.5px;line-height:1.45;margin-bottom:6px">These look like the same money entered again. Untick any that are real. Removed ones go to the Recycle Bin, so you can put them back.</div>'
+      + list.map(function(e, i){ return '<label class="bp-ai-row" data-bp-wrap="1"><input type="checkbox" checked data-mx="' + i + '"/><span style="flex:1;min-width:0;line-height:1.4"><b style="font-weight:700">' + E(e.desc || e.category || 'Expense') + ' · ' + M(e.amount) + '</b>'
+        + '<span style="display:block;font-size:12.5px;color:var(--muted,#8e8e93)">' + E([String(e.date || '').slice(0, 10), e.vendor].filter(Boolean).join(' · ')) + '</span><span style="display:block;font-size:12.5px;color:#BF5AF2">' + E(marks[e.id]) + '</span></span></label>'; }).join('')
+      + '<button type="button" id="bp-mfix-go" style="' + BTN + ';width:100%;margin-top:14px;border:none;background:#FF453A;color:#fff">Remove ' + list.length + ' · ' + M(list.reduce(function(t, e){ return t + (+e.amount || 0); }, 0)) + '</button>');
+    var go = document.getElementById('bp-mfix-go');
+    s.addEventListener('change', function(){ var ck = [].filter.call(s.querySelectorAll('[data-mx]'), function(c){ return c.checked; }); go.textContent = 'Remove ' + ck.length + ' · ' + M(ck.reduce(function(t, c){ return t + (+list[+c.getAttribute('data-mx')].amount || 0); }, 0)); go.disabled = !ck.length; go.style.opacity = ck.length ? '1' : '.45'; });
+    go.onclick = function(){
+      var ids = {}; [].forEach.call(s.querySelectorAll('[data-mx]'), function(c){ if (c.checked) ids[list[+c.getAttribute('data-mx')].id] = 1; });
+      var n = 0;
+      if (typeof bpRemoveFrom === 'function') n = bpRemoveFrom('expenses', function(e){ return !(e && ids[e.id]); });
+      else { var before = DB.expenses.length; DB.expenses = DB.expenses.filter(function(e){ return !(e && ids[e.id]); }); n = before - DB.expenses.length; }
+      Object.keys(ids).forEach(function(id){ delete marks[id]; });
+      persist(); s.remove();
+      try { window.bpMoneyCheck(jobId); } catch(e){}
+      try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
+      say(n + ' extra expense' + (n === 1 ? '' : 's') + ' removed · in the Recycle Bin if you need them back');
+    };
   };
   function paintAIMarks(jobId){
     var marks = (window._bpAIMarks || {})[jobId] || {};
@@ -31034,6 +31061,163 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   console.log('[BP] v6.4.1 — Home holds still');
 })();
 </script>
+<script id="v650">
+/* ══ v6.5.0 — EVERYTHING STAYS IN ITS CELL + TRADES IN A ••• MENU ═════════════
+   Stan (Oct 29, 2026): "unit check the app to ensure that all information stay in
+   their cells … spaces and status are not fitting into the cells. trades should be
+   in a 3 dot hamburger".
+   A sweep of every screen (test_fit_audit.py: iPhone 375/402/440 wide, iPad, Mac,
+   every text size, light + dark, long real-world data) found text cut off with "…"
+   or spilling past its box. One rule now runs on every screen and pop-up:
+     1. Text that doesn't fit first steps its size down (never below 11px).
+     2. If it still doesn't fit, it wraps onto a second line instead of being cut
+        off — so names now wrap rather than end in "…", but only when even 11px
+        can't hold them.
+     3. A row of numbers + labels (OPEN 4 · DONE 36 on a space card) that runs past
+        its card shrinks together to fit.
+   Punch / Spaces / job page: the trade chips that ran off the screen are now one
+   ••• menu ("Trade: All ⋯"). Select is the square check-box button everywhere, so
+   Status and Space get the room. */
+(function(){
+  'use strict';
+  if (window.__bp650) return; window.__bp650 = 1;
+  var st = document.createElement('style'); st.id = 'bp-v650-css';
+  st.textContent =
+      '.bp-pmrow .bp-selbtn{width:46px;min-width:46px;padding:0 !important;justify-content:center;gap:0;font-size:0 !important;flex:0 0 46px}'
+    + '.bp-pmrow .bp-selbtn svg{width:22px;height:22px}'
+    + '.bp-pm{padding-left:10px !important}'
+    + '.bp-trade-hm{display:flex;align-items:center;gap:10px;margin:0 16px 8px;min-height:46px;padding:0 4px 0 12px;border-radius:12px;border:1px solid var(--border,#333);background:var(--card,#1c1c1e)}'
+    + '.bp-trade-hm .bp-th-cur{flex:1;min-width:0;font-size:15px;font-weight:800;color:var(--text,#f0f0f0);cursor:pointer}'
+    + '.bp-trade-hm .bp-th-cur small{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin-right:8px}'
+    + '.bp-trade-row-hidden{display:none !important}';
+  document.head.appendChild(st);
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  /* ── trades into a ••• menu ── */
+  var TRADE_CALL = /^(filterPunchCategory|bpSetRoomTrade)\(/;
+  function tradeRows(){
+    var rows = [];
+    [].forEach.call(document.querySelectorAll('button[onclick]'), function(b){
+      if (!TRADE_CALL.test(b.getAttribute('onclick') || '')) return;
+      var row = b.parentElement; if (row && rows.indexOf(row) < 0 && !row.classList.contains('bp-hm-pop')) rows.push(row);
+    });
+    return rows;
+  }
+  function chipOn(b){
+    var c = getComputedStyle(b), bg = c.backgroundColor;
+    return !!(bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') || /\bon\b/.test(b.className);
+  }
+  function label(b){ return (b.textContent || '').replace(/\s+/g, ' ').trim(); }
+  function convert(){
+    if (typeof window.bpHMenu !== 'function') return;
+    tradeRows().forEach(function(row){
+      var chips = [].filter.call(row.children, function(b){ return b.tagName === 'BUTTON' && TRADE_CALL.test(b.getAttribute('onclick') || ''); });
+      if (!chips.length) return;
+      var sig = chips.map(function(b){ return label(b) + (chipOn(b) ? '*' : ''); }).join('|');
+      var holder = row.parentElement && row.parentElement.querySelector(':scope > .bp-trade-hm');
+      if (holder && holder.getAttribute('data-sig') === sig && row.classList.contains('bp-trade-row-hidden')) return;
+      var cur = chips.find(chipOn);
+      var items = chips.map(function(b){ return { label: E(label(b)), js: b.getAttribute('onclick'), on: chipOn(b) }; });
+      var allLike = !cur || /^All\b/i.test(label(cur));
+      if (!items.some(function(i){ return /^All\b/i.test(i.label); }) && /^filterPunchCategory/.test(chips[0].getAttribute('onclick'))) items.unshift({ label: 'All trades', js: "filterPunchCategory('')", on: allLike });
+      var html = '<span class="bp-th-cur" data-bp-wrap="1"><small>Trade</small>' + E(allLike ? 'All' : label(cur)) + '</span>' + window.bpHMenu('Trades', items);
+      if (!holder) { holder = document.createElement('div'); holder.className = 'bp-trade-hm'; row.parentElement.insertBefore(holder, row); }
+      holder.setAttribute('data-sig', sig); holder.innerHTML = html;
+      holder.querySelector('.bp-th-cur').onclick = function(){ var b = holder.querySelector('.bp-hm-btn'); if (b) b.click(); };
+      row.classList.add('bp-trade-row-hidden');
+      var wrap = row.parentElement; if (wrap && wrap !== holder.parentElement) {}
+    });
+  }
+
+  /* ── everything stays in its cell ── */
+  var SKIPSEL = 'svg, script, style, canvas, video, select, input, textarea, option, .bp-fit-skip, .bp-hm-pop, #bp-lock, .bp-lv-num, .bp-tl';
+  function scrollsSideways(e){
+    for (var a = e.parentElement; a && a !== document.body; a = a.parentElement) {
+      var ox = getComputedStyle(a).overflowX; if ((ox === 'auto' || ox === 'scroll') && a.scrollWidth > a.clientWidth + 2) return true;
+    }
+    return false;
+  }
+  function boxOf(e){
+    for (var a = e.parentElement; a && a !== document.body; a = a.parentElement) {
+      if (a.matches('button, .card, [data-onsite], .bp-area-box, .bp-seg, .bp-pm, .bp-selbtn, .kpi, .bp-kpi, .tb-btn, .bp-cl-row, [id^="cli-"], .bp-trade-hm')) return a;
+      var c = getComputedStyle(a);
+      if (c.borderRadius !== '0px' && ((parseFloat(c.borderTopWidth) > 0 && c.borderTopStyle !== 'none') || (c.backgroundColor !== 'rgba(0, 0, 0, 0)'))) return a;
+    }
+    return null;
+  }
+  function textWidth(e){ var r = document.createRange(); r.selectNodeContents(e); return r.getBoundingClientRect(); }
+  function cut(e, c){ return (c.overflowX === 'hidden' || c.overflowX === 'clip' || c.textOverflow === 'ellipsis') && e.scrollWidth > e.clientWidth + 1; }
+  function spills(e){
+    var box = boxOf(e); if (!box) return null;
+    var t = textWidth(e), b = box.getBoundingClientRect();
+    return (t.width && (t.right > b.right + 1.5 || t.left < b.left - 1.5)) ? box : null;
+  }
+  function shrinkTo(e, floor){
+    var c = getComputedStyle(e);
+    if (!e.dataset.bpFitBase) e.dataset.bpFitBase = parseFloat(c.fontSize) || 14;
+    var fs = parseFloat(c.fontSize) || +e.dataset.bpFitBase, guard = 0;
+    while (fs > floor && (cut(e, getComputedStyle(e)) || spills(e)) && guard++ < 40) { fs = Math.max(floor, fs - 0.5); e.style.fontSize = fs + 'px'; }
+    return !(cut(e, getComputedStyle(e)) || spills(e));
+  }
+  function wrap(e){
+    e.setAttribute('data-bp-wrap', '1');
+    e.style.whiteSpace = 'normal'; e.style.overflow = 'visible'; e.style.textOverflow = 'clip'; e.style.overflowWrap = 'anywhere';
+    e.style.webkitLineClamp = 'unset'; e.style.maxWidth = '100%'; e.style.minWidth = '0';
+    if (getComputedStyle(e).display === 'inline') e.style.display = 'inline-block';
+    var q = e.parentElement, i = 0; while (q && i++ < 3 && q !== document.body) { if (getComputedStyle(q).display.indexOf('flex') >= 0) { q.style.minWidth = '0'; } q = q.parentElement; }
+  }
+  function fitRow(row, box){
+    /* a line of several bits (4 OPEN 36 DONE) that runs past its card: shrink the line as one */
+    var b = box.getBoundingClientRect(), r = row.getBoundingClientRect(), t = textWidth(row);
+    var need = Math.max(r.width, t.width), have = b.right - Math.max(b.left, r.left) - 6;
+    if (need <= have || have <= 0) return true;
+    var z = Math.max(0.68, (parseFloat(row.style.zoom) || 1) * have / need);
+    row.style.zoom = z.toFixed(3);
+    if (z <= 0.68) { row.style.flexWrap = 'wrap'; row.style.rowGap = '2px'; }   /* smallest phone, biggest text: let the line break */
+    return true;
+  }
+  var busy = false;
+  function sweep(){
+    if (busy) return; busy = true;
+    try {
+      convert();
+      var vw = document.documentElement.clientWidth;
+      var els = document.body.querySelectorAll('*');
+      for (var i = 0; i < els.length; i++) {
+        var e = els[i];
+        if (!e.offsetParent && getComputedStyle(e).position !== 'fixed') continue;
+        if (e.closest(SKIPSEL)) continue;
+        var txt = ''; for (var n = e.firstChild; n; n = n.nextSibling) if (n.nodeType === 3) txt += n.nodeValue;
+        if (!txt.trim()) continue;
+        var c = getComputedStyle(e);
+        var isCut = cut(e, c), box = isCut ? null : spills(e);
+        if (!isCut && !box) continue;
+        if (scrollsSideways(e)) continue;
+        if (box && !isCut) {
+          /* a spill: fix the whole line inside the card when the line has several pieces */
+          var row = e.parentElement;
+          if (row && row !== box && row.children.length > 1 && box.contains(row)) { if (fitRow(row, box)) continue; }
+        }
+        var inButton = !!e.closest('button, .bp-seg, .bp-pm, .tb-btn');
+        var base = +(e.dataset.bpFitBase || parseFloat(c.fontSize) || 14);
+        var floor = Math.max(11, Math.round(base * 0.72));
+        if (shrinkTo(e, floor)) continue;
+        if (inButton && e.closest('.bp-seg, .tb-btn')) { shrinkTo(e, 10); continue; }
+        wrap(e);
+      }
+    } catch(err){ console.warn('[BP] v6.5.0 fit', err); }
+    busy = false;
+  }
+  window.bpFitSweep = sweep;
+  var t = 0; function soon(){ clearTimeout(t); t = setTimeout(sweep, 260); }
+  new MutationObserver(function(ms){ for (var i = 0; i < ms.length; i++) { var a = ms[i].addedNodes; for (var k = 0; k < a.length; k++) if (a[k].nodeType === 1 && !(a[k].closest && a[k].closest('.bp-hm-pop'))) { soon(); return; } } }).observe(document.body, { childList: true, subtree: true });   /* new elements only, never clock text */
+  window.addEventListener('resize', soon);
+  document.addEventListener('click', function(){ setTimeout(soon, 120); }, true);
+  soon();
+  console.log('[BP] v6.5.0 — everything stays in its cell, trades in a ••• menu');
+})();
+</script>
+
 
 
 <style id="v630-glass">

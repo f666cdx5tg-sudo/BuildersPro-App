@@ -71,7 +71,7 @@ enum AIClient {
     static func send(_ body: [String: Any], attempt: Int = 0, done: @escaping ([String: Any]) -> Void) {
         guard let key = AIKey.get() else { done(["ok": false, "err": "nokey"]); return }
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { done(["ok": false, "err": "Could not build the request"]); return }
-        var r = URLRequest(url: url, timeoutInterval: 90)
+        var r = URLRequest(url: url, timeoutInterval: 180)
         r.httpMethod = "POST"
         r.setValue(key, forHTTPHeaderField: "x-api-key")
         r.setValue(versions[min(attempt, versions.count - 1)], forHTTPHeaderField: "anthropic-version")

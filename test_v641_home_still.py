@@ -40,6 +40,7 @@ async def main():
             await pg.evaluate("for (var i=0;i<3;i++) { try{ renderAll(); }catch(e){} try{ bpRenderAttention(); }catch(e){} }"); await pg.wait_for_timeout(300)
             ok(await pg.evaluate("Math.abs(document.getElementById('s-home').scrollTop - window.__y) <= 1"), 'Home stays where it was through background redraws')
             await pg.evaluate("window.__fits=0; var o=window.bpFitNums; window.bpFitNums=function(){ window.__fits++; (window.__fst=window.__fst||[]).push(new Error().stack.split(String.fromCharCode(10)).slice(2,6).join(String.fromCharCode(32,124,32))); return o.apply(this,arguments); };")
+            await pg.wait_for_timeout(1500)   # let the page settle after the setup above
             await pg.evaluate("window.__fits=0; window.__fst=[]")
             await pg.wait_for_timeout(4500)
             ok(await pg.evaluate("window.__fits") == 0, 'number fitting does not rerun on clock ticks (%s)' % await pg.evaluate("window.__fst"))
