@@ -61,7 +61,7 @@ async def field(b):
     await pg.goto('http://localhost:%d/index.html' % PORT); await pg.wait_for_timeout(2500)
     await pg.evaluate("document.getElementById('bp-lock')&&document.getElementById('bp-lock').remove(); window.bpICloudSync=undefined;")
     await pg.evaluate(SEED, PNG)
-    ok(await pg.evaluate("APP_VERSION") == '6.4.0', 'on v6.4.0')
+    ok(await pg.evaluate("APP_VERSION") >= '6.4.0', 'on v6.4.0')
     ok(await pg.evaluate("!!document.getElementById('nav-ai') && !!document.querySelector('#nav-ai svg')"), 'AI assistant is in the side menu with a line icon')
     # settings
     await pg.evaluate("bpAISettings()"); await pg.wait_for_timeout(300)
@@ -140,7 +140,7 @@ async def browser_and_mac(b):
     await pg.goto('http://localhost:%d/desktop.html' % PORT); await pg.wait_for_timeout(3000)
     await pg.evaluate("document.getElementById('bp-lock')&&document.getElementById('bp-lock').remove(); window.bpICloudSync=undefined;")
     await pg.evaluate(SEED, PNG); await pg.evaluate("window.__key='k'")
-    ok(await pg.evaluate("APP_VERSION") == '6.4.0', 'Command Center is v6.4.0')
+    ok(await pg.evaluate("APP_VERSION") >= '6.4.0', 'Command Center is v6.4.0')
     ok(await pg.evaluate("!!document.getElementById('ni-ai')"), 'AI assistant in the Mac sidebar')
     await pg.evaluate("bpMoneyCheck('j1')"); await pg.wait_for_timeout(200); await pg.click('#bp-mcheck-ask'); await pg.wait_for_timeout(500)
     ok('look like money counted again' in await pg.inner_text('#bp-mcheck'), 'Mac: Ask AI spending check works')

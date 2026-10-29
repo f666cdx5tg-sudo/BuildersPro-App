@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.4.0';
+var APP_VERSION = '6.4.1';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -30357,7 +30357,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
       if (ro && !seen.has(box)) { seen.add(box); ro.observe(box); }
     });
   }
-  new MutationObserver(function(){ watch(); soon(); }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  new MutationObserver(function(ms){ for (var i = 0; i < ms.length; i++) { var t = ms[i].target, a = ms[i].addedNodes; if (t && t.closest && t.closest('.bp-kpi-num')) { soon(); return; } for (var k = 0; k < a.length; k++) { var n = a[k]; if (n.nodeType === 1 && (n.classList.contains('bp-kpi-num') || n.querySelector('.bp-kpi-num'))) { watch(); soon(); return; } } } }).observe(document.documentElement, { childList: true, subtree: true });   /* v6.4.1: not on every clock tick */
   window.addEventListener('resize', soon);
   watch(); soon();
   console.log('[BP] v6.3.1 — auto-update in the app, money fits its tile');
@@ -30961,6 +30961,77 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   addMenu();
   if (inApp()) post({ kind: 'aiKeyStatus' });
   console.log('[BP] v6.4.0 — AI assistant');
+})();
+</script>
+<script id="v641">
+/* ══ v6.4.1 — Home stops moving by itself ═════════════════════════════════════
+   Stan (Oct 29, 2026), screen recording: "the app is doing this on its own" —
+   Home sat still, then slid up about a card's height with nobody touching it,
+   and Money Left flashed big for a frame.
+   Cause: background work (iCloud sync pulling, the clock, the On Site card
+   refresh) rebuilt the On Site card every time even when nothing had changed.
+   Each rebuild drew Money Left first in the narrow tile, then moved it to its
+   own full row a moment later, so the card grew and shrank; iPhone then shifted
+   the page to "keep its place" (scroll anchoring) and the screen slid.
+   Fix:
+   1. The On Site card is only replaced when something in it actually changed.
+   2. A big dollar figure is drawn in its full-width row from the start, so the
+      card never changes height after it appears.
+   3. Scroll anchoring is off for BSP's screens, and a background refresh puts
+      the page back exactly where it was (never while your finger is on it).
+   4. The number-fitting no longer reruns every time the clock ticks. */
+(function(){
+  'use strict';
+  if (window.__bp641) return; window.__bp641 = 1;
+  var st = document.createElement('style'); st.id = 'bp-v641-css';
+  st.textContent = '.screen,.screen *,.main,.main *{overflow-anchor:none}';
+  document.head.appendChild(st);
+
+  /* 2. decide the wide money row while building the card */
+  if (typeof window.bpOnSiteCardHtml === 'function' && !window.bpOnSiteCardHtml.__v641) {
+    var _card = window.bpOnSiteCardHtml;
+    window.bpOnSiteCardHtml = function(){
+      var h = _card.apply(this, arguments);
+      return String(h).replace(/<div data-onsite="money"([^>]*)>(<div class="bp-kpi-num"[^>]*>)([^<]*)</, function(all, attrs, open, txt){
+        return txt.replace(/\s/g, '').length >= 9 ? '<div data-onsite="money" class="bp-kpi-wide"' + attrs + '>' + open + txt + '<' : all;
+      });
+    };
+    window.bpOnSiteCardHtml.__v641 = 1;
+  }
+
+  /* 1. skip identical rebuilds of the On Site card */
+  var lastHtml = '';
+  var _replace = Element.prototype.replaceWith;
+  Element.prototype.replaceWith = function(n){
+    if (this.id === 'bp-onsite-card' && n && n.id === 'bp-onsite-card' && arguments.length === 1) {
+      var h = n.outerHTML;
+      if (h === lastHtml && this.isConnected) return;
+      lastHtml = h;
+    }
+    return _replace.apply(this, arguments);
+  };
+
+  /* 3. background redraws keep the page where it was */
+  var touching = false, lastTouch = 0;
+  document.addEventListener('touchstart', function(){ touching = true; lastTouch = Date.now(); }, { passive: true, capture: true });
+  document.addEventListener('touchend', function(){ touching = false; lastTouch = Date.now(); }, { passive: true, capture: true });
+  document.addEventListener('touchcancel', function(){ touching = false; lastTouch = Date.now(); }, { passive: true, capture: true });
+  function scroller(){ return document.querySelector('.screen.active') || document.querySelector('.main') || document.scrollingElement; }
+  function hold(fn){
+    return function(){
+      var s = scroller(), y = s ? s.scrollTop : 0, busy = touching || Date.now() - lastTouch < 700;
+      var r = fn.apply(this, arguments);
+      if (s && !busy && s.isConnected && Math.abs(s.scrollTop - y) > 1) s.scrollTop = y;
+      if (s && !busy) requestAnimationFrame(function(){ if (!touching && Date.now() - lastTouch > 700 && Math.abs(s.scrollTop - y) > 1 && s === scroller()) s.scrollTop = y; });
+      return r;
+    };
+  }
+  ['renderHome', 'renderAll', 'bpPaintHome286', 'bpRenderAttention', 'bpRenderActiveJobBar'].forEach(function(nm){
+    var o = window[nm]; if (typeof o !== 'function' || o.__v641) return;
+    window[nm] = hold(o); window[nm].__v641 = 1;
+    try { if (nm === 'renderHome') renderHome = window[nm]; if (nm === 'renderAll') renderAll = window[nm]; if (nm === 'bpRenderAttention') bpRenderAttention = window[nm]; if (nm === 'bpRenderActiveJobBar') bpRenderActiveJobBar = window[nm]; } catch(e){}
+  });
+  console.log('[BP] v6.4.1 — Home holds still');
 })();
 </script>
 
