@@ -47,7 +47,7 @@ final class ShellModel: NSObject, ObservableObject {
 
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let ucc = WKUserContentController()
-        ucc.addUserScript(WKUserScript(source: Bridge.startScript.replacingOccurrences(of: "__VERSION__", with: version),
+        ucc.addUserScript(WKUserScript(source: Bridge.startScript.replacingOccurrences(of: "__VERSION__", with: version).replacingOccurrences(of: "__CAPS__", with: SiteTools.capsJS()),
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         cfg.userContentController = ucc
 
@@ -110,6 +110,8 @@ final class ShellModel: NSObject, ObservableObject {
         case "calendarSync":
             let evs = body["events"] as? [[String: Any]] ?? []
             CalendarSync.shared.sync(evs) { [weak self] js in self?.webView.evaluateJavaScript(js) }
+        case "measure", "roomScan", "roomShare3D":
+            siteTool(kind, body)
         case "backupBegin", "backupChunk", "backupEnd":
             DailyBackup.shared.handle(kind, body, reply: { [weak self] js in self?.webView.evaluateJavaScript(js) })
         default:
@@ -155,7 +157,7 @@ final class ShellModel: NSObject, ObservableObject {
     // MARK: Share, save, print — iPhone / iPad
 
     #if os(iOS)
-    private func topViewController() -> UIViewController? {
+    func topViewController() -> UIViewController? {
         let windows = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
