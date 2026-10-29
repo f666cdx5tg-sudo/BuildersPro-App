@@ -116,6 +116,8 @@ final class ShellModel: NSObject, ObservableObject {
         case "calendarSync":
             let evs = body["events"] as? [[String: Any]] ?? []
             CalendarSync.shared.sync(evs) { [weak self] js in self?.webView.evaluateJavaScript(js) }
+        case "ai", "aiKeySet", "aiKeyClear", "aiKeyStatus":
+            aiMessage(kind, body)
         case "haptic":
             #if os(iOS)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
