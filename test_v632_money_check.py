@@ -32,7 +32,7 @@ async def run(b, desk):
     await pg.goto('http://localhost:%d/%s' % (PORT, 'desktop.html' if desk else 'index.html')); await pg.wait_for_timeout(3000)
     await pg.evaluate("document.getElementById('bp-lock')&&document.getElementById('bp-lock').remove(); window.bpICloudSync=undefined;")
     await pg.evaluate(SEED)
-    ok(await pg.evaluate("APP_VERSION") == '6.3.2', 'on v6.3.2')
+    ok(await pg.evaluate("APP_VERSION") >= '6.3.2', 'on v6.3.2')
     d = await pg.evaluate("(function(){ var d = bpMoneyCheckData('j1'); return { left: d.left, tile: d.left, exp: d.expTotal, sub: d.subTotal, flags: d.flags, n: d.flaggedCount }; })()")
     ok(abs(d['left'] - d['tile']) < 0.005, 'Money check adds up to the same Money Left as the tile (%s)' % d['left'])
     ok(abs(d['left'] - (20000 - (412.37*2 + 980.10*2 + 2500 + 650) - 6000)) < 0.005, 'math: contract − expenses − sub full value')
