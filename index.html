@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.5.0';
+var APP_VERSION = '6.5.1';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -18940,10 +18940,10 @@ function barHtml(job){
       + '<button data-bp-open="log" aria-label="Daily Log" title="Daily Log" onclick="bpOpenDailyLog(\'\',\'' + today() + '\')" style="' + B + ';padding:16px 8px;background:rgba(10,132,255,.13);color:#0A84FF;border:1.5px solid rgba(10,132,255,.55)">' + IC(ICON.log) + '</button>'
       + '<button data-bp-open="notes" aria-label="Notes" title="Notes" onclick="bpOpenNotes()" style="' + B + ';padding:16px 8px;background:rgba(48,209,88,.13);color:#30D158;border:1.5px solid rgba(48,209,88,.55)">' + IC('<svg viewBox="0 0 24 24" style="width:20px;height:20px;margin-right:6px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>') + '</button>';
   }
-  return '<button data-bp-open="shop" onclick="bpOpenShop(' + (job === undefined ? '' : '\'' + Q(job) + '\'') + ')" style="' + B + ';background:rgba(255,159,10,.13);color:#FF9F0A;border:1.5px solid rgba(255,159,10,.55)">' + ICON.cart
-    + '<span>Shopping List' + (t.nOpen ? '<span style="display:block;font-size:12.5px;font-weight:700;opacity:.85">' + t.nOpen + ' to buy · ' + money(t.toBuyWithTax) + '</span>' : '') + '</span></button>'
-    + '<button data-bp-open="log" onclick="bpOpenDailyLog(' + (job === undefined ? '' : '\'' + Q(job) + '\'') + ',\'' + today() + '\')" style="' + B + ';background:rgba(10,132,255,.13);color:#0A84FF;border:1.5px solid rgba(10,132,255,.55)">' + ICON.log
-    + '<span>Daily Log<span style="display:block;font-size:12.5px;font-weight:700;opacity:.85">' + (logged ? 'Logged today' : 'Today not logged') + '</span></span></button>';
+  /* v6.5.1 — Stan (Oct 29): "i dont need the names in the cell just the logo". Job page tiles = icon only, like Home. */
+  var IC2 = function(svg){ return svg.replace('margin-right:6px','margin-right:0').replace('width:20px;height:20px','width:28px;height:28px'); };
+  return '<button data-bp-open="shop" aria-label="Shopping List" title="Shopping List" onclick="bpOpenShop(' + (job === undefined ? '' : '\'' + Q(job) + '\'') + ')" style="' + B + ';padding:16px 8px;background:rgba(255,159,10,.13);color:#FF9F0A;border:1.5px solid rgba(255,159,10,.55)">' + IC2(ICON.cart) + '</button>'
+    + '<button data-bp-open="log" aria-label="Daily Log" title="Daily Log" onclick="bpOpenDailyLog(' + (job === undefined ? '' : '\'' + Q(job) + '\'') + ',\'' + today() + '\')" style="' + B + ';padding:16px 8px;background:rgba(10,132,255,.13);color:#0A84FF;border:1.5px solid rgba(10,132,255,.55)">' + IC2(ICON.log) + '</button>';
 }
 function paintBars(){
   try {
