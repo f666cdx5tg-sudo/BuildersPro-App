@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.5.1';
+var APP_VERSION = '6.5.2';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -24488,7 +24488,14 @@ console.log('[BP] v3.62 notes ready');
     }
     return null;
   }
-  function textWidth(e){ var r = document.createRange(); r.selectNodeContents(e); return r.getBoundingClientRect(); }
+  /* v6.5.2: measure with element boxes only. iPhone/iPad WebKit reports text-range boxes at a different
+     scale from element boxes when Large text is on (the page is zoomed), which made every row look like
+     it spilled — and the old fix zoomed those rows, which threw off where taps landed (every tap -> Calendar). */
+  function textWidth(e){
+    var r = e.getBoundingClientRect(), over = e.scrollWidth - e.clientWidth;
+    if (over > 1 && e.clientWidth) { var k = r.width / (e.offsetWidth || r.width || 1); return { left: r.left, right: r.right + over * k, width: r.width + over * k }; }
+    return r;
+  }
   function cut(e, c){ return (c.overflowX === 'hidden' || c.overflowX === 'clip' || c.textOverflow === 'ellipsis') && e.scrollWidth > e.clientWidth + 1; }
   function spills(e){
     var box = boxOf(e); if (!box) return null;
@@ -24510,14 +24517,14 @@ console.log('[BP] v3.62 notes ready');
     var q = e.parentElement, i = 0; while (q && i++ < 3 && q !== document.body) { if (getComputedStyle(q).display.indexOf('flex') >= 0) { q.style.minWidth = '0'; } q = q.parentElement; }
   }
   function fitRow(row, box){
-    /* a line of several bits (4 OPEN 36 DONE) that runs past its card: shrink the line as one */
-    var b = box.getBoundingClientRect(), r = row.getBoundingClientRect(), t = textWidth(row);
-    var need = Math.max(r.width, t.width), have = b.right - Math.max(b.left, r.left) - 6;
-    if (need <= have || have <= 0) return true;
-    var z = Math.max(0.68, (parseFloat(row.style.zoom) || 1) * have / need);
-    row.style.zoom = z.toFixed(3);
-    if (z <= 0.68) { row.style.flexWrap = 'wrap'; row.style.rowGap = '2px'; }   /* smallest phone, biggest text: let the line break */
-    return true;
+    /* a line of several bits (4 OPEN 36 DONE) that runs past its card: let it wrap onto a second line.
+       v6.5.2: never CSS zoom — on iPhone a zoomed row inside the zoomed page sends taps to the wrong place. */
+    if (row.style.zoom) row.style.zoom = '';
+    var d = getComputedStyle(row).display;
+    if (d.indexOf('flex') < 0) return false;
+    row.style.flexWrap = 'wrap'; row.style.rowGap = row.style.rowGap || '4px';
+    var b = box.getBoundingClientRect(), r = row.getBoundingClientRect();
+    return r.right <= b.right + 1.5;
   }
   var busy = false;
   function sweep(){
