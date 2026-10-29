@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.3.3';
+var APP_VERSION = '6.4.0';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -30527,6 +30527,443 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   console.log('[BP] v6.3.3 — opens on Home, bigger attention list');
 })();
 </script>
+<script id="v640">
+/* ══ v6.4.0 — BSP AI ASSISTANT ═══════════════════════════════════════════════
+   Stan (Oct 29, 2026): "there has to be a way to check spending multiple entries.
+   i need ai to check my spending and spelling and put together smart checklist for
+   each room". Decided: his own Anthropic key, kept in the iPhone/Mac Keychain by the
+   App Store app (the page never sees it); spelling checked both when a field is saved
+   and before anything goes out; room checklists built from room type + trade, the
+   room's photos, local code for the job's town, and his notes + Room scan.
+   1. AI assistant (side menu): paste the key once, test it, remove it. Spelling on/off.
+   2. Money check › Ask AI to check: reads every expense on the job (with line items,
+      receipts, deliveries, sub payments) and marks the ones that look entered twice,
+      with the reason. Nothing is changed for you.
+   3. Spelling: when you finish a text box, a quiet "Spelling: ... Fix" chip appears if
+      something's misspelled. Before the Full Day PDF, EOD email/text or a change order
+      goes out, every line gets checked and you pick which fixes to keep.
+   4. Smart checklist (in each space): AI builds the list; you tick which to add.
+   AI only answers inside the App Store app (that's where the key lives). Small model
+   for spelling and spending (fractions of a cent); the bigger model for checklists. */
+(function(){
+  'use strict';
+  if (window.__bp640) return; window.__bp640 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  var FAST = 'claude-haiku-5-5', SMART = 'claude-sonnet-5-5';
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function say(t){ try { if (typeof toast === 'function') toast(t); } catch(e){} }
+  function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+  function nowIso(){ return new Date().toISOString(); }
+  function newId(){ try { if (typeof uid === 'function') return uid(); } catch(e){} return 'pb' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); }
+  function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else if (typeof save === 'function') save(); } catch(e){} }
+  function M(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '−$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function post(m){ try { window.webkit.messageHandlers.bp.postMessage(m); return true; } catch(e){ return false; } }
+  function inApp(){ try { return !!(window.BPShell && window.webkit && webkit.messageHandlers && webkit.messageHandlers.bp); } catch(e){ return false; } }
+
+  var ICON = {
+    spark: '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:1.15em;height:1.15em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.2em"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>',
+    x: '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    flag: '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;flex-shrink:0;fill:none;stroke:#BF5AF2;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>'
+  };
+
+  /* ── talking to the AI (through the app) ── */
+  var PENDING = {}, KEY = { known: false, has: false, waiters: [] };
+  window.bpAIDone = function(id, r){ var cb = PENDING[id]; delete PENDING[id]; if (cb) cb(r || { ok: false, err: 'No answer' }); };
+  window.bpAIKeyStatus = function(has){ KEY.known = true; KEY.has = !!has; var w = KEY.waiters; KEY.waiters = []; w.forEach(function(f){ try { f(KEY.has); } catch(e){} }); paintSettings(); };
+  window.bpAIHasKey = function(cb){ if (!inApp()) return cb(false); if (KEY.known) return cb(KEY.has); KEY.waiters.push(cb); post({ kind: 'aiKeyStatus' }); };
+  window.bpAIAsk = function(opts){
+    return new Promise(function(res){
+      if (!inApp()) return res({ ok: false, err: 'app' });
+      var id = 'ai' + Date.now() + Math.random().toString(36).slice(2, 6);
+      var timer = setTimeout(function(){ if (PENDING[id]) { delete PENDING[id]; res({ ok: false, err: 'The AI took too long. Try again.' }); } }, 95000);
+      PENDING[id] = function(r){ clearTimeout(timer); if (r && r.err === 'nokey') { KEY.known = true; KEY.has = false; } res(r); };
+      var body = { model: opts.model || FAST, max_tokens: opts.max || 1500, messages: [{ role: 'user', content: opts.content }] };
+      if (opts.system) body.system = opts.system;
+      post({ kind: 'ai', id: id, body: body });
+    });
+  };
+  function json(text){
+    var t = String(text || ''), a = t.indexOf('{'), b = t.lastIndexOf('}');
+    if (a < 0 || b <= a) return null;
+    try { return JSON.parse(t.slice(a, b + 1)); } catch(e){ return null; }
+  }
+  function needKey(){
+    if (!inApp()) { say('AI works in the BuildersPro app on iPhone, iPad and Mac'); return true; }
+    if (KEY.known && !KEY.has) { say('Add your AI key first'); window.bpAISettings(); return true; }
+    return false;
+  }
+  function errText(r){ return !r ? 'No answer' : r.err === 'app' ? 'AI works in the BuildersPro app' : r.err === 'nokey' ? 'Add your AI key in the side menu › AI assistant' : (r.err || 'Something went wrong'); }
+
+  /* ── sheet helper (glass, bottom sheet on phone, centered on Mac) ── */
+  function sheet(id, title, body){
+    var old = document.getElementById(id); if (old) old.remove();
+    var o = document.createElement('div'); o.id = id;
+    o.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.55);display:flex;align-items:' + (IS_DESK ? 'center' : 'flex-end') + ';justify-content:center';
+    o.innerHTML = '<div style="width:100%;max-width:' + (IS_DESK ? '620px' : '560px') + ';max-height:calc(' + (IS_DESK ? '86vh' : '92vh') + ' / var(--bp-zoom, 1));overflow-y:auto;background:color-mix(in srgb,var(--card,#1c1c1e) 90%,transparent);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);color:var(--text,#f0f0f0);border-radius:' + (IS_DESK ? '18px' : '18px 18px 0 0') + ';padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="flex:1;min-width:0;font-size:19px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + title + '</div>'
+      + '<button type="button" data-close aria-label="Close" style="width:44px;height:44px;border-radius:50%;border:1px solid var(--border,#333);background:transparent;color:var(--text,#f0f0f0);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + ICON.x + '</button></div>'
+      + '<div data-body>' + body + '</div></div>';
+    o.addEventListener('click', function(e){ if (e.target === o || (e.target.closest && e.target.closest('[data-close]'))) o.remove(); });
+    document.body.appendChild(o);
+    return o;
+  }
+  var BTN = 'min-height:50px;border-radius:14px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;padding:0 16px';
+  var BLUE = BTN + ';border:none;background:#0A84FF;color:#fff';
+  var GHOST = BTN + ';border:1.5px solid rgba(10,132,255,.5);background:transparent;color:#0A84FF';
+  var NOTE = 'font-size:13px;color:var(--muted,#8e8e93);line-height:1.45';
+  function loading(msg){ return '<div data-bp-wrap="1" style="display:flex;align-items:center;gap:10px;padding:18px 4px;font-size:15px;font-weight:700;color:#BF5AF2"><span class="bp-ai-spin"></span>' + E(msg) + '</div>'; }
+  var css = document.createElement('style'); css.id = 'bp-v640-css';
+  css.textContent = '.bp-ai-spin{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(191,90,242,.3);border-top-color:#BF5AF2;animation:bpAiSpin .8s linear infinite;flex-shrink:0}'
+    + '@keyframes bpAiSpin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.bp-ai-spin{animation:none}}'
+    + '.bp-sp-chip{display:flex;align-items:center;gap:8px;margin:6px 0 2px;padding:7px 10px;border-radius:10px;background:rgba(191,90,242,.12);border:1px solid rgba(191,90,242,.45);font-size:14px;color:var(--text,#f0f0f0)}'
+    + '.bp-sp-chip b{color:#BF5AF2;white-space:nowrap}.bp-sp-chip span{flex:1;min-width:0}'
+    + '.bp-sp-chip button{min-height:34px;padding:0 12px;border-radius:9px;border:none;font-weight:800;font-size:14px;font-family:inherit;cursor:pointer}'
+    + '.bp-ai-row{display:flex;align-items:flex-start;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border,#2a2a2a);font-size:15px;cursor:pointer}'
+    + '.bp-ai-row input{width:22px;height:22px;flex-shrink:0;margin-top:1px;accent-color:#30D158}';
+  document.head.appendChild(css);
+
+  /* ════ 1. AI assistant settings ════ */
+  function paintSettings(){
+    var b = document.querySelector('#bp-ai-settings [data-body]'); if (!b) return;
+    var on = lsGet('bp_ai_spell') !== '0';
+    var status = !inApp() ? '<b style="color:#FF9F0A">Works in the BuildersPro app</b> on iPhone, iPad and Mac (that\'s where your key is kept safe).'
+      : !KEY.known ? 'Checking…' : KEY.has ? '<b style="color:#30D158">Connected.</b> Your key is locked in this device\'s Keychain.' : '<b style="color:#FF453A">Not set up yet.</b>';
+    b.innerHTML = '<div data-bp-wrap="1" style="font-size:15px;line-height:1.45;margin-bottom:12px">' + status + '</div>'
+      + (inApp() ? '<label for="bp-ai-key" style="display:block;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:4px 0 6px">' + (KEY.has ? 'Replace key' : 'Paste your API key') + '</label>'
+        + '<input id="bp-ai-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" style="width:100%;box-sizing:border-box;min-height:48px;border-radius:12px;border:1.5px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;padding:0 12px;font-family:inherit"/>'
+        + '<div style="display:flex;gap:8px;margin-top:10px"><button type="button" id="bp-ai-save" style="' + BLUE + ';flex:1">Save key</button>'
+        + (KEY.has ? '<button type="button" id="bp-ai-test" style="' + GHOST + ';flex:1">Test</button>' : '') + '</div>' : '')
+      + '<div data-bp-wrap="1" id="bp-ai-test-out" style="' + NOTE + ';margin-top:8px"></div>'
+      + '<label style="display:flex;align-items:center;gap:12px;margin-top:16px;padding:12px;border-radius:12px;border:1px solid var(--border,#333);font-size:15px;font-weight:700;cursor:pointer"><input type="checkbox" id="bp-ai-spell"' + (on ? ' checked' : '') + ' style="width:22px;height:22px;accent-color:#30D158"/>Check spelling when I finish a text box</label>'
+      + '<div data-bp-wrap="1" style="' + NOTE + ';margin-top:12px">Get a key at <b style="color:var(--text,#f0f0f0)">console.anthropic.com</b> › API Keys. You pay Anthropic per use: a spelling or spending check is a fraction of a cent; a room checklist with photos is a few cents.</div>'
+      + (KEY.has ? '<button type="button" id="bp-ai-remove" style="' + BTN + ';width:100%;margin-top:14px;border:1.5px solid rgba(255,69,58,.5);background:transparent;color:#FF453A">Remove key from this device</button>' : '');
+    var sv = document.getElementById('bp-ai-save');
+    if (sv) sv.onclick = function(){ var k = (document.getElementById('bp-ai-key').value || '').trim(); if (k.length < 20) { say('That key looks too short'); return; } KEY.known = false; post({ kind: 'aiKeySet', key: k }); say('Saving…'); };
+    var ts = document.getElementById('bp-ai-test');
+    if (ts) ts.onclick = function(){
+      var out = document.getElementById('bp-ai-test-out'); out.innerHTML = loading('Asking the AI…');
+      window.bpAIAsk({ content: 'Reply with the single word: ready' , max: 10 }).then(function(r){ out.innerHTML = r.ok ? '<b style="color:#30D158">Working.</b> The AI answered.' : '<b style="color:#FF453A">' + E(errText(r)) + '</b>'; });
+    };
+    var rm = document.getElementById('bp-ai-remove');
+    if (rm) rm.onclick = function(){ post({ kind: 'aiKeyClear' }); };
+    var sp = document.getElementById('bp-ai-spell');
+    if (sp) sp.onchange = function(){ lsSet('bp_ai_spell', sp.checked ? '1' : '0'); };
+  }
+  window.bpAISettings = function(){
+    try { if (typeof closeNavDrawer === 'function') closeNavDrawer(); } catch(e){}
+    sheet('bp-ai-settings', 'AI assistant', '');
+    paintSettings();
+    if (inApp()) { KEY.known = false; post({ kind: 'aiKeyStatus' }); }
+  };
+  function addMenu(){
+    var lbl = '<span class="bp-lbl">AI assistant</span>';
+    if (!IS_DESK) {
+      var after = document.getElementById('nav-roomscan') || document.getElementById('nav-colormatch');
+      if (after && !document.getElementById('nav-ai')) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'nav-btn bp-tool'; b.id = 'nav-ai';
+        b.innerHTML = ICON.spark.replace('style="width:1.15em;height:1.15em;', 'style="') + lbl;
+        b.onclick = function(){ window.bpAISettings(); };
+        after.parentNode.insertBefore(b, after.nextSibling);
+      }
+    } else {
+      var cal = document.querySelector('.sidebar [onclick="showView(\'calendar\')"]');
+      if (cal && !document.getElementById('ni-ai')) {
+        var n = document.createElement('button'); n.className = 'ni c-blue'; n.id = 'ni-ai';
+        n.innerHTML = ICON.spark + ' AI assistant';
+        n.onclick = function(){ window.bpAISettings(); };
+        cal.parentNode.insertBefore(n, cal.nextSibling);
+      }
+    }
+  }
+
+  /* ════ 2. Spending check (Money check › Ask AI) ════ */
+  window.bpAISpending = function(jobId){
+    if (needKey()) return;
+    var job = (DB.jobs || []).find(function(j){ return j.id === jobId; }) || {};
+    var exps = (DB.expenses || []).filter(function(e){ return e && e.jobId === jobId; });
+    var subs = (DB.contractors || []).filter(function(c){ return c && c.jobId === jobId; });
+    var pays = (DB.payments || []).filter(function(p){ return subs.some(function(s){ return s.id === p.contractorId; }); });
+    var data = {
+      job: job.name, contract: +job.contract || 0,
+      expenses: exps.map(function(e){ return { id: e.id, date: String(e.date || '').slice(0, 10), what: e.desc || '', vendor: e.vendor || '', category: e.category || '', amount: +e.amount || 0,
+        source: e.fromReceiptScan ? 'receipt scan' : e.fromShopping ? 'shopping list' : e.isDelivery ? 'delivery' : 'typed in', hasReceiptPhoto: !!e.receiptSrc, entered: e.created || '',
+        items: (e.items || []).slice(0, 25).map(function(it){ return [it.name, it.qty, it.price != null ? it.price : it.cost]; }) }; }),
+      subs: subs.map(function(s){ return { name: s.name || '', company: s.company || '', fullContract: +s.value || 0 }; }),
+      subPayments: pays.map(function(p){ var s = subs.find(function(x){ return x.id === p.contractorId; }) || {}; return { sub: s.name || s.company || '', date: p.date || '', amount: +p.amount || 0 }; })
+    };
+    var box = document.getElementById('bp-mcheck-ai');
+    if (box) box.innerHTML = loading('AI is reading ' + exps.length + ' expenses…');
+    window.bpAIAsk({ model: FAST, max: 2500,
+      system: 'You audit job-cost records for a plumbing and general contractor. Money Left = contract − every expense − each sub\'s full contract value. Find expenses that are probably the same money entered more than once: identical or near-identical entries, a receipt scan plus a typed or shopping-list entry for the same purchase, a delivery plus the receipt for it, the same items in two expenses, or an expense that pays a sub who is already counted through their full contract value. Do not flag normal repeat purchases from the same store on different days unless the items match. Answer with JSON only.',
+      content: 'Records:\n' + JSON.stringify(data) + '\n\nReturn JSON: {"repeats":[{"keep":"<expense id to keep>","extra":["<expense ids that look like the same money again>"],"why":"<one short sentence a contractor understands>","sure":"high|medium"}],"subDoubles":[{"id":"<expense id>","why":"..."}],"summary":"<one sentence>"}. Use only ids from the records. Empty arrays if nothing looks doubled.'
+    }).then(function(r){
+      var b = document.getElementById('bp-mcheck-ai'); if (!b) return;
+      if (!r.ok) { b.innerHTML = '<div data-bp-wrap="1" style="color:#FF453A;font-weight:700;padding:10px 2px">' + E(errText(r)) + '</div>'; return; }
+      var j = json(r.text) || {}, byId = {}; exps.forEach(function(e){ byId[e.id] = e; });
+      var marks = {}, total = 0;
+      (j.repeats || []).forEach(function(g){ (g.extra || []).forEach(function(id){ if (byId[id] && !marks[id]) { marks[id] = (g.sure === 'high' ? '' : 'Maybe: ') + (g.why || 'Looks entered twice'); total += +byId[id].amount || 0; } }); });
+      (j.subDoubles || []).forEach(function(g){ if (byId[g.id] && !marks[g.id]) { marks[g.id] = g.why || 'Pays a sub already counted in full'; total += +byId[g.id].amount || 0; } });
+      window._bpAIMarks = window._bpAIMarks || {}; window._bpAIMarks[jobId] = marks;
+      var n = Object.keys(marks).length;
+      b.innerHTML = '<div data-bp-wrap="1" style="padding:12px;border-radius:12px;background:rgba(191,90,242,.12);border:1px solid rgba(191,90,242,.45);font-size:14.5px;line-height:1.45">'
+        + '<b style="color:#BF5AF2">AI: ' + (n ? n + ' expense' + (n === 1 ? '' : 's') + ' look like money counted again · ' + M(total) : 'nothing looks counted twice') + '</b>'
+        + (j.summary ? '<br>' + E(j.summary) : '') + (n ? '<br>Marked with the purple star below. If AI is right, Money Left would be ' + M(window.bpMoneyCheckData(jobId).left + total) + '.' : '') + '</div>';
+      paintAIMarks(jobId);
+    });
+  };
+  function paintAIMarks(jobId){
+    var marks = (window._bpAIMarks || {})[jobId] || {};
+    Object.keys(marks).forEach(function(id){
+      var row = document.querySelector('#bp-mcheck [onclick="bpMoneyCheckEdit(\'' + id + '\')"]'); if (!row || row.querySelector('[data-ai-mark]')) return;
+      var d = document.createElement('div'); d.setAttribute('data-ai-mark', '1'); d.setAttribute('data-bp-wrap', '1');
+      d.style.cssText = 'flex-basis:100%;display:flex;gap:6px;align-items:flex-start;font-size:13px;font-weight:700;color:#BF5AF2;padding-left:4px;line-height:1.35;white-space:normal';
+      d.innerHTML = ICON.flag + '<span>AI: ' + E(marks[id]) + '</span>';
+      row.appendChild(d);
+    });
+  }
+  if (typeof window.bpMoneyCheck === 'function') {
+    var _mc = window.bpMoneyCheck;
+    window.bpMoneyCheck = function(jobId){
+      var r = _mc.apply(this, arguments);
+      var card = document.querySelector('#bp-mcheck > div'); if (!card) return r;
+      var host = document.createElement('div');
+      host.innerHTML = '<button type="button" id="bp-mcheck-ask" style="' + BTN + ';width:100%;margin-top:12px;border:1.5px solid rgba(191,90,242,.55);background:rgba(191,90,242,.10);color:#BF5AF2;display:flex;align-items:center;justify-content:center;gap:8px">' + ICON.spark + 'Ask AI to check every expense</button><div id="bp-mcheck-ai" style="margin-top:8px"></div>';
+      var first = card.children[1]; card.insertBefore(host, first ? first.nextSibling : null);
+      document.getElementById('bp-mcheck-ask').onclick = function(){ window.bpAISpending(jobId); };
+      paintAIMarks(jobId);
+      return r;
+    };
+  }
+
+  /* ════ 3. Spelling ════ */
+  var SKIP = /search|filter|email|phone|cell|tel|zip|amount|price|cost|qty|code|pin|pass|token|key|url|gist|po\b|lot|serial/i;
+  function spellable(el){
+    if (!el || el.readOnly || el.disabled || el.closest('#bp-ai-settings')) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    if (el.tagName !== 'INPUT') return false;
+    var t = (el.type || 'text').toLowerCase(); if (t !== 'text' && t !== '') return false;
+    if (SKIP.test((el.id || '') + ' ' + (el.name || '') + ' ' + (el.placeholder || '') + ' ' + (el.getAttribute('inputmode') || ''))) return false;
+    if (/numeric|decimal|tel|email/.test(el.getAttribute('inputmode') || '')) return false;
+    return true;
+  }
+  var SPELL_SYS = 'You fix spelling for a construction contractor\'s app. Correct only misspellings and obvious typos. Keep trade terms, abbreviations, model numbers, brand names, measurements (2", 3/4", 18"), names and capitalization as written. Do not rephrase, add or remove words. Answer with JSON only.';
+  function spellOne(text){
+    return window.bpAIAsk({ model: FAST, max: 600, system: SPELL_SYS, content: 'Text: ' + JSON.stringify(text) + '\nReturn {"fixed":"<the text with spelling fixed, or the same text if it is fine>"}' })
+      .then(function(r){ var j = r.ok && json(r.text); return j && typeof j.fixed === 'string' ? j.fixed : null; });
+  }
+  window.bpSpellOne = spellOne;
+  function chipFor(el, fixed){
+    var old = el.parentNode && el.parentNode.querySelector(':scope > .bp-sp-chip'); if (old) old.remove();
+    var c = document.createElement('div'); c.className = 'bp-sp-chip'; c.setAttribute('data-bp-wrap', '1');
+    c.innerHTML = '<b>Spelling</b><span>' + E(fixed) + '</span><button type="button" data-fix style="background:#BF5AF2;color:#fff">Fix</button><button type="button" data-no aria-label="Keep mine" style="background:transparent;color:var(--muted,#8e8e93)">Keep</button>';
+    c.querySelector('[data-fix]').onclick = function(){
+      el.value = fixed; el.__bpSpellSkip = fixed;
+      ['input', 'change'].forEach(function(t){ el.dispatchEvent(new Event(t, { bubbles: true })); });
+      c.remove(); say('Fixed');
+    };
+    c.querySelector('[data-no]').onclick = function(){ el.__bpSpellSkip = el.value; c.remove(); };
+    el.insertAdjacentElement('afterend', c);
+  }
+  document.addEventListener('change', function(e){
+    var el = e.target;
+    if (lsGet('bp_ai_spell') === '0' || !inApp() || !spellable(el)) return;
+    var v = String(el.value || '').trim();
+    if (v.length < 3 || !/[a-z]{3}/i.test(v) || el.__bpSpellSkip === el.value) return;
+    window.bpAIHasKey(function(has){
+      if (!has) return;
+      spellOne(v).then(function(fixed){
+        if (!fixed || fixed.trim() === v || String(el.value || '').trim() !== v || !el.isConnected) return;
+        chipFor(el, fixed);
+      });
+    });
+  }, true);
+
+  /* before anything goes out: gather every line, AI fixes, you pick */
+  function textFields(obj, prefix, out){
+    if (!obj) return;
+    Object.keys(obj).forEach(function(k){
+      var v = obj[k];
+      if (typeof v !== 'string' || v.length < 3 || !/[a-z]{3}/i.test(v)) return;
+      if (/^(id|jobId|roomId|date|created|updatedAt|time|status|src|receiptSrc|photo|signature|sig|url|email|phone|zip|type|category|priority|trade|createdBy|level|space)$/i.test(k)) return;
+      if (/^data:|^https?:|^bp[a-z0-9]{2,}_/i.test(v) || v.length > 4000) return;
+      out.push({ key: prefix + k, text: v, obj: obj, field: k });
+    });
+  }
+  function reviewThenSend(lines, label, go){
+    if (!inApp() || !lines.length) return go();
+    window.bpAIHasKey(function(has){
+      if (!has) return go();
+      var s = sheet('bp-spell-review', 'Spelling check', loading('Checking ' + lines.length + ' line' + (lines.length === 1 ? '' : 's') + ' before ' + label + '…')
+        + '<button type="button" id="bp-sr-skip" style="' + GHOST + ';width:100%;margin-top:6px">Send without checking</button>');
+      var done = false;
+      function finish(){ if (done) return; done = true; var x = document.getElementById('bp-spell-review'); if (x) x.remove(); go(); }
+      document.getElementById('bp-sr-skip').onclick = finish;
+      var payload = lines.slice(0, 120).map(function(l, i){ return { n: i, t: l.text }; });
+      window.bpAIAsk({ model: FAST, max: 4000, system: SPELL_SYS, content: 'Lines:\n' + JSON.stringify(payload) + '\nReturn {"fixes":[{"n":<line number>,"fixed":"<corrected line>"}]} only for lines that have a spelling mistake.' })
+        .then(function(r){
+          if (done) return;
+          var j = r.ok ? json(r.text) : null;
+          var fixes = (j && j.fixes || []).filter(function(f){ var l = lines[f.n]; return l && typeof f.fixed === 'string' && f.fixed.trim() && f.fixed !== l.text; });
+          if (!fixes.length) { if (!r.ok) say(errText(r) + ' — sending as is'); else say('Spelling looks good'); return finish(); }
+          var b = s.querySelector('[data-body]');
+          b.innerHTML = '<div data-bp-wrap="1" style="font-size:14.5px;margin-bottom:6px">' + fixes.length + ' spelling fix' + (fixes.length === 1 ? '' : 'es') + ' before ' + E(label) + '. Untick any you want to keep as written.</div>'
+            + fixes.map(function(f, i){ return '<label class="bp-ai-row" data-bp-wrap="1"><input type="checkbox" checked data-fx="' + i + '"/><span style="flex:1;min-width:0;line-height:1.4"><s style="color:var(--muted,#8e8e93)">' + E(lines[f.n].text) + '</s><br><b>' + E(f.fixed) + '</b></span></label>'; }).join('')
+            + '<div style="display:flex;gap:8px;margin-top:14px"><button type="button" id="bp-sr-asis" style="' + GHOST + ';flex:1">Send as is</button><button type="button" id="bp-sr-fix" style="' + BLUE + ';flex:1">Fix and send</button></div>';
+          document.getElementById('bp-sr-asis').onclick = finish;
+          document.getElementById('bp-sr-fix').onclick = function(){
+            var t = nowIso();
+            [].forEach.call(b.querySelectorAll('[data-fx]'), function(cb){
+              if (!cb.checked) return; var f = fixes[+cb.getAttribute('data-fx')], l = lines[f.n];
+              l.obj[l.field] = f.fixed; l.obj.updatedAt = t;
+            });
+            persist(); finish();
+          };
+        });
+    });
+  }
+  function dayKey(s){ return String(s || '').slice(0, 10); }
+  if (typeof window.bpSendPick === 'function') {
+    var _pick = window.bpSendPick;
+    window.bpSendPick = function(what, id){
+      var self = this, args = arguments;
+      var r = (DB.reports || []).find(function(x){ return x.id === id; });
+      if (!r) return _pick.apply(self, args);
+      var lines = []; textFields(r, 'report.', lines);
+      (DB.punchlist || []).forEach(function(p){
+        if (!p || p.jobId !== r.jobId) return;
+        var touched = [p.created, p.updatedAt, p.completedAt].some(function(d){ return dayKey(d) === dayKey(r.date); });
+        if (touched) { if (p.text) lines.push({ text: p.text, obj: p, field: 'text' }); if (p.extraNotes && p.extraNotes.length > 2) lines.push({ text: p.extraNotes, obj: p, field: 'extraNotes' }); }
+      });
+      var s = document.getElementById('bp-send-sheet'); if (s) s.remove();
+      reviewThenSend(lines, what === 'report' ? 'the Full Day PDF' : what === 'email' ? 'the email' : 'the text', function(){ _pick.apply(self, args); });
+    };
+    try { bpSendPick = window.bpSendPick; } catch(e){}
+  }
+  ['emailChangeOrder', 'printChangeOrder'].forEach(function(fn){
+    var orig = window[fn]; if (typeof orig !== 'function') return;
+    window[fn] = function(id){
+      var self = this, args = arguments;
+      var c = (DB.changeOrders || []).find(function(x){ return x.id === id; });
+      if (!c) return orig.apply(self, args);
+      var lines = []; textFields(c, 'co.', lines);
+      (c.items || c.lines || []).forEach(function(it){ if (it && typeof it === 'object') textFields(it, 'line.', lines); });
+      reviewThenSend(lines, 'the change order', function(){ orig.apply(self, args); });
+    };
+  });
+
+  /* ════ 4. Smart checklist for a room ════ */
+  var TRADES = ['Plumbing', 'Electrical', 'Framing', 'Drywall', 'Tile', 'Paint', 'HVAC', 'Carpentry', 'Demo', 'General'];
+  function roomPhotos(roomId){
+    var list = [];
+    try { list = (window.bpPhotoEntries ? bpPhotoEntries({ roomId: roomId }) : (DB.photos || []).filter(function(p){ return p.roomId === roomId; })); } catch(e){}
+    return list.filter(function(p){ return p && p.src && /^data:image|^blob:|^https?:/.test(p.src); })
+      .sort(function(a, b){ return String(b.date || b.created || '') < String(a.date || a.created || '') ? -1 : 1; });
+  }
+  function shrink(src){
+    return new Promise(function(res){
+      var i = new Image(); i.crossOrigin = 'anonymous';
+      i.onload = function(){ try { var s = Math.min(1, 1024 / Math.max(i.naturalWidth, i.naturalHeight)); var c = document.createElement('canvas'); c.width = Math.round(i.naturalWidth * s); c.height = Math.round(i.naturalHeight * s); c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.72).split(',')[1]); } catch(e){ res(null); } };
+      i.onerror = function(){ res(null); }; i.src = src;
+    });
+  }
+  function townOf(job){ var a = [job.address, job.city, job.state, job.zip].filter(Boolean).join(', '); return a || ''; }
+  window.bpAIChecklist = function(roomId){
+    var room = (DB.rooms || []).find(function(r){ return r.id === roomId; }); if (!room) return;
+    var job = (DB.jobs || []).find(function(j){ return j.id === room.jobId; }) || {};
+    var have = (DB.punchlist || []).filter(function(p){ return p && p.roomId === roomId; });
+    var usedTrades = {}; have.forEach(function(p){ if (p.trade) usedTrades[p.trade] = 1; });
+    var pick = lsGet('bp_ai_trades_' + roomId); pick = pick ? pick.split('|') : (Object.keys(usedTrades).length ? Object.keys(usedTrades) : ['Plumbing']);
+    var photos = roomPhotos(roomId), scan = (DB.photos || []).filter(function(p){ return p.roomId === roomId && p.scan; }).pop();
+    var chip = function(t){ var on = pick.indexOf(t) >= 0; return '<button type="button" data-tr="' + t + '" style="min-height:40px;padding:0 13px;border-radius:99px;border:1.5px solid ' + (on ? '#0A84FF' : 'var(--border,#333)') + ';background:' + (on ? 'rgba(10,132,255,.14)' : 'transparent') + ';color:' + (on ? '#0A84FF' : 'var(--muted,#8e8e93)') + ';font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;margin:0 6px 8px 0;white-space:nowrap">' + t + '</button>'; };
+    var town = townOf(job);
+    var s = sheet('bp-ai-list', 'Smart checklist', '<div style="font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + E(room.name) + (room.type ? ' · ' + E(room.type) : '') + '</div>'
+      + '<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:14px 0 8px">Trades</div><div id="bp-al-tr" style="display:flex;flex-wrap:wrap">' + TRADES.map(chip).join('') + '</div>'
+      + '<div data-bp-wrap="1" style="' + NOTE + ';margin-top:6px">Uses: room type' + (photos.length ? ', ' + Math.min(photos.length, 4) + ' newest photo' + (Math.min(photos.length, 4) === 1 ? '' : 's') : '') + (town ? ', code for ' + E(town) : '') + (room.notes || room.description ? ', your notes' : '') + (scan || (room.width && room.length) ? ', room size' : '') + (have.length ? '. Skips the ' + have.length + ' item' + (have.length === 1 ? '' : 's') + ' already on the list.' : '.') + '</div>'
+      + '<button type="button" id="bp-al-go" style="' + BTN + ';width:100%;margin-top:14px;border:none;background:#BF5AF2;color:#fff;display:flex;align-items:center;justify-content:center;gap:8px">' + ICON.spark + 'Build the checklist</button>'
+      + '<div id="bp-al-out" style="margin-top:10px"></div>');
+    s.querySelector('#bp-al-tr').onclick = function(e){
+      var b = e.target.closest('[data-tr]'); if (!b) return; var t = b.getAttribute('data-tr'), i = pick.indexOf(t);
+      if (i >= 0) pick.splice(i, 1); else pick.push(t); lsSet('bp_ai_trades_' + roomId, pick.join('|'));
+      b.outerHTML = chip(t);
+    };
+    document.getElementById('bp-al-go').onclick = function(){
+      if (needKey()) return;
+      if (!pick.length) { say('Pick at least one trade'); return; }
+      var out = document.getElementById('bp-al-out'); out.innerHTML = loading('AI is building the list' + (photos.length ? ' and looking at the photos' : '') + '…');
+      Promise.all(photos.slice(0, 4).map(function(p){ return shrink(p.src); })).then(function(imgs){
+        var facts = { room: room.name, roomType: room.type || '', level: room.level || '', trades: pick, jobAddress: town,
+          size: room.width && room.length ? room.width + ' x ' + room.length + (room.height ? ' x ' + room.height : '') : (scan && scan.scan ? (scan.scan.areaSqFt + ' sq ft, ceiling ' + (scan.scan.ceiling || '?') + ', walls ' + (scan.scan.walls || []).join(' / ') + ', ' + scan.scan.doors + ' doors, ' + scan.scan.windows + ' windows') : ''),
+          notes: [room.description, room.notes].filter(Boolean).join(' · '), alreadyOnList: have.map(function(p){ return p.text; }).slice(0, 80) };
+        var content = imgs.filter(Boolean).map(function(b64){ return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }; });
+        content.push({ type: 'text', text: 'Build the work checklist for this space.\n' + JSON.stringify(facts) + '\n\nReturn JSON: {"items":[{"text":"<short task, start with a verb, include sizes/heights when standard>","trade":"<one of the trades>","code":"<the code rule or inspection this satisfies, if any, else empty>","why":"<only if it comes from a photo or the notes, else empty>"}]}. 8 to 25 items, in the order the work happens, rough-in through finish and inspection. Do not repeat anything already on the list. Use code that applies in that town (IPC/IRC/NEC as adopted locally, e.g. Philadelphia uses the Philadelphia Code; NYC uses the NYC Plumbing/Building Code; NJ uses the NJ UCC). If unsure of a local rule, write the item without inventing a code number.' });
+        return window.bpAIAsk({ model: SMART, max: 3000, content: content,
+          system: 'You are a master plumber and general contractor writing practical field checklists. Be specific and short. Answer with JSON only.' });
+      }).then(function(r){
+        if (!r.ok) { out.innerHTML = '<div data-bp-wrap="1" style="color:#FF453A;font-weight:700;padding:8px 2px">' + E(errText(r)) + '</div>'; return; }
+        var j = json(r.text) || {}, have2 = have.map(function(p){ return String(p.text || '').toLowerCase().trim(); });
+        var items = (j.items || []).filter(function(it){ return it && it.text && have2.indexOf(String(it.text).toLowerCase().trim()) < 0; });
+        if (!items.length) { out.innerHTML = '<div style="padding:8px 2px;font-weight:700">Nothing new to add.</div>'; return; }
+        window._bpAIList = { roomId: roomId, items: items };
+        out.innerHTML = '<div style="font-size:14px;font-weight:700;color:var(--muted,#8e8e93);margin:4px 2px">' + items.length + ' suggested · untick any you don\'t want</div>'
+          + items.map(function(it, i){ return '<label class="bp-ai-row" data-bp-wrap="1"><input type="checkbox" checked data-ai="' + i + '"/><span style="flex:1;min-width:0;line-height:1.4"><b style="font-weight:700">' + E(it.text) + '</b>'
+            + '<span style="display:block;font-size:12.5px;color:var(--muted,#8e8e93)">' + E([it.trade, it.code ? 'Code: ' + it.code : '', it.why].filter(Boolean).join(' · ')) + '</span></span></label>'; }).join('')
+          + '<button type="button" id="bp-al-add" style="' + BTN + ';width:100%;margin-top:14px;border:none;background:#30D158;color:#fff">Add ' + items.length + ' to the checklist</button>';
+        var addBtn = document.getElementById('bp-al-add');
+        out.addEventListener('change', function(){ var n = out.querySelectorAll('[data-ai]:checked').length; addBtn.textContent = 'Add ' + n + ' to the checklist'; addBtn.disabled = !n; addBtn.style.opacity = n ? '1' : '.45'; });
+        addBtn.onclick = function(){ window.bpAIListAdd(); };
+      });
+    };
+  };
+  window.bpAIListAdd = function(){
+    var L = window._bpAIList; if (!L) return;
+    var room = (DB.rooms || []).find(function(r){ return r.id === L.roomId; }) || {};
+    var picked = [].map.call(document.querySelectorAll('#bp-al-out [data-ai]:checked'), function(cb){ return L.items[+cb.getAttribute('data-ai')]; });
+    var t = nowIso(); DB.punchlist = DB.punchlist || [];
+    picked.forEach(function(it){
+      DB.punchlist.push({ id: newId(), text: String(it.text).slice(0, 300), jobId: room.jobId || '', roomId: L.roomId, trade: it.trade || '', value: 0, priority: 'Normal',
+        extraNotes: [it.code ? 'Code: ' + it.code : '', it.why || ''].filter(Boolean).join(' · '), isVoice: false, done: false, completionPhoto: null, completionPhotoDate: null,
+        photosBefore: [], photosAfter: [], tasks: [], fromAI: true, created: t, updatedAt: t });
+    });
+    persist();
+    var o = document.getElementById('bp-ai-list'); if (o) o.remove();
+    try { if (!IS_DESK && typeof openRoomDetail === 'function' && document.querySelector('#s-room-detail.active')) openRoomDetail(L.roomId); } catch(e){}
+    try { if (IS_DESK && document.getElementById('modal-room-detail') && typeof openRoomDetail === 'function') openRoomDetail(L.roomId); } catch(e){}
+    say(picked.length + ' item' + (picked.length === 1 ? '' : 's') + ' added');
+  };
+  function addRoomButton(){
+    if (!IS_DESK) {
+      var scr = document.getElementById('s-room-detail'), row = scr && scr.querySelector('.bp-act-row');
+      var id = scr && scr.getAttribute('data-room-id');
+      if (!row || !id || row.querySelector('[data-ai-list]')) return;
+      var b = document.createElement('button'); b.className = 'btn btn-ghost bp-act'; b.setAttribute('data-ai-list', '1'); b.title = 'Smart checklist'; b.setAttribute('aria-label', 'Smart checklist');
+      b.style.color = '#BF5AF2'; b.innerHTML = '<span class="bp-act-ic">' + ICON.spark + '</span><span class="bp-act-lb">Smart list</span>';
+      b.onclick = function(){ window.bpAIChecklist(scr.getAttribute('data-room-id')); };
+      row.appendChild(b);
+    } else {
+      var m = document.getElementById('modal-room-detail'); if (!m || m.querySelector('[data-ai-list]')) return;
+      var rid = window._bpDeskRoomId; if (!rid) return;
+      var host = m.querySelector('.modal-header') || m.firstElementChild; if (!host) return;
+      var d = document.createElement('button'); d.className = 'btn btn-ghost'; d.setAttribute('data-ai-list', '1');
+      d.style.cssText = 'color:#BF5AF2;border-color:rgba(191,90,242,.5);display:inline-flex;align-items:center;gap:6px;margin-left:auto;margin-right:8px';
+      d.innerHTML = ICON.spark + 'Smart checklist';
+      d.onclick = function(){ window.bpAIChecklist(rid); };
+      var close = host.querySelector('.modal-close'); host.insertBefore(d, close || null);
+    }
+  }
+  if (typeof window.openRoomDetail === 'function') {
+    var _ord = window.openRoomDetail;
+    window.openRoomDetail = function(roomId){ window._bpDeskRoomId = roomId; var r = _ord.apply(this, arguments); setTimeout(addRoomButton, 0); return r; };
+    for (var k in _ord) if (Object.prototype.hasOwnProperty.call(_ord, k)) window.openRoomDetail[k] = _ord[k];
+    try { openRoomDetail = window.openRoomDetail; } catch(e){}
+  }
+  new MutationObserver(function(){ addMenu(); addRoomButton(); }).observe(document.body, { childList: true, subtree: true });
+  addMenu();
+  if (inApp()) post({ kind: 'aiKeyStatus' });
+  console.log('[BP] v6.4.0 — AI assistant');
+})();
+</script>
+
 
 <style id="v630-glass">
 /* ══ v6.3.0 — GLASS EVERYWHERE ══════════════════════════════════════════════

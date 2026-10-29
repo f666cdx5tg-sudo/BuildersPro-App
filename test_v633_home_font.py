@@ -25,7 +25,7 @@ async def main():
             await pg.goto('http://localhost:%d/index.html' % PORT); await pg.wait_for_timeout(2500)
             await pg.evaluate("document.getElementById('bp-lock')&&document.getElementById('bp-lock').remove(); window.bpICloudSync=undefined; localStorage.setItem('bp_zoom','1.3'); try{bpApplyZoom()}catch(e){}")
             await pg.evaluate(SEED)
-            ok(await pg.evaluate("APP_VERSION") == '6.3.3', 'on v6.3.3')
+            ok(await pg.evaluate("APP_VERSION") >= '6.3.3', 'on v6.3.3')
             ok(await pg.evaluate("document.querySelector('#s-home').classList.contains('active')"), 'app opens on Home')
             await pg.evaluate("showScreen('s-home'); bpRenderAttention()"); await pg.wait_for_timeout(500)
             r = await pg.evaluate("""() => { var s = document.querySelector('#home-attention [data-attn="over"] span[data-bp-wrap]'); if (!s) return null; var c = getComputedStyle(s);
@@ -50,7 +50,7 @@ async def main():
             ctx = await b.new_context(viewport={'width': 1440, 'height': 900}); pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
             await pg.route('**/*', lambda r: r.abort() if any(h in r.request.url for h in BLOCK) else r.continue_())
             await pg.goto('http://localhost:%d/desktop.html' % PORT); await pg.wait_for_timeout(3000)
-            ok(await pg.evaluate("APP_VERSION") == '6.3.3', 'Command Center is v6.3.3')
+            ok(await pg.evaluate("APP_VERSION") >= '6.3.3', 'Command Center is v6.3.3')
             ok(not errs, 'Command Center: no page errors %s' % errs[:2]); await ctx.close()
             await b.close()
     finally: srv.terminate()

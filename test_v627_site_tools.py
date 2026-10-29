@@ -78,7 +78,7 @@ async def field(b):
     n_line = await pg.evaluate("document.querySelectorAll('#nav-measure svg, #nav-roomscan svg').length")
     ok(n_line == 2, 'both buttons use line icons')
     await pg.evaluate("bpMeasureOpen(); bpRoomScanOpen()")
-    kinds = await pg.evaluate("__posts.map(function(m){ return m.kind; })")
+    kinds = await pg.evaluate("__posts.map(function(m){ return m.kind; }).filter(function(k){ return k.indexOf('ai') !== 0; })")
     ok(kinds == ['measure', 'roomScan'], 'buttons ask the app for Measure and Room scan %s' % kinds)
 
     await pg.evaluate("bpNativeDone({ tool:'measure', ok:false, cancel:true })")
