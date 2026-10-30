@@ -74,7 +74,7 @@ async def main():
                             hid = ids2[k]
                         btn = await pg.query_selector('#%s .bp-hm-btn' % hid)
                         if not btn: continue
-                        await btn.scroll_into_view_if_needed(); bb = await btn.bounding_box()
+                        await btn.evaluate("b => b.scrollIntoView({block:'center'})"); await pg.wait_for_timeout(150); bb = await btn.bounding_box()
                         if not bb: continue
                         hit = "(function(x,y,id){var e=document.elementFromPoint(x,y);return !!(e&&e.closest('#'+id))})(%f,%f,'%s')" % (bb['x']+bb['width']/2, bb['y']+bb['height']/2, hid)
                         if not await pg.evaluate(hit):   # something the last item opened is still up: start this screen fresh
@@ -84,7 +84,7 @@ async def main():
                             ids2 = await pg.evaluate(VISIBLE)
                             if k >= len(ids2): continue
                             hid = ids2[k]; btn = await pg.query_selector('#%s .bp-hm-btn' % hid)
-                            await btn.scroll_into_view_if_needed(); bb = await btn.bounding_box()
+                            await btn.evaluate("b => b.scrollIntoView({block:'center'})"); await pg.wait_for_timeout(150); bb = await btn.bounding_box()
                         label = await btn.get_attribute('aria-label')
                         await pg.touchscreen.tap(bb['x'] + bb['width']/2, bb['y'] + bb['height']/2); await pg.wait_for_timeout(350)
                         res = await pg.evaluate(ONTOP, hid)
