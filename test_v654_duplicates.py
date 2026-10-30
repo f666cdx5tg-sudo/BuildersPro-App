@@ -16,15 +16,19 @@ SEED = """() => { var t = '2026-10-01T10:00:00Z', d = '2026-10-01';
   DB.jobs = [{id:'j1',name:'N. Peach St',address:'1536 N. Peach St',contract:49000,status:'Active',createdAt:'2026-09-01'},
              {id:'j2',name:'N. Peach St',address:'1536 N. Peach St',status:'Active',createdAt:'2026-09-05'},
              {id:'j3',name:'n. peach st',address:'1536 N. Peach St',status:'Active',createdAt:'2026-09-06'},
-             {id:'j4',name:'Other',address:'2 St',status:'Active'}];
+             {id:'j4',name:'Other',address:'2 St',status:'Active'},
+             {id:'j5',name:'Shedwick',address:'9 Elm',contract:500,status:'Active',createdAt:'2026-09-01'},
+             {id:'j6',name:'Shedwick',address:'9 Elm',contract:500,status:'Active',createdAt:'2026-09-02'}];
   DB.expenses = [
     {id:'e1',jobId:'j1',desc:'Pipe',vendor:'Home Depot',amount:412.37,date:d,category:'Materials',createdAt:'2026-10-01T10:00'},
     {id:'e2',jobId:'j1',desc:'Pipe',vendor:'Home Depot',amount:412.37,date:d,category:'Materials',createdAt:'2026-10-01T11:00'},
     {id:'e3',jobId:'j1',desc:'pipe ',vendor:'home depot',amount:412.37,date:d,category:'Materials',createdAt:'2026-10-01T12:00'},
     {id:'e4',jobId:'j1',desc:'Fittings',vendor:'Ferguson',amount:88,date:'2026-10-02',category:'Materials'},
     {id:'e5',jobId:'j1',desc:'Fittings run 2',vendor:'Ferguson',amount:88,date:'2026-10-02',category:'Materials'},
-    {id:'e6',jobId:'j4',desc:'Pipe',vendor:'Home Depot',amount:412.37,date:d,category:'Materials'}];
-  DB.contractors = [{id:'c1',jobId:'j1',name:'Mike',value:6000}];
+    {id:'e6',jobId:'j4',desc:'Pipe',vendor:'Home Depot',amount:412.37,date:d,category:'Materials'},
+    {id:'e7',jobId:'j5',desc:'Wire',vendor:'HD',amount:50,date:d},{id:'e8',jobId:'j6',desc:'Wire',vendor:'HD',amount:50,date:d,createdAt:'x'}];
+  DB.contractors = [{id:'c1',jobId:'j1',name:'Mike',value:6000},{id:'c2',jobId:'j1',name:'Mike',value:6000},{id:'c5',jobId:'j5',name:'Raheem',value:900},{id:'c6',jobId:'j6',name:'Raheem',value:900}];
+  DB.appointments = [{id:'a1',jobId:'j1',title:'Inspection',date:d,time:'09:00'},{id:'a2',jobId:'j1',title:'Inspection',date:d,time:'09:00'}];
   DB.payments = [{id:'p1',contractorId:'c1',amount:2500,date:d},{id:'p2',contractorId:'c1',amount:2500,date:d}];
   DB.invoices = [{id:'i1',jobId:'j1',number:'INV-1',amount:10000,date:d},{id:'i2',jobId:'j1',number:'INV-1',amount:10000,date:d}];
   DB.changeOrders = [];
@@ -45,15 +49,16 @@ async def run(b, file, w, h, mobile):
     await pg.evaluate("document.querySelector('%s').click()" % menu); await pg.wait_for_timeout(400)
     ok(await pg.evaluate("!!document.getElementById('bp-dups')"), 'the sheet opens')
     ticked = await pg.evaluate("[].map.call(document.querySelectorAll('#bp-dups input[data-dup]:checked'), function(i){ return i.getAttribute('data-dup'); }).sort()")
-    want = sorted(['expenses|e2','expenses|e3','payments|p2','invoices|i2','punchlist|k1','photos|f2','jobs|j2'])
+    want = sorted(['expenses|e2','expenses|e3','payments|p2','invoices|i2','punchlist|k1','photos|f2','jobs|j2','contractors|c2','appointments|a2','jobs|j6'])
     ok(ticked == want, 'exact copies ticked, oldest kept, done punch kept, empty job copy ticked %s' % ticked)
     ok(await pg.evaluate("!document.querySelector('#bp-dups input[data-dup=\"expenses|e5\"]:checked') && !!document.querySelector('#bp-dups input[data-dup=\"expenses|e5\"]')"), 'same-day look-alike listed but NOT ticked')
     ok(await pg.evaluate("document.querySelector('#bp-dups input[data-dup=\"jobs|j3\"]').disabled"), 'a job copy with records in it cannot be removed here')
     ok(not await pg.evaluate("!!document.querySelector('#bp-dups input[data-dup=\"expenses|e6\"]')"), 'same expense on a different job is not a duplicate')
-    ok('7' in await pg.inner_text('#bp-dup-go'), 'button says Remove 7 ticked')
+    ok('10' in await pg.inner_text('#bp-dup-go'), 'button says Remove 10 ticked')
+    ok('full copy' in await pg.inner_text('#bp-dups'), 'a job copied with all its records is marked full copy')
     await pg.click('#bp-dup-go'); await pg.wait_for_timeout(400)
-    left = await pg.evaluate("({e: DB.expenses.map(function(x){return x.id}).sort(), p: DB.payments.length, i: DB.invoices.length, k: DB.punchlist.map(function(x){return x.id}), f: DB.photos.length, j: DB.jobs.map(function(x){return x.id}).sort()})")
-    ok(left['e'] == ['e1','e4','e5','e6'] and left['p'] == 1 and left['i'] == 1 and left['k'] == ['k2'] and left['f'] == 1 and left['j'] == ['j1','j3','j4'], 'removed exactly the ticked ones %s' % left)
+    left = await pg.evaluate("({e: DB.expenses.map(function(x){return x.id}).sort(), p: DB.payments.length, i: DB.invoices.length, k: DB.punchlist.map(function(x){return x.id}), f: DB.photos.length, j: DB.jobs.map(function(x){return x.id}).sort(), c: DB.contractors.map(function(x){return x.id}).sort(), a: DB.appointments.length})")
+    ok(left['e'] == ['e1','e4','e5','e6','e7'] and left['p'] == 1 and left['i'] == 1 and left['k'] == ['k2'] and left['f'] == 1 and left['j'] == ['j1','j3','j4','j5'] and left['c'] == ['c1','c5'] and left['a'] == 1, 'removed exactly the ticked ones %s' % left)
     ok(await pg.evaluate("(DB.recycleBin || DB._recycle || DB.recycle || []).length >= 7 || JSON.stringify(localStorage).indexOf('e3') >= 0"), 'removed records are in the Recycle Bin')
     ok(not await pg.evaluate("!!document.getElementById('bp-dups')"), 'sheet closes')
     await pg.evaluate("bpFindDuplicates()"); await pg.wait_for_timeout(300)

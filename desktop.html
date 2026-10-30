@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.5.4';
+var APP_VERSION = '6.5.5';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -24627,6 +24627,7 @@ html,body{background:var(--bg) !important}
   function when(r){ return String(r.createdAt || r.created || r.date || r.updatedAt || ''); }
   function oldestFirst(a, b){ var x = when(a), y = when(b); return x < y ? -1 : x > y ? 1 : 0; }
   function jobName(id){ var j = (DB.jobs || []).find(function(x){ return x.id === id; }); return j ? (j.name || 'Job') : 'No job'; }
+  function payCount(c){ return (DB.payments || []).filter(function(p){ return p.contractorId === c.id; }).length; }
   function sig(s){ s = String(s || ''); return s.length + ':' + s.slice(0, 64) + s.slice(-64); }
 
   /* the record types, how two copies look alike, and how each line reads */
@@ -24649,16 +24650,52 @@ html,body{background:var(--bg) !important}
       key: function(r){ var t = low(r.text || r.title); return t ? [r.jobId, r.roomId || '', t, low(r.trade)].join('|') : null; },
       keep: function(list){ return list.slice().sort(function(a, b){ return (b.done ? 1 : 0) - (a.done ? 1 : 0) || oldestFirst(a, b); })[0]; },
       line: function(r){ return r.text || r.title || 'Punch item'; } },
+    { coll: 'contractors', name: 'Subs', money: true, amt: 'value',
+      key: function(r){ var n = low(r.name || r.company); return n ? [r.jobId, n, low(r.company), low(r.trade), cents(r.value)].join('|') : null; },
+      keep: function(list){ return list.slice().sort(function(a, b){ return payCount(b) - payCount(a) || oldestFirst(a, b); })[0]; },
+      line: function(r){ return (r.name || r.company || 'Sub') + (r.trade ? ' · ' + r.trade : ''); } },
+    { coll: 'appointments', name: 'Calendar',
+      key: function(r){ var t = low(r.title || r.type); return t ? [r.jobId, t, day(r.date), low(r.time)].join('|') : null; },
+      line: function(r){ return (r.title || r.type || 'Appointment') + (r.time ? ' · ' + r.time : ''); } },
+    { coll: 'shopping', name: 'Shopping list',
+      key: function(r){ var t = low(r.text || r.name); return t ? [r.jobId, t, low(r.qty), low(r.unit), cents(r.price)].join('|') : null; },
+      line: function(r){ return r.text || r.name || 'Item'; } },
+    { coll: 'reports', name: 'Daily logs',
+      key: function(r){ var t = low(r.notes || r.text); return t ? [r.jobId, day(r.date), t].join('|') : null; },
+      line: function(r){ return 'Daily log' + (r.date ? ' · ' + day(r.date) : ''); } },
     { coll: 'photos', name: 'Photos',
       key: function(r){ var s = r.src || r.url || r.data || r.image; return s ? [r.jobId, r.roomId || '', sig(s)].join('|') : null; },
       line: function(r){ return r.caption || 'Photo' + (r.date ? ' · ' + day(r.date) : ''); } }
   ];
 
+  /* v6.5.4: a job made twice WITH records — if every record in the copy is also in the kept job
+     (same words, amounts, dates; ids ignored) the whole copy is a duplicate and can go, records and all. */
+  var LINKED = ['expenses','invoices','changeOrders','punchlist','photos','rooms','contractors','reports','shopping','appointments','permits','deliveries','budgets','jobNotes','documents','timeEntries','walkthroughs','estimates'];
+  var SKIP = { id:1, jobId:1, roomId:1, contractorId:1, createdAt:1, updatedAt:1, created:1, modified:1, completedAt:1, syncedAt:1, deviceId:1, by:1, createdBy:1 };
+  function content(r){
+    var o = {}; Object.keys(r || {}).sort().forEach(function(k){ if (SKIP[k] || k.charAt(0) === '_') return; var v = r[k]; if (typeof v === 'string' && v.length > 200) v = sig(v); else if (v && typeof v === 'object') v = sig(JSON.stringify(v)); o[k] = v; });
+    return JSON.stringify(o);
+  }
+  function linked(jobId){
+    var out = [];
+    LINKED.forEach(function(c){ if (!Array.isArray(DB[c])) return; DB[c].forEach(function(r){ if (r && r.jobId === jobId) out.push({ c: c, r: r }); }); });
+    var subs = (DB.contractors || []).filter(function(x){ return x && x.jobId === jobId; }).map(function(x){ return x.id; });
+    (DB.payments || []).forEach(function(r){ if (r && subs.indexOf(r.contractorId) >= 0) out.push({ c: 'payments', r: r }); });
+    return out;
+  }
+  function mirrorOf(copyId, keepId){
+    var have = {};
+    linked(keepId).forEach(function(x){ var k = x.c + '|' + content(x.r); have[k] = (have[k] || 0) + 1; });
+    var mine = linked(copyId); if (!mine.length) return false;
+    return mine.every(function(x){ var k = x.c + '|' + content(x.r); if (!have[k]) return false; have[k]--; return true; });
+  }
+  window.bpDupLinked = linked;
+
   var found = null;
   window.bpDupScan = function(){
     var groups = [];
     TYPES.forEach(function(T){
-      var list = (DB[T.coll] || []).filter(function(r){ return r && r.id; });
+      var list = (Array.isArray(DB[T.coll]) ? DB[T.coll] : []).filter(function(r){ return r && r.id; });
       var by = {}, seen = {};
       list.forEach(function(r){ var k = T.key(r); if (k == null) return; (by[k] = by[k] || []).push(r); });
       Object.keys(by).forEach(function(k){
@@ -24684,11 +24721,14 @@ html,body{background:var(--bg) !important}
     Object.keys(jb).forEach(function(k){
       var g = jb[k]; if (g.length < 2) return;
       var counted = g.map(function(j){
-        var n = 0; ['expenses','invoices','changeOrders','punchlist','photos','rooms','contractors','reports','shopping','appointments','permits','deliveries'].forEach(function(c){ n += (DB[c] || []).filter(function(r){ return r && r.jobId === j.id; }).length; });
+        var n = 0; ['expenses','invoices','changeOrders','punchlist','photos','rooms','contractors','reports','shopping','appointments','permits','deliveries'].forEach(function(c){ if (Array.isArray(DB[c])) n += DB[c].filter(function(r){ return r && r.jobId === j.id; }).length; });
         return { job: j, n: n };
       }).sort(function(a, b){ return b.n - a.n || oldestFirst(a.job, b.job); });
+      counted.slice(1).forEach(function(c){ c.mirror = c.n > 0 && mirrorOf(c.job.id, counted[0].job.id); });
       jobGroups.push({ keep: counted[0], copies: counted.slice(1) });
     });
+    var gone = {}; jobGroups.forEach(function(g){ g.copies.forEach(function(c){ if (c.n === 0 || c.mirror) gone[c.job.id] = 1; }); });
+    groups = groups.filter(function(g){ return !gone[g.jobId]; });
     found = { groups: groups, jobs: jobGroups };
     return found;
   };
@@ -24710,12 +24750,12 @@ html,body{background:var(--bg) !important}
       byJob[jid].forEach(function(g){
         var T = g.type;
         h += '<div data-bp-wrap="1" style="font-size:13px;color:var(--muted,#8e8e93);margin:8px 4px 2px">' + E(T.name) + ' · ' + (g.kind === 'exact' ? '<b style="color:#FF453A">entered ' + (g.extra.length + 1) + ' times</b>' : '<b style="color:#FF9F0A">look-alike — check it</b>')
-          + ' · keeping the ' + (T.coll === 'punchlist' && g.keep.done ? 'done one' : 'first one') + (T.money ? ' (' + M(g.keep.amount || g.keep.total) + (day(g.keep.date) ? ', ' + day(g.keep.date) : '') + ')' : '') + '</div>';
+          + ' · keeping the ' + (T.coll === 'punchlist' && g.keep.done ? 'done one' : 'first one') + (T.money ? ' (' + M(T.amt ? g.keep[T.amt] : (g.keep.amount || g.keep.total)) + (day(g.keep.date) ? ', ' + day(g.keep.date) : '') + ')' : '') + '</div>';
         g.extra.forEach(function(r){
-          var on = g.kind === 'exact'; if (on) { nTick++; if (T.money && T.coll !== 'invoices') money += +r.amount || 0; }
+          var on = g.kind === 'exact'; if (on) { nTick++; if (T.money && T.coll !== 'invoices') money += +(T.amt ? r[T.amt] : r.amount) || 0; }
           h += '<label style="' + ROW + '"><input type="checkbox" data-dup="' + E(T.coll) + '|' + E(r.id) + '"' + (on ? ' checked' : '') + ' style="' + CHK + '">'
             + '<span data-bp-wrap="1" style="flex:1;min-width:0">' + E(T.line(r)) + (day(r.date) ? ' <span style="color:var(--muted,#8e8e93)">· ' + day(r.date) + '</span>' : '') + '</span>'
-            + (T.money ? '<b style="white-space:nowrap;font-variant-numeric:tabular-nums">' + M(r.amount || r.total) + '</b>' : '') + '</label>';
+            + (T.money ? '<b style="white-space:nowrap;font-variant-numeric:tabular-nums">' + M(T.amt ? r[T.amt] : (r.amount || r.total)) + '</b>' : '') + '</label>';
         });
       });
       if (jid && typeof window.bpAISpending === 'function') h += '<button type="button" onclick="bpDupClose();bpAISpending(\'' + E(jid) + '\')" style="margin:8px 0 2px;min-height:40px;padding:0 14px;border-radius:10px;border:1.5px solid rgba(191,90,242,.55);background:transparent;color:#BF5AF2;font-weight:800;font-size:14px;font-family:inherit;cursor:pointer">Ask AI to check this job\'s money</button>';
@@ -24725,9 +24765,9 @@ html,body{background:var(--bg) !important}
       f.jobs.forEach(function(g){
         h += '<div data-bp-wrap="1" style="font-size:13px;color:var(--muted,#8e8e93);margin:8px 4px 2px">Keeping <b style="color:var(--text,#f0f0f0)">' + E(g.keep.job.name) + '</b> (' + g.keep.n + ' records)</div>';
         g.copies.forEach(function(c){
-          var on = c.n === 0; if (on) nTick++;
-          h += '<label style="' + ROW + (c.n ? ';opacity:.6;cursor:default' : '') + '"><input type="checkbox" data-dup="jobs|' + E(c.job.id) + '"' + (on ? ' checked' : '') + (c.n ? ' disabled' : '') + ' style="' + CHK + '">'
-            + '<span data-bp-wrap="1" style="flex:1;min-width:0">' + E(c.job.name) + ' — ' + (c.n ? c.n + ' records in it, open it and move or delete them first' : 'empty copy') + '</span></label>';
+          var can = c.n === 0 || c.mirror, on = can; if (on) nTick++;
+          h += '<label style="' + ROW + (can ? '' : ';opacity:.6;cursor:default') + '"><input type="checkbox" data-dup="jobs|' + E(c.job.id) + '"' + (on ? ' checked' : '') + (can ? '' : ' disabled') + ' style="' + CHK + '">'
+            + '<span data-bp-wrap="1" style="flex:1;min-width:0">' + E(c.job.name) + ' — ' + (c.n === 0 ? 'empty copy' : c.mirror ? '<b style="color:#FF453A">full copy</b>: all ' + c.n + ' records in it are already in the kept job (they go too)' : c.n + ' records in it that the kept job doesn\'t have — open it and move them first') + '</span></label>';
         });
       });
     }
@@ -24753,6 +24793,7 @@ html,body{background:var(--bg) !important}
       var pick = {};
       [].forEach.call(o.querySelectorAll('input[data-dup]:checked'), function(i){ var p = i.getAttribute('data-dup').split('|'); (pick[p[0]] = pick[p[0]] || {})[p[1]] = 1; });
       var total = 0;
+      Object.keys(pick.jobs || {}).forEach(function(jid){ linked(jid).forEach(function(x){ (pick[x.c] = pick[x.c] || {})[x.r.id] = 1; }); });
       Object.keys(pick).forEach(function(c){
         var ids = pick[c]; total += Object.keys(ids).length;
         try { if (typeof bpRemoveFrom === 'function') bpRemoveFrom(c, function(r){ return !(r && ids[r.id]); }); else DB[c] = (DB[c] || []).filter(function(r){ return !(r && ids[r.id]); }); } catch(e){ console.warn('[BP] dup remove', c, e); }
