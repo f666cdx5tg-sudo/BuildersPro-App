@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.5.7';
+var APP_VERSION = '6.5.8';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -28614,6 +28614,15 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   function lastCount(){ try { return +(localStorage.getItem('bp_last_jobs') || 0); } catch(e){ return 0; } }
   function checkCounts(){
     var n = (DB.jobs || []).length, before = lastCount();
+    /* v6.5.7: jobs that were deleted on purpose (on this device or synced from another) carry a tombstone —
+       only jobs that vanished WITHOUT one are "missing" */
+    var ids = []; try { ids = JSON.parse(localStorage.getItem('bp_last_job_ids') || '[]'); } catch(e){}
+    if (ids.length && n < before) {
+      var have = {}; (DB.jobs || []).forEach(function(j){ have[j.id] = 1; });
+      var lost = ids.filter(function(id){ return !have[id] && !(typeof bpIsTombstoned === 'function' && bpIsTombstoned('jobs', id)); });
+      if (!lost.length) deletedHere = Math.max(deletedHere, 1);
+    }
+    if (!(n < before && deletedHere === 0)) try { localStorage.setItem('bp_last_job_ids', JSON.stringify((DB.jobs || []).map(function(j){ return j.id; }))); } catch(e){}
     if (n < before && deletedHere === 0) {
       banner('⚠️ ' + (before - n) + ' job' + (before - n > 1 ? 's are' : ' is') + ' missing since last time (' + before + ' → ' + n + '). Tap to bring back the safety copy.', 'err', window.bspRestoreSafety);
       return;
@@ -31547,7 +31556,7 @@ html,body{background:var(--bg) !important}
           nTick++;
           var txt = c.n === 0 ? 'empty copy'
             : c.mirror ? '<b style="color:#FF453A">full copy</b>: all ' + c.n + ' records in it are already in the kept job (they go too)'
-            : '<b style="color:#FF453A">copy</b>: ' + c.plan.dupes.length + ' of its ' + c.n + ' records are already in the kept job (removed); the other ' + c.plan.moves.length + ' are moved into the kept job, so nothing is lost';
+            : '<b style="color:#FF453A">copy</b>: ' + c.plan.dupes.length + ' of its ' + (c.plan.dupes.length + c.plan.moves.length) + ' records are already in the kept job (removed); the other ' + c.plan.moves.length + ' are moved into the kept job, so nothing is lost';
           h += '<label style="' + ROW + '"><input type="checkbox" data-dup="' + (c.plan ? 'merge' : 'jobs') + '|' + E(c.job.id) + '" checked style="' + CHK + '">'
             + '<span data-bp-wrap="1" style="flex:1;min-width:0">' + E(c.job.name) + ' — ' + txt + '</span></label>';
         });
@@ -31588,6 +31597,7 @@ html,body{background:var(--bg) !important}
         var ids = pick[c]; total += Object.keys(ids).length;
         try { if (typeof bpRemoveFrom === 'function') bpRemoveFrom(c, function(r){ return !(r && ids[r.id]); }); else DB[c] = (DB[c] || []).filter(function(r){ return !(r && ids[r.id]); }); } catch(e){ console.warn('[BP] dup remove', c, e); }
       });
+      try { if (pick.jobs) { localStorage.setItem('bp_last_jobs', String((DB.jobs || []).length)); localStorage.setItem('bp_last_job_ids', JSON.stringify((DB.jobs || []).map(function(j){ return j.id; }))); var bn = document.getElementById('bp-safety-banner'); if (bn) bn.remove(); } } catch(e){}
       try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else if (typeof save === 'function') save(); } catch(e){}
       ['renderAll','renderHome','renderDashboard','bpRenderAttention','renderFinance','renderJobs','renderDesktopJobs','renderDesktopFinance','refreshAll','bpRefreshAll'].forEach(function(fn){ try { if (typeof window[fn] === 'function') window[fn](); } catch(e){} });
       close();
