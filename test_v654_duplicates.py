@@ -39,7 +39,7 @@ SEED = """() => { var t = '2026-10-01T10:00:00Z', d = '2026-10-01';
   DB.rooms = [{id:'r1',jobId:'j1',name:'Bath'},{id:'r9',jobId:'j3',name:'Kitchen'},
     {id:'r71',jobId:'j7',name:'Hall',level:'L1'},{id:'r72',jobId:'j7',name:'Office',level:'L1'},
     {id:'r81',jobId:'j8',name:'Hall',level:'L1'},{id:'r83',jobId:'j8',name:'Lobby',level:'L1'}];
-  DB.punchlist.push({id:'k71',jobId:'j7',roomId:'r71',text:'Paint',trade:'Paint'},{id:'k72',jobId:'j7',roomId:'r72',text:'Door',trade:'Carp'},
+  DB.punchlist.push({id:'k71',jobId:'j7',roomId:'r71',text:'Paint',trade:'Paint',done:true,status:'Done',caption:'x',updatedAt:'2026-10-20'},{id:'k72',jobId:'j7',roomId:'r72',text:'Door',trade:'Carp'},
     {id:'k81',jobId:'j8',roomId:'r81',text:'Paint',trade:'Paint'},{id:'k82',jobId:'j8',roomId:'r81',text:'Security cam',trade:'Elec'},{id:'k83',jobId:'j8',roomId:'r83',text:'Sign',trade:'Gen'});
   try { bpSave(); } catch(e){ try { saveDB(); } catch(e2){} }
 }"""
@@ -67,8 +67,8 @@ async def run(b, file, w, h, mobile):
     ok(left['e'] == ['e1','e4','e5','e6','e7'] and left['p'] == 1 and left['i'] == 1 and left['k'] == ['k2'] and left['f'] == 1 and left['j'] == ['j1','j4','j5','j8'] and left['c'] == ['c1','c5'] and left['a'] == 1, 'removed exactly the ticked ones %s' % left)
     ok(await pg.evaluate("(DB.recycleBin || DB._recycle || DB.recycle || []).length >= 7 || JSON.stringify(localStorage).indexOf('e3') >= 0"), 'removed records are in the Recycle Bin')
     ok(not await pg.evaluate("!!document.getElementById('bp-dups')"), 'sheet closes')
-    m = await pg.evaluate("({jobs: DB.jobs.filter(function(j){return /Kingdom/.test(j.name)}).map(function(j){return j.id}), rooms: DB.rooms.filter(function(r){return r.jobId==='j8'}).map(function(r){return r.name}).sort(), punch: DB.punchlist.filter(function(k){return k.jobId==='j8'}).map(function(k){return k.text+'@'+k.roomId}).sort(), stray: DB.punchlist.concat(DB.rooms).filter(function(x){return x.jobId==='j7'||x.jobId==='j3'}).length, kitchen: DB.rooms.filter(function(r){return r.name==='Kitchen'}).map(function(r){return r.jobId})})")
-    ok(m['jobs'] == ['j8'] and m['rooms'] == ['Hall','Lobby','Office'] and m['punch'] == ['Door@r72','Paint@r81','Security cam@r81','Sign@r83'] and m['stray'] == 0 and m['kitchen'] == ['j1'], 'drifted job copy merged: matching records removed, new ones moved into the kept job and its spaces %s' % m)
+    m = await pg.evaluate("({jobs: DB.jobs.filter(function(j){return /Kingdom/.test(j.name)}).map(function(j){return j.id}), rooms: DB.rooms.filter(function(r){return r.jobId==='j8'}).map(function(r){return r.name}).sort(), punch: DB.punchlist.filter(function(k){return k.jobId==='j8'}).map(function(k){return k.text+'@'+k.roomId}).sort(), stray: DB.punchlist.concat(DB.rooms).filter(function(x){return x.jobId==='j7'||x.jobId==='j3'}).length, kitchen: DB.rooms.filter(function(r){return r.name==='Kitchen'}).map(function(r){return r.jobId}), paintDone: !!DB.punchlist.find(function(k){return k.id==='k81'}).done})")
+    ok(m['jobs'] == ['j8'] and m['rooms'] == ['Hall','Lobby','Office'] and m['punch'] == ['Door@r72','Paint@r81','Security cam@r81','Sign@r83'] and m['stray'] == 0 and m['kitchen'] == ['j1'] and m['paintDone'], 'drifted job copy merged: matching records removed, new ones moved into the kept job and its spaces %s' % m)
     await pg.evaluate("bpFindDuplicates()"); await pg.wait_for_timeout(300)
     ok(await pg.evaluate("document.querySelectorAll('#bp-dups input[data-dup]:checked').length") == 0, 'second scan: nothing exact left')
     ok(not errs, 'no page errors %s' % errs[:2]); await ctx.close()

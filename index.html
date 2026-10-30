@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.5.6';
+var APP_VERSION = '6.5.7';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -31412,6 +31412,24 @@ html,body{background:var(--bg) !important}
   window.bpDupLinked = linked;
   /* v6.5.5: merge a job copy that has drifted a little from the kept job: records that match one in the kept job
      are removed (Recycle Bin), the rest are moved into the kept job (their space and sub matched up by name). */
+  function roomName(id){ var r = id && (DB.rooms || []).find(function(x){ return x.id === id; }); return r ? low(r.name) + '/' + low(r.level) : ''; }
+  function subName(id){ var c = id && (DB.contractors || []).find(function(x){ return x.id === id; }); return c ? low(c.name || c.company) : ''; }
+  function loose(c, r){
+    var t = low(r.text || r.title || r.name || r.desc || r.description);
+    switch (c) {
+      case 'rooms': return low(r.name) + '|' + low(r.level);
+      case 'contractors': return low(r.name) + '|' + low(r.company);
+      case 'punchlist': return t + '|' + low(r.trade) + '|' + roomName(r.roomId);
+      case 'photos': var src = r.src || r.url || r.data || r.image; return src ? sig(src) : low(r.caption) + '|' + day(r.date) + '|' + roomName(r.roomId);
+      case 'expenses': return cents(r.amount) + '|' + day(r.date) + '|' + low(r.vendor) + '|' + low(r.desc || r.description);
+      case 'payments': return cents(r.amount) + '|' + day(r.date) + '|' + subName(r.contractorId);
+      case 'invoices': return low(r.number || r.invoiceNumber) + '|' + cents(r.amount || r.total) + '|' + day(r.date);
+      case 'changeOrders': return t + '|' + cents(r.amount);
+      case 'appointments': return t + '|' + day(r.date) + '|' + low(r.time);
+      case 'reports': return day(r.date) + '|' + low(r.notes || r.text).slice(0, 120);
+      default: return t + '|' + day(r.date) + '|' + cents(r.amount || r.value);
+    }
+  }
   function planMerge(copyId, keepId){
     var mine = linked(copyId), theirs = linked(keepId);
     var roomMap = {}, subMap = {};
@@ -31419,16 +31437,18 @@ html,body{background:var(--bg) !important}
       if (x.c === 'rooms') { var m = theirs.find(function(y){ return y.c === 'rooms' && low(y.r.name) === low(x.r.name) && low(y.r.level) === low(x.r.level); }); if (m) roomMap[x.r.id] = m.r.id; }
       if (x.c === 'contractors') { var k = theirs.find(function(y){ return y.c === 'contractors' && low(y.r.name) === low(x.r.name) && low(y.r.company) === low(x.r.company); }); if (k) subMap[x.r.id] = k.r.id; }
     });
+    /* v6.5.7: match on what the record IS (words, amount, date, space name), not every field — a copy that was
+       later ticked done, re-captioned or synced still counts as the same record */
     var have = {};
-    theirs.forEach(function(y){ var k = y.c + '|' + content(y.r); have[k] = (have[k] || 0) + 1; });
-    var dupes = [], moves = [];
+    theirs.forEach(function(y){ var k = y.c + '|' + loose(y.c, y.r); (have[k] = have[k] || []).push(y.r); });
+    var dupes = [], moves = [], marks = [];
     mine.forEach(function(x){
-      var k = x.c + '|' + content(x.r);
-      var same = (x.c === 'rooms' && roomMap[x.r.id]) || (x.c === 'contractors' && subMap[x.r.id]) || (have[k] > 0 && (have[k]--, true));
-      if (same) dupes.push(x);
+      if ((x.c === 'rooms' && roomMap[x.r.id]) || (x.c === 'contractors' && subMap[x.r.id])) { dupes.push(x); return; }
+      var k = x.c + '|' + loose(x.c, x.r), list = have[k];
+      if (list && list.length) { var twin = list.shift(); dupes.push(x); if (x.c === 'punchlist' && x.r.done && !twin.done) marks.push({ r: twin, from: x.r }); }
       else moves.push(x);
     });
-    return { dupes: dupes, moves: moves, roomMap: roomMap, subMap: subMap, keepId: keepId };
+    return { dupes: dupes, moves: moves, marks: marks, roomMap: roomMap, subMap: subMap, keepId: keepId };
   }
   function applyMerge(pl, pick){
     var now = new Date().toISOString();
@@ -31445,6 +31465,7 @@ html,body{background:var(--bg) !important}
       if (r.roomId && pl.roomMap[r.roomId]) { r.roomId = pl.roomMap[r.roomId]; r.updatedAt = now; }
       if (r.contractorId && pl.subMap[r.contractorId]) { r.contractorId = pl.subMap[r.contractorId]; r.updatedAt = now; }
     }); });
+    (pl.marks || []).forEach(function(m){ m.r.done = true; if (m.from.status) m.r.status = m.from.status; if (m.from.completedAt) m.r.completedAt = m.from.completedAt; m.r.updatedAt = now; });
     pl.dupes.forEach(function(x){ (pick[x.c] = pick[x.c] || {})[x.r.id] = 1; });
   }
   window.bpDupPlanMerge = planMerge;
