@@ -18,7 +18,9 @@ SEED = """() => { var t = '2026-10-01T10:00:00Z', d = '2026-10-01';
              {id:'j3',name:'n. peach st',address:'1536 N. Peach St',status:'Active',createdAt:'2026-09-06'},
              {id:'j4',name:'Other',address:'2 St',status:'Active'},
              {id:'j5',name:'Shedwick',address:'9 Elm',contract:500,status:'Active',createdAt:'2026-09-01'},
-             {id:'j6',name:'Shedwick',address:'9 Elm',contract:500,status:'Active',createdAt:'2026-09-02'}];
+             {id:'j6',name:'Shedwick',address:'9 Elm',contract:500,status:'Active',createdAt:'2026-09-02'},
+             {id:'j7',name:'Kingdom Hall',address:'5 Oak',status:'Active',createdAt:'2026-09-01'},
+             {id:'j8',name:'Kingdom Hall',address:'5 Oak',status:'Active',createdAt:'2026-09-02'}];
   DB.expenses = [
     {id:'e1',jobId:'j1',desc:'Pipe',vendor:'Home Depot',amount:412.37,date:d,category:'Materials',createdAt:'2026-10-01T10:00'},
     {id:'e2',jobId:'j1',desc:'Pipe',vendor:'Home Depot',amount:412.37,date:d,category:'Materials',createdAt:'2026-10-01T11:00'},
@@ -34,7 +36,11 @@ SEED = """() => { var t = '2026-10-01T10:00:00Z', d = '2026-10-01';
   DB.changeOrders = [];
   DB.punchlist = [{id:'k1',jobId:'j1',roomId:'r1',text:'Set flange',trade:'Plumbing',done:false,created:'2026-09-02'},{id:'k2',jobId:'j1',roomId:'r1',text:'Set flange',trade:'Plumbing',done:true,created:'2026-09-03'}];
   DB.photos = [{id:'f1',jobId:'j1',src:'data:image/png;base64,AAAA',date:d},{id:'f2',jobId:'j1',src:'data:image/png;base64,AAAA',date:d}];
-  DB.rooms = [{id:'r1',jobId:'j1',name:'Bath'},{id:'r9',jobId:'j3',name:'Kitchen'}];
+  DB.rooms = [{id:'r1',jobId:'j1',name:'Bath'},{id:'r9',jobId:'j3',name:'Kitchen'},
+    {id:'r71',jobId:'j7',name:'Hall',level:'L1'},{id:'r72',jobId:'j7',name:'Office',level:'L1'},
+    {id:'r81',jobId:'j8',name:'Hall',level:'L1'},{id:'r83',jobId:'j8',name:'Lobby',level:'L1'}];
+  DB.punchlist.push({id:'k71',jobId:'j7',roomId:'r71',text:'Paint',trade:'Paint'},{id:'k72',jobId:'j7',roomId:'r72',text:'Door',trade:'Carp'},
+    {id:'k81',jobId:'j8',roomId:'r81',text:'Paint',trade:'Paint'},{id:'k82',jobId:'j8',roomId:'r81',text:'Security cam',trade:'Elec'},{id:'k83',jobId:'j8',roomId:'r83',text:'Sign',trade:'Gen'});
   try { bpSave(); } catch(e){ try { saveDB(); } catch(e2){} }
 }"""
 async def run(b, file, w, h, mobile):
@@ -49,18 +55,20 @@ async def run(b, file, w, h, mobile):
     await pg.evaluate("document.querySelector('%s').click()" % menu); await pg.wait_for_timeout(400)
     ok(await pg.evaluate("!!document.getElementById('bp-dups')"), 'the sheet opens')
     ticked = await pg.evaluate("[].map.call(document.querySelectorAll('#bp-dups input[data-dup]:checked'), function(i){ return i.getAttribute('data-dup'); }).sort()")
-    want = sorted(['expenses|e2','expenses|e3','payments|p2','invoices|i2','punchlist|k1','photos|f2','jobs|j2','contractors|c2','appointments|a2','jobs|j6'])
+    want = sorted(['expenses|e2','expenses|e3','payments|p2','invoices|i2','punchlist|k1','photos|f2','jobs|j2','contractors|c2','appointments|a2','jobs|j6','merge|j7','merge|j3'])
     ok(ticked == want, 'exact copies ticked, oldest kept, done punch kept, empty job copy ticked %s' % ticked)
     ok(await pg.evaluate("!document.querySelector('#bp-dups input[data-dup=\"expenses|e5\"]:checked') && !!document.querySelector('#bp-dups input[data-dup=\"expenses|e5\"]')"), 'same-day look-alike listed but NOT ticked')
-    ok(await pg.evaluate("document.querySelector('#bp-dups input[data-dup=\"jobs|j3\"]').disabled"), 'a job copy with records in it cannot be removed here')
+    ok('moved into the kept job' in await pg.inner_text('#bp-dups'), 'a job copy with its own records is merged, not thrown away')
     ok(not await pg.evaluate("!!document.querySelector('#bp-dups input[data-dup=\"expenses|e6\"]')"), 'same expense on a different job is not a duplicate')
-    ok('10' in await pg.inner_text('#bp-dup-go'), 'button says Remove 10 ticked')
+    ok('12' in await pg.inner_text('#bp-dup-go'), 'button says Remove 12 ticked')
     ok('full copy' in await pg.inner_text('#bp-dups'), 'a job copied with all its records is marked full copy')
     await pg.click('#bp-dup-go'); await pg.wait_for_timeout(400)
-    left = await pg.evaluate("({e: DB.expenses.map(function(x){return x.id}).sort(), p: DB.payments.length, i: DB.invoices.length, k: DB.punchlist.map(function(x){return x.id}), f: DB.photos.length, j: DB.jobs.map(function(x){return x.id}).sort(), c: DB.contractors.map(function(x){return x.id}).sort(), a: DB.appointments.length})")
-    ok(left['e'] == ['e1','e4','e5','e6','e7'] and left['p'] == 1 and left['i'] == 1 and left['k'] == ['k2'] and left['f'] == 1 and left['j'] == ['j1','j3','j4','j5'] and left['c'] == ['c1','c5'] and left['a'] == 1, 'removed exactly the ticked ones %s' % left)
+    left = await pg.evaluate("({e: DB.expenses.map(function(x){return x.id}).sort(), p: DB.payments.length, i: DB.invoices.length, k: DB.punchlist.filter(function(x){return x.jobId==='j1'}).map(function(x){return x.id}), f: DB.photos.length, j: DB.jobs.map(function(x){return x.id}).sort(), c: DB.contractors.map(function(x){return x.id}).sort(), a: DB.appointments.length})")
+    ok(left['e'] == ['e1','e4','e5','e6','e7'] and left['p'] == 1 and left['i'] == 1 and left['k'] == ['k2'] and left['f'] == 1 and left['j'] == ['j1','j4','j5','j8'] and left['c'] == ['c1','c5'] and left['a'] == 1, 'removed exactly the ticked ones %s' % left)
     ok(await pg.evaluate("(DB.recycleBin || DB._recycle || DB.recycle || []).length >= 7 || JSON.stringify(localStorage).indexOf('e3') >= 0"), 'removed records are in the Recycle Bin')
     ok(not await pg.evaluate("!!document.getElementById('bp-dups')"), 'sheet closes')
+    m = await pg.evaluate("({jobs: DB.jobs.filter(function(j){return /Kingdom/.test(j.name)}).map(function(j){return j.id}), rooms: DB.rooms.filter(function(r){return r.jobId==='j8'}).map(function(r){return r.name}).sort(), punch: DB.punchlist.filter(function(k){return k.jobId==='j8'}).map(function(k){return k.text+'@'+k.roomId}).sort(), stray: DB.punchlist.concat(DB.rooms).filter(function(x){return x.jobId==='j7'||x.jobId==='j3'}).length, kitchen: DB.rooms.filter(function(r){return r.name==='Kitchen'}).map(function(r){return r.jobId})})")
+    ok(m['jobs'] == ['j8'] and m['rooms'] == ['Hall','Lobby','Office'] and m['punch'] == ['Door@r72','Paint@r81','Security cam@r81','Sign@r83'] and m['stray'] == 0 and m['kitchen'] == ['j1'], 'drifted job copy merged: matching records removed, new ones moved into the kept job and its spaces %s' % m)
     await pg.evaluate("bpFindDuplicates()"); await pg.wait_for_timeout(300)
     ok(await pg.evaluate("document.querySelectorAll('#bp-dups input[data-dup]:checked').length") == 0, 'second scan: nothing exact left')
     ok(not errs, 'no page errors %s' % errs[:2]); await ctx.close()

@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.5.5';
+var APP_VERSION = '6.5.6';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -24690,6 +24690,44 @@ html,body{background:var(--bg) !important}
     return mine.every(function(x){ var k = x.c + '|' + content(x.r); if (!have[k]) return false; have[k]--; return true; });
   }
   window.bpDupLinked = linked;
+  /* v6.5.5: merge a job copy that has drifted a little from the kept job: records that match one in the kept job
+     are removed (Recycle Bin), the rest are moved into the kept job (their space and sub matched up by name). */
+  function planMerge(copyId, keepId){
+    var mine = linked(copyId), theirs = linked(keepId);
+    var roomMap = {}, subMap = {};
+    mine.forEach(function(x){
+      if (x.c === 'rooms') { var m = theirs.find(function(y){ return y.c === 'rooms' && low(y.r.name) === low(x.r.name) && low(y.r.level) === low(x.r.level); }); if (m) roomMap[x.r.id] = m.r.id; }
+      if (x.c === 'contractors') { var k = theirs.find(function(y){ return y.c === 'contractors' && low(y.r.name) === low(x.r.name) && low(y.r.company) === low(x.r.company); }); if (k) subMap[x.r.id] = k.r.id; }
+    });
+    var have = {};
+    theirs.forEach(function(y){ var k = y.c + '|' + content(y.r); have[k] = (have[k] || 0) + 1; });
+    var dupes = [], moves = [];
+    mine.forEach(function(x){
+      var k = x.c + '|' + content(x.r);
+      var same = (x.c === 'rooms' && roomMap[x.r.id]) || (x.c === 'contractors' && subMap[x.r.id]) || (have[k] > 0 && (have[k]--, true));
+      if (same) dupes.push(x);
+      else moves.push(x);
+    });
+    return { dupes: dupes, moves: moves, roomMap: roomMap, subMap: subMap, keepId: keepId };
+  }
+  function applyMerge(pl, pick){
+    var now = new Date().toISOString();
+    pl.moves.forEach(function(x){
+      var r = x.r;
+      if (r.jobId) r.jobId = pl.keepId;
+      if (r.roomId && pl.roomMap[r.roomId]) r.roomId = pl.roomMap[r.roomId];
+      if (r.contractorId && pl.subMap[r.contractorId]) r.contractorId = pl.subMap[r.contractorId];
+      r.updatedAt = now;
+    });
+    /* anything still pointing at a removed space or sub points at the kept one */
+    Object.keys(DB).forEach(function(c){ if (!Array.isArray(DB[c])) return; DB[c].forEach(function(r){
+      if (!r || typeof r !== 'object') return;
+      if (r.roomId && pl.roomMap[r.roomId]) { r.roomId = pl.roomMap[r.roomId]; r.updatedAt = now; }
+      if (r.contractorId && pl.subMap[r.contractorId]) { r.contractorId = pl.subMap[r.contractorId]; r.updatedAt = now; }
+    }); });
+    pl.dupes.forEach(function(x){ (pick[x.c] = pick[x.c] || {})[x.r.id] = 1; });
+  }
+  window.bpDupPlanMerge = planMerge;
 
   var found = null;
   window.bpDupScan = function(){
@@ -24724,10 +24762,10 @@ html,body{background:var(--bg) !important}
         var n = 0; ['expenses','invoices','changeOrders','punchlist','photos','rooms','contractors','reports','shopping','appointments','permits','deliveries'].forEach(function(c){ if (Array.isArray(DB[c])) n += DB[c].filter(function(r){ return r && r.jobId === j.id; }).length; });
         return { job: j, n: n };
       }).sort(function(a, b){ return b.n - a.n || oldestFirst(a.job, b.job); });
-      counted.slice(1).forEach(function(c){ c.mirror = c.n > 0 && mirrorOf(c.job.id, counted[0].job.id); });
+      counted.slice(1).forEach(function(c){ c.mirror = c.n > 0 && mirrorOf(c.job.id, counted[0].job.id); if (c.n > 0 && !c.mirror) c.plan = planMerge(c.job.id, counted[0].job.id); });
       jobGroups.push({ keep: counted[0], copies: counted.slice(1) });
     });
-    var gone = {}; jobGroups.forEach(function(g){ g.copies.forEach(function(c){ if (c.n === 0 || c.mirror) gone[c.job.id] = 1; }); });
+    var gone = {}; jobGroups.forEach(function(g){ g.copies.forEach(function(c){ gone[c.job.id] = 1; }); });
     groups = groups.filter(function(g){ return !gone[g.jobId]; });
     found = { groups: groups, jobs: jobGroups };
     return found;
@@ -24765,9 +24803,12 @@ html,body{background:var(--bg) !important}
       f.jobs.forEach(function(g){
         h += '<div data-bp-wrap="1" style="font-size:13px;color:var(--muted,#8e8e93);margin:8px 4px 2px">Keeping <b style="color:var(--text,#f0f0f0)">' + E(g.keep.job.name) + '</b> (' + g.keep.n + ' records)</div>';
         g.copies.forEach(function(c){
-          var can = c.n === 0 || c.mirror, on = can; if (on) nTick++;
-          h += '<label style="' + ROW + (can ? '' : ';opacity:.6;cursor:default') + '"><input type="checkbox" data-dup="jobs|' + E(c.job.id) + '"' + (on ? ' checked' : '') + (can ? '' : ' disabled') + ' style="' + CHK + '">'
-            + '<span data-bp-wrap="1" style="flex:1;min-width:0">' + E(c.job.name) + ' — ' + (c.n === 0 ? 'empty copy' : c.mirror ? '<b style="color:#FF453A">full copy</b>: all ' + c.n + ' records in it are already in the kept job (they go too)' : c.n + ' records in it that the kept job doesn\'t have — open it and move them first') + '</span></label>';
+          nTick++;
+          var txt = c.n === 0 ? 'empty copy'
+            : c.mirror ? '<b style="color:#FF453A">full copy</b>: all ' + c.n + ' records in it are already in the kept job (they go too)'
+            : '<b style="color:#FF453A">copy</b>: ' + c.plan.dupes.length + ' of its ' + c.n + ' records are already in the kept job (removed); the other ' + c.plan.moves.length + ' are moved into the kept job, so nothing is lost';
+          h += '<label style="' + ROW + '"><input type="checkbox" data-dup="' + (c.plan ? 'merge' : 'jobs') + '|' + E(c.job.id) + '" checked style="' + CHK + '">'
+            + '<span data-bp-wrap="1" style="flex:1;min-width:0">' + E(c.job.name) + ' — ' + txt + '</span></label>';
         });
       });
     }
@@ -24793,6 +24834,14 @@ html,body{background:var(--bg) !important}
       var pick = {};
       [].forEach.call(o.querySelectorAll('input[data-dup]:checked'), function(i){ var p = i.getAttribute('data-dup').split('|'); (pick[p[0]] = pick[p[0]] || {})[p[1]] = 1; });
       var total = 0;
+      var merged = 0;
+      Object.keys(pick.merge || {}).forEach(function(jid){
+        var g = (found.jobs || []).find(function(G){ return G.copies.some(function(c){ return c.job.id === jid; }); }); if (!g) return;
+        var pl = planMerge(jid, g.keep.job.id);   /* re-plan on the live data */
+        applyMerge(pl, pick); merged += pl.moves.length;
+        (pick.jobs = pick.jobs || {})[jid] = 1;
+      });
+      delete pick.merge;
       Object.keys(pick.jobs || {}).forEach(function(jid){ linked(jid).forEach(function(x){ (pick[x.c] = pick[x.c] || {})[x.r.id] = 1; }); });
       Object.keys(pick).forEach(function(c){
         var ids = pick[c]; total += Object.keys(ids).length;
@@ -24801,7 +24850,7 @@ html,body{background:var(--bg) !important}
       try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else if (typeof save === 'function') save(); } catch(e){}
       ['renderAll','renderHome','renderDashboard','bpRenderAttention','renderFinance','renderJobs','renderDesktopJobs','renderDesktopFinance','refreshAll','bpRefreshAll'].forEach(function(fn){ try { if (typeof window[fn] === 'function') window[fn](); } catch(e){} });
       close();
-      try { (window.toast || window.showToast || function(m){ console.log(m); })(total + ' duplicate' + (total === 1 ? '' : 's') + ' moved to the Recycle Bin'); } catch(e){}
+      try { (window.toast || window.showToast || function(m){ console.log(m); })(total + ' duplicate' + (total === 1 ? '' : 's') + ' moved to the Recycle Bin' + (merged ? ' · ' + merged + ' records moved into the kept job' : '')); } catch(e){}
       window.bpFindDuplicates.last = total;
     };
   };
