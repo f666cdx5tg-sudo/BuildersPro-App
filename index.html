@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.5.2';
+var APP_VERSION = '6.5.3';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -30571,8 +30571,11 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   /* ── talking to the AI (through the app) ── */
   var PENDING = {}, KEY = { known: false, has: false, waiters: [] };
   window.bpAIDone = function(id, r){ var cb = PENDING[id]; delete PENDING[id]; if (cb) cb(r || { ok: false, err: 'No answer' }); };
-  window.bpAIKeyStatus = function(has){ KEY.known = true; KEY.has = !!has; var w = KEY.waiters; KEY.waiters = []; w.forEach(function(f){ try { f(KEY.has); } catch(e){} }); paintSettings(); };
-  window.bpAIHasKey = function(cb){ if (!inApp()) return cb(false); if (KEY.known) return cb(KEY.has); KEY.waiters.push(cb); post({ kind: 'aiKeyStatus' }); };
+  window.bpAIKeyStatus = function(has, why){ KEY.known = true; KEY.old = false; KEY.has = !!has; KEY.why = why || ''; clearTimeout(KEY.t); var w = KEY.waiters; KEY.waiters = []; w.forEach(function(f){ try { f(KEY.has); } catch(e){} }); paintSettings(); };
+  window.bpAIHasKey = function(cb){ if (!inApp()) return cb(false); if (KEY.known) return cb(KEY.has); KEY.waiters.push(cb); askStatus(); };
+  /* v6.5.3: an older build of the app doesn't answer at all — say so instead of 'Checking…' forever */
+  function oldApp(){ try { return !(window.BPShell && BPShell.caps && BPShell.caps.ai); } catch(e){ return true; } }
+  function askStatus(){ if (oldApp()) { KEY.old = true; KEY.known = false; paintSettings(); return; } post({ kind: 'aiKeyStatus' }); clearTimeout(KEY.t); KEY.t = setTimeout(function(){ if (!KEY.known) { KEY.old = true; paintSettings(); } }, 4000); }
   window.bpAIAsk = function(opts){
     return new Promise(function(res){
       if (!inApp()) return res({ ok: false, err: 'app' });
@@ -30591,6 +30594,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   }
   function needKey(){
     if (!inApp()) { say('AI works in the BuildersPro app on iPhone, iPad and Mac'); return true; }
+    if (KEY.old) { say('Update the BuildersPro app to use AI'); window.bpAISettings(); return true; }
     if (KEY.known && !KEY.has) { say('Add your AI key first'); window.bpAISettings(); return true; }
     return false;
   }
@@ -30629,7 +30633,8 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     var b = document.querySelector('#bp-ai-settings [data-body]'); if (!b) return;
     var on = lsGet('bp_ai_spell') !== '0';
     var status = !inApp() ? '<b style="color:#FF9F0A">Works in the BuildersPro app</b> on iPhone, iPad and Mac (that\'s where your key is kept safe).'
-      : !KEY.known ? 'Checking…' : KEY.has ? '<b style="color:#30D158">Connected.</b> Your key is locked in this device\'s Keychain.' : '<b style="color:#FF453A">Not set up yet.</b>';
+      : KEY.old ? '<b style="color:#FF453A">This copy of the BuildersPro app is too old for AI.</b> Install the newest build (in Xcode: pick ' + (IS_DESK ? 'My Mac' : 'this device') + ', press Run) and open it again.'
+      : !KEY.known ? 'Checking…' : KEY.has ? '<b style="color:#30D158">Connected.</b> Your key is locked in this device\'s Keychain.' : '<b style="color:#FF453A">Not set up yet.</b>' + (KEY.why ? ' ' + E(KEY.why) + '.' : '');
     b.innerHTML = '<div data-bp-wrap="1" style="font-size:15px;line-height:1.45;margin-bottom:12px">' + status + '</div>'
       + (inApp() ? '<label for="bp-ai-key" style="display:block;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:4px 0 6px">' + (KEY.has ? 'Replace key' : 'Paste your API key') + '</label>'
         + '<input id="bp-ai-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" style="width:100%;box-sizing:border-box;min-height:48px;border-radius:12px;border:1.5px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;padding:0 12px;font-family:inherit"/>'
@@ -30640,7 +30645,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
       + '<div data-bp-wrap="1" style="' + NOTE + ';margin-top:12px">Get a key at <b style="color:var(--text,#f0f0f0)">console.anthropic.com</b> › API Keys. You pay Anthropic per use: a spelling or spending check is a fraction of a cent; a room checklist with photos is a few cents.</div>'
       + (KEY.has ? '<button type="button" id="bp-ai-remove" style="' + BTN + ';width:100%;margin-top:14px;border:1.5px solid rgba(255,69,58,.5);background:transparent;color:#FF453A">Remove key from this device</button>' : '');
     var sv = document.getElementById('bp-ai-save');
-    if (sv) sv.onclick = function(){ var k = (document.getElementById('bp-ai-key').value || '').trim(); if (k.length < 20) { say('That key looks too short'); return; } KEY.known = false; post({ kind: 'aiKeySet', key: k }); say('Saving…'); };
+    if (sv) sv.onclick = function(){ var k = (document.getElementById('bp-ai-key').value || '').trim(); if (k.length < 20) { say('That key looks too short'); return; } KEY.known = false; post({ kind: 'aiKeySet', key: k }); say('Saving…'); clearTimeout(KEY.t); KEY.t = setTimeout(function(){ if (!KEY.known) { KEY.old = true; paintSettings(); } }, 6000); };
     var ts = document.getElementById('bp-ai-test');
     if (ts) ts.onclick = function(){
       var out = document.getElementById('bp-ai-test-out'); out.innerHTML = loading('Asking the AI…');
@@ -30655,7 +30660,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     try { if (typeof closeNavDrawer === 'function') closeNavDrawer(); } catch(e){}
     sheet('bp-ai-settings', 'AI assistant', '');
     paintSettings();
-    if (inApp()) { KEY.known = false; post({ kind: 'aiKeyStatus' }); }
+    if (inApp()) { KEY.known = false; askStatus(); }
   };
   function addMenu(){
     var lbl = '<span class="bp-lbl">AI assistant</span>';
@@ -30986,7 +30991,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
   }
   new MutationObserver(function(){ addMenu(); addRoomButton(); }).observe(document.body, { childList: true, subtree: true });
   addMenu();
-  if (inApp()) post({ kind: 'aiKeyStatus' });
+  if (inApp()) askStatus();
   console.log('[BP] v6.4.0 — AI assistant');
 })();
 </script>

@@ -9,34 +9,60 @@ import WebKit
 enum AIKey {
     private static let service = "com.stanrobinson.builderspro.ai"
     private static let account = "anthropic"
+    /// v6.5.3: the last Keychain result, so the page can say why a save failed.
+    static var lastStatus: OSStatus = errSecSuccess
 
-    private static func base() -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
-         kSecAttrAccount as String: account,
-         kSecAttrSynchronizable as String: kCFBooleanTrue as Any]
+    /// v6.5.3 — the Mac. An iCloud-synced Keychain item on macOS needs the "data protection" keychain;
+    /// without it the save failed there and the Mac app kept saying there was no key. Try, in order:
+    /// synced (iPhone ⇄ iPad ⇄ Mac), then this device only, then (Mac) the classic login keychain.
+    private static func base(sync: Bool?, modern: Bool) -> [String: Any] {
+        var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                kSecAttrService as String: service,
+                                kSecAttrAccount as String: account]
+        if let sync { q[kSecAttrSynchronizable as String] = sync ? kCFBooleanTrue as Any : kCFBooleanFalse as Any }
+        else { q[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny }
+        #if os(macOS)
+        if modern { q[kSecUseDataProtectionKeychain as String] = true }
+        #endif
+        return q
+    }
+    private static var flavors: [Bool] {
+        #if os(macOS)
+        return [true, false]
+        #else
+        return [true]
+        #endif
     }
 
     static func get() -> String? {
-        var q = base()
-        q[kSecReturnData as String] = true
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
-        let s = String(data: d, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return s.isEmpty ? nil : s
+        for modern in flavors {
+            var q = base(sync: nil, modern: modern)
+            q[kSecReturnData as String] = true
+            q[kSecMatchLimit as String] = kSecMatchLimitOne
+            var out: CFTypeRef?
+            if SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data {
+                let s = String(data: d, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !s.isEmpty { return s }
+            }
+        }
+        return nil
     }
 
     @discardableResult
     static func set(_ key: String) -> Bool {
         clear()
-        var q = base()
-        q[kSecValueData as String] = Data(key.utf8)
-        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
+        let attempts: [(Bool, Bool)] = flavors.flatMap { m in [(true, m), (false, m)] }   // (sync, modern)
+        for (sync, modern) in attempts {
+            var q = base(sync: sync, modern: modern)
+            q[kSecValueData as String] = Data(key.utf8)
+            if modern || sync { q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock }
+            lastStatus = SecItemAdd(q as CFDictionary, nil)
+            if lastStatus == errSecSuccess { return true }
+        }
+        return false
     }
 
-    static func clear() { SecItemDelete(base() as CFDictionary) }
+    static func clear() { for m in flavors { SecItemDelete(base(sync: nil, modern: m) as CFDictionary) } }
 }
 
 extension ShellModel {
@@ -47,8 +73,9 @@ extension ShellModel {
             reply("window.bpAIKeyStatus && bpAIKeyStatus(\(AIKey.get() != nil))")
         case "aiKeySet":
             let k = ((body["key"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let ok = !k.isEmpty && AIKey.set(k)
-            reply("window.bpAIKeyStatus && bpAIKeyStatus(\(ok && AIKey.get() != nil))")
+            let ok = !k.isEmpty && AIKey.set(k) && AIKey.get() != nil
+            let why = ok ? "" : (k.isEmpty ? "No key was pasted" : "Keychain would not save it (code \(AIKey.lastStatus))")
+            reply("window.bpAIKeyStatus && bpAIKeyStatus(\(ok), " + DailyBackup.js(why) + ")")
         case "aiKeyClear":
             AIKey.clear()
             reply("window.bpAIKeyStatus && bpAIKeyStatus(false)")
