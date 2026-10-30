@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.5.3';
+var APP_VERSION = '6.5.4';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -31321,5 +31321,201 @@ html,body{background:var(--bg) !important}
   /* screen changes / redraws that remove the ••• also close its list */
   new MutationObserver(function(){ if (openEl && !openEl.isConnected) close(); }).observe(document.body, { childList: true, subtree: true });
   console.log('[BP] v6.5.2 — every ••• menu opens on top');
+})();
+</script>
+<script id="v654">
+/* ══ v6.5.4 — FIND DUPLICATES (one button, every job) ═══════════════════════
+   Stan (Oct 29, 2026): "remove all duplicates from jobs i donot know how to use the built in ai".
+   One place, no AI needed: side menu › Find duplicates (also in AI assistant). It looks through every
+   job for records that were entered twice — expenses, payments to subs, invoices, change orders, punch
+   items, photos — and for jobs that were made twice.
+     · Exact copies (same amount, same day, same vendor and words) are ticked for you; the oldest is kept.
+     · Look-alikes (same amount the same day but different words, a sub payment also logged as an expense)
+       are listed unticked so you decide.
+     · A job made twice: the copy with nothing in it is ticked; a copy that has records is never removed here.
+   "Remove ticked" moves them to the Recycle Bin (Undo is there), then every total is recounted.
+   "Ask AI to check this job" is still there for the money the rules can't judge. */
+(function(){
+  'use strict';
+  if (window.__bp654) return; window.__bp654 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function low(s){ return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').trim(); }
+  function cents(n){ return Math.round((+n || 0) * 100); }
+  function day(s){ var m = String(s || '').match(/\d{4}-\d{2}-\d{2}/); return m ? m[0] : ''; }
+  function M(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '−$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function when(r){ return String(r.createdAt || r.created || r.date || r.updatedAt || ''); }
+  function oldestFirst(a, b){ var x = when(a), y = when(b); return x < y ? -1 : x > y ? 1 : 0; }
+  function jobName(id){ var j = (DB.jobs || []).find(function(x){ return x.id === id; }); return j ? (j.name || 'Job') : 'No job'; }
+  function sig(s){ s = String(s || ''); return s.length + ':' + s.slice(0, 64) + s.slice(-64); }
+
+  /* the record types, how two copies look alike, and how each line reads */
+  var TYPES = [
+    { coll: 'expenses', name: 'Expenses', money: true,
+      key: function(r){ return cents(r.amount) ? [r.jobId, cents(r.amount), day(r.date), low(r.vendor), low(r.desc || r.description), low(r.category)].join('|') : null; },
+      near: function(r){ return cents(r.amount) && day(r.date) ? [r.jobId, cents(r.amount), day(r.date)].join('|') : null; },
+      line: function(r){ return (r.desc || r.description || r.vendor || 'Expense') + (r.vendor && r.desc ? ' · ' + r.vendor : ''); } },
+    { coll: 'payments', name: 'Payments to subs', money: true,
+      key: function(r){ return cents(r.amount) ? [r.contractorId, cents(r.amount), day(r.date), low(r.note || r.memo)].join('|') : null; },
+      job: function(r){ var c = (DB.contractors || []).find(function(x){ return x.id === r.contractorId; }); return c ? c.jobId : ''; },
+      line: function(r){ var c = (DB.contractors || []).find(function(x){ return x.id === r.contractorId; }); return 'Payment' + (c ? ' to ' + (c.name || c.company) : ''); } },
+    { coll: 'invoices', name: 'Invoices', money: true,
+      key: function(r){ return [r.jobId, low(r.number || r.invoiceNumber), cents(r.amount || r.total), day(r.date)].join('|'); },
+      line: function(r){ return 'Invoice ' + (r.number || r.invoiceNumber || ''); } },
+    { coll: 'changeOrders', name: 'Change orders', money: true,
+      key: function(r){ return [r.jobId, low(r.title || r.description), cents(r.amount), low(r.status)].join('|'); },
+      line: function(r){ return r.title || r.description || 'Change order'; } },
+    { coll: 'punchlist', name: 'Punch items',
+      key: function(r){ var t = low(r.text || r.title); return t ? [r.jobId, r.roomId || '', t, low(r.trade)].join('|') : null; },
+      keep: function(list){ return list.slice().sort(function(a, b){ return (b.done ? 1 : 0) - (a.done ? 1 : 0) || oldestFirst(a, b); })[0]; },
+      line: function(r){ return r.text || r.title || 'Punch item'; } },
+    { coll: 'photos', name: 'Photos',
+      key: function(r){ var s = r.src || r.url || r.data || r.image; return s ? [r.jobId, r.roomId || '', sig(s)].join('|') : null; },
+      line: function(r){ return r.caption || 'Photo' + (r.date ? ' · ' + day(r.date) : ''); } }
+  ];
+
+  var found = null;
+  window.bpDupScan = function(){
+    var groups = [];
+    TYPES.forEach(function(T){
+      var list = (DB[T.coll] || []).filter(function(r){ return r && r.id; });
+      var by = {}, seen = {};
+      list.forEach(function(r){ var k = T.key(r); if (k == null) return; (by[k] = by[k] || []).push(r); });
+      Object.keys(by).forEach(function(k){
+        var g = by[k]; if (g.length < 2) return;
+        var keep = T.keep ? T.keep(g) : g.slice().sort(oldestFirst)[0];
+        g.forEach(function(r){ seen[r.id] = 1; });
+        groups.push({ type: T, kind: 'exact', keep: keep, extra: g.filter(function(r){ return r !== keep; }), jobId: T.job ? T.job(keep) : keep.jobId });
+      });
+      if (T.near) {
+        var nb = {};
+        list.forEach(function(r){ if (seen[r.id]) return; var k = T.near(r); if (k) (nb[k] = nb[k] || []).push(r); });
+        Object.keys(nb).forEach(function(k){
+          var g = nb[k]; if (g.length < 2) return;
+          var keep = g.slice().sort(oldestFirst)[0];
+          groups.push({ type: T, kind: 'near', keep: keep, extra: g.filter(function(r){ return r !== keep; }), jobId: keep.jobId });
+        });
+      }
+    });
+    /* jobs made twice: same name + same address */
+    var jb = {};
+    (DB.jobs || []).forEach(function(j){ var k = low(j.name) + '|' + low(j.address); if (low(j.name)) (jb[k] = jb[k] || []).push(j); });
+    var jobGroups = [];
+    Object.keys(jb).forEach(function(k){
+      var g = jb[k]; if (g.length < 2) return;
+      var counted = g.map(function(j){
+        var n = 0; ['expenses','invoices','changeOrders','punchlist','photos','rooms','contractors','reports','shopping','appointments','permits','deliveries'].forEach(function(c){ n += (DB[c] || []).filter(function(r){ return r && r.jobId === j.id; }).length; });
+        return { job: j, n: n };
+      }).sort(function(a, b){ return b.n - a.n || oldestFirst(a.job, b.job); });
+      jobGroups.push({ keep: counted[0], copies: counted.slice(1) });
+    });
+    found = { groups: groups, jobs: jobGroups };
+    return found;
+  };
+
+  function close(){ var o = document.getElementById('bp-dups'); if (o) o.remove(); }
+  window.bpDupClose = close;
+  var CHK = 'width:24px;height:24px;flex-shrink:0;accent-color:#FF453A;cursor:pointer';
+  window.bpFindDuplicates = function(){
+    try { if (typeof closeNavDrawer === 'function') closeNavDrawer(); } catch(e){}
+    try { var s = document.getElementById('bp-ai-settings'); if (s) s.remove(); } catch(e){}
+    var f = window.bpDupScan(); close();
+    var H = 'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:18px 2px 6px';
+    var ROW = 'display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--border,#2a2a2a);font-size:15px;cursor:pointer';
+    var nTick = 0, money = 0, h = '';
+    var byJob = {};
+    f.groups.forEach(function(g){ (byJob[g.jobId || ''] = byJob[g.jobId || ''] || []).push(g); });
+    Object.keys(byJob).sort(function(a, b){ return jobName(a) < jobName(b) ? -1 : 1; }).forEach(function(jid){
+      h += '<div style="' + H + '">' + E(jobName(jid)) + '</div>';
+      byJob[jid].forEach(function(g){
+        var T = g.type;
+        h += '<div data-bp-wrap="1" style="font-size:13px;color:var(--muted,#8e8e93);margin:8px 4px 2px">' + E(T.name) + ' · ' + (g.kind === 'exact' ? '<b style="color:#FF453A">entered ' + (g.extra.length + 1) + ' times</b>' : '<b style="color:#FF9F0A">look-alike — check it</b>')
+          + ' · keeping the ' + (T.coll === 'punchlist' && g.keep.done ? 'done one' : 'first one') + (T.money ? ' (' + M(g.keep.amount || g.keep.total) + (day(g.keep.date) ? ', ' + day(g.keep.date) : '') + ')' : '') + '</div>';
+        g.extra.forEach(function(r){
+          var on = g.kind === 'exact'; if (on) { nTick++; if (T.money && T.coll !== 'invoices') money += +r.amount || 0; }
+          h += '<label style="' + ROW + '"><input type="checkbox" data-dup="' + E(T.coll) + '|' + E(r.id) + '"' + (on ? ' checked' : '') + ' style="' + CHK + '">'
+            + '<span data-bp-wrap="1" style="flex:1;min-width:0">' + E(T.line(r)) + (day(r.date) ? ' <span style="color:var(--muted,#8e8e93)">· ' + day(r.date) + '</span>' : '') + '</span>'
+            + (T.money ? '<b style="white-space:nowrap;font-variant-numeric:tabular-nums">' + M(r.amount || r.total) + '</b>' : '') + '</label>';
+        });
+      });
+      if (jid && typeof window.bpAISpending === 'function') h += '<button type="button" onclick="bpDupClose();bpAISpending(\'' + E(jid) + '\')" style="margin:8px 0 2px;min-height:40px;padding:0 14px;border-radius:10px;border:1.5px solid rgba(191,90,242,.55);background:transparent;color:#BF5AF2;font-weight:800;font-size:14px;font-family:inherit;cursor:pointer">Ask AI to check this job\'s money</button>';
+    });
+    if (f.jobs.length) {
+      h += '<div style="' + H + '">Jobs made twice</div>';
+      f.jobs.forEach(function(g){
+        h += '<div data-bp-wrap="1" style="font-size:13px;color:var(--muted,#8e8e93);margin:8px 4px 2px">Keeping <b style="color:var(--text,#f0f0f0)">' + E(g.keep.job.name) + '</b> (' + g.keep.n + ' records)</div>';
+        g.copies.forEach(function(c){
+          var on = c.n === 0; if (on) nTick++;
+          h += '<label style="' + ROW + (c.n ? ';opacity:.6;cursor:default' : '') + '"><input type="checkbox" data-dup="jobs|' + E(c.job.id) + '"' + (on ? ' checked' : '') + (c.n ? ' disabled' : '') + ' style="' + CHK + '">'
+            + '<span data-bp-wrap="1" style="flex:1;min-width:0">' + E(c.job.name) + ' — ' + (c.n ? c.n + ' records in it, open it and move or delete them first' : 'empty copy') + '</span></label>';
+        });
+      });
+    }
+    var none = !f.groups.length && !f.jobs.length;
+    var o = document.createElement('div'); o.id = 'bp-dups';
+    o.style.cssText = 'position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,.55);display:flex;align-items:' + (IS_DESK ? 'center' : 'flex-end') + ';justify-content:center';
+    o.innerHTML = '<div style="width:100%;max-width:' + (IS_DESK ? '640px' : '560px') + ';max-height:calc(' + (IS_DESK ? '86vh' : '92vh') + ' / var(--bp-zoom, 1));display:flex;flex-direction:column;background:var(--card,#1c1c1e);color:var(--text,#f0f0f0);border:1px solid var(--border,#333);border-radius:' + (IS_DESK ? '18px' : '20px 20px 0 0') + ';box-shadow:0 20px 60px rgba(0,0,0,.5)">'
+      + '<div style="display:flex;align-items:center;gap:10px;padding:16px 18px 8px"><div style="flex:1;font-size:20px;font-weight:900">Find duplicates</div>'
+      + '<button type="button" onclick="bpDupClose()" aria-label="Close" style="width:44px;height:44px;border-radius:50%;border:1px solid var(--border,#333);background:transparent;color:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'
+      + '<div style="overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 8px;flex:1">'
+      + (none ? '<div style="padding:14px;border-radius:12px;background:rgba(48,209,88,.12);border:1px solid rgba(48,209,88,.45);font-size:15px"><b style="color:#30D158">No duplicates found.</b> Nothing on any job was entered twice.</div>'
+              : '<div data-bp-wrap="1" style="padding:12px;border-radius:12px;background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.45);font-size:15px;line-height:1.4"><b style="color:#FF453A">' + nTick + ' exact cop' + (nTick === 1 ? 'y' : 'ies') + ' ticked' + (money ? ' · ' + M(money) + ' counted twice' : '') + '.</b> Orange ones look alike but aren\'t identical — tick them only if they are the same thing.</div>')
+      + h + '</div>'
+      + (none ? '' : '<div style="padding:12px 18px calc(14px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border,#333)"><button type="button" id="bp-dup-go" style="width:100%;min-height:52px;border-radius:14px;border:none;background:#FF453A;color:#fff;font-size:17px;font-weight:900;font-family:inherit;cursor:pointer"></button>'
+        + '<div style="font-size:12.5px;color:var(--muted,#8e8e93);text-align:center;margin-top:6px">They go to the Recycle Bin — you can put them back.</div></div>')
+      + '</div>';
+    o.addEventListener('click', function(e){ if (e.target === o) close(); });
+    document.body.appendChild(o);
+    var go = document.getElementById('bp-dup-go');
+    function count(){ var n = o.querySelectorAll('input[data-dup]:checked').length; if (go) { go.textContent = n ? 'Remove ' + n + ' ticked' : 'Tick what to remove'; go.disabled = !n; go.style.opacity = n ? '1' : '.5'; } }
+    o.addEventListener('change', count); count();
+    if (go) go.onclick = function(){
+      var pick = {};
+      [].forEach.call(o.querySelectorAll('input[data-dup]:checked'), function(i){ var p = i.getAttribute('data-dup').split('|'); (pick[p[0]] = pick[p[0]] || {})[p[1]] = 1; });
+      var total = 0;
+      Object.keys(pick).forEach(function(c){
+        var ids = pick[c]; total += Object.keys(ids).length;
+        try { if (typeof bpRemoveFrom === 'function') bpRemoveFrom(c, function(r){ return !(r && ids[r.id]); }); else DB[c] = (DB[c] || []).filter(function(r){ return !(r && ids[r.id]); }); } catch(e){ console.warn('[BP] dup remove', c, e); }
+      });
+      try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); else if (typeof save === 'function') save(); } catch(e){}
+      ['renderAll','renderHome','renderDashboard','bpRenderAttention','renderFinance','renderJobs','renderDesktopJobs','renderDesktopFinance','refreshAll','bpRefreshAll'].forEach(function(fn){ try { if (typeof window[fn] === 'function') window[fn](); } catch(e){} });
+      close();
+      try { (window.toast || window.showToast || function(m){ console.log(m); })(total + ' duplicate' + (total === 1 ? '' : 's') + ' moved to the Recycle Bin'); } catch(e){}
+      window.bpFindDuplicates.last = total;
+    };
+  };
+
+  /* entry points: side menu (phone drawer / Mac sidebar) and the AI assistant sheet */
+  var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
+  function addMenu(){
+    if (!IS_DESK) {
+      var after = document.getElementById('nav-ai');
+      if (after && !document.getElementById('nav-dups')) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'nav-btn bp-tool'; b.id = 'nav-dups';
+        b.innerHTML = ICON.replace('width:20px;height:20px;', '') + '<span class="bp-lbl">Find duplicates</span>';
+        b.onclick = function(){ window.bpFindDuplicates(); };
+        after.parentNode.insertBefore(b, after.nextSibling);
+      }
+    } else {
+      var ai = document.getElementById('ni-ai');
+      if (ai && !document.getElementById('ni-dups')) {
+        var n = document.createElement('button'); n.className = 'ni c-blue'; n.id = 'ni-dups';
+        n.innerHTML = ICON + ' Find duplicates';
+        n.onclick = function(){ window.bpFindDuplicates(); };
+        ai.parentNode.insertBefore(n, ai.nextSibling);
+      }
+    }
+    var s = document.querySelector('#bp-ai-settings [data-body]');
+    if (s && !document.getElementById('bp-ai-dups')) {
+      var d = document.createElement('button'); d.type = 'button'; d.id = 'bp-ai-dups';
+      d.style.cssText = 'width:100%;min-height:48px;margin-top:14px;border-radius:12px;border:1.5px solid rgba(255,69,58,.55);background:transparent;color:#FF453A;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px';
+      d.innerHTML = ICON + 'Find duplicates on every job';
+      d.onclick = function(){ window.bpFindDuplicates(); };
+      s.parentNode.insertBefore(d, s.nextSibling);
+    }
+  }
+  new MutationObserver(function(){ addMenu(); }).observe(document.body, { childList: true, subtree: true });
+  addMenu(); setTimeout(addMenu, 1500);
+  console.log('[BP] v6.5.4 — Find duplicates');
 })();
 </script>
