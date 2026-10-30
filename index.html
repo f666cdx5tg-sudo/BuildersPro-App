@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.5.8';
+var APP_VERSION = '6.5.9';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -28621,6 +28621,11 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
       var have = {}; (DB.jobs || []).forEach(function(j){ have[j.id] = 1; });
       var lost = ids.filter(function(id){ return !have[id] && !(typeof bpIsTombstoned === 'function' && bpIsTombstoned('jobs', id)); });
       if (!lost.length) deletedHere = Math.max(deletedHere, 1);
+    } else if (n < before) {
+      /* no id list yet (first run after 6.5.8): recent job tombstones that cover the gap mean they were deleted on purpose */
+      var wk = Date.now() - 7 * 864e5, tomb = 0;
+      Object.keys(DB.tombstones || {}).forEach(function(k){ if (k.indexOf('jobs:') === 0 && Date.parse(DB.tombstones[k]) > wk) tomb++; });
+      if (tomb >= before - n) deletedHere = Math.max(deletedHere, 1);
     }
     if (!(n < before && deletedHere === 0)) try { localStorage.setItem('bp_last_job_ids', JSON.stringify((DB.jobs || []).map(function(j){ return j.id; }))); } catch(e){}
     if (n < before && deletedHere === 0) {
