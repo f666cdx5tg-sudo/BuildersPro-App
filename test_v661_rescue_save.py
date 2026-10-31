@@ -14,7 +14,7 @@ def ok(c, m):
 SEED = """() => { var t = new Date().toISOString(), d = t.slice(0,10);
   DB.jobs=[{id:'j1',name:'N. Peach St',address:'1536 N. Peach St',status:'Active'},{id:'j3',name:'Other',address:'2 St',status:'Active'}];
   DB.rooms=[{id:'r1',jobId:'j1',name:'Kitchen',level:'Level 1'}];
-  DB.recycle=[{id:'rc_jobs_j2',coll:'jobs',rec:{id:'j2',name:'N. Peach St',address:'1536 N. Peach St'},deletedAt:t},
+  DB.jobMerges={j2:'j1'}; DB.recycle=[{id:'rc_jobs_j2',coll:'jobs',rec:{id:'j2',name:'N. Peach St',address:'1536 N. Peach St'},deletedAt:t},
               {id:'rc_rooms_r2',coll:'rooms',rec:{id:'r2',jobId:'j2',name:'Kitchen',level:'Level 1'},deletedAt:t}];
   DB.punchlist=[{id:'k1',jobId:'j1',roomId:'r1',text:'Old item',done:false},{id:'k9',jobId:'j2',roomId:'r2',text:'Added today on the phone',done:false,created:t}];
   DB.reports=[{id:'rp9',jobId:'j2',date:d,notes:'Today log'}];

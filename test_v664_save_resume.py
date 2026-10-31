@@ -52,7 +52,7 @@ async def phone(b):
     await pg.close()
     await ctx.add_init_script("try { if (!sessionStorage.getItem('aged')) { sessionStorage.setItem('aged','1'); var r=JSON.parse(localStorage.getItem('bp_resume_v1')); r.at -= 3*3600*1000; localStorage.setItem('bp_resume_v1', JSON.stringify(r)); } } catch(e){}")
     pg, errs = await page(ctx, 'index.html'); await pg.wait_for_timeout(800)
-    ok(await pg.evaluate("document.querySelector('.screen.active').id") == 's-home', 'after 2+ hours it opens Home')
+    ok(await pg.evaluate("document.querySelector('.screen.active').id") == 's-job-detail', 'v6.7.9: even 3+ hours later it opens where you left off')
     ok(not errs, 'no page errors %s' % errs[:2]); await ctx.close()
 async def mac(b):
     ctx = await b.new_context(viewport={'width':1440,'height':900})

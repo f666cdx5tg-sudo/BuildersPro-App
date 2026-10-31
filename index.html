@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.7.8';
+var APP_VERSION = '6.7.9';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -28541,8 +28541,8 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
       if (isRestore && inc) {
         try { if (typeof window.bspReconcile === 'function') window.bspReconcile(inc); } catch(e){}   /* final ids first (v6.1.4), then stamp them */
         /* stamp first so the merge itself lets every restored record in */
-        var stamp = new Date().toISOString(), sh = shield();
-        bpAllCollections(inc).forEach(function(k){ (Array.isArray(inc[k]) ? inc[k] : []).forEach(function(x){ if (x && x.id) sh[k + ':' + x.id] = stamp; }); });
+        /* v6.7.9 (Stan: "If I delete anything remove it"): a backup / safety-copy restore brings back what was LOST,
+           never what was DELETED — so it no longer stamps every record past its delete marker. */
         restoring = 0;
       }
       /* keep stamps travel with syncs: newest stamp wins */
@@ -31876,7 +31876,7 @@ html,body{background:var(--bg) !important}
       if (jid in cache) return cache[jid];
       var t = null;
       if (merges[jid] && jobs[merges[jid]]) t = merges[jid];
-      else {
+      else if (false) {
         var gone = binRec('jobs', jid);
         if (gone) { var k = low(gone.name) + '|' + low(gone.address); var m = DB.jobs.find(function(j){ return low(j.name) + '|' + low(j.address) === k; }) || DB.jobs.find(function(j){ return low(j.name) === low(gone.name); }); if (m) t = m.id; }
       }
@@ -32081,7 +32081,7 @@ html,body{background:var(--bg) !important}
   'use strict';
   if (window.__bp664) return; window.__bp664 = 1;
   var IS_DESK = !!document.getElementById('modal-new-room');
-  var MIRROR = 'bp_mirror_v1', DIRTY = 'bp_dirty_at', RESUME = 'bp_resume_v1', RESUME_MS = 2 * 3600 * 1000;
+  var MIRROR = 'bp_mirror_v1', DIRTY = 'bp_dirty_at', RESUME = 'bp_resume_v1', RESUME_MS = 365 * 864e5;   /* v6.7.9: always where you left off */
   function nowIso(){ return new Date().toISOString(); }
   function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); return true; } catch(e){ return false; } }
   function say(m){ try { (window.toast || function(x){ console.log(x); })(m); } catch(e){} }
@@ -32493,5 +32493,74 @@ html,body{background:var(--bg) !important}
   new MutationObserver(add).observe(document.body, { childList: true, subtree: true });
   add(); setTimeout(add, 1500);
   console.log('[BP] v6.7.4 — iPad: Command Center (' + pref() + ')');
+})();
+</script>
+<script id="v679">
+/* ══ v6.7.9 — DELETED MEANS GONE · OPENS WHERE YOU LEFT OFF ════════════════════
+   Stan (Oct 31, 2026): "If I delete anything remove it. It should not be back in the app when I
+   open the app" + "I want to open the app and start where I left off with photos and data there."
+   Why deleted things came back: every time a backup or safety copy was restored, each record in it
+   was stamped "keep" — and that stamp beat the delete marker of anything deleted earlier, on every
+   device, through sync. Now:
+     · a restore can only bring back what was lost, never what was deleted (stamping removed);
+     · the old mass "keep" stamps are cleared here and ignored when they arrive from another
+       device, so anything you deleted is removed again — it stays in the Recycle Bin, where
+       Restore (one item, on purpose) still works and sticks;
+     · anything still pointing at a job you deleted (its punch items, photos, money) goes with it.
+   The app always opens on the screen you were on (job, space, spot on the page) — no time limit. */
+(function(){
+  'use strict';
+  if (window.__bp679) return; window.__bp679 = 1;
+  function bulkKeys(map){
+    var n = {}; Object.keys(map || {}).forEach(function(k){ var v = String(map[k]); n[v] = (n[v] || 0) + 1; });
+    return Object.keys(map || {}).filter(function(k){ return n[String(map[k])] > 3; });   /* one timestamp on many records = a mass restore */
+  }
+  function pruneBulk(map){ var ks = bulkKeys(map); ks.forEach(function(k){ delete map[k]; }); return ks.length; }
+  function enforce(){
+    if (!window.DB) return 0;
+    var removed = 0;
+    if (DB.keepStamps && typeof DB.keepStamps === 'object') removed += pruneBulk(DB.keepStamps);
+    var before = 0; (typeof BP_COLLECTIONS !== 'undefined' ? BP_COLLECTIONS : Object.keys(DB)).forEach(function(c){ if (Array.isArray(DB[c])) before += DB[c].length; });
+    try { if (typeof purgeTombstonedLocally === 'function') purgeTombstonedLocally(); } catch(e){}
+    try { if (typeof purgeDeletedJobsLocally === 'function') purgeDeletedJobsLocally(); } catch(e){}
+    /* records of a job you deleted (not one Find duplicates merged) go with it */
+    var merges = (DB.jobMerges && typeof DB.jobMerges === 'object') ? DB.jobMerges : {};
+    var live = {}; (DB.jobs || []).forEach(function(j){ if (j && j.id) live[j.id] = 1; });
+    Object.keys(DB).forEach(function(c){
+      if (c === 'jobs' || c === 'recycle' || !Array.isArray(DB[c])) return;
+      var gone = DB[c].filter(function(r){ return r && r.jobId && !live[r.jobId] && !merges[r.jobId] && DB.tombstones && DB.tombstones['jobs:' + r.jobId]; });
+      if (gone.length && typeof bpRemoveFrom === 'function') { var ids = {}; gone.forEach(function(r){ ids[r.id] = 1; }); bpRemoveFrom(c, function(r){ return !(r && ids[r.id]); }); }
+    });
+    var after = 0; (typeof BP_COLLECTIONS !== 'undefined' ? BP_COLLECTIONS : Object.keys(DB)).forEach(function(c){ if (Array.isArray(DB[c])) after += DB[c].length; });
+    if (removed || after !== before) {
+      try { bpSave(); } catch(e){}
+      ['renderAll','renderHome','bpRefreshCurrentScreen','refreshCurrentView'].forEach(function(f){ try { if (typeof window[f] === 'function') window[f](); } catch(e){} });
+      console.log('[BP] v6.7.9 deleted stays deleted:', removed, 'mass keep-stamps cleared,', before - after, 'deleted records removed');
+    }
+    return before - after;
+  }
+  window.bpEnforceDeletes = enforce;
+  if (typeof window.mergeIncomingDB === 'function' && !window.mergeIncomingDB.__v679) {
+    var _m = window.mergeIncomingDB;
+    window.mergeIncomingDB = function(remote){
+      var inc = remote && (remote.db || remote);
+      if (inc && inc.keepStamps && typeof inc.keepStamps === 'object') pruneBulk(inc.keepStamps);   /* another device's old mass stamps: ignored */
+      var r = _m.apply(this, arguments);
+      try { enforce(); } catch(e){}
+      return r;
+    };
+    ['__v616','__v661','__v664'].forEach(function(f){ window.mergeIncomingDB[f] = _m[f]; });
+    window.mergeIncomingDB.__v679 = 1;
+    try { mergeIncomingDB = window.mergeIncomingDB; } catch(e){}
+  }
+  if (typeof window.loadDbAsync === 'function' && !window.loadDbAsync.__v679) {
+    var _l = window.loadDbAsync;
+    window.loadDbAsync = function(cb){ return _l.call(this, function(){ try { enforce(); } catch(e){} if (cb) cb.apply(this, arguments); }); };
+    ['__v616','__v664'].forEach(function(f){ window.loadDbAsync[f] = _l[f]; });
+    window.loadDbAsync.__v679 = 1;
+    try { loadDbAsync = window.loadDbAsync; } catch(e){}
+  }
+  setTimeout(function(){ try { enforce(); } catch(e){} }, 1200);
+  console.log('[BP] v6.7.9 — deleted means gone');
 })();
 </script>
