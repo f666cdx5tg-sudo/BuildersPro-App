@@ -41,7 +41,7 @@ async def main():
             await away(2 * 60 * 1000)
             ok(await pg.evaluate("document.querySelector('#s-room-detail').classList.contains('active')"), 'a 2-minute hop out and back stays in the space')
             await away(11 * 60 * 1000)
-            ok(await pg.evaluate("document.querySelector('#s-home').classList.contains('active') && document.getElementById('s-home').scrollTop === 0"), 'back after 11 minutes lands on Home, at the top')
+            ok(await pg.evaluate("document.querySelector('#s-room-detail').classList.contains('active')"), 'v6.6.4 (Stan, Oct 30: "come back where i left off"): back after 11 minutes stays in the space')
             await pg.evaluate("openRoomDetail('r1')"); await pg.wait_for_timeout(300)
             await pg.evaluate("var i=document.createElement('input'); i.id='tt'; document.getElementById('s-room-detail').appendChild(i); i.value='half typed'; i.focus();")
             await away(11 * 60 * 1000)

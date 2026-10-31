@@ -101,6 +101,21 @@ final class ShellModel: NSObject, ObservableObject {
 
     func closePopup() { popup = nil }
 
+    /// v6.6.4 — the app is going to the background: ask the page to save (both copies + iCloud)
+    /// and keep the app awake until it says it's done, or 10 seconds at most.
+    func saveBeforeLeaving() {
+        #if os(iOS)
+        var task: UIBackgroundTaskIdentifier = .invalid
+        let finish = { if task != .invalid { UIApplication.shared.endBackgroundTask(task); task = .invalid } }
+        task = UIApplication.shared.beginBackgroundTask(withName: "bp-save", expirationHandler: finish)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: finish)
+        #else
+        let finish = {}
+        #endif
+        webView.callAsyncJavaScript("if (window.bpLeaveSave) { window.bpLeaveSave(); } if (window.bpSaveNow) { await window.bpSaveNow('leave'); } return true;",
+                                    arguments: [:], in: nil, in: .page) { _ in finish() }
+    }
+
     // MARK: Messages from the page
 
     func handle(_ message: WKScriptMessage) {

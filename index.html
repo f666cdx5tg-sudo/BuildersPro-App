@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.6.3';
+var APP_VERSION = '6.6.4';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32055,5 +32055,182 @@ html,body{background:var(--bg) !important}
   /* the red banner's tap = save again now */
   try { if (D && D.ok === false && typeof window.bpPersist === 'function') setTimeout(function(){ window.bpPersist(); }, 500); } catch(e){}
   console.log('[BP] v6.6.3 — storage reconnects; saves retry');
+})();
+</script>
+<script id="v664">
+/* ══ v6.6.4 — A SECOND COPY ON EVERY CHANGE · SAVE BUTTON · BACK WHERE YOU WERE ══
+   Stan (Oct 30, 2026): "auto save is failing alone, lets do this if I leave the app and
+   come back save where i left off and add manual save so i can ensure i don't lose anything."
+   1. Every change is also written at once to a second, simpler store on the device (the
+      records, not the photo files). If the main save didn't land, the next time the app
+      opens it uses that copy and says "Recovered your latest changes".
+   2. Leaving the app (home button, switching apps, locking the phone) saves right away —
+      both copies — and sends to iCloud.
+   3. Save button: in the bottom buttons and the side menu (phone), top bar (Mac), and the
+      save bar on Home. It saves both copies, checks the save by reading it back, sends to
+      iCloud, and tells you plainly what happened.
+   4. Coming back within 2 hours — even if the phone closed the app — opens the screen you
+      were on (same job, same space, same spot on the page). After 2 hours it opens Home. */
+(function(){
+  'use strict';
+  if (window.__bp664) return; window.__bp664 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  var MIRROR = 'bp_mirror_v1', DIRTY = 'bp_dirty_at', RESUME = 'bp_resume_v1', RESUME_MS = 2 * 3600 * 1000;
+  function nowIso(){ return new Date().toISOString(); }
+  function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); return true; } catch(e){ return false; } }
+  function say(m){ try { (window.toast || function(x){ console.log(x); })(m); } catch(e){} }
+  var mirrorErr = '';
+
+  /* ── 1. the second copy ── */
+  function writeMirror(){
+    if (!window.DB || !Array.isArray(DB.jobs)) return false;
+    try {
+      var meta = bpSplitBlobs(DB, {});
+      var ok = ls(MIRROR, JSON.stringify({ at: nowIso(), v: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''), meta: meta }));
+      mirrorErr = ok ? '' : 'second copy too big for this device';
+      return ok;
+    } catch(e){ mirrorErr = (e && e.name) || 'second copy failed'; return false; }
+  }
+  window.bpWriteMirror = writeMirror;
+  /* every change marks the device "dirty" until a main save of that change (or a later one) lands */
+  var gen = 0, savedGen = 0;
+  if (typeof window.bpPersist === 'function' && !window.bpPersist.__v664) {
+    var _p = window.bpPersist;
+    window.bpPersist = function(cb){ var g = gen; return _p.call(this, function(ok){ if (ok && g >= savedGen) { savedGen = g; if (g === gen) ls(DIRTY, null); } if (cb) cb(ok); }); };
+    window.bpPersist.__v664 = 1; window.bpPersist.__v661 = _p.__v661;
+    try { bpPersist = window.bpPersist; } catch(e){}
+  }
+  var mt = 0;
+  ['save', 'saveDB'].forEach(function(fn){
+    var f = window[fn]; if (typeof f !== 'function' || f.__v664) return;
+    var w = function(){ gen++; if (!ls(DIRTY)) ls(DIRTY, nowIso()); var r = f.apply(this, arguments); clearTimeout(mt); mt = setTimeout(writeMirror, 250); return r; };
+    w.__v664 = 1; window[fn] = w; try { (0, eval)(fn + ' = window.' + fn); } catch(e){}
+  });
+  /* opening the app: if the second copy is newer than the last good main save, use it */
+  function recoverIfNewer(){
+    var raw = ls(MIRROR); if (!raw) return false;
+    var m; try { m = JSON.parse(raw); } catch(e){ return false; }
+    var dirty = ls(DIRTY) || '';
+    if (!dirty || !m || !m.meta || !Array.isArray(m.meta.jobs) || !m.at || m.at < dirty) return false;   /* last change never confirmed, and the copy has it */
+    var have = {}; try { bpSplitBlobs(DB, have); } catch(e){}
+    DB = bpJoinBlobs(m.meta, have);
+    try { window.DB = DB; } catch(e){}
+    try { if (typeof ensureDbShape === 'function') ensureDbShape(); } catch(e){}
+    console.log('[BP] v6.6.4 recovered from the second copy', m.at, 'dirty since', dirty);
+    setTimeout(function(){ try { window.bpPersist(); } catch(e){} say('Recovered your latest changes'); }, 400);
+    return true;
+  }
+  window.bpRecoverIfNewer = recoverIfNewer;
+  if (typeof window.loadDbAsync === 'function' && !window.loadDbAsync.__v664) {
+    var _l = window.loadDbAsync;
+    window.loadDbAsync = function(cb){ return _l.call(this, function(){ try { recoverIfNewer(); } catch(e){ console.warn('[BP] v6.6.4 recover', e); } if (cb) cb.apply(this, arguments); }); };
+    window.loadDbAsync.__v664 = 1; window.loadDbAsync.__v616 = _l.__v616;
+    try { loadDbAsync = window.loadDbAsync; } catch(e){}
+  }
+
+  /* ── 3. Save now ── */
+  var saving = null;
+  window.bpSaveNow = function(why){
+    if (saving) return saving;
+    var leaving = why === 'leave';
+    saving = new Promise(function(res){
+      var mirrorOk = writeMirror();
+      var persist = new Promise(function(r){ try { window.bpPersist(r); } catch(e){ r(false); } });
+      persist.then(function(ok){
+        var ck = typeof window.__bpCk === 'function' ? window.__bpCk() : null, cloud = Promise.resolve(null);
+        if (ck && ck.ready && ck.on && typeof window.bpICloudSync === 'function') cloud = Promise.race([Promise.resolve(window.bpICloudSync('both')), new Promise(function(r){ setTimeout(function(){ r('slow'); }, leaving ? 8000 : 20000); })]);
+        cloud.then(function(c){
+          var ck2 = typeof window.__bpCk === 'function' ? window.__bpCk() : null;
+          var out = { device: ok, copy: mirrorOk, cloud: c && c !== 'slow' ? true : (c === 'slow' ? 'slow' : false), err: (window.BP_SAVE_DIAG && BP_SAVE_DIAG.err) || mirrorErr, cloudErr: ck2 && ck2.err };
+          if (!leaving) {
+            if (ok && out.cloud === true) say('Saved on this ' + (IS_DESK ? 'Mac' : 'phone') + ' and in iCloud');
+            else if (ok && out.cloud === 'slow') say('Saved on this ' + (IS_DESK ? 'Mac' : 'phone') + ' · iCloud still sending');
+            else if (ok) say('Saved on this ' + (IS_DESK ? 'Mac' : 'phone') + (ck && !ck.on ? ' · iCloud sync is off' : ck2 && ck2.err ? ' · iCloud: ' + ck2.err : ''));
+            else if (mirrorOk) say('Main save failed (' + (out.err || 'unknown') + ') — a backup copy WAS saved. Keep the app open, tap Save again.');
+            else say('NOT saved: ' + (out.err || 'unknown') + '. Keep the app open and tap Save again.');
+          }
+          try { if (window.bpSaveChipPaint) bpSaveChipPaint(); } catch(e){}
+          saving = null; res(out);
+        });
+      });
+    });
+    return saving;
+  };
+
+  /* ── 2 + 4. leaving the app: save, and remember where you were ── */
+  function where(){
+    try {
+      var s = document.querySelector('.screen.active'); if (!s) return null;
+      return { at: Date.now(), screen: s.id, job: window.currentJobId || '', room: s.getAttribute('data-room-id') || '',
+        punchJob: window._bpPunchJob || '', area: window._bpPunchArea || '', y: s.scrollTop || 0 };
+    } catch(e){ return null; }
+  }
+  function leave(){
+    if (!IS_DESK) { var w = where(); if (w) ls(RESUME, JSON.stringify(w)); }
+    try { window.bpSaveNow('leave'); } catch(e){ writeMirror(); }
+  }
+  document.addEventListener('visibilitychange', function(){ if (document.hidden) leave(); });
+  window.addEventListener('pagehide', leave);
+  window.bpLeaveSave = leave;   /* the native app calls this as it goes to the background */
+
+  function resumeState(){ try { var r = JSON.parse(ls(RESUME) || 'null'); return r && Date.now() - r.at < RESUME_MS ? r : null; } catch(e){ return null; } }
+  function restore(r){
+    try {
+      if (r.screen === 's-job-detail' && r.job && (DB.jobs || []).some(function(j){ return j.id === r.job; })) openJobDetail(r.job);
+      else if (r.screen === 's-room-detail' && r.room && (DB.rooms || []).some(function(x){ return x.id === r.room; })) openRoomDetail(r.room);
+      else if (r.screen === 's-punch') { if (r.punchJob) window._bpPunchJob = r.punchJob; showScreen('s-punch'); if (r.area && typeof bpOpenPunchArea === 'function' && r.area !== '__ALL') bpOpenPunchArea(r.area); }
+      else if (r.screen && document.getElementById(r.screen) && r.screen !== 's-home') showScreen(r.screen);
+      else return false;
+      setTimeout(function(){ var s = document.getElementById(r.screen); if (s && r.y) s.scrollTop = r.y; }, 450);
+      return true;
+    } catch(e){ return false; }
+  }
+  if (!IS_DESK && typeof window.bpGoHome === 'function' && !window.bpGoHome.__v664) {
+    var _home = window.bpGoHome;
+    window.bpGoHome = function(){
+      var r = resumeState();
+      if (r) {
+        var a = document.querySelector('.screen.active');
+        if (a && a.id === r.screen) return;            /* came back to an app that was still open: stay put */
+        if (restore(r)) return;
+      }
+      return _home.apply(this, arguments);
+    };
+    window.bpGoHome.__v664 = 1;
+  }
+
+  /* ── Save buttons ── */
+  var DISK = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>';
+  function addButtons(){
+    if (!IS_DESK) {
+      var dock = document.getElementById('bp-dock');
+      if (dock && !document.getElementById('bp-dock-save')) {
+        var b = document.createElement('button'); b.type = 'button'; b.id = 'bp-dock-save'; b.setAttribute('aria-label', 'Save'); b.title = 'Save';
+        b.innerHTML = DISK; b.style.color = '#30D158';
+        b.onclick = function(){ window.bpSaveNow('button'); };
+        dock.appendChild(b);
+      }
+      var sync = document.getElementById('bp-sync-btn');
+      if (sync && !document.getElementById('nav-save')) {
+        var n = document.createElement('button'); n.type = 'button'; n.className = 'nav-btn bp-tool'; n.id = 'nav-save';
+        n.innerHTML = DISK.replace('style="width:22px;height:22px;', 'style="') + '<span class="bp-lbl">Save now</span>';
+        n.onclick = function(){ try { closeNavDrawer(); } catch(e){} window.bpSaveNow('button'); };
+        sync.parentNode.insertBefore(n, sync);
+      }
+    } else {
+      var syncBtn = document.querySelector('.tb-btn[onclick="openSyncDesktop()"]');
+      if (syncBtn && !document.getElementById('tb-save')) {
+        var t = document.createElement('button'); t.className = 'tb-btn'; t.id = 'tb-save';
+        t.innerHTML = DISK.replace('width:22px;height:22px', 'width:16px;height:16px') + ' Save';
+        t.onclick = function(){ window.bpSaveNow('button'); };
+        syncBtn.parentNode.insertBefore(t, syncBtn);
+      }
+    }
+    var chip = document.getElementById('bp-save-chip');
+    if (chip && !chip.__v664) { chip.__v664 = 1; chip.onclick = function(){ window.bpSaveNow('button'); }; }
+  }
+  new MutationObserver(function(){ addButtons(); }).observe(document.body, { childList: true, subtree: true });
+  addButtons(); setTimeout(addButtons, 1500);
+  console.log('[BP] v6.6.4 — second copy, Save button, back where you were');
 })();
 </script>

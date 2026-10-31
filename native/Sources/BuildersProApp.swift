@@ -6,10 +6,13 @@ import SwiftUI
 @main
 struct BuildersProApp: App {
     @StateObject private var shell = ShellModel()
+    @Environment(\.scenePhase) private var phase
 
     var body: some Scene {
         WindowGroup {
             LockGate { ShellView(model: shell) }
+                // v6.6.4: leaving the app saves first (the phone gives it a few seconds to finish)
+                .onChange(of: phase) { _, new in if new != .active { shell.saveBeforeLeaving() } }
         }
         #if os(macOS)
         .defaultSize(width: 1440, height: 920)
