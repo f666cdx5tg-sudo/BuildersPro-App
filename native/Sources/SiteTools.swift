@@ -27,9 +27,9 @@ enum SiteTools {
         #if canImport(RoomPlan)
         room = RoomCaptureSession.isSupported
         #endif
-        return "{measure:\(ar),lidar:\(lidar),roomScan:\(room),ai:true}"
+        return "{measure:\(ar),lidar:\(lidar),roomScan:\(room),ai:true,drive:true}"
         #else
-        return "{measure:false,lidar:false,roomScan:false,ai:true}"
+        return "{measure:false,lidar:false,roomScan:false,ai:true,drive:true}"
         #endif
     }
 

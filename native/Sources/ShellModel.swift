@@ -133,6 +133,8 @@ final class ShellModel: NSObject, ObservableObject {
             CalendarSync.shared.sync(evs) { [weak self] js in self?.webView.evaluateJavaScript(js) }
         case "ai", "aiKeySet", "aiKeyClear", "aiKeyStatus":
             aiMessage(kind, body)
+        case "drivePut", "driveGet", "driveList":
+            driveMessage(kind, body)
         case "haptic":
             #if os(iOS)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -584,4 +586,97 @@ final class BPWebView: WKWebView {
         evaluateJavaScript("window.bpPhotoPinch ? window.bpPhotoPinch(\(scale), \(p.x), \(y)) : false", completionHandler: nil)
     }
     #endif
+}
+
+// MARK: - iCloud Drive sync (v6.7.0)
+
+/// v6.7.0 — iCloud sync with no sign-in box. Uses the Apple ID already signed in on this
+/// iPhone / iPad / Mac (iCloud Drive), through the app's own iCloud folder:
+///   iCloud › BuildersPro › Sync › state-<device>.json   (each device writes only its own)
+///   iCloud › BuildersPro › Sync › p › <photo>.txt        (each photo once, shared by all)
+/// The page asks; this file reads and writes; iCloud moves the files between devices.
+enum DriveSync {
+    static let q = DispatchQueue(label: "bp.drive", qos: .userInitiated)
+
+    static func root() -> URL? {
+        guard let c = FileManager.default.url(forUbiquityContainerIdentifier: DailyBackup.containerID) else { return nil }
+        let d = c.appendingPathComponent("Documents/Sync", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d.appendingPathComponent("p", isDirectory: true), withIntermediateDirectories: true)
+        return d
+    }
+
+    /// Names come from the page: keep them to plain file names inside the Sync folder.
+    static func safe(_ name: String) -> String? {
+        let ok = name.range(of: "^(p/)?[A-Za-z0-9._:-]{1,160}$", options: .regularExpression) != nil
+        return ok && !name.contains("..") ? name.replacingOccurrences(of: ":", with: "_") : nil
+    }
+
+    static func write(_ name: String, _ text: String) -> Bool {
+        guard let r = root(), let n = safe(name) else { return false }
+        let url = r.appendingPathComponent(n)
+        var ok = false, err: NSError?
+        NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
+            ok = (try? Data(text.utf8).write(to: u, options: .atomic)) != nil
+        }
+        return ok && err == nil
+    }
+
+    static func read(_ name: String) -> String? {
+        guard let r = root(), let n = safe(name) else { return nil }
+        let url = r.appendingPathComponent(n)
+        try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        var out: String?, err: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &err) { u in
+            if let d = try? Data(contentsOf: u) { out = String(data: d, encoding: .utf8) }
+        }
+        return out
+    }
+
+    /// Every device's state file with its time, plus which photos exist. Asks iCloud to download what isn't here yet.
+    static func list() -> [String: Any] {
+        guard let r = root() else { return ["ok": false, "err": "iCloud Drive is off on this device. Turn it on in Settings › your name › iCloud › iCloud Drive."] }
+        let fm = FileManager.default
+        var states: [[String: Any]] = []
+        let items = (try? fm.contentsOfDirectory(at: r, includingPropertiesForKeys: [.contentModificationDateKey], options: [])) ?? []
+        for u in items {
+            var name = u.lastPathComponent
+            if name.hasPrefix(".") && name.hasSuffix(".icloud") {   // not downloaded yet
+                try? fm.startDownloadingUbiquitousItem(at: u)
+                name = String(name.dropFirst().dropLast(7))
+                states.append(["name": name, "at": 0, "pending": true]); continue
+            }
+            guard name.hasPrefix("state-") && name.hasSuffix(".json") else { continue }
+            let t = (try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?.timeIntervalSince1970 ?? 0
+            states.append(["name": name, "at": t * 1000])
+        }
+        var photos: [String] = []
+        let pdir = r.appendingPathComponent("p", isDirectory: true)
+        for u in (try? fm.contentsOfDirectory(at: pdir, includingPropertiesForKeys: nil, options: [])) ?? [] {
+            var n = u.lastPathComponent
+            if n.hasPrefix(".") && n.hasSuffix(".icloud") { n = String(n.dropFirst().dropLast(7)) }
+            if n.hasSuffix(".txt") { photos.append(String(n.dropLast(4))) }
+        }
+        return ["ok": true, "states": states, "photos": photos]
+    }
+}
+
+extension ShellModel {
+    func driveMessage(_ kind: String, _ body: [String: Any]) {
+        let id = (body["id"] as? String) ?? ""
+        let reply: (String) -> Void = { [weak self] js in Task { @MainActor in self?.webView.evaluateJavaScript(js) } }
+        DriveSync.q.async {
+            var res: [String: Any]
+            switch kind {
+            case "drivePut":
+                let ok = DriveSync.write((body["name"] as? String) ?? "", (body["text"] as? String) ?? "")
+                res = ["ok": ok]
+            case "driveGet":
+                if let t = DriveSync.read((body["name"] as? String) ?? "") { res = ["ok": true, "text": t] }
+                else { res = ["ok": false, "err": "not downloaded yet"] }
+            default: // driveList
+                res = DriveSync.list()
+            }
+            reply("window.bpDriveDone && bpDriveDone(" + DailyBackup.js(id) + "," + SiteTools.json(res) + ")")
+        }
+    }
 }

@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.6.5';
+var APP_VERSION = '6.7.0';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32238,5 +32238,147 @@ html,body{background:var(--bg) !important}
   new MutationObserver(function(){ addButtons(); }).observe(document.body, { childList: true, subtree: true });
   addButtons(); setTimeout(addButtons, 1500);
   console.log('[BP] v6.6.4 — second copy, Save button, back where you were');
+})();
+</script>
+<script id="v670">
+/* ══ v6.7.0 — iCLOUD SYNC WITH NO SIGN-IN ════════════════════════════════════
+   Stan (Oct 30, 2026): the iCloud sign-in box hung on the iPad, then Apple locked his
+   account. BuildersPro no longer asks for an Apple ID at all. Inside the BuildersPro app
+   (iPhone, iPad, Mac) sync now goes through the app's own iCloud Drive folder, using the
+   Apple ID that is already signed in on that device:
+     · each device writes its own copy (state-<device>.json) — two devices can never
+       overwrite each other — and each photo once (p/<photo>.txt);
+     · each device reads the others' copies and merges them in (newest change wins,
+       deletes are kept), the same merge the old sync used.
+   Runs a few seconds after each change, when the app opens or comes back, and on Save.
+   The old Apple sign-in box is hidden. (A web browser, outside the app, can't reach
+   iCloud Drive — there the save bar says so.) */
+(function(){
+  'use strict';
+  if (window.__bp670) return; window.__bp670 = 1;
+  function caps(){ try { return (window.BPShell && BPShell.caps) || {}; } catch(e){ return {}; } }
+  if (!caps().drive) return;                        /* only the app with the new iCloud Drive part */
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){} return null; }
+  function J(k, d){ try { return JSON.parse(ls(k) || '') || d; } catch(e){ return d; } }
+  var DEV = ls('bp_device_id'); if (!DEV) { DEV = (IS_DESK ? 'mac-' : 'dev-') + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); ls('bp_device_id', DEV); }
+  var ST = { busy: false, last: ls('bp_drive_last') || '', err: '', timer: 0 };
+  function fname(ref){ return 'p/' + String(ref).replace(/:/g, '_') + '.txt'; }
+  function unf(n){ return String(n).replace(/^bpb_/, 'bpb:'); }
+
+  /* talking to the app */
+  var PEND = {}, seq = 0;
+  window.bpDriveDone = function(id, r){ var f = PEND[id]; delete PEND[id]; if (f) f(r || { ok: false }); };
+  function call(kind, body){
+    return new Promise(function(res){
+      var id = 'd' + (++seq) + Date.now().toString(36);
+      var t = setTimeout(function(){ if (PEND[id]) { delete PEND[id]; res({ ok: false, err: 'iCloud Drive did not answer' }); } }, 90000);
+      PEND[id] = function(r){ clearTimeout(t); res(r); };
+      body = body || {}; body.kind = kind; body.id = id;
+      try { webkit.messageHandlers.bp.postMessage(body); } catch(e){ clearTimeout(t); delete PEND[id]; res({ ok: false, err: 'not in the app' }); }
+    });
+  }
+
+  function rerender(){ ['renderAll','bpRefreshCurrentScreen','refreshCurrentView','renderHome'].forEach(function(f){ try { if (typeof window[f] === 'function') window[f](); } catch(e){} }); }
+  var quiet = false;
+  function saveQuiet(){ quiet = true; try { bpSave(); } finally { quiet = false; } }
+
+  async function pull(list){
+    var seen = J('bp_drive_seen', {}), got = 0;
+    var have = null;
+    for (var i = 0; i < list.states.length; i++) {
+      var s = list.states[i];
+      if (s.name === 'state-' + DEV + '.json' || s.pending || !(s.at > (seen[s.name] || 0))) continue;
+      var r = await call('driveGet', { name: s.name });
+      if (!r.ok || !r.text) continue;
+      var rem; try { rem = JSON.parse(r.text); } catch(e){ continue; }
+      if (!rem || !rem.db) continue;
+      /* photos this copy points at that aren't on this device yet */
+      if (!have) { have = {}; try { bpSplitBlobs(DB, have); } catch(e){} }
+      var refs = {}; (r.text.match(/bpb:[A-Za-z0-9_\-]+/g) || []).forEach(function(x){ refs[x] = 1; });
+      var missing = Object.keys(refs).filter(function(x){ return !have[x]; }), short = 0;
+      for (var k = 0; k < missing.length; k++) {
+        var p = await call('driveGet', { name: fname(missing[k]) });
+        if (p.ok && p.text) have[missing[k]] = p.text; else short++;
+        if (missing.length > 5) paint('Getting photos from iCloud… ' + (k + 1) + ' of ' + missing.length);
+      }
+      var tries = J('bp_drive_tries', {});
+      if (short && (tries[s.name] || 0) < 6) { tries[s.name] = (tries[s.name] || 0) + 1; ls('bp_drive_tries', JSON.stringify(tries)); continue; }   /* photos still downloading: try again next round */
+      var res = mergeIncomingDB({ db: bpJoinBlobs(rem.db, have) });
+      seen[s.name] = s.at; delete tries[s.name];
+      ls('bp_drive_seen', JSON.stringify(seen)); ls('bp_drive_tries', JSON.stringify(tries));
+      if (res && (res.added || res.updated)) got += res.added + res.updated;
+    }
+    if (got) { saveQuiet(); rerender(); }
+    return got;
+  }
+  async function push(list){
+    var blobs = {}, lean = bpSplitBlobs(DB, blobs);
+    var up = J('bp_drive_up', {}), there = {}; (list.photos || []).forEach(function(n){ there[unf(n)] = 1; });
+    var refs = Object.keys(blobs).filter(function(r){ return !up[r] && !there[r]; }), sent = 0;
+    for (var i = 0; i < refs.length; i++) {
+      var w = await call('drivePut', { name: fname(refs[i]), text: blobs[refs[i]] });
+      if (!w.ok) throw new Error('Could not write a photo to iCloud Drive');
+      up[refs[i]] = 1; sent++;
+      if (refs.length > 5) { paint('Sending photos to iCloud… ' + (i + 1) + ' of ' + refs.length); if (i % 10 === 9) ls('bp_drive_up', JSON.stringify(up)); }
+    }
+    Object.keys(there).forEach(function(r){ up[r] = 1; });
+    ls('bp_drive_up', JSON.stringify(up));
+    var s = await call('drivePut', { name: 'state-' + DEV + '.json', text: JSON.stringify({ at: new Date().toISOString(), dev: DEV, v: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''), db: lean }) });
+    if (!s.ok) throw new Error('Could not write to iCloud Drive');
+    return sent;
+  }
+  var running = null;
+  window.bpDriveSync = function(){
+    if (running) return running;
+    ST.busy = true; ST.err = ''; paint();
+    running = (async function(){
+      try {
+        var list = await call('driveList', {});
+        if (!list.ok) throw new Error(list.err || 'iCloud Drive is not available');
+        var got = await pull(list);
+        var sent = await push(list);
+        ST.last = new Date().toISOString(); ls('bp_drive_last', ST.last);
+        return { pulled: got, photosUp: sent };
+      } catch(e) { ST.err = (e && e.message) || String(e); return null; }
+      finally { ST.busy = false; running = null; paint(); }
+    })();
+    return running;
+  };
+
+  /* take over from the old Apple sign-in sync */
+  window.bpICloudSync = function(){ return window.bpDriveSync(); };
+  window.bpICloudSyncNow = function(){ return window.bpDriveSync(); };
+  window.bpICloudTurnOn = function(){ return window.bpDriveSync(); };
+  window.__bpCk = function(){ return { ready: true, on: true, user: true, last: ST.last, err: ST.err, busy: ST.busy, pending: !!ST.timer, drive: true }; };
+  function schedule(){ if (quiet) return; clearTimeout(ST.timer); ST.timer = setTimeout(function(){ ST.timer = 0; window.bpDriveSync(); }, 8000); }
+  ['save', 'saveDB'].forEach(function(fn){
+    var f = window[fn]; if (typeof f !== 'function' || f.__v670) return;
+    var w = function(){ var r = f.apply(this, arguments); schedule(); return r; };
+    w.__v670 = 1; window[fn] = w; try { (0, eval)(fn + ' = window.' + fn); } catch(e){}
+  });
+  var lastPull = 0;
+  function onFront(){ if (Date.now() - lastPull < 20000) return; lastPull = Date.now(); window.bpDriveSync(); }
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) onFront(); });
+  setTimeout(onFront, 3500);
+  setInterval(function(){ if (!document.hidden) onFront(); }, 120000);   /* see the other devices' work every 2 minutes */
+
+  /* hide the Apple sign-in box everywhere; say what sync does now */
+  var st = document.createElement('style');
+  st.textContent = '#bp-ck-signin,#bp-ck-signout,[id^="apple-sign-in-button"],[id^="apple-sign-out-button"]{display:none !important}';
+  document.head.appendChild(st);
+  function paint(msg){
+    try { if (window.bpSaveChipPaint) bpSaveChipPaint(); } catch(e){}
+    var host = document.getElementById('bp-ck-signin'); host = host && host.parentElement;
+    if (!host) return;
+    var el = document.getElementById('bp-drive-card');
+    if (!el) { el = document.createElement('div'); el.id = 'bp-drive-card'; el.setAttribute('data-bp-wrap', '1'); el.style.cssText = 'font-size:15px;line-height:1.45;margin:8px 0'; host.insertBefore(el, host.firstChild); }
+    var t = ST.busy ? (msg || 'Syncing with iCloud…') : ST.err ? '<b style="color:#FF453A">Not synced:</b> ' + ST.err : '<b style="color:#30D158">On.</b> Uses the Apple ID on this device — no sign-in. ' + (ST.last ? 'Last sync ' + new Date(ST.last).toLocaleString() + '.' : '');
+    el.innerHTML = t;
+    [].forEach.call(host.parentElement ? host.parentElement.querySelectorAll('*') : [], function(n){ if (!n.children.length && /Sign in to iCloud to start syncing|Sign in with your Apple ID/.test(n.textContent)) n.style.display = 'none'; });
+  }
+  window.bpDrivePaint = paint;
+  new MutationObserver(function(){ if (document.getElementById('bp-ck-signin') && !document.getElementById('bp-drive-card')) paint(); }).observe(document.body, { childList: true, subtree: true });
+  console.log('[BP] v6.7.0 — iCloud Drive sync, no sign-in (device ' + DEV + ')');
 })();
 </script>
