@@ -136,6 +136,8 @@ async def main():
             print('\nIf the shared file was emptied, it is restored from the backup taken at the switch')
             old = shared()['db']; FILES['state-mac-old.json'] = (json.dumps({'db': old}), time.time() * 1000)   # the old per-device copies are still in iCloud Drive
             sf = shared(); sf['db']['jobs'] = []; sf['db']['expenses'] = []; sf['rev'] = 'wiped-1'; FILES['state-shared.json'] = (json.dumps(sf), time.time() * 1000)
+            # like the real Mac: it already took the empty file and marked it seen before the fix arrived
+            await mac.evaluate("localStorage.removeItem('bp_v693_checked'); localStorage.setItem('bp_one_seen', '%s');" % FILES['state-shared.json'][1])
             await mac.evaluate("bpDriveSync()")
             ok(len(shared()['db']['jobs']) >= 2 and 'N. Peach St' in await mac.evaluate(JOBS), 'Mac brought the jobs back from its backup (%s)' % await mac.evaluate(JOBS))
             await phone.evaluate("bpDriveSync()")

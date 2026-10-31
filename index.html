@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.3';
+var APP_VERSION = '6.9.4';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32959,13 +32959,14 @@ html,body{background:var(--bg) !important}
     if (!list.ok) throw new Error(list.err || 'iCloud Drive is not available');
     var ent = (list.states || []).filter(function(s){ return s.name === FILE; })[0];
     var dirtyAt = ls(DIRTY), base = await idbG('bp_one_base'), prev = await idbG('bp_one_prev');
-    if (ent && !ent.pending && base && !dirtyAt && ent.at && String(ent.at) === ls('bp_one_seen')) { if (ST.left) await photosDown(); return { same: 1 }; }
+    if (ent && !ent.pending && base && !dirtyAt && ent.at && String(ent.at) === ls('bp_one_seen') && ls('bp_v693_checked')) { if (ST.left) await photosDown(); return { same: 1 }; }
     var remote = null;
     if (ent) {
       var r = await call('driveGet', { name: FILE });
       if (r.ok && r.text) { try { remote = JSON.parse(r.text); } catch(e){} }
       if (!remote || !remote.db) return { waiting: 1 };          /* still downloading: never write over a file we couldn't read */
     }
+    if (remote && (remote.db.jobs || []).length) ls('bp_v693_checked', '1');   /* v6.9.4: the file has been read whole once on this device */
     /* v6.9.3: one-time restore — the shared file was emptied by a phone that synced before its data loaded.
        Bring everything back from this device's own backup taken at the switch (or the newest old per-device copy). */
     if (remote && (remote.db.jobs || []).length === 0 && !ls('bp_v693_restored')) {
