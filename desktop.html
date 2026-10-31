@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.8.2';
+var APP_VERSION = '6.9.0';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -25865,5 +25865,249 @@ html,body{background:var(--bg) !important}
   }
   window.__bp681run = run;
   console.log('[BP] v6.8.1 — clean-up after 6.8.0');
+})();
+</script>
+<script id="v690">
+/* ══ v6.9.0 — ONE SHARED FILE ══════════════════════════════════════════════════
+   Stan (Oct 31, 2026): "why can't we go back to live in one place" → "do it".
+   Until now every device (iPhone, iPad, Mac) kept its OWN copy and the copies were merged —
+   the guessing in that merge is where duplicate jobs, doubled money and lost jobs came from.
+   Now there is ONE file in your iCloud Drive (BuildersPro › Sync › state-shared.json) plus the
+   photos folder. Every device:
+     · opens the app → loads that file (the newest work from any device);
+     · saves → writes the change into that file;
+     · deletes → the thing is simply not in the file any more, so nothing can bring it back.
+   No sign-in: it uses the Apple ID already on the device.
+   If two devices save within the same few seconds, each one's own changes are kept (a change
+   made on one device is laid on top of the other's), and a delete always wins.
+   The old per-device copies (state-<device>.json) are left in iCloud Drive untouched as backups,
+   and each device also writes pre690-<device>.json the first time — nothing is thrown away. */
+(function(){
+  'use strict';
+  if (window.__bp690) return; window.__bp690 = 1;
+  function caps(){ try { return (window.BPShell && BPShell.caps) || {}; } catch(e){ return {}; } }
+  if (!caps().drive) return;                        /* only inside the BuildersPro app */
+  var FILE = 'state-shared.json', DIRTY = 'bp_one_dirty', IS_DESK = !!document.getElementById('modal-new-room');
+  function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){} return null; }
+  function J(k, d){ try { return JSON.parse(ls(k) || '') || d; } catch(e){ return d; } }
+  var DEV = ls('bp_device_id'); if (!DEV) { DEV = (IS_DESK ? 'mac-' : 'dev-') + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); ls('bp_device_id', DEV); }
+  ls('bp_v680_recovered', '1');                      /* the 6.8.0 recovery is finished: one file from here on */
+  var ST = { busy: false, last: ls('bp_one_last') || '', err: '', left: 0 };
+  function fname(ref){ return 'p/' + String(ref).replace(/:/g, '_') + '.txt'; }
+  function unf(n){ return String(n).replace(/^bpb_/, 'bpb:'); }
+  function S(x){ return JSON.stringify(x); }
+  function clone(x){ return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); }
+  function idbG(k){ return new Promise(function(r){ try { idbGet(k, r); } catch(e){ r(undefined); } }); }
+  function idbS(k, v){ return new Promise(function(r){ try { idbSet(k, v, function(ok){ r(ok); }); } catch(e){ r(false); } }); }
+
+  /* talking to the app (shares the reply hook with the older sync) */
+  var PEND = {}, seq = 0, older = window.bpDriveDone;
+  window.bpDriveDone = function(id, r){ var f = PEND[id]; if (f) { delete PEND[id]; f(r || { ok: false }); } else if (older) older(id, r); };
+  function call(kind, body){
+    return new Promise(function(res){
+      var id = 'o' + (++seq) + Date.now().toString(36);
+      var t = setTimeout(function(){ if (PEND[id]) { delete PEND[id]; res({ ok: false, err: 'iCloud Drive did not answer' }); } }, 90000);
+      PEND[id] = function(r){ clearTimeout(t); res(r); };
+      body = body || {}; body.kind = kind; body.id = id;
+      try { webkit.messageHandlers.bp.postMessage(body); } catch(e){ clearTimeout(t); delete PEND[id]; res({ ok: false, err: 'not in the app' }); }
+    });
+  }
+
+  /* wait for the device's own data to load before the first sync */
+  var markLoaded, loaded = new Promise(function(r){ markLoaded = r; });
+  if (typeof window.loadDbAsync === 'function' && !window.loadDbAsync.__v690) {
+    var _l = window.loadDbAsync;
+    window.loadDbAsync = function(cb){ return _l.call(this, function(){ try { if (cb) cb.apply(this, arguments); } finally { setTimeout(markLoaded, 50); } }); };
+    ['__v616','__v664','__v679','__v680'].forEach(function(f){ window.loadDbAsync[f] = _l[f]; });
+    window.loadDbAsync.__v690 = 1;
+    try { loadDbAsync = window.loadDbAsync; } catch(e){}
+  }
+  setTimeout(function(){ markLoaded(); }, 12000);     /* never wait forever */
+  (function poll(){ if (window.DB && Array.isArray(DB.jobs) && (DB.jobs.length || window.__bpLoaded)) markLoaded(); else setTimeout(poll, 300); })();
+
+  /* every change marks this device as having work to send */
+  var quiet = false;
+  ['save', 'saveDB'].forEach(function(fn){
+    var f = window[fn]; if (typeof f !== 'function' || f.__v690) return;
+    var w = function(){ if (!quiet) ls(DIRTY, String(Date.now())); return f.apply(this, arguments); };
+    w.__v690 = 1; ['__v664','__v670'].forEach(function(k){ w[k] = f[k]; });
+    window[fn] = w; try { (0, eval)(fn + ' = window.' + fn); } catch(e){}
+  });
+
+  /* ── combining: only what THIS device changed since the file it last saw is laid on top ── */
+  function isRecs(a){ return Array.isArray(a) && a.every(function(r){ return r && typeof r === 'object' && !Array.isArray(r) && r.id != null; }); }
+  function isObj(o){ return o && typeof o === 'object' && !Array.isArray(o); }
+  function when(r){ return Date.parse((r && (r.updatedAt || r.modified || r.createdAt)) || '') || 0; }
+  function byId(a){ var m = {}; (a || []).forEach(function(r){ m[r.id] = r; }); return m; }
+  function mergeArr(b, m, t){
+    var B = byId(b), M = byId(m), T = byId(t), out = [], put = {};
+    t.forEach(function(r){ if (!put[r.id]) { out.push(clone(r)); put[r.id] = out.length - 1; } });
+    m.forEach(function(r){
+      var id = r.id, br = B[id], tr = T[id];
+      if (!br) {                                                  /* made on this device */
+        if (!tr) { out.push(clone(r)); put[id] = out.length - 1; }
+        else if (S(r) !== S(tr) && when(r) >= when(tr)) out[put[id]] = clone(r);
+      } else if (S(r) !== S(br)) {                                /* changed on this device */
+        if (tr && (S(tr) === S(br) || when(r) >= when(tr))) out[put[id]] = clone(r);
+        /* changed here but deleted on the other device: the delete wins */
+      }
+    });
+    var gone = {}; b.forEach(function(r){ if (!M[r.id]) gone[r.id] = 1; });  /* deleted on this device */
+    return out.filter(function(r){ return !gone[r.id]; });
+  }
+  function mergeObj(b, m, t){
+    var out = clone(t) || {};
+    Object.keys(m).concat(Object.keys(b)).forEach(function(k){ if (S(m[k]) !== S(b[k])) { if (m[k] === undefined) delete out[k]; else out[k] = clone(m[k]); } });
+    return out;
+  }
+  function merge3(base, mine, theirs){
+    base = base || {}; theirs = theirs || {};
+    var out = clone(theirs), keys = {};
+    [base, mine, theirs].forEach(function(o){ Object.keys(o).forEach(function(k){ keys[k] = 1; }); });
+    Object.keys(keys).forEach(function(k){
+      var b = base[k], m = mine[k], t = theirs[k];
+      if (S(m) === S(b)) return;                                  /* not touched here: keep the file's */
+      if (m === undefined) { delete out[k]; return; }
+      if (k === 'nextId' && typeof m === 'number' && typeof t === 'number') { out[k] = Math.max(m, t); return; }
+      if (isRecs(m) && (t === undefined || isRecs(t)) && (b === undefined || isRecs(b))) out[k] = mergeArr(b || [], m, t || []);
+      else if (isObj(m) && isObj(t) && (b === undefined || isObj(b))) out[k] = mergeObj(b || {}, m, t);
+      else out[k] = clone(m);
+    });
+    return out;
+  }
+  window.bpOneMerge3 = merge3;
+  /* first time a device joins: anything the shared file already shows as deleted (or merged away as a
+     duplicate) is left out of this device's copy, so an older copy can't bring it back */
+  function firstJoin(mine, rdb){
+    var tomb = (rdb && rdb.tombstones) || {}, keep = (rdb && rdb.keepStamps) || {}, merged = (rdb && rdb.jobMerges) || {};
+    function dead(c, id){ var t = tomb[c + ':' + id]; if (c === 'jobs' && merged[id]) return true; return !!t && !(keep[c + ':' + id] && Date.parse(keep[c + ':' + id]) > Date.parse(t)); }
+    var out = {};
+    Object.keys(mine).forEach(function(c){
+      var v = mine[c];
+      out[c] = isRecs(v) ? v.filter(function(r){ return !dead(c, r.id) && !(r.jobId && dead('jobs', r.jobId)); }) : v;
+    });
+    return out;
+  }
+  window.bpOneFirstJoin = firstJoin;
+
+  function rerender(){ ['renderAll','renderHome','bpRefreshCurrentScreen','refreshCurrentView','renderJobs','renderDesktopJobs','renderDashboard'].forEach(function(f){ try { if (typeof window[f] === 'function') window[f](); } catch(e){} }); }
+  function persistQuiet(){
+    quiet = true;
+    try { if (typeof window.bpPersist === 'function') window.bpPersist(); } catch(e){}
+    try { if (window.bpWriteMirror) window.bpWriteMirror(); } catch(e){}
+    quiet = false;
+  }
+  /* put the shared file's records on screen, with every photo this device already has */
+  var missing = {};
+  async function adopt(leanDb, have){
+    var nd = clone(leanDb), text = S(nd), refs = {}, need = [];
+    (text.match(/bpb:[A-Za-z0-9_\-]+/g) || []).forEach(function(r){ refs[r] = 1; });
+    Object.keys(refs).forEach(function(r){ if (!have[r]) need.push(r); });
+    for (var i = 0; i < need.length; i++) { var v = await idbG('bpb1:' + need[i]); if (v) have[need[i]] = v; else missing[need[i]] = 1; }
+    Object.keys(missing).forEach(function(r){ if (have[r] || !refs[r]) delete missing[r]; });
+    DB = bpJoinBlobs(nd, have);
+    try { window.DB = DB; } catch(e){}
+    try { if (typeof ensureDbShape === 'function') ensureDbShape(); } catch(e){}
+    try { localStorage.setItem('bp_last_jobs', String(DB.jobs.length)); localStorage.setItem('bp_last_job_ids', S(DB.jobs.map(function(j){ return j.id; }))); var bn = document.getElementById('bp-safety-banner'); if (bn) bn.remove(); } catch(e){}
+    persistQuiet(); rerender();
+  }
+  /* photos still on their way from iCloud: a dozen per round, slotted in as they land */
+  async function photosDown(){
+    var refs = Object.keys(missing), got = {}, n = 0;
+    for (var i = 0; i < refs.length && n < 12; i++) {
+      var p = await call('driveGet', { name: fname(refs[i]) });
+      if (p.ok && p.text) { got[refs[i]] = p.text; delete missing[refs[i]]; n++; }
+    }
+    if (n) { bpJoinBlobs(DB, got); persistQuiet(); rerender(); }
+    ST.left = Object.keys(missing).length;
+    return n;
+  }
+  window.bpDrivePhotosLeft = function(){ return Object.keys(missing).length; };
+  async function photosUp(list, blobs){
+    var up = J('bp_drive_up', {}), there = {}; (list.photos || []).forEach(function(n){ there[unf(n)] = 1; });
+    var refs = Object.keys(blobs).filter(function(r){ return !up[r] && !there[r]; });
+    for (var i = 0; i < refs.length; i++) {
+      var w = await call('drivePut', { name: fname(refs[i]), text: blobs[refs[i]] });
+      if (!w.ok) throw new Error('Could not write a photo to iCloud Drive');
+      up[refs[i]] = 1; if (i % 10 === 9) ls('bp_drive_up', S(up));
+    }
+    Object.keys(there).forEach(function(r){ up[r] = 1; });
+    ls('bp_drive_up', S(up));
+  }
+
+  /* ── one round: read the file, lay this device's changes on top, write it, show the result ── */
+  async function round(){
+    await loaded;
+    if (!window.DB || !Array.isArray(DB.jobs)) return null;
+    if (!ls('bp_one_pre')) {                                     /* one-time backup of this device's own copy */
+      var bk = {}; var w0 = await call('drivePut', { name: 'pre690-' + DEV + '.json', text: S({ at: new Date().toISOString(), dev: DEV, db: bpSplitBlobs(DB, bk) }) });
+      if (w0.ok) { ls('bp_one_pre', '1'); try { await photosUp(await call('driveList', {}), bk); } catch(e){} }
+      try { if (window.bspSafetyCopy) bspSafetyCopy('before-one-file'); } catch(e){}
+    }
+    var list = await call('driveList', {});
+    if (!list.ok) throw new Error(list.err || 'iCloud Drive is not available');
+    var ent = (list.states || []).filter(function(s){ return s.name === FILE; })[0];
+    var dirtyAt = ls(DIRTY), base = await idbG('bp_one_base'), prev = await idbG('bp_one_prev');
+    if (ent && !ent.pending && base && !dirtyAt && ent.at && String(ent.at) === ls('bp_one_seen')) { if (ST.left) await photosDown(); return { same: 1 }; }
+    var remote = null;
+    if (ent) {
+      var r = await call('driveGet', { name: FILE });
+      if (r.ok && r.text) { try { remote = JSON.parse(r.text); } catch(e){} }
+      if (!remote || !remote.db) return { waiting: 1 };          /* still downloading: never write over a file we couldn't read */
+    }
+    var blobs = {}, mine = bpSplitBlobs(DB, blobs), result, write = false, hist = remote ? (remote.history || []) : [];
+    if (!remote) { result = mine; write = true; }
+    else if (base && remote.rev === base.rev) {
+      if (!dirtyAt) { ls('bp_one_seen', String(ent.at || '')); if (ST.left) await photosDown(); return { same: 1 }; }
+      result = mine; write = true;
+    } else {
+      var lost = base && hist.indexOf(base.rev) < 0 && base.dev === DEV;   /* my last save was overwritten before others saw it */
+      var anc = base && hist.indexOf(base.rev) >= 0 ? base.db : (prev && prev.rev && hist.indexOf(prev.rev) >= 0 ? prev.db : null);
+      if (!dirtyAt && !lost && base && anc) result = remote.db;  /* nothing new here: just take the file */
+      else result = anc ? merge3(anc, mine, remote.db) : merge3({}, firstJoin(mine, remote.db), remote.db);   /* first time on this device: what it has is kept too, minus what was deleted */
+      write = S(result) !== S(remote.db);
+    }
+    await photosUp(list, blobs);                                /* photos first, so the file never points at a missing photo */
+    var rev = remote ? remote.rev : null;
+    if (write) {
+      var nrev = Date.now().toString(36) + '-' + DEV;
+      var file = { v: 1, rev: nrev, at: new Date().toISOString(), dev: DEV, app: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''), history: hist.concat(rev ? [rev] : []).slice(-60), db: result };
+      var w = await call('drivePut', { name: FILE, text: S(file) });
+      if (!w.ok) throw new Error('Could not write to iCloud Drive');
+      await idbS('bp_one_prev', { rev: rev, db: remote ? remote.db : {} });
+      rev = nrev;
+    }
+    await idbS('bp_one_base', { rev: rev, dev: write ? DEV : (remote && remote.dev) || '', db: result });
+    /* changes made while this round was running are kept: laid on top of the result */
+    var now = ls(DIRTY), show = result;
+    if (now !== dirtyAt) { var nb = {}; show = merge3(mine, bpSplitBlobs(DB, nb), result); Object.keys(nb).forEach(function(k){ blobs[k] = nb[k]; }); }
+    else ls(DIRTY, null);
+    if (S(show) !== S(mine)) await adopt(show, blobs);
+    ls('bp_one_seen', write ? '' : String((ent && ent.at) || ''));
+    await photosDown();
+    return { wrote: write, rev: rev, photosLeft: Object.keys(missing).length };
+  }
+  var running = null, again = false;
+  window.bpDriveSync = function(){
+    if (running) { again = true; return running; }
+    ST.busy = true; ST.err = ''; paint();
+    running = (async function(){
+      try { var r = await round(); ST.last = new Date().toISOString(); ls('bp_one_last', ST.last); return r; }
+      catch(e){ ST.err = (e && e.message) || String(e); return null; }
+      finally {
+        ST.busy = false; running = null; paint();
+        if (again) { again = false; setTimeout(function(){ window.bpDriveSync(); }, 500); }
+        else if (ST.left) setTimeout(function(){ window.bpDriveSync(); }, 15000);
+      }
+    })();
+    return running;
+  };
+  window.bpICloudSync = function(){ return window.bpDriveSync(); };
+  window.bpICloudSyncNow = function(){ return window.bpDriveSync(); };
+  window.bpICloudTurnOn = function(){ return window.bpDriveSync(); };
+  window.__bpCk = function(){ return { ready: true, on: true, user: true, last: ST.last, err: ST.err, busy: ST.busy, pending: !!ls(DIRTY), drive: true, one: true }; };
+  window.bpOneSync = { file: FILE, dev: DEV, merge3: merge3 };
+  function paint(){ try { if (window.bpSaveChipPaint) bpSaveChipPaint(); } catch(e){} try { if (window.bpDrivePaint) bpDrivePaint(); } catch(e){} }
+  console.log('[BP] v6.9.0 — one shared file (' + DEV + ')');
 })();
 </script>
