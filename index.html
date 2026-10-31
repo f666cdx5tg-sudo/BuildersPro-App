@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.7.3';
+var APP_VERSION = '6.7.4';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32399,5 +32399,61 @@ html,body{background:var(--bg) !important}
   window.bpDrivePaint = paint;
   new MutationObserver(function(){ if (document.getElementById('bp-ck-signin') && !document.getElementById('bp-drive-card')) paint(); }).observe(document.body, { childList: true, subtree: true });
   console.log('[BP] v6.7.0 — iCloud Drive sync, no sign-in (device ' + DEV + ')');
+})();
+</script>
+<script id="v674">
+/* ══ v6.7.4 — iPAD OPENS THE COMMAND CENTER ═══════════════════════════════════
+   Stan (Oct 30, 2026): "command center is suppose to be on the ipad".
+   In the BuildersPro app on an iPad the Command Center is now what opens. Both pages use
+   the same saved data on the device, so switching loses nothing:
+     · Command Center sidebar › "Field app" switches to the phone layout;
+     · Field app side menu › "Command Center" switches back.
+   The iPad remembers the last one you picked. The iPhone stays on the field app; the Mac
+   on the Command Center. (Works with the app already installed — no Xcode needed.) */
+(function(){
+  'use strict';
+  if (window.__bp674) return; window.__bp674 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  var ua = navigator.userAgent || '';
+  var IPAD = !!window.BPShell && (/iPad/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1));
+  if (!IPAD) return;
+  var KEY = 'bp_ipad_page';
+  function pref(){ try { return localStorage.getItem(KEY) || 'command'; } catch(e){ return 'command'; } }
+  function setPref(v){ try { localStorage.setItem(KEY, v); } catch(e){} }
+  function go(page){
+    setPref(page);
+    try { if (typeof window.bpSaveNow === 'function') window.bpSaveNow('leave'); } catch(e){}
+    setTimeout(function(){ location.href = page === 'command' ? 'desktop.html' : 'index.html'; }, 350);   /* let the save land first */
+  }
+  window.bpIpadShow = go;
+  /* opened on the wrong page for this iPad → go to the right one */
+  if ((IS_DESK && pref() === 'field') || (!IS_DESK && pref() === 'command' && !/#pair=/.test(location.hash))) {
+    location.replace(IS_DESK ? 'index.html' : 'desktop.html');
+    return;
+  }
+  var SW = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0">'
+    + (IS_DESK ? '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>' : '<rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 22h8M12 18v4"/>') + '</svg>';
+  function add(){
+    if (IS_DESK) {
+      var ai = document.getElementById('ni-dups') || document.getElementById('ni-ai');
+      if (ai && !document.getElementById('ni-fieldapp')) {
+        var b = document.createElement('button'); b.className = 'ni c-blue'; b.id = 'ni-fieldapp';
+        b.innerHTML = SW + ' Field app';
+        b.onclick = function(){ go('field'); };
+        ai.parentNode.insertBefore(b, ai.nextSibling);
+      }
+    } else {
+      var after = document.getElementById('nav-dups') || document.getElementById('nav-ai');
+      if (after && !document.getElementById('nav-cc')) {
+        var n = document.createElement('button'); n.type = 'button'; n.className = 'nav-btn bp-tool'; n.id = 'nav-cc';
+        n.innerHTML = SW.replace('style="width:20px;height:20px;', 'style="') + '<span class="bp-lbl">Command Center</span>';
+        n.onclick = function(){ try { closeNavDrawer(); } catch(e){} go('command'); };
+        after.parentNode.insertBefore(n, after.nextSibling);
+      }
+    }
+  }
+  new MutationObserver(add).observe(document.body, { childList: true, subtree: true });
+  add(); setTimeout(add, 1500);
+  console.log('[BP] v6.7.4 — iPad: Command Center (' + pref() + ')');
 })();
 </script>
