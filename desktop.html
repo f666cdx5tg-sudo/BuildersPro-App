@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.6.1';
+var APP_VERSION = '6.6.2';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -13058,20 +13058,25 @@ var BP_CK_CFG = {
   function nowIso(){ return new Date().toISOString(); }
   function nap(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
 
+  /* v6.6.2: one copy of Apple's iCloud script, ever. Two syncs starting together used to each add
+     the script; the second copy replaced the set-up one and every sync after that failed with
+     "CONFIGURATION_ERROR: Please configure CloudKit". */
+  var libP = null;
   function loadLib(){
     if (window.CloudKit) return Promise.resolve();
-    return new Promise(function(res, rej){
+    if (libP) return libP;
+    return (libP = new Promise(function(res, rej){
       var s = document.createElement('script');
       s.src = CK_SRC; s.async = true;
       s.onload = function(){ window.CloudKit ? res() : rej(new Error("Apple's iCloud service didn't load.")); };
       s.onerror = function(){ rej(new Error("Couldn't reach Apple's iCloud service. Check the internet connection and try again.")); };
       document.head.appendChild(s);
-    });
+    }).catch(function(e){ libP = null; throw e; }));
   }
 
   async function getContainer(){
     await loadLib();
-    if (!S.configured) {
+    function conf(){
       CloudKit.configure({ containers: [{
         containerIdentifier: BP_CK_CFG.container,
         apiTokenAuth: { apiToken: BP_CK_CFG.apiToken, persist: true,
@@ -13079,9 +13084,11 @@ var BP_CK_CFG = {
           signOutButton: { id: 'bp-ck-signout', theme: 'black' } },
         environment: BP_CK_CFG.env
       }]});
-      S.configured = true;
+      CloudKit.__bpConfigured = true; S.configured = true;
     }
-    return CloudKit.getDefaultContainer();
+    if (!CloudKit.__bpConfigured) conf();          /* set up THIS copy of the script, not just "once" */
+    try { return CloudKit.getDefaultContainer(); }
+    catch (e) { if (/CONFIGURATION/.test((e && (e.ckErrorCode || e.ckCode || e.message)) || '')) { conf(); return CloudKit.getDefaultContainer(); } throw e; }
   }
 
   /* Plain words for CloudKit's error codes. */
@@ -13099,7 +13106,8 @@ var BP_CK_CFG = {
       ACCESS_DENIED:           'iCloud refused access. The app\'s iCloud setup may need fixing.',
       BAD_REQUEST:             'iCloud rejected the request. The app\'s iCloud setup may need fixing.',
       CONFLICT:                'Another device saved at the same moment. Tap Sync now to try again.',
-      EXISTS:                  'Another device saved at the same moment. Tap Sync now to try again.'
+      EXISTS:                  'Another device saved at the same moment. Tap Sync now to try again.',
+      CONFIGURATION_ERROR:     'iCloud was not set up yet on this screen. Tap to try again.'
     };
     return m[code] || fallback || ('iCloud error' + (code ? ' (' + code + ')' : ''));
   }
