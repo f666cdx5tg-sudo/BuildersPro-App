@@ -52,7 +52,7 @@ async def main():
                 await pg.route('**/*', lambda r: r.abort() if any(x in r.request.url for x in BLOCK) else r.continue_())
                 await pg.goto('http://localhost:%d/%s' % (PORT, file)); await pg.wait_for_timeout(2500)
                 await pg.evaluate("document.getElementById('bp-lock')&&document.getElementById('bp-lock').remove()")
-                ok('6.8.0' == await pg.evaluate("APP_VERSION"), 'version 6.8.0')
+                ok(await pg.evaluate("APP_VERSION") >= '6.8.0', 'version 6.8.0 or later')
                 await pg.evaluate(SEED, PHOTO)
                 ok(await pg.evaluate(JOBS) == [], 'setup: jobs missing (2 → 0), like the iPhone')
                 r = await pg.evaluate("bpRecoverJobs680()")

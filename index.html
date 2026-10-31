@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.8.0';
+var APP_VERSION = '6.8.1';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32585,19 +32585,34 @@ html,body{background:var(--bg) !important}
   function get(key){ return new Promise(function(res){ try { idbGet(key, res); } catch(e){ res(undefined); } }); }
   var n = 0; function stamp(){ return new Date(Date.now() + (n++)).toISOString(); }   /* one per record */
 
-  async function recover(force){
+  var synced = null;
+  function firstSync(){
+    if (synced) return synced;
+    synced = (typeof window.bpDriveSync === 'function')
+      ? Promise.race([Promise.resolve(window.bpDriveSync()).catch(function(){}), new Promise(function(r){ setTimeout(r, 45000); })])
+      : Promise.resolve();
+    return synced;
+  }
+  var busy = null;
+  function recover(force){ if (busy) return busy; busy = recover_(force).finally(function(){ busy = null; }); return busy; }
+  async function recover_(force){
     if (!window.DB || !Array.isArray(DB.jobs)) return { back: 0, why: 'not loaded' };
     if (ls(DONE) && !force) return { back: 0, why: 'already done' };
+    await firstSync();   /* see the other devices' deletes and jobs first */
     var list = await get('bp_safety_index');
     list = (Array.isArray(list) ? list : []).filter(function(x){ return x && x.key && x.jobs > 0; });
     if (!list.length) { ls(DONE, '1'); return { back: 0, why: 'no safety copy' }; }
     var pick = list.reduce(function(b, x){ return (!b || x.jobs > b.jobs || (x.jobs === b.jobs && x.at > b.at)) ? x : b; }, null);
     var rec = await get(pick.key);
     if (!rec || !rec.meta || !Array.isArray(rec.meta.jobs)) return { back: 0, why: 'copy unreadable' };
-    var have = {}; DB.jobs.forEach(function(j){ if (j && j.id) have[j.id] = 1; });
+    var have = {}, names = {}; DB.jobs.forEach(function(j){ if (j && j.id) { have[j.id] = 1; names[String(j.name || '').toLowerCase().trim()] = 1; } });
+    var tomb = DB.tombstones || {};
     var merged = (DB.jobMerges && typeof DB.jobMerges === 'object') ? DB.jobMerges : {};
     var binned = {}; (DB.recycle || []).forEach(function(e){ if (e && e.coll === 'jobs' && e.rec && (e.deletedAt || '') < CUTOFF) binned[e.rec.id] = 1; });   /* you deleted it yourself */
-    var back = rec.meta.jobs.filter(function(j){ return j && j.id && !have[j.id] && !merged[j.id] && !binned[j.id]; });
+    var back = rec.meta.jobs.filter(function(j){ return j && j.id && !have[j.id] && !merged[j.id] && !binned[j.id]
+      && !((tomb['jobs:' + j.id] || '') >= CUTOFF)                          /* deleted after 6.7.9: on purpose */
+      && !names[String(j.name || '').toLowerCase().trim()]
+      && (names[String(j.name || '').toLowerCase().trim()] = 1); });   /* a job with that name is already here: one each */
     if (!back.length) { ls(DONE, '1'); return { back: 0, why: 'nothing missing' }; }
     var ids = {}; back.forEach(function(j){ ids[j.id] = 1; });
     /* everything attached to those jobs */
@@ -32668,12 +32683,86 @@ html,body{background:var(--bg) !important}
   }
   if (typeof window.loadDbAsync === 'function' && !window.loadDbAsync.__v680) {
     var _l = window.loadDbAsync;
-    window.loadDbAsync = function(cb){ return _l.call(this, function(){ var a = arguments, self = this; if (cb) cb.apply(self, a); setTimeout(function(){ recover().catch(function(e){ console.warn('[BP] v6.8.0', e); }); }, 600); }); };
+    window.loadDbAsync = function(cb){ return _l.call(this, function(){ var a = arguments, self = this; if (cb) cb.apply(self, a); setTimeout(function(){ go(); }, 600); }); };
     ['__v616','__v664','__v679'].forEach(function(f){ window.loadDbAsync[f] = _l[f]; });
     window.loadDbAsync.__v680 = 1;
     try { loadDbAsync = window.loadDbAsync; } catch(e){}
   }
-  setTimeout(function(){ recover().catch(function(){}); }, 4000);
+  function go(){ (window.__bp681run ? window.__bp681run() : recover()).catch(function(e){ console.warn('[BP] v6.8.0', e); }); }
+  setTimeout(go, 4000);
   console.log('[BP] v6.8.0 — jobs back');
+})();
+</script>
+<script id="v681">
+/* ══ v6.8.1 — CLEAN-UP AFTER 6.8.0 ════════════════════════════════════════════
+   Stan (Oct 31, 2026): 6.8.0 brought his jobs back from the phone's safety copy, but that copy was
+   older than his duplicate clean-up, so it also brought back a second N. Peach St, a second Shedwick
+   and Test Kitchen Remodel. He said "clean it up". Once on every device, silently:
+     · jobs with the same name are made one: the copies' punch, photos, money, spaces and subs move
+       into the kept job (the same merge as Find duplicates); the copy goes to the Recycle Bin;
+     · Test Kitchen Remodel (a test job) goes to the Recycle Bin with its records;
+     · every device keeps the SAME job (the one an earlier merge kept, else the oldest), so two
+       devices can never each delete the other's copy.
+   6.8.0 now also waits for the first sync and won't bring back a job deleted after 6.7.9 or a
+   second job with a name already there. */
+(function(){
+  'use strict';
+  if (window.__bp681) return; window.__bp681 = 1;
+  var DONE = 'bp_v681_clean', REMOVE = ['test kitchen remodel'];
+  function low(s){ return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').trim(); }
+  function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){} return null; }
+  function when(j){ return String(j.createdAt || j.created || j.startDate || j.updatedAt || '9999'); }
+  function dropJob(jid, pick){
+    (pick.jobs = pick.jobs || {})[jid] = 1;
+    try { window.bpDupLinked(jid).forEach(function(x){ (pick[x.c] = pick[x.c] || {})[x.r.id] = 1; }); } catch(e){}
+  }
+  function clean(force){
+    if (!window.DB || !Array.isArray(DB.jobs) || typeof window.bpDupPlanMerge !== 'function') return { done: 0, why: 'not ready' };
+    if (ls(DONE) && !force) return { done: 0, why: 'already done' };
+    var kept = {}; Object.keys(DB.jobMerges || {}).forEach(function(k){ kept[DB.jobMerges[k]] = 1; });
+    var pick = {}, merged = 0, removed = 0, moved = 0, now = new Date().toISOString();
+    DB.jobs.forEach(function(j){ if (j && REMOVE.indexOf(low(j.name)) >= 0) { dropJob(j.id, pick); removed++; } });
+    var by = {};
+    DB.jobs.forEach(function(j){ if (j && j.id && low(j.name) && !(pick.jobs && pick.jobs[j.id])) (by[low(j.name)] = by[low(j.name)] || []).push(j); });
+    Object.keys(by).forEach(function(n){
+      var g = by[n]; if (g.length < 2) return;
+      g.sort(function(a, b){ return (kept[b.id] ? 1 : 0) - (kept[a.id] ? 1 : 0) || (when(a) < when(b) ? -1 : when(a) > when(b) ? 1 : 0) || (a.id < b.id ? -1 : 1); });
+      var keep = g[0];
+      g.slice(1).forEach(function(c){
+        var pl = window.bpDupPlanMerge(c.id, keep.id);
+        pl.moves.forEach(function(x){ var r = x.r; if (r.jobId) r.jobId = keep.id; if (r.roomId && pl.roomMap[r.roomId]) r.roomId = pl.roomMap[r.roomId]; if (r.contractorId && pl.subMap[r.contractorId]) r.contractorId = pl.subMap[r.contractorId]; r.updatedAt = now; });
+        Object.keys(DB).forEach(function(k){ if (!Array.isArray(DB[k])) return; DB[k].forEach(function(r){ if (!r || typeof r !== 'object') return;
+          if (r.roomId && pl.roomMap[r.roomId]) { r.roomId = pl.roomMap[r.roomId]; r.updatedAt = now; }
+          if (r.contractorId && pl.subMap[r.contractorId]) { r.contractorId = pl.subMap[r.contractorId]; r.updatedAt = now; } }); });
+        (pl.marks || []).forEach(function(m){ m.r.done = true; if (m.from.status) m.r.status = m.from.status; m.r.updatedAt = now; });
+        pl.dupes.forEach(function(x){ (pick[x.c] = pick[x.c] || {})[x.r.id] = 1; });
+        moved += pl.moves.length;
+        DB.jobMerges = (DB.jobMerges && typeof DB.jobMerges === 'object' && !Array.isArray(DB.jobMerges)) ? DB.jobMerges : {};
+        DB.jobMerges[c.id] = keep.id;
+        dropJob(c.id, pick); merged++;
+      });
+    });
+    if (!merged && !removed) { ls(DONE, '1'); return { done: 0, why: 'nothing to clean' }; }
+    Object.keys(pick).forEach(function(c){
+      var ids = pick[c];
+      try { bpRemoveFrom(c, function(r){ return !(r && ids[r.id]); }); } catch(e){ DB[c] = (DB[c] || []).filter(function(r){ return !(r && ids[r.id]); }); }
+      if (DB.keepStamps) Object.keys(ids).forEach(function(id){ delete DB.keepStamps[c + ':' + id]; });
+    });
+    try { localStorage.setItem('bp_last_jobs', String(DB.jobs.length)); localStorage.setItem('bp_last_job_ids', JSON.stringify(DB.jobs.map(function(j){ return j.id; }))); var bn = document.getElementById('bp-safety-banner'); if (bn) bn.remove(); } catch(e){}
+    try { if (typeof bpActiveJob === 'function' && typeof bpSetActiveJob === 'function' && !DB.jobs.some(function(j){ return j.id === bpActiveJob(); }) && DB.jobs[0]) bpSetActiveJob(DB.jobs[0].id, true); } catch(e){}
+    try { bpSave(); } catch(e){}
+    ['renderAll','renderHome','bpRefreshCurrentScreen','refreshCurrentView','renderJobs','renderDesktopJobs'].forEach(function(f){ try { if (typeof window[f] === 'function') window[f](); } catch(e){} });
+    ls(DONE, '1');
+    console.log('[BP] v6.8.1 clean-up:', merged, 'duplicate jobs merged,', removed, 'test job removed,', moved, 'records moved');
+    return { done: 1, merged: merged, removed: removed, moved: moved };
+  }
+  window.bpCleanUp681 = clean;
+  /* after 6.8.0's recovery and the first sync */
+  async function run(){
+    try { if (typeof window.bpRecoverJobs680 === 'function') await window.bpRecoverJobs680(); } catch(e){}
+    clean();
+  }
+  window.__bp681run = run;
+  console.log('[BP] v6.8.1 — clean-up after 6.8.0');
 })();
 </script>
