@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.4';
+var APP_VERSION = '6.9.5';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32967,33 +32967,28 @@ html,body{background:var(--bg) !important}
       if (!remote || !remote.db) return { waiting: 1 };          /* still downloading: never write over a file we couldn't read */
     }
     if (remote && (remote.db.jobs || []).length) ls('bp_v693_checked', '1');   /* v6.9.4: the file has been read whole once on this device */
-    /* v6.9.3: one-time restore — the shared file was emptied by a phone that synced before its data loaded.
-       Bring everything back from this device's own backup taken at the switch (or the newest old per-device copy). */
-    if (remote && (remote.db.jobs || []).length === 0 && !ls('bp_v693_restored')) {
+    /* v6.9.5: the restore — ONLY on the Mac, ONLY from the Mac's own backup taken at the switch (pre690, Oct 31 4:17 PM:
+       2 jobs, $45,500). 6.9.3 let any device restore and fall back to old per-device copies; the phone restored an OLD
+       copy (4 jobs, $94,500, an older N. Peach St). The Mac puts its switch-time copy back once, over an emptied file
+       or over that wrong restore. Sync Test Job stays out. */
+    var IS_MAC = IS_DESK && !((navigator.maxTouchPoints || 0) > 0);
+    if (remote && IS_MAC && !ls('bp_v695_restored') && ((remote.db.jobs || []).length === 0 || remote.restored === true)) {
       var bdb = null;
       var rb = await call('driveGet', { name: 'pre690-' + DEV + '.json' });
       try { if (rb.ok && rb.text) { var pj = JSON.parse(rb.text); if (pj && pj.db && (pj.db.jobs || []).length) bdb = pj.db; } } catch(e){}
-      if (!bdb) {                                               /* else the NEWEST old per-device copy (never an older device's stale one) */
-        var olds = (list.states || []).filter(function(x){ return x.name !== FILE && /^state-/.test(x.name) && !x.pending; }).sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
-        for (var oi = 0; oi < olds.length && !bdb; oi++) {
-          var ro = await call('driveGet', { name: olds[oi].name });
-          try { var oj = ro.ok && ro.text && JSON.parse(ro.text); if (oj && oj.db && (oj.db.jobs || []).length) bdb = oj.db; } catch(e){}
-        }
-      }
-      if (bdb) bdb = firstJoin(bdb, remote.db);                 /* deleted jobs and merged duplicates stay out */
       if (bdb) {
+        bdb = firstJoin(bdb, bdb);                               /* its own deleted / merged-away jobs stay out */
         var tj = {}; (bdb.jobs || []).forEach(function(j){ if (/^sync test job$/i.test(String(j.name || '').trim())) tj[j.id] = 1; });
         Object.keys(bdb).forEach(function(c){ if (isRecs(bdb[c])) bdb[c] = bdb[c].filter(function(r){ return !(c === 'jobs' && tj[r.id]) && !(r.jobId && tj[r.jobId]); }); });
-        var restored = merge3({}, bdb, remote.db);
         var nrv = Date.now().toString(36) + '-' + DEV;
-        var wr = await call('drivePut', { name: FILE, text: S({ v: 1, rev: nrv, at: new Date().toISOString(), dev: DEV, app: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''), history: (remote.history || []).concat([remote.rev]).slice(-60), restored: true, db: restored }) });
+        var wr = await call('drivePut', { name: FILE, text: S({ v: 1, rev: nrv, at: new Date().toISOString(), dev: DEV, app: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''), history: (remote.history || []).concat([remote.rev]).slice(-60), restoredFrom: 'pre690-' + DEV, db: bdb }) });
         if (wr.ok) {
-          ls('bp_v693_restored', '1'); ls(DIRTY, null);
-          await idbS('bp_one_base', { rev: nrv, dev: DEV, db: restored });
+          ls('bp_v695_restored', '1'); ls('bp_v693_restored', '1'); ls(DIRTY, null);
+          await idbS('bp_one_base', { rev: nrv, dev: DEV, db: bdb });
           var hb = {}; bpSplitBlobs(DB, hb);
-          await adopt(restored, hb); await photosDown();
-          console.log('[BP] v6.9.3 restored', restored.jobs.length, 'jobs from backup');
-          return { restored: restored.jobs.length };
+          await adopt(bdb, hb); await photosDown();
+          console.log('[BP] v6.9.5 restored', bdb.jobs.length, 'jobs from pre690-' + DEV);
+          return { restored: bdb.jobs.length };
         }
       }
     }
