@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.6.0';
+var APP_VERSION = '6.6.1';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -15903,6 +15903,8 @@ var BP_CK_CFG = {
   var CK_SRC = 'https://cdn.apple-cloudkit.com/ck/2/cloudkit.js';
   var STATE_NAME = 'bp_state';
   var S = { configured:false, user:null, busy:false, timer:null, lastErr:'', lastOk:'', suppress:false, lastPullAt:0, authTried:false };
+  /* v6.6.1: what the save-status chip reads */
+  window.__bpCk = function(){ return { ready: cfgReady(), on: isOn(), user: !!S.user, last: lastSync(), err: S.lastErr, busy: S.busy, pending: !!S.timer }; };
 
   function cfgReady(){ return !!(BP_CK_CFG.container && BP_CK_CFG.apiToken); }
   function isOn(){ try { return localStorage.getItem('bp_ck_on') === '1'; } catch(e){ return false; } }
@@ -31594,9 +31596,14 @@ html,body{background:var(--bg) !important}
         var g = (found.jobs || []).find(function(G){ return G.copies.some(function(c){ return c.job.id === jid; }); }); if (!g) return;
         var pl = planMerge(jid, g.keep.job.id);   /* re-plan on the live data */
         applyMerge(pl, pick); merged += pl.moves.length;
+        DB.jobMerges = (DB.jobMerges && typeof DB.jobMerges === 'object' && !Array.isArray(DB.jobMerges)) ? DB.jobMerges : {}; DB.jobMerges[jid] = g.keep.job.id;
         (pick.jobs = pick.jobs || {})[jid] = 1;
       });
       delete pick.merge;
+      Object.keys(pick.jobs || {}).forEach(function(jid){
+        var g = (found.jobs || []).find(function(G){ return G.copies.some(function(c){ return c.job.id === jid; }); });
+        if (g) { DB.jobMerges = (DB.jobMerges && typeof DB.jobMerges === 'object' && !Array.isArray(DB.jobMerges)) ? DB.jobMerges : {}; DB.jobMerges[jid] = g.keep.job.id; }
+      });
       Object.keys(pick.jobs || {}).forEach(function(jid){ linked(jid).forEach(function(x){ (pick[x.c] = pick[x.c] || {})[x.r.id] = 1; }); });
       Object.keys(pick).forEach(function(c){
         var ids = pick[c]; total += Object.keys(ids).length;
@@ -31826,5 +31833,140 @@ html,body{background:var(--bg) !important}
   }
   document.addEventListener('touchstart', function(e){ if (open && !(e.target.closest && e.target.closest('.bp-doc-swipe'))) shut(); }, { passive: true, capture: true });
   console.log('[BP] v6.6.0 — punch opens what you tap, job heading, documents slide');
+})();
+</script>
+<script id="v661">
+/* ══ v6.6.1 — NOTHING YOU ENTER GETS LOST · YOU CAN SEE IT'S SAVED ═══════════
+   Stan (Oct 30, 2026): "i used the app today and nothing is saved".
+   1. Work entered on a job copy that Find duplicates had removed (the phone was still
+      "on site" at the old copy of N. Peach St) was saved — but under a job that no longer
+      existed, so no screen showed it. Every record pointing at a removed job is now moved
+      to the job it was merged into (matched by name + address), its space matched by name.
+      This runs when the app opens and after every sync, on every device, and says how many
+      it brought back. The On Site job is fixed the same way.
+   2. A save chip on Home (phone) / in the header (Mac): "Saved" plus the iCloud state —
+      "Synced 8:01 PM", "Syncing…", or red "Not syncing — tap" when iCloud is off or signed
+      out. Tap it to sync now. */
+(function(){
+  'use strict';
+  if (window.__bp661) return; window.__bp661 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  function low(s){ return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').trim(); }
+  function nowIso(){ return new Date().toISOString(); }
+
+  /* ── 1. records stuck on a removed job ── */
+  window.bpRescueOrphans = function(quiet){
+    if (!window.DB || !Array.isArray(DB.jobs) || !DB.jobs.length) return 0;
+    var jobs = {}; DB.jobs.forEach(function(j){ if (j && j.id) jobs[j.id] = j; });
+    var rooms = {}; (DB.rooms || []).forEach(function(r){ if (r && r.id) rooms[r.id] = r; });
+    var bin = Array.isArray(DB.recycle) ? DB.recycle : [];
+    var merges = (DB.jobMerges && typeof DB.jobMerges === 'object') ? DB.jobMerges : {};
+    var cache = {};
+    function binRec(coll, id){ var e = bin.find(function(x){ return x && x.coll === coll && x.rec && x.rec.id === id; }); return e ? e.rec : null; }
+    function jobFor(jid){
+      if (!jid || jobs[jid]) return jid;
+      if (jid in cache) return cache[jid];
+      var t = null;
+      if (merges[jid] && jobs[merges[jid]]) t = merges[jid];
+      else {
+        var gone = binRec('jobs', jid);
+        if (gone) { var k = low(gone.name) + '|' + low(gone.address); var m = DB.jobs.find(function(j){ return low(j.name) + '|' + low(j.address) === k; }) || DB.jobs.find(function(j){ return low(j.name) === low(gone.name); }); if (m) t = m.id; }
+      }
+      return (cache[jid] = t);
+    }
+    function roomFor(rid, jid){
+      if (!rid || rooms[rid]) return rid;
+      var gone = binRec('rooms', rid); if (!gone) return rid;
+      var m = (DB.rooms || []).find(function(r){ return r.jobId === jid && low(r.name) === low(gone.name) && low(r.level) === low(gone.level); })
+           || (DB.rooms || []).find(function(r){ return r.jobId === jid && low(r.name) === low(gone.name); });
+      return m ? m.id : '';
+    }
+    var moved = 0, names = {}, stamp = nowIso();
+    Object.keys(DB).forEach(function(c){
+      if (c === 'jobs' || c === 'recycle' || !Array.isArray(DB[c])) return;
+      DB[c].forEach(function(r){
+        if (!r || typeof r !== 'object' || !r.jobId) return;
+        var changed = false;
+        if (!jobs[r.jobId]) { var t = jobFor(r.jobId); if (!t) return; r.jobId = t; changed = true; names[jobs[t].name] = 1; }
+        if (r.roomId && !rooms[r.roomId]) { var nr = roomFor(r.roomId, r.jobId); if (nr !== r.roomId) { r.roomId = nr; changed = true; } }
+        if (changed) { r.updatedAt = stamp; moved++; }
+      });
+    });
+    /* On Site pointing at a removed job */
+    try { var a = typeof bpActiveJob === 'function' ? bpActiveJob() : ''; if (a && !jobs[a]) { var ta = jobFor(a); if (ta && typeof bpSetActiveJob === 'function') bpSetActiveJob(ta, true); } } catch(e){}
+    try { if (window._bpPunchJob && !jobs[window._bpPunchJob]) window._bpPunchJob = jobFor(window._bpPunchJob) || ''; } catch(e){}
+    if (moved) {
+      try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); } catch(e){}
+      ['renderAll','renderHome','bpRefreshCurrentScreen','refreshCurrentView'].forEach(function(fn){ try { if (typeof window[fn] === 'function') window[fn](); } catch(e){} });
+      if (!quiet) try { (window.toast || function(){})('Brought back ' + moved + ' record' + (moved === 1 ? '' : 's') + ' saved on a removed copy of ' + Object.keys(names).join(', ')); } catch(e){}
+      console.log('[BP] v6.6.1 rescued', moved, 'records');
+    }
+    return moved;
+  };
+  if (typeof window.mergeIncomingDB === 'function' && !window.mergeIncomingDB.__v661) {
+    var _m = window.mergeIncomingDB;
+    window.mergeIncomingDB = function(){ var r = _m.apply(this, arguments); setTimeout(function(){ try { window.bpRescueOrphans(); } catch(e){} }, 120); return r; };
+    window.mergeIncomingDB.__v661 = 1; window.mergeIncomingDB.__v616 = _m.__v616;
+    try { mergeIncomingDB = window.mergeIncomingDB; } catch(e){}
+  }
+  setTimeout(function(){ try { window.bpRescueOrphans(); } catch(e){} }, 3000);
+
+  /* ── 2. save chip ── */
+  var lastPersist = { ok: true, at: 0 };
+  if (typeof window.bpPersist === 'function' && !window.bpPersist.__v661) {
+    var _p = window.bpPersist;
+    window.bpPersist = function(cb){ return _p.call(this, function(ok){ lastPersist = { ok: ok !== false, at: Date.now() }; paint(); if (cb) cb(ok); }); };
+    window.bpPersist.__v661 = 1;
+    try { bpPersist = window.bpPersist; } catch(e){}
+  }
+  function t(iso){ try { var d = new Date(iso), today = new Date().toDateString() === d.toDateString(); return (today ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); } catch(e){ return ''; } }
+  var OK = '<svg viewBox="0 0 24 24" style="width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>';
+  var CLOUD = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round"><path d="M18 10h-1.3A7 7 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>';
+  function state(){
+    var c = typeof window.__bpCk === 'function' ? window.__bpCk() : null;
+    if (!lastPersist.ok) return { color: '#FF453A', text: 'Not saved on this device — keep the app open and tap here', icon: OK };
+    if (!c || !c.ready) return { color: '#30D158', text: 'Saved on this device', icon: OK };
+    if (!c.on) return { color: '#FF453A', text: 'Saved here · iCloud sync is OFF — tap to turn on', icon: CLOUD };
+    if (c.busy) return { color: '#0A84FF', text: 'Saved · syncing to iCloud…', icon: CLOUD };
+    if (c.err) return { color: '#FF453A', text: 'Saved here · not synced: ' + c.err + ' — tap', icon: CLOUD };
+    if (!c.user) return { color: '#FF9F0A', text: 'Saved here · sign in to iCloud to sync — tap', icon: CLOUD };
+    if (c.pending) return { color: '#FF9F0A', text: 'Saved · sending to iCloud in a few seconds', icon: CLOUD };
+    return { color: '#30D158', text: 'Saved · synced ' + (c.last ? t(c.last) : ''), icon: CLOUD };
+  }
+  function tap(){
+    var c = typeof window.__bpCk === 'function' ? window.__bpCk() : null;
+    try {
+      if (c && !c.on && typeof window.bpICloudTurnOn === 'function') return window.bpICloudTurnOn().then(paint);
+      if (typeof window.bpICloudSync === 'function') { var p = window.bpICloudSync('both'); paint(); if (p && p.then) p.then(paint, paint); return; }
+    } catch(e){}
+  }
+  window.bpSaveChipTap = tap;
+  function chip(){
+    var el = document.getElementById('bp-save-chip');
+    if (el && el.isConnected) return el;
+    el = document.createElement('button'); el.type = 'button'; el.id = 'bp-save-chip'; el.setAttribute('data-bp-wrap', '1');
+    el.onclick = tap;
+    el.style.cssText = 'display:flex;align-items:center;gap:8px;border-radius:12px;border:1px solid var(--border,#333);background:var(--card,#1c1c1e);font:700 14px/1.3 inherit;font-family:inherit;cursor:pointer;text-align:left;'
+      + (IS_DESK ? 'padding:8px 12px;margin:0 8px 0 0;max-width:360px' : 'width:calc(100% - 32px);margin:10px 16px 0;padding:10px 12px;min-height:44px');
+    var host = IS_DESK ? document.querySelector('.tb-btn[onclick="openSyncDesktop()"]') : document.getElementById('home-attention');
+    if (!host || !host.parentNode) return null;
+    host.parentNode.insertBefore(el, host);
+    return el;
+  }
+  function paint(){
+    var el = chip(); if (!el) return;
+    var s = state(), h = s.icon + '<span>' + s.text.replace(/[&<>]/g, '') + '</span>';
+    if (el.__h !== h) { el.__h = h; el.innerHTML = h; }
+    el.style.color = s.color;
+  }
+  window.bpSaveChipPaint = paint;
+  setInterval(paint, 3000);
+  ['save', 'saveDB'].forEach(function(fn){
+    var f = window[fn]; if (typeof f !== 'function' || f.__v661) return;
+    var w = function(){ var r = f.apply(this, arguments); setTimeout(paint, 50); return r; };
+    w.__v661 = 1; window[fn] = w; try { (0, eval)(fn + ' = window.' + fn); } catch(e){}
+  });
+  setTimeout(paint, 1500);
+  console.log('[BP] v6.6.1 — orphan rescue + save chip');
 })();
 </script>
