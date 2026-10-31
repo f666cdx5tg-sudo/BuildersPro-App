@@ -75,7 +75,7 @@ async def main():
             await phone.wait_for_timeout(9500); await phone.evaluate("bpSaveChipPaint()")
             ok(await phone.evaluate("__bpCk().drive === true && !__bpCk().err"), 'sync status: iCloud Drive, no error')
             txt = await phone.evaluate("(document.getElementById('bp-save-chip')||{}).textContent || ''")
-            ok('synced' in txt.lower(), 'save bar says synced (%s)' % txt)
+            ok('synced' in txt.lower() and 'sending' not in txt.lower(), 'save bar says synced, no progress chatter (%s)' % txt)
             await phone.evaluate("localStorage.setItem('bp_ck_on','1'); window.bpCkWarnPaint && bpCkWarnPaint()"); await phone.wait_for_timeout(2200)
             ok(await phone.evaluate("!(function(b){ return b && b.offsetParent && getComputedStyle(b).display !== 'none'; })(document.getElementById('bp-ck-warn'))"), 'no red "iCloud signed out" bar')
             ok(not e1 and not e2, 'no page errors %s %s' % (e1[:2], e2[:2]))

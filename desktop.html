@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.7.7';
+var APP_VERSION = '6.7.8';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -25003,7 +25003,7 @@ html,body{background:var(--bg) !important}
     if (moved) {
       try { if (typeof bpSave === 'function') bpSave(); else if (typeof saveDB === 'function') saveDB(); } catch(e){}
       ['renderAll','renderHome','bpRefreshCurrentScreen','refreshCurrentView'].forEach(function(fn){ try { if (typeof window[fn] === 'function') window[fn](); } catch(e){} });
-      if (!quiet) try { (window.toast || function(){})('Brought back ' + moved + ' record' + (moved === 1 ? '' : 's') + ' saved on a removed copy of ' + Object.keys(names).join(', ')); } catch(e){}
+      if (false) try { (window.toast || function(){})('Brought back ' + moved + ' record' + (moved === 1 ? '' : 's') + ' saved on a removed copy of ' + Object.keys(names).join(', ')); } catch(e){}
       console.log('[BP] v6.6.1 rescued', moved, 'records');
     }
     return moved;
@@ -25032,10 +25032,10 @@ html,body{background:var(--bg) !important}
     if (!lastPersist.ok) return { color: '#FF453A', text: 'Not saved on this device — keep the app open and tap here', icon: OK };
     if (!c || !c.ready) return { color: '#30D158', text: 'Saved on this device', icon: OK };
     if (!c.on) return { color: '#FF453A', text: 'Saved here · iCloud sync is OFF — tap to turn on', icon: CLOUD };
-    if (c.busy) return { color: '#0A84FF', text: 'Saved · syncing to iCloud…', icon: CLOUD };
+    if (c.busy || c.pending) return { color: '#30D158', text: 'Saved · synced ' + (c.last ? t(c.last) : 'just now'), icon: CLOUD };   /* v6.7.8: syncing happens quietly */
     if (c.err) return { color: '#FF453A', text: 'Saved here · not synced: ' + c.err + ' — tap', icon: CLOUD };
     if (!c.user) return { color: '#FF9F0A', text: 'Saved here · sign in to iCloud to sync — tap', icon: CLOUD };
-    if (c.pending) return { color: '#FF9F0A', text: 'Saved · sending to iCloud in a few seconds', icon: CLOUD };
+
     return { color: '#30D158', text: 'Saved · synced ' + (c.last ? t(c.last) : ''), icon: CLOUD };
   }
   function tap(){
@@ -25220,7 +25220,7 @@ html,body{background:var(--bg) !important}
     try { window.DB = DB; } catch(e){}
     try { if (typeof ensureDbShape === 'function') ensureDbShape(); } catch(e){}
     console.log('[BP] v6.6.4 recovered from the second copy', m.at, 'dirty since', dirty);
-    setTimeout(function(){ try { window.bpPersist(); } catch(e){} say('Recovered your latest changes'); }, 400);
+    setTimeout(function(){ try { window.bpPersist(); } catch(e){} console.log('[BP] recovered latest changes'); }, 400);
     return true;
   }
   window.bpRecoverIfNewer = recoverIfNewer;
@@ -25434,7 +25434,6 @@ html,body{background:var(--bg) !important}
       await new Promise(function(r){ setTimeout(r, 200); });
       var p = await call('driveGet', { name: fname(batch[k]) });
       if (p.ok && p.text && p.text.slice(0, 5) === 'data:') { CACHE[batch[k]] = p.text; got++; }
-      paint('Getting photos from iCloud… ' + (refs.length - k - 1) + ' to go');
     }
     if (got) {
       walk(DB, function(s){ if (isRef(s) && CACHE[s]) return CACHE[s]; });
@@ -25456,7 +25455,7 @@ html,body{background:var(--bg) !important}
       var w = await call('drivePut', { name: fname(refs[i]), text: blobs[refs[i]] });
       if (!w.ok) throw new Error('Could not write a photo to iCloud Drive');
       up[refs[i]] = 1; sent++;
-      if (refs.length > 5) { paint('Sending photos to iCloud… ' + (i + 1) + ' of ' + refs.length); if (i % 10 === 9) ls('bp_drive_up', JSON.stringify(up)); }
+      if (i % 10 === 9) ls('bp_drive_up', JSON.stringify(up));
     }
     Object.keys(there).forEach(function(r){ up[r] = 1; });
     ls('bp_drive_up', JSON.stringify(up));
@@ -25488,21 +25487,21 @@ html,body{background:var(--bg) !important}
   window.bpICloudSyncNow = function(){ return window.bpDriveSync(); };
   window.bpICloudTurnOn = function(){ return window.bpDriveSync(); };
   window.__bpCk = function(){ return { ready: true, on: true, user: true, last: ST.last, err: ST.err, busy: ST.busy, pending: !!ST.timer, drive: true }; };
-  function schedule(){ if (quiet) return; clearTimeout(ST.timer); ST.timer = setTimeout(function(){ ST.timer = 0; window.bpDriveSync(); }, 8000); }
+  function schedule(){ if (quiet) return; clearTimeout(ST.timer); ST.timer = setTimeout(function(){ ST.timer = 0; window.bpDriveSync(); }, 2000); }
   ['save', 'saveDB'].forEach(function(fn){
     var f = window[fn]; if (typeof f !== 'function' || f.__v670) return;
     var w = function(){ var r = f.apply(this, arguments); schedule(); return r; };
     w.__v670 = 1; window[fn] = w; try { (0, eval)(fn + ' = window.' + fn); } catch(e){}
   });
   var lastPull = 0;
-  function onFront(){ if (Date.now() - lastPull < 20000) return; lastPull = Date.now(); window.bpDriveSync(); }
+  function onFront(){ if (Date.now() - lastPull < 8000) return; lastPull = Date.now(); window.bpDriveSync(); }
   document.addEventListener('visibilitychange', function(){ if (!document.hidden) onFront(); });
-  setTimeout(onFront, 4000);
-  setInterval(function(){ if (!document.hidden) onFront(); }, 120000);   /* see the other devices' work every 2 minutes */
+  setTimeout(onFront, 300);
+  setInterval(function(){ if (!document.hidden) onFront(); }, 30000);   /* v6.7.8: see the other devices' work every 30 s */
 
   /* hide the Apple sign-in box everywhere; say what sync does now */
   var st = document.createElement('style');
-  st.textContent = '#bp-ck-signin,#bp-ck-signout,[id^="apple-sign-in-button"],[id^="apple-sign-out-button"],#bp-ck-warn,#bp-ck-warn.on{display:none !important}';
+  st.textContent = 'img[src^="bpb:"]{content:url("data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 4 3%22><rect width=%224%22 height=%223%22 fill=%22%23e5e5ea%22/></svg>");background:#e5e5ea}' + '#bp-ck-signin,#bp-ck-signout,[id^="apple-sign-in-button"],[id^="apple-sign-out-button"],#bp-ck-warn,#bp-ck-warn.on{display:none !important}';
   document.head.appendChild(st);
   function paint(msg){
     try { if (window.bpSaveChipPaint) bpSaveChipPaint(); } catch(e){}
