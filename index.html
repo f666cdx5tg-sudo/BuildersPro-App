@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.8.1';
+var APP_VERSION = '6.8.2';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -28639,10 +28639,14 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     }
     if (!(n < before && deletedHere === 0)) try { localStorage.setItem('bp_last_job_ids', JSON.stringify((DB.jobs || []).map(function(j){ return j.id; }))); } catch(e){}
     if (n < before && deletedHere === 0) {
-      banner('⚠️ ' + (before - n) + ' job' + (before - n > 1 ? 's are' : ' is') + ' missing since last time (' + before + ' → ' + n + '). Tap to bring back the safety copy.', 'err', window.bspRestoreSafety);
+      /* v6.8.1: the count can dip for a moment while the app is still loading or a sync is mid-merge —
+         only warn if the jobs are STILL missing 10 seconds later (Stan saw "5 → 0" with his jobs on screen) */
+      if (!checkCounts.__late) { if (!checkCounts.__wait) checkCounts.__wait = setTimeout(function(){ checkCounts.__wait = 0; checkCounts.__late = 1; try { checkCounts(); } finally { checkCounts.__late = 0; } }, 10000); return; }
+      banner('' + (before - n) + ' job' + (before - n > 1 ? 's are' : ' is') + ' missing since last time (' + before + ' → ' + n + '). Tap to bring back the safety copy.', 'err', window.bspRestoreSafety);
       return;
     }
     deletedHere = 0;
+    banner('', 'clear');
     try { localStorage.setItem('bp_last_jobs', String(n)); } catch(e){}
   }
   function banner(text, kind, onTap){

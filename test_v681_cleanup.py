@@ -35,7 +35,7 @@ async def main():
                 await pg.route('**/*', lambda r: r.abort() if any(x in r.request.url for x in BLOCK) else r.continue_())
                 await pg.goto('http://localhost:%d/%s' % (PORT, file)); await pg.wait_for_timeout(5000)
                 await pg.evaluate("document.getElementById('bp-lock')&&document.getElementById('bp-lock').remove()")
-                ok('6.8.1' == await pg.evaluate("APP_VERSION"), 'version 6.8.1')
+                ok(await pg.evaluate("APP_VERSION") >= '6.8.1', 'version 6.8.1 or later')
                 await pg.evaluate(SEED)
                 r = await pg.evaluate("bpCleanUp681()")
                 ok(r.get('merged') == 2 and r.get('removed') == 1, 'two duplicates merged, the test job removed %s' % r)
