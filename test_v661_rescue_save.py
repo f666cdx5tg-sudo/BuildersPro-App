@@ -41,9 +41,9 @@ async def run(b, file, w, h, mobile):
     txt = await pg.evaluate("(document.getElementById('bp-save-chip')||{}).textContent || ''")
     ok('Saved' in txt, 'save chip shows (%s)' % txt)
     await pg.evaluate("localStorage.removeItem('bp_ck_on'); bpSaveChipPaint()")
-    ok('OFF' in await pg.evaluate("document.getElementById('bp-save-chip').textContent"), 'iCloud off is shown in red with tap to turn on')
+    ok('OFF' in await pg.evaluate("(document.getElementById('bp-save-chip').title || document.getElementById('bp-save-chip').textContent)"), 'iCloud off is shown in red with tap to turn on')
     await pg.evaluate("localStorage.setItem('bp_ck_on','1'); bpSaveChipPaint()")
-    tx = (await pg.evaluate("document.getElementById('bp-save-chip').textContent")).lower()
+    tx = (await pg.evaluate("(document.getElementById('bp-save-chip').title || document.getElementById('bp-save-chip').textContent)")).lower()
     ok('sign in' in tx or 'not synced' in tx, 'iCloud on but not signed in says so (%s)' % tx)
     ok(not errs, 'no page errors %s' % errs[:2]); await ctx.close()
 async def main():
