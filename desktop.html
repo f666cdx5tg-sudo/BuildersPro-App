@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.7.4';
+var APP_VERSION = '6.7.6';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -25527,6 +25527,24 @@ html,body{background:var(--bg) !important}
   if ((IS_DESK && pref() === 'field') || (!IS_DESK && pref() === 'command' && !/#pair=/.test(location.hash))) {
     location.replace(IS_DESK ? 'index.html' : 'desktop.html');
     return;
+  }
+  /* v6.7.5: on the iPad the app runs edge to edge — keep the Command Center's top bar below the clock / battery row */
+  if (IS_DESK) {
+    try { var vp = document.querySelector('meta[name="viewport"]'); if (vp && !/viewport-fit/.test(vp.content)) vp.content += ',viewport-fit=cover'; } catch(e){}
+    var sa = document.createElement('style'); sa.id = 'bp-v675-ipad';
+    sa.textContent = '.topbar{display:grid !important;grid-template-columns:auto auto 1fr;grid-template-rows:auto auto;align-items:center;column-gap:16px;row-gap:12px;height:auto !important;min-height:0 !important;max-height:none !important;'
+      + 'padding:calc(max(env(safe-area-inset-top), 24px) + 8px) 20px 12px !important}'
+      + '.topbar > svg{grid-row:1;grid-column:1;width:84px;height:84px}'
+      + '.topbar > div[style*="width:1px"]{display:none !important}'
+      + '.topbar > div:not(.tb-meta):not(.tb-right):not([style*="width:1px"]){grid-row:1;grid-column:2;min-width:0}'
+      + '.topbar > .tb-meta{grid-row:1;grid-column:3;min-width:0}'
+      + '.topbar > .tb-right{grid-row:2;grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start;margin:0 !important}'
+      + '@media (min-width:981px){.shell{grid-template-rows:max-content minmax(0,1fr) !important}}'
+      + '@media (max-width:980px){.shell{grid-template-rows:max-content max-content minmax(0,1fr) !important}}'
+      + '.topbar{height:max-content !important}'
+      + 'body{padding-bottom:env(safe-area-inset-bottom)}'
+      + '.modal-overlay,.modal,[id^="modal-"]{padding-top:max(env(safe-area-inset-top), 24px)}';
+    document.head.appendChild(sa);
   }
   var SW = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0">'
     + (IS_DESK ? '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>' : '<rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 22h8M12 18v4"/>') + '</svg>';

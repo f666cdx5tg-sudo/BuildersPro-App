@@ -30,6 +30,8 @@ async def main():
             ok(pg.url.endswith('desktop.html'), 'opens the Command Center (%s)' % pg.url)
             await pg.evaluate("document.getElementById('bp-lock')&&document.getElementById('bp-lock').remove()")
             ok(await pg.evaluate("!!document.getElementById('ni-fieldapp')"), 'sidebar has "Field app"')
+            pt = await pg.evaluate("parseFloat(getComputedStyle(document.querySelector('.topbar')).paddingTop)")
+            ok(pt >= 30, 'top bar sits below the iPad clock/battery row (padding %s px)' % pt)
             await pg.evaluate("document.getElementById('ni-fieldapp').click()"); await pg.wait_for_timeout(3500)
             ok(pg.url.endswith('index.html'), 'Field app switches to the field app (%s)' % pg.url)
             await pg.reload(); await pg.wait_for_timeout(3000)
