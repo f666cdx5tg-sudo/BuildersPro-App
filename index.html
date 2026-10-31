@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.1';
+var APP_VERSION = '6.9.2';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32997,12 +32997,16 @@ html,body{background:var(--bg) !important}
     await photosDown();
     return { wrote: write, rev: rev, photosLeft: Object.keys(missing).length };
   }
+  /* v6.9.2: once this device's data is in, redraw whatever screen is open — the app can reopen straight onto
+     a screen (Finance, say) that was drawn before the data finished loading (Stan saw $0 on Finance) */
+  var redrawn = false;
+  loaded.then(function(){ setTimeout(function(){ rerender(); }, 300); });
   var running = null, again = false;
   window.bpDriveSync = function(){
     if (running) { again = true; return running; }
     ST.busy = true; ST.err = ''; paint();
     running = (async function(){
-      try { var r = await round(); ST.last = new Date().toISOString(); ls('bp_one_last', ST.last); return r; }
+      try { var r = await round(); ST.last = new Date().toISOString(); ls('bp_one_last', ST.last); if (!redrawn) { redrawn = true; rerender(); } return r; }
       catch(e){ ST.err = (e && e.message) || String(e); return null; }
       finally {
         ST.busy = false; running = null; paint();
