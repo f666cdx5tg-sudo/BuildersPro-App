@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.6.2';
+var APP_VERSION = '6.6.3';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -23716,7 +23716,7 @@ console.log('[BP] v3.62 notes ready');
   var _show = window.bpShowUpdateBanner;
   if (typeof _show === 'function') {
     window.bpShowUpdateBanner = function(latest){
-      if (inShell() && !typing() && typeof window.bpApplyUpdate === 'function') { window.bpApplyUpdate(latest); return; }
+      if (inShell() && !typing() && !(window.BP_SAVE_DIAG && (BP_SAVE_DIAG.ok === false || BP_SAVE_DIAG.busy)) && typeof window.bpApplyUpdate === 'function') { window.bpApplyUpdate(latest); return; }   /* v6.6.3: never reload while a save is failing or running */
       return _show.apply(this, arguments);
     };
     try { bpShowUpdateBanner = window.bpShowUpdateBanner; } catch(e){}
@@ -25073,5 +25073,84 @@ html,body{background:var(--bg) !important}
   });
   setTimeout(paint, 1500);
   console.log('[BP] v6.6.1 — orphan rescue + save chip');
+})();
+</script>
+<script id="v663">
+/* ══ v6.6.3 — SAVES THAT DON'T STOP ═════════════════════════════════════════
+   Stan (Oct 30, 2026): red "NOT saved on this phone: write stopped by the phone".
+   Cause: the app opened the phone's storage once and kept that one connection
+   forever. iPhones close an app's storage connection when it sits in the
+   background; every save after that was refused ("write stopped"), so a whole
+   day of work only lived in memory and was gone when the app was closed.
+   Fix: if the connection is closed or a save is refused, the app opens a fresh
+   connection and saves again (up to 3 tries). It also opens a fresh one every
+   time the app comes back to the front. */
+(function(){
+  'use strict';
+  if (window.__bp663) return; window.__bp663 = 1;
+  var handle = null, opening = null, waiting = [];
+  function drop(){ try { if (handle) handle.close(); } catch(e){} handle = null; try { _idbHandle = null; } catch(e){} }
+  function openFresh(cb){
+    if (handle) { cb(handle); return; }
+    waiting.push(cb);
+    if (opening) return;
+    if (!window.indexedDB) { opening = null; var w0 = waiting; waiting = []; w0.forEach(function(f){ f(null); }); return; }
+    try { opening = indexedDB.open('bp_idb', 1); } catch(e) { opening = null; var w1 = waiting; waiting = []; w1.forEach(function(f){ f(null); }); return; }
+    opening.onupgradeneeded = function(e){ var db = e.target.result; if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv'); };
+    opening.onsuccess = function(e){
+      handle = e.target.result; opening = null;
+      try { _idbHandle = handle; } catch(er){}
+      handle.onclose = function(){ handle = null; try { _idbHandle = null; } catch(er){} };          /* iOS closed it */
+      handle.onversionchange = function(){ drop(); };
+      var w = waiting; waiting = []; w.forEach(function(f){ f(handle); });
+    };
+    opening.onerror = opening.onblocked = function(){ opening = null; var w = waiting; waiting = []; w.forEach(function(f){ f(null); }); };
+  }
+  /* a connection that's still in the cache but already closed throws on .transaction — test it */
+  function alive(db){ try { db.transaction('kv', 'readonly'); return true; } catch(e){ return false; } }
+  window.idbOpen = function(cb){
+    if (handle && alive(handle)) { cb(handle); return; }
+    if (handle) drop();
+    openFresh(cb);
+  };
+  try { idbOpen = window.idbOpen; } catch(e){}
+
+  var D = window.BP_SAVE_DIAG || {};
+  function once(key, value, done){
+    window.idbOpen(function(db){
+      var fin = false;
+      function end(ok, why){ if (fin) return; fin = true; done(ok, why); }
+      if (!db) { end(false, 'phone storage is not available'); return; }
+      try {
+        var tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(value, key);
+        tx.oncomplete = function(){ end(true); };
+        tx.onerror = function(){ end(false, (tx.error && tx.error.name) || 'write error'); };
+        tx.onabort = function(){ end(false, (tx.error && tx.error.name) || 'write stopped by the phone'); };
+      } catch(e) { end(false, (e && e.name) || String(e)); }
+    });
+  }
+  window.idbSet = function(key, value, onDone){
+    var tries = 0;
+    (function go(){
+      once(key, value, function(ok, why){
+        if (ok) { onDone && onDone(true); return; }
+        tries++;
+        if (tries < 3 && !/Quota/i.test(why || '')) { drop(); setTimeout(go, 150 * tries); return; }   /* fresh connection, try again */
+        D.err = /Quota/i.test(why || '') ? 'the phone is out of storage space (free some space in Settings › General › iPhone Storage)' : (why || 'write failed');
+        onDone && onDone(false);
+      });
+    })();
+  };
+  try { idbSet = window.idbSet; } catch(e){}
+  /* back in front: start with a fresh connection, and save anything that didn't make it */
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden) return;
+    drop();
+    try { if (D && D.ok === false && typeof window.bpPersist === 'function') window.bpPersist(); } catch(e){}
+  });
+  /* the red banner's tap = save again now */
+  try { if (D && D.ok === false && typeof window.bpPersist === 'function') setTimeout(function(){ window.bpPersist(); }, 500); } catch(e){}
+  console.log('[BP] v6.6.3 — storage reconnects; saves retry');
 })();
 </script>
