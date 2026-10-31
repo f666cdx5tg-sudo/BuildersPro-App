@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.5';
+var APP_VERSION = '6.9.6';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -26161,5 +26161,241 @@ html,body{background:var(--bg) !important}
   window.bpOneSync = { file: FILE, dev: DEV, merge3: merge3 };
   function paint(){ try { if (window.bpSaveChipPaint) bpSaveChipPaint(); } catch(e){} try { if (window.bpDrivePaint) bpDrivePaint(); } catch(e){} }
   console.log('[BP] v6.9.0 — one shared file (' + DEV + ')');
+})();
+</script>
+<script id="v696">
+/* ══ v6.9.6 — PHONE BOOK: ONE ≡ MENU · SEARCH ICON WITH OPTIONS · SKILLS IN ••• ════════════
+   Stan (Oct 31, 2026): "put contractor, subs and clients in one hamburger. instead of the word search
+   use a icon and provide options put skills in another 3 dot hamburger".
+     · ≡ (hamburger) shows which list you're on; tap it to switch: Contractors & subs · Clients
+       (Mac: All · Owners · Clients · Contractors · Suppliers). Contractors and subs are one list in
+       BuildersPro (his rule: contractors + phone book are one list), so they share one entry.
+     · magnifier icon, no word: tap → search box with options for what to search
+       (All · Name · Company/Address · Cell · Email).
+     · ••• : the skills list; the dots turn blue while a skill is picked, and a small tag shows it.
+   Line icons only. Same on iPhone, iPad and Mac. */
+(function(){
+  'use strict';
+  if (window.__bp696) return; window.__bp696 = 1;
+  var IS_DESK = !!document.getElementById('modal-new-room');
+  var BLUE = '#0A84FF';
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function low(s){ return String(s == null ? '' : s).toLowerCase(); }
+  var SVG = function(p, w){ return '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:' + (w || 20) + 'px;height:' + (w || 20) + 'px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0">' + p + '</svg>'; };
+  var I_MENU = SVG('<path d="M4 6h16M4 12h16M4 18h16"/>');
+  var I_SEARCH = SVG('<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/>');
+  var I_DOTS = SVG('<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>');
+  var I_CHECK = SVG('<path d="M5 12l5 5l10 -10"/>', 18);
+  var I_X = SVG('<path d="M18 6L6 18M6 6l12 12"/>', 14);
+
+  var st = { q: '', fo: 'all', open: false, sk: '' };
+
+  /* one popover menu, on top of everything (portal to body) */
+  function closeMenu(){ var m = document.getElementById('bp696-menu'); if (m) m.remove(); var b = document.getElementById('bp696-mback'); if (b) b.remove(); }
+  function menu(anchor, items, onPick){
+    closeMenu();
+    var r = anchor.getBoundingClientRect();
+    var back = document.createElement('div'); back.id = 'bp696-mback';
+    back.style.cssText = 'position:fixed;inset:0;z-index:2147483600;background:transparent';
+    back.onclick = closeMenu;
+    var m = document.createElement('div'); m.id = 'bp696-menu';
+    var w = Math.min(280, window.innerWidth - 24);
+    var left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12));
+    m.style.cssText = 'position:fixed;z-index:2147483601;left:' + left + 'px;top:' + Math.min(r.bottom + 6, window.innerHeight - 80) + 'px;width:' + w + 'px;max-height:' + Math.max(160, window.innerHeight - r.bottom - 24) + 'px;overflow-y:auto;-webkit-overflow-scrolling:touch;'
+      + 'background:rgba(36,36,40,.82);-webkit-backdrop-filter:blur(22px) saturate(160%);backdrop-filter:blur(22px) saturate(160%);border:1px solid rgba(255,255,255,.14);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);padding:6px 0;font-family:inherit';
+    if (document.documentElement.getAttribute('data-theme') === 'light' || document.body.classList.contains('light')) m.style.background = 'rgba(255,255,255,.88)';
+    m.innerHTML = items.map(function(it, i){
+      return '<button type="button" data-i="' + i + '" style="display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0 16px;border:none;background:none;color:var(--text,#f0f0f0);font-size:16px;font-weight:' + (it.on ? 800 : 600) + ';font-family:inherit;text-align:left;cursor:pointer">'
+        + '<span style="width:18px;color:' + BLUE + '">' + (it.on ? I_CHECK : '') + '</span><span style="flex:1;min-width:0;overflow-wrap:anywhere">' + E(it.label) + '</span></button>';
+    }).join('');
+    m.addEventListener('click', function(e){ var b = e.target.closest('button[data-i]'); if (!b) return; var it = items[+b.getAttribute('data-i')]; closeMenu(); onPick(it); });
+    document.body.appendChild(back); document.body.appendChild(m);
+  }
+  window.bp696CloseMenu = closeMenu;
+
+  var BTN = 'display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border-radius:12px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;padding:0 12px';
+  function chips(opts){
+    return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px">' + opts.map(function(o){
+      var on = st.fo === o[0];
+      return '<button type="button" data-fo="' + o[0] + '" style="min-height:34px;padding:0 12px;border-radius:17px;border:1px solid ' + (on ? BLUE : 'var(--border,#2a2a2a)') + ';background:' + (on ? 'rgba(10,132,255,.16)' : 'transparent') + ';color:' + (on ? BLUE : 'var(--muted,#8e8e93)') + ';font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">' + o[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  function searchRow(opts, ph){
+    return '<div id="bp696-srow" style="margin:0 0 10px">'
+      + '<div style="display:flex;gap:8px;align-items:center"><input id="bp696-q" type="search" placeholder="' + E(ph) + '" value="' + E(st.q) + '" autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#2a2a2a);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-family:inherit"/>'
+      + '<button type="button" id="bp696-qx" aria-label="Close search" style="' + BTN + ';min-width:44px;padding:0">' + I_X + '</button></div>'
+      + chips(opts) + '</div>';
+  }
+  function has(v, q){ return low(v).indexOf(q) > -1; }
+
+  /* ═════════ iPhone / iPad field app: Finance › Subs (the phone book) ═════════ */
+  function fieldView(){ var a = document.querySelector('#bsp-pb-seg button.on'); return a && /client/i.test(a.textContent) ? 'clients' : 'subs'; }
+  function clientCount(){ var b = document.querySelectorAll('#bsp-pb-seg button')[1]; var m = b && b.textContent.match(/\((\d+)\)/); return m ? m[1] : ''; }
+  function skillsList(){
+    var s = {}; (DB.contacts || []).forEach(function(c){ if (c && c.type === 'Contractor') (c.skills || []).forEach(function(x){ if (x) s[x] = 1; }); });
+    return Object.keys(s).sort();
+  }
+  function fieldFilter(){
+    var q = low(st.q.trim());
+    if (fieldView() === 'subs') {
+      var list = document.getElementById('bp-sb-list'); if (!list) return;
+      var narrowed = q && st.fo !== 'all';
+      [].forEach.call(list.querySelectorAll('.bp-ub'), function(card){
+        var a = card.querySelector('[onclick*="bpSubOpen"]'), m = a && a.getAttribute('onclick').match(/bpSubOpen\('([^']+)'\)/);
+        var c = m && (DB.contacts || []).find(function(x){ return x.id === m[1]; });
+        var show = true;
+        if (narrowed && c) {
+          var v = st.fo === 'name' ? c.name : st.fo === 'company' ? c.company : st.fo === 'cell' ? String(c.phone || '').replace(/\D/g, '') + ' ' + c.phone : st.fo === 'email' ? c.email : '';
+          show = has(v, st.fo === 'cell' ? q.replace(/\D/g, '') || q : q);
+        }
+        card.style.display = show ? '' : 'none';
+      });
+      var tot = list.firstElementChild; if (tot && /Total Sub Costs/.test(tot.textContent)) tot.style.display = narrowed ? 'none' : '';
+    } else {
+      var cl = document.getElementById('bsp-cl-list'); if (!cl) return;
+      [].forEach.call(cl.children, function(card){
+        if (!q || st.fo === 'all') { card.style.display = ''; return; }
+        var divs = card.querySelectorAll(':scope > div'), tel = card.querySelector('a[href^="tel:"]'), mail = card.querySelector('a[href^="mailto:"]');
+        var v = st.fo === 'name' ? (divs[0] && divs[0].textContent) : st.fo === 'company' ? (divs[1] && divs[1].textContent) : st.fo === 'cell' ? (tel && tel.textContent.replace(/\D/g, '')) : st.fo === 'email' ? (mail && mail.textContent) : '';
+        card.style.display = has(v, st.fo === 'cell' ? q.replace(/\D/g, '') || q : q) ? '' : 'none';
+      });
+    }
+  }
+  function fieldSearch(v){
+    st.q = v;
+    if (fieldView() === 'subs') { if (typeof window.bpSubQ === 'function') window.bpSubQ(v); }
+    else if (typeof window.bspClientQ === 'function') window.bspClientQ(v);
+    fieldFilter();
+  }
+  function enhanceField(){
+    var seg = document.getElementById('bsp-pb-seg'); if (!seg) return;
+    var host = seg.parentNode;
+    var view = fieldView();
+    seg.style.display = 'none';
+    var oldQ = document.getElementById('bp-sb-q'); if (oldQ && oldQ.parentNode) oldQ.parentNode.style.display = 'none';
+    var oldC = document.getElementById('bsp-cl-q'); if (oldC) oldC.style.display = 'none';
+    if (document.getElementById('bp696-bar') && document.getElementById('bp696-bar').getAttribute('data-v') === view) { fieldFilter(); return; }
+    var ob = document.getElementById('bp696-bar'); if (ob) ob.remove(); var osr = document.getElementById('bp696-srow'); if (osr) osr.remove(); var otg = document.getElementById('bp696-tag'); if (otg) otg.remove();
+    var label = view === 'subs' ? 'Contractors & subs' : 'Clients' + (clientCount() ? ' (' + clientCount() + ')' : '');
+    var bar = document.createElement('div'); bar.id = 'bp696-bar'; bar.setAttribute('data-v', view);
+    bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 0 10px';
+    bar.innerHTML = '<button type="button" id="bp696-list" aria-label="Choose list" style="' + BTN + ';flex:1;min-width:0;justify-content:flex-start">' + I_MENU + '<span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + E(label) + '</span></button>'
+      + '<button type="button" id="bp696-search" aria-label="Search" style="' + BTN + ';min-width:44px;padding:0;color:' + (st.q ? BLUE : 'var(--text,#f0f0f0)') + '">' + I_SEARCH + '</button>'
+      + (view === 'subs' ? '<button type="button" id="bp696-skills" aria-label="Skills" style="' + BTN + ';min-width:44px;padding:0;color:' + (st.sk ? BLUE : 'var(--text,#f0f0f0)') + '">' + I_DOTS + '</button>' : '');
+    host.insertBefore(bar, seg);
+    if (view === 'subs' && st.sk) {
+      var tag = document.createElement('div'); tag.id = 'bp696-tag'; tag.style.cssText = 'margin:-2px 0 10px';
+      tag.innerHTML = '<button type="button" style="display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 12px;border-radius:16px;border:1px solid ' + BLUE + ';background:rgba(10,132,255,.14);color:' + BLUE + ';font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">' + E(st.sk) + ' ' + I_X + '</button>';
+      tag.firstChild.onclick = function(){ st.sk = ''; if (window.bpSubSk) bpSubSk(''); redrawField(); };
+      host.insertBefore(tag, seg);
+    }
+    document.getElementById('bp696-list').onclick = function(){
+      menu(this, [{ v: 'subs', label: 'Contractors & subs', on: view === 'subs' }, { v: 'clients', label: 'Clients' + (clientCount() ? ' (' + clientCount() + ')' : ''), on: view === 'clients' }], function(it){
+        if (it.v === view) return; st.q = ''; st.fo = 'all'; st.open = false; if (window.bspPhoneView) bspPhoneView(it.v);
+      });
+    };
+    document.getElementById('bp696-search').onclick = function(){ st.open = !st.open || !!st.q; if (!st.open) { st.q = ''; fieldSearch(''); } redrawField(true); };
+    var skb = document.getElementById('bp696-skills');
+    if (skb) skb.onclick = function(){
+      var items = [{ v: '', label: 'All skills', on: !st.sk }].concat(skillsList().map(function(s){ return { v: s, label: s, on: st.sk === s }; }));
+      menu(this, items, function(it){ st.sk = it.v; if (window.bpSubSk) bpSubSk(it.v); redrawField(); });
+    };
+    if (st.open || st.q) {
+      var wrap = document.createElement('div');
+      wrap.innerHTML = searchRow(view === 'subs' ? [['all','All'],['name','Name'],['company','Company'],['cell','Cell'],['email','Email']] : [['all','All'],['name','Name'],['company','Address'],['cell','Cell'],['email','Email']], view === 'subs' ? 'Search contractors & subs' : 'Search clients');
+      host.insertBefore(wrap.firstChild, seg);
+      var inp = document.getElementById('bp696-q');
+      inp.oninput = function(){ fieldSearch(this.value); var s = document.getElementById('bp696-search'); if (s) s.style.color = this.value ? BLUE : 'var(--text,#f0f0f0)'; };
+      document.getElementById('bp696-qx').onclick = function(){ st.open = false; st.q = ''; st.fo = 'all'; fieldSearch(''); redrawField(); };
+      [].forEach.call(document.querySelectorAll('#bp696-srow [data-fo]'), function(b){ b.onclick = function(){ st.fo = b.getAttribute('data-fo'); redrawField(true); fieldFilter(); }; });
+    }
+    fieldFilter();
+  }
+  function redrawField(focus){
+    var ob = document.getElementById('bp696-bar'); if (ob) ob.removeAttribute('data-v');
+    enhanceField();
+    if (focus) { var i = document.getElementById('bp696-q'); if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch(e){} } }
+  }
+  window.bp696FieldState = st;
+
+  /* ═════════ Mac / iPad Command Center: Contacts (Phone book) ═════════ */
+  function deskFilter(){
+    var wrap = document.getElementById('contacts-wrap'); if (!wrap) return;
+    var q = low(st.q.trim()), idx = { name: 0, company: 2, email: 3, cell: 4 };
+    [].forEach.call(wrap.querySelectorAll('tbody tr'), function(tr){
+      var td = tr.children, show = true;
+      if (q) {
+        if (st.fo === 'all') show = has(tr.textContent, q);
+        else { var c = td[idx[st.fo]]; var v = c ? c.textContent : ''; show = st.fo === 'cell' ? has(v.replace(/\D/g, ''), q.replace(/\D/g, '') || q) : has(v, q); }
+      }
+      if (show && st.sk) show = has(td[2] ? td[2].textContent : '', low(st.sk));
+      tr.style.display = show ? '' : 'none';
+    });
+  }
+  function enhanceDesk(){
+    var sel = document.getElementById('contact-type-filter'); if (!sel) return;
+    var actions = sel.parentNode;
+    sel.style.display = 'none';
+    var cur = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : 'All Types';
+    var label = sel.value === 'Contractor' ? 'Contractors & subs' : sel.value ? cur : 'All contacts';
+    var bar = document.getElementById('bp696-dbar');
+    if (!bar) { bar = document.createElement('div'); bar.id = 'bp696-dbar'; bar.style.cssText = 'display:flex;align-items:center;gap:8px'; actions.insertBefore(bar, sel); }
+    var dbtn = BTN.replace('min-height:44px', 'min-height:38px').replace('font-size:15px', 'font-size:13px');
+    bar.innerHTML = '<button type="button" id="bp696-dlist" aria-label="Choose list" style="' + dbtn + '">' + I_MENU + '<span>' + E(label) + '</span></button>'
+      + '<button type="button" id="bp696-dsearch" aria-label="Search" style="' + dbtn + ';min-width:38px;padding:0;color:' + (st.q ? BLUE : 'var(--text)') + '">' + I_SEARCH + '</button>'
+      + '<button type="button" id="bp696-dskills" aria-label="Skills" style="' + dbtn + ';min-width:38px;padding:0;color:' + (st.sk ? BLUE : 'var(--text)') + '">' + I_DOTS + '</button>';
+    document.getElementById('bp696-dlist').onclick = function(){
+      var items = [].map.call(sel.options, function(o){ return { v: o.value, label: o.value === '' ? 'All contacts' : o.value === 'Contractor' ? 'Contractors & subs' : o.text, on: o.value === sel.value }; });
+      menu(this, items, function(it){ sel.value = it.v; if (typeof renderContacts === 'function') renderContacts(); enhanceDesk(); });
+    };
+    document.getElementById('bp696-dsearch').onclick = function(){ st.open = !st.open || !!st.q; if (!st.open) st.q = ''; deskSearchRow(true); deskFilter(); enhanceDesk(); };
+    document.getElementById('bp696-dskills').onclick = function(){
+      var items = [{ v: '', label: 'All skills', on: !st.sk }].concat(skillsList().map(function(s){ return { v: s, label: s, on: st.sk === s }; }));
+      menu(this, items, function(it){ st.sk = it.v; enhanceDesk(); deskFilter(); });
+    };
+    deskSearchRow(false);
+    deskFilter();
+  }
+  function deskSearchRow(focus){
+    var wrap = document.getElementById('contacts-wrap'); if (!wrap) return;
+    var row = document.getElementById('bp696-srow'), tag = document.getElementById('bp696-tag');
+    if (row) row.remove(); if (tag) tag.remove();
+    if (st.sk) {
+      tag = document.createElement('div'); tag.id = 'bp696-tag'; tag.style.cssText = 'margin:0 0 10px';
+      tag.innerHTML = '<button type="button" style="display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 12px;border-radius:15px;border:1px solid ' + BLUE + ';background:rgba(10,132,255,.14);color:' + BLUE + ';font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">' + E(st.sk) + ' ' + I_X + '</button>';
+      tag.firstChild.onclick = function(){ st.sk = ''; enhanceDesk(); };
+      wrap.parentNode.insertBefore(tag, wrap);
+    }
+    if (!(st.open || st.q)) return;
+    var d = document.createElement('div'); d.innerHTML = searchRow([['all','All'],['name','Name'],['company','Company'],['cell','Phone'],['email','Email']], 'Search contacts');
+    row = d.firstChild; row.style.maxWidth = '560px';
+    wrap.parentNode.insertBefore(row, wrap);
+    var inp = document.getElementById('bp696-q');
+    inp.oninput = function(){ st.q = this.value; deskFilter(); var s = document.getElementById('bp696-dsearch'); if (s) s.style.color = this.value ? BLUE : 'var(--text)'; };
+    document.getElementById('bp696-qx').onclick = function(){ st.open = false; st.q = ''; st.fo = 'all'; enhanceDesk(); };
+    [].forEach.call(row.querySelectorAll('[data-fo]'), function(b){ b.onclick = function(){ st.fo = b.getAttribute('data-fo'); deskSearchRow(true); deskFilter(); }; });
+    if (focus) { inp.focus(); try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch(e){} }
+  }
+  window.bp696DeskState = st;
+
+  /* keep it in place whenever those screens redraw */
+  var busy = false;
+  function apply(){
+    if (busy) return; busy = true;
+    try { if (IS_DESK) { var w = document.getElementById('contacts-wrap'); if (w && !w.__bp696) { w.__bp696 = 1; new MutationObserver(function(){ deskFilter(); }).observe(w, { childList: true, subtree: true }); } if (!document.getElementById('bp696-dbar')) enhanceDesk(); } else enhanceField(); }
+    catch(e){ console.warn('[BP] v6.9.6', e); }
+    busy = false;
+  }
+  /* Mac sidebar: the word SEARCH becomes a magnifier icon inside the box */
+  (function(){
+    var si = document.getElementById('bp-search-input'); if (!si) return;
+    si.placeholder = ''; si.setAttribute('aria-label', 'Search');
+    si.style.paddingLeft = '34px';
+    si.style.backgroundImage = 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>') + '")';
+    si.style.backgroundRepeat = 'no-repeat'; si.style.backgroundPosition = '10px center'; si.style.backgroundSize = '16px 16px';
+  })();
+  new MutationObserver(function(){ apply(); }).observe(document.body, { childList: true, subtree: true });
+  apply(); setTimeout(apply, 1500);
+  console.log('[BP] v6.9.6 — phone book: ≡ list menu, search icon with options, skills in •••');
 })();
 </script>
