@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.6';
+var APP_VERSION = '6.9.7';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -33300,5 +33300,66 @@ html,body{background:var(--bg) !important}
   new MutationObserver(function(){ apply(); }).observe(document.body, { childList: true, subtree: true });
   apply(); setTimeout(apply, 1500);
   console.log('[BP] v6.9.6 — phone book: ≡ list menu, search icon with options, skills in •••');
+})();
+</script>
+<script id="v697">
+/* ══ v6.9.7 — ZELLE PROGRESS PAYMENTS ARE MONEY IN ═════════════════════════════
+   Stan (Oct 31, 2026): "these are progress payments made to me i am stm and purchased materials and
+   paid subs from it". The 9 Zelle entries on N. Peach St ($14,532.39) were logged as Materials
+   EXPENSES, so they were subtracted from the $45,000 contract as if they were costs. They are the
+   client paying STM. Once, on whichever device opens first (the change syncs to the others):
+     · each Zelle entry becomes a PAID invoice (progress payment received) on N. Peach St, same amount
+       and date — it counts toward Collected / Received to date;
+     · the expense goes to the Recycle Bin (it can be put back from there).
+   Safety: it only runs if it finds exactly those 9 entries adding up to exactly $14,532.39. */
+(function(){
+  'use strict';
+  if (window.__bp697) return; window.__bp697 = 1;
+  var TAG = 'v697-zelle-progress', TOTAL = 1453239, COUNT = 9;
+  function text(e){ return String(e.desc || e.description || e.name || '') + ' ' + String(e.vendor || ''); }
+  function pick(){
+    var job = (DB.jobs || []).find(function(j){ return /^n\.?\s*peach/i.test(String(j.name || '').trim()); });
+    if (!job) return null;
+    var list = (DB.expenses || []).filter(function(e){ return e && e.jobId === job.id && /zelle/i.test(String(e.desc || e.description || e.name || '')); });
+    var cents = list.reduce(function(s, e){ return s + Math.round((+e.amount || 0) * 100); }, 0);
+    return { job: job, list: list, cents: cents };
+  }
+  function when(e){
+    var m = String(e.desc || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if (m) { var y = +m[3]; if (y < 100) y += 2000; return y + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2); }
+    return String(e.date || '').slice(0, 10);
+  }
+  window.bpZelleToIncome = function(force){
+    if (!window.DB || !Array.isArray(DB.jobs) || !DB.jobs.length) return { done: 0, why: 'not loaded' };
+    if (!DB.migrations || typeof DB.migrations !== 'object') DB.migrations = {};
+    if (DB.migrations[TAG] && !force) return { done: 0, why: 'already done' };
+    var p = pick(); if (!p) return { done: 0, why: 'no N. Peach St job' };
+    if (p.list.length !== COUNT || p.cents !== TOTAL) return { done: 0, why: 'expected 9 Zelle entries = $14,532.39, found ' + p.list.length + ' = $' + (p.cents / 100).toFixed(2) };
+    if (!DB.invoices) DB.invoices = [];
+    var t = new Date().toISOString(), ids = {};
+    p.list.forEach(function(e){
+      ids[e.id] = 1;
+      var id = 'inv-zelle-' + e.id;
+      if (DB.invoices.some(function(i){ return i.id === id; })) return;
+      DB.invoices.push({ id: id, desc: 'Progress payment — Zelle', jobId: p.job.id, amount: +e.amount, date: when(e), status: 'Paid',
+        notes: 'Client progress payment received by Zelle (was logged as an expense: ' + String(e.desc || '').trim() + ')', created: t, updatedAt: t });
+    });
+    try { bpRemoveFrom('expenses', function(e){ return !(e && ids[e.id]); }); }
+    catch(er){ DB.expenses = DB.expenses.filter(function(e){ return !(e && ids[e.id]); }); }
+    DB.migrations[TAG] = t;
+    try { bpSave(); } catch(er){}
+    ['renderAll','renderHome','bpRefreshCurrentScreen','refreshCurrentView','renderFinance','renderDesktopFinance','renderDashboard'].forEach(function(f){ try { if (typeof window[f] === 'function') window[f](); } catch(er){} });
+    console.log('[BP] v6.9.7 moved', p.list.length, 'Zelle payments ($' + (p.cents / 100).toFixed(2) + ') from expenses to paid invoices');
+    return { done: p.list.length, amount: p.cents / 100 };
+  };
+  /* after this device's data has loaded and synced once */
+  async function run(){
+    try { if (typeof window.bpDriveSync === 'function') await window.bpDriveSync(); } catch(e){}
+    var r = window.bpZelleToIncome();
+    if (r.done) { try { if (typeof window.bpDriveSync === 'function') setTimeout(function(){ window.bpDriveSync(); }, 800); } catch(e){} }
+    else console.log('[BP] v6.9.7', r.why);
+  }
+  setTimeout(run, 6000);
+  console.log('[BP] v6.9.7 — Zelle progress payments → money in');
 })();
 </script>
