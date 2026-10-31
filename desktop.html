@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.6.4';
+var APP_VERSION = '6.6.5';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -25060,7 +25060,13 @@ html,body{background:var(--bg) !important}
   }
   function paint(){
     var el = chip(); if (!el) return;
-    var s = state(), h = s.icon + '<span>' + s.text.replace(/[&<>]/g, '') + '</span>';
+    var s = state(), txt = s.text;
+    if (IS_DESK) {   /* v6.6.4: the Mac top bar has room for a few words; the full message is the tooltip */
+      el.title = s.text;
+      txt = /^Saved · synced/.test(txt) ? txt : /OFF/.test(txt) ? 'iCloud off — tap' : /sign in/i.test(txt) ? 'Sign in to iCloud' : /syncing/.test(txt) ? 'Syncing…' : /in a few seconds/.test(txt) ? 'Sending…' : /not synced/.test(txt) ? 'Not synced — tap' : /^Not saved/.test(txt) ? 'NOT saved — tap' : 'Saved';
+    }
+    var h = s.icon + '<span style="white-space:nowrap">' + txt.replace(/[&<>]/g, '') + '</span>';
+    if (!IS_DESK) h = h.replace('<span style="white-space:nowrap">', '<span>');
     if (el.__h !== h) { el.__h = h; el.innerHTML = h; }
     el.style.color = s.color;
   }
