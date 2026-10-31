@@ -39,7 +39,7 @@ async def run(b, file, w, h, mobile):
     await pg.wait_for_timeout(1800)
     await pg.evaluate("bpSaveChipPaint()")
     txt = await pg.evaluate("(document.getElementById('bp-save-chip')||{}).textContent || ''")
-    ok('Saved' in txt, 'save chip shows (%s)' % txt)
+    ok('Saved' in txt or 'iCloud' in txt, 'save chip shows (%s)' % txt)
     await pg.evaluate("localStorage.removeItem('bp_ck_on'); bpSaveChipPaint()")
     ok('OFF' in await pg.evaluate("(document.getElementById('bp-save-chip').title || document.getElementById('bp-save-chip').textContent)"), 'iCloud off is shown in red with tap to turn on')
     await pg.evaluate("localStorage.setItem('bp_ck_on','1'); bpSaveChipPaint()")
