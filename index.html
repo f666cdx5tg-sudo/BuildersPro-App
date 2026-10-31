@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.7.6';
+var APP_VERSION = '6.7.7';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32296,9 +32296,14 @@ html,body{background:var(--bg) !important}
   var quiet = false;
   function saveQuiet(){ quiet = true; try { bpSave(); } finally { quiet = false; } }
 
+  /* v6.7.7: records first, photos after. A copy from another device is merged in RIGHT AWAY — jobs, punch,
+     money, logs show at once — and any photo not on this device yet is fetched a dozen at a time afterwards
+     and slotted into place. (6.7.3 waited for every photo before showing anything, so a phone with
+     hundreds of photos to catch up showed no jobs for a long time.) */
   async function pull(list){
-    var seen = J('bp_drive_seen', {}), got = 0;
-    var have = null;
+    var seen = J('bp_drive_seen', {}), got = 0, have = {};
+    try { bpSplitBlobs(DB, have); } catch(e){}
+    Object.keys(CACHE).forEach(function(k){ have[k] = CACHE[k]; });
     for (var i = 0; i < list.states.length; i++) {
       var s = list.states[i];
       if (s.name === 'state-' + DEV + '.json' || s.pending || !(s.at > (seen[s.name] || 0))) continue;
@@ -32306,33 +32311,49 @@ html,body{background:var(--bg) !important}
       if (!r.ok || !r.text) continue;
       var rem; try { rem = JSON.parse(r.text); } catch(e){ continue; }
       if (!rem || !rem.db) continue;
-      /* photos this copy points at that aren't on this device yet */
-      if (!have) { have = {}; try { bpSplitBlobs(DB, have); } catch(e){} }
-      var refs = {}; (r.text.match(/bpb:[A-Za-z0-9_\-]+/g) || []).forEach(function(x){ refs[x] = 1; });
-      var missing = Object.keys(refs).filter(function(x){ return !have[x]; }), short = 0;
-      if (missing.length > 12) { missing = missing.slice(0, 12); short++; }   /* v6.7.3: a few photos per round */
-      for (var k = 0; k < missing.length; k++) {
-        await new Promise(function(r){ setTimeout(r, 250); });
-        var p = await call('driveGet', { name: fname(missing[k]) });
-        if (p.ok && p.text) have[missing[k]] = p.text; else short++;
-        if (missing.length > 5) paint('Getting photos from iCloud… ' + (k + 1) + ' of ' + missing.length);
-      }
-      var tries = J('bp_drive_tries', {});
-      if (short && (tries[s.name] || 0) < 60) { tries[s.name] = (tries[s.name] || 0) + 1; ls('bp_drive_tries', JSON.stringify(tries)); continue; }   /* photos still downloading: try again next round */
       var res = mergeIncomingDB({ db: bpJoinBlobs(rem.db, have) });
-      seen[s.name] = s.at; delete tries[s.name];
-      ls('bp_drive_seen', JSON.stringify(seen)); ls('bp_drive_tries', JSON.stringify(tries));
+      seen[s.name] = s.at; ls('bp_drive_seen', JSON.stringify(seen));
       if (res && (res.added || res.updated)) got += res.added + res.updated;
     }
     if (got) { saveQuiet(); rerender(); }
+    await fillPhotos();
     return got;
   }
+  /* photos still pointing at iCloud (a "bpb:" ref instead of the picture) */
+  var CACHE = {};
+  function walk(node, fn){
+    if (Array.isArray(node)) { for (var i = 0; i < node.length; i++) { if (typeof node[i] === 'string') { var v = fn(node[i]); if (v !== undefined) node[i] = v; } else if (node[i] && typeof node[i] === 'object') walk(node[i], fn); } }
+    else if (node && typeof node === 'object') { for (var k in node) if (Object.prototype.hasOwnProperty.call(node, k)) { var x = node[k]; if (typeof x === 'string') { var w = fn(x); if (w !== undefined) node[k] = w; } else if (x && typeof x === 'object') walk(x, fn); } }
+  }
+  function isRef(s){ return s.length < 80 && s.slice(0, 4) === 'bpb:'; }
+  async function fillPhotos(){
+    var need = {};
+    walk(DB, function(s){ if (isRef(s)) need[s] = 1; });
+    var refs = Object.keys(need);
+    ST.photosLeft = refs.length;
+    if (!refs.length) return 0;
+    var batch = refs.slice(0, 12), got = 0;
+    for (var k = 0; k < batch.length; k++) {
+      await new Promise(function(r){ setTimeout(r, 200); });
+      var p = await call('driveGet', { name: fname(batch[k]) });
+      if (p.ok && p.text && p.text.slice(0, 5) === 'data:') { CACHE[batch[k]] = p.text; got++; }
+      paint('Getting photos from iCloud… ' + (refs.length - k - 1) + ' to go');
+    }
+    if (got) {
+      walk(DB, function(s){ if (isRef(s) && CACHE[s]) return CACHE[s]; });
+      saveQuiet(); rerender();
+      batch.forEach(function(r){ delete CACHE[r]; });   /* now on this device; no need to hold a second copy */
+    }
+    ST.photosLeft = refs.length - got;
+    return got;
+  }
+  window.bpDrivePhotosLeft = function(){ var n = 0; walk(DB, function(s){ if (isRef(s)) n++; }); return n; };
   async function push(list){
     var blobs = {}, lean = bpSplitBlobs(DB, blobs);
     var up = J('bp_drive_up', {}), there = {}; (list.photos || []).forEach(function(n){ there[unf(n)] = 1; });
     var refs = Object.keys(blobs).filter(function(r){ return !up[r] && !there[r]; }), sent = 0;
     var left = refs.length; refs = refs.slice(0, 12);   /* v6.7.3: a few photos per round, the rest next round — the app stays responsive */
-    ST.photosLeft = Math.max(0, left - refs.length);
+    ST.upLeft = Math.max(0, left - refs.length);
     for (var i = 0; i < refs.length; i++) {
       await new Promise(function(r){ setTimeout(r, 250); });
       var w = await call('drivePut', { name: fname(refs[i]), text: blobs[refs[i]] });
@@ -32357,7 +32378,7 @@ html,body{background:var(--bg) !important}
         var got = await pull(list);
         var sent = await push(list);
         ST.last = new Date().toISOString(); ls('bp_drive_last', ST.last);
-        if (ST.photosLeft || got === -1) setTimeout(function(){ window.bpDriveSync(); }, 20000);   /* keep going, gently */
+        if (ST.photosLeft || ST.upLeft) setTimeout(function(){ window.bpDriveSync(); }, 15000);   /* keep going, gently */
         return { pulled: got, photosUp: sent };
       } catch(e) { ST.err = (e && e.message) || String(e); return null; }
       finally { ST.busy = false; running = null; paint(); }
@@ -32379,7 +32400,7 @@ html,body{background:var(--bg) !important}
   var lastPull = 0;
   function onFront(){ if (Date.now() - lastPull < 20000) return; lastPull = Date.now(); window.bpDriveSync(); }
   document.addEventListener('visibilitychange', function(){ if (!document.hidden) onFront(); });
-  setTimeout(onFront, 8000);
+  setTimeout(onFront, 4000);
   setInterval(function(){ if (!document.hidden) onFront(); }, 120000);   /* see the other devices' work every 2 minutes */
 
   /* hide the Apple sign-in box everywhere; say what sync does now */
