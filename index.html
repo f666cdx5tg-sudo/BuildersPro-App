@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.2';
+var APP_VERSION = '6.9.3';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32825,7 +32825,8 @@ html,body{background:var(--bg) !important}
     window.loadDbAsync.__v690 = 1;
     try { loadDbAsync = window.loadDbAsync; } catch(e){}
   }
-  setTimeout(function(){ markLoaded(); }, 12000);     /* never wait forever */
+  /* v6.9.3: no time-out — a device never syncs before its own data has loaded (an iPhone that was still
+     loading synced an EMPTY copy into the shared file, Oct 31) */
   (function poll(){ if (window.DB && Array.isArray(DB.jobs) && (DB.jobs.length || window.__bpLoaded)) markLoaded(); else setTimeout(poll, 300); })();
 
   /* every change marks this device as having work to send */
@@ -32965,7 +32966,45 @@ html,body{background:var(--bg) !important}
       if (r.ok && r.text) { try { remote = JSON.parse(r.text); } catch(e){} }
       if (!remote || !remote.db) return { waiting: 1 };          /* still downloading: never write over a file we couldn't read */
     }
+    /* v6.9.3: one-time restore — the shared file was emptied by a phone that synced before its data loaded.
+       Bring everything back from this device's own backup taken at the switch (or the newest old per-device copy). */
+    if (remote && (remote.db.jobs || []).length === 0 && !ls('bp_v693_restored')) {
+      var bdb = null;
+      var rb = await call('driveGet', { name: 'pre690-' + DEV + '.json' });
+      try { if (rb.ok && rb.text) { var pj = JSON.parse(rb.text); if (pj && pj.db && (pj.db.jobs || []).length) bdb = pj.db; } } catch(e){}
+      if (!bdb) {                                               /* else the NEWEST old per-device copy (never an older device's stale one) */
+        var olds = (list.states || []).filter(function(x){ return x.name !== FILE && /^state-/.test(x.name) && !x.pending; }).sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+        for (var oi = 0; oi < olds.length && !bdb; oi++) {
+          var ro = await call('driveGet', { name: olds[oi].name });
+          try { var oj = ro.ok && ro.text && JSON.parse(ro.text); if (oj && oj.db && (oj.db.jobs || []).length) bdb = oj.db; } catch(e){}
+        }
+      }
+      if (bdb) bdb = firstJoin(bdb, remote.db);                 /* deleted jobs and merged duplicates stay out */
+      if (bdb) {
+        var tj = {}; (bdb.jobs || []).forEach(function(j){ if (/^sync test job$/i.test(String(j.name || '').trim())) tj[j.id] = 1; });
+        Object.keys(bdb).forEach(function(c){ if (isRecs(bdb[c])) bdb[c] = bdb[c].filter(function(r){ return !(c === 'jobs' && tj[r.id]) && !(r.jobId && tj[r.jobId]); }); });
+        var restored = merge3({}, bdb, remote.db);
+        var nrv = Date.now().toString(36) + '-' + DEV;
+        var wr = await call('drivePut', { name: FILE, text: S({ v: 1, rev: nrv, at: new Date().toISOString(), dev: DEV, app: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''), history: (remote.history || []).concat([remote.rev]).slice(-60), restored: true, db: restored }) });
+        if (wr.ok) {
+          ls('bp_v693_restored', '1'); ls(DIRTY, null);
+          await idbS('bp_one_base', { rev: nrv, dev: DEV, db: restored });
+          var hb = {}; bpSplitBlobs(DB, hb);
+          await adopt(restored, hb); await photosDown();
+          console.log('[BP] v6.9.3 restored', restored.jobs.length, 'jobs from backup');
+          return { restored: restored.jobs.length };
+        }
+      }
+    }
     var blobs = {}, mine = bpSplitBlobs(DB, blobs), result, write = false, hist = remote ? (remote.history || []) : [];
+    /* v6.9.3: a device whose own data is empty (still loading, or storage the phone dropped) never sends
+       "everything deleted" — it takes the shared file instead */
+    if (remote && (mine.jobs || []).length === 0 && (remote.db.jobs || []).length > 0) {
+      ls(DIRTY, null);
+      await idbS('bp_one_base', { rev: remote.rev, dev: remote.dev || '', db: remote.db });
+      var eb = {}; await adopt(remote.db, eb); await photosDown();
+      return { tookShared: 1 };
+    }
     if (!remote) { result = mine; write = true; }
     else if (base && remote.rev === base.rev) {
       if (!dirtyAt) { ls('bp_one_seen', String(ent.at || '')); if (ST.left) await photosDown(); return { same: 1 }; }
@@ -32976,6 +33015,12 @@ html,body{background:var(--bg) !important}
       if (!dirtyAt && !lost && base && anc) result = remote.db;  /* nothing new here: just take the file */
       else result = anc ? merge3(anc, mine, remote.db) : merge3({}, firstJoin(mine, remote.db), remote.db);   /* first time on this device: what it has is kept too, minus what was deleted */
       write = S(result) !== S(remote.db);
+    }
+    /* v6.9.3: a sync round may never wipe out jobs wholesale — losing 2+ jobs and more than half of them in one
+       round means something went wrong on this device, not a decision: keep the shared file as it is */
+    if (remote && write) {
+      var rj = (remote.db.jobs || []).length, nj = (result.jobs || []).length;
+      if (rj - nj >= 2 && nj < rj / 2) { console.warn('[BP] v6.9.3 refused a sync that would remove', rj - nj, 'jobs'); result = remote.db; write = false; ls(DIRTY, null); }
     }
     await photosUp(list, blobs);                                /* photos first, so the file never points at a missing photo */
     var rev = remote ? remote.rev : null;
