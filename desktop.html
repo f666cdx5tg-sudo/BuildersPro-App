@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.0';
+var APP_VERSION = '6.9.1';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -25929,7 +25929,14 @@ html,body{background:var(--bg) !important}
   var quiet = false;
   ['save', 'saveDB'].forEach(function(fn){
     var f = window[fn]; if (typeof f !== 'function' || f.__v690) return;
-    var w = function(){ if (!quiet) ls(DIRTY, String(Date.now())); return f.apply(this, arguments); };
+    var w = function(){
+      if (!quiet) ls(DIRTY, String(Date.now()));
+      var r = f.apply(this, arguments);
+      /* v6.9.1: what was just saved IS the job list — the "jobs missing" alarm counts from here, so a job
+         deleted on purpose never sets it off (Stan saw "1 job is missing (3 → 2)" after deleting a job) */
+      try { if (window.DB && Array.isArray(DB.jobs)) { localStorage.setItem('bp_last_jobs', String(DB.jobs.length)); localStorage.setItem('bp_last_job_ids', S(DB.jobs.map(function(j){ return j.id; }))); var bn = document.getElementById('bp-safety-banner'); if (bn && /missing since last time/.test(bn.textContent)) bn.remove(); } } catch(e){}
+      return r;
+    };
     w.__v690 = 1; ['__v664','__v670'].forEach(function(k){ w[k] = f[k]; });
     window[fn] = w; try { (0, eval)(fn + ' = window.' + fn); } catch(e){}
   });

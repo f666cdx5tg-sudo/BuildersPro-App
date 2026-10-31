@@ -47,7 +47,7 @@ async def main():
             b = await p.chromium.launch()
             c1, phone, e1 = await dev(b, 'index.html', 402, 874)
             c2, mac, e2 = await dev(b, 'desktop.html', 1440, 900)
-            ok(await phone.evaluate("APP_VERSION") == '6.9.0', 'version 6.9.0')
+            ok(await phone.evaluate("APP_VERSION") >= '6.9.0', 'version 6.9.0 or later')
             SEED = """(png) => { var t='2026-10-31T12:00:00.000Z';
               DB.jobs=[{id:'jA',name:'N. Peach St',status:'Active',updatedAt:t},{id:'jB',name:'Shedwick',status:'Active',updatedAt:t}];
               DB.punchlist=[{id:'k1',jobId:'jA',text:'Set flange',done:false,updatedAt:t}];
@@ -119,6 +119,10 @@ async def main():
             c4, fresh, e4 = await dev(b, 'desktop.html', 1440, 900)
             await fresh.evaluate("bpDriveSync()")
             ok(await fresh.evaluate(JOBS) == 'N. Peach St,Shedwick,iPad-only job' and await fresh.evaluate(MONEY) == '1545.5|0', 'new device shows the same 3 jobs and money')
+            print('\nDeleting a job on purpose never sets off the "jobs missing" alarm')
+            await mac.evaluate("bpRemoveFrom('jobs', function(j){ return j.id !== 'jNew'; }); DB.jobs = DB.jobs.filter(function(j){ return j.id !== 'jNew'; }); bpSave();")
+            await mac.close(); c2, mac, e2b = await dev(b, 'desktop.html', 1440, 900, c2); await mac.wait_for_timeout(12000)
+            ok(not await mac.evaluate("!!(document.getElementById('bp-safety-banner') && /missing/.test(document.getElementById('bp-safety-banner').textContent))"), 'reopened 12 s later: no "1 job is missing" banner')
             ok(not e1 and not e2 and not e3 and not e4, 'no page errors %s' % (e1 + e2 + e3 + e4)[:2])
             await b.close()
     finally:
