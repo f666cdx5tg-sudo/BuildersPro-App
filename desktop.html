@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.7.0';
+var APP_VERSION = '6.7.1';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -25354,7 +25354,18 @@ html,body{background:var(--bg) !important}
   'use strict';
   if (window.__bp670) return; window.__bp670 = 1;
   function caps(){ try { return (window.BPShell && BPShell.caps) || {}; } catch(e){ return {}; } }
-  if (!caps().drive) return;                        /* only the app with the new iCloud Drive part */
+  if (!caps().drive) {
+    /* v6.7.1: an older build of the app (or a web browser) — never show Apple's web sign-in box again
+       (it hung on the iPad and Apple flagged the sign-in). Say what to do instead. */
+    var st0 = document.createElement('style');
+    st0.textContent = '#bp-ck-signin,#bp-ck-signout,[id^="apple-sign-in-button"],[id^="apple-sign-out-button"]{display:none !important}';
+    document.head.appendChild(st0);
+    var inApp = !!window.BPShell;
+    window.bpICloudTurnOn = function(){ try { (window.toast || alert)(inApp ? 'Sync needs the newest BuildersPro app: in Xcode pick this device and press Run.' : 'Sync works in the BuildersPro app on iPhone, iPad and Mac.'); } catch(e){} };
+    window.__bpCk = function(){ return { ready: true, on: true, user: true, last: '', err: inApp ? 'update this app (Xcode › pick this device › Run) to sync without signing in' : 'sync works in the BuildersPro app, not in a browser', busy: false, pending: false }; };
+    window.bpICloudSync = function(){ return Promise.resolve(null); };
+    return;
+  }
   var IS_DESK = !!document.getElementById('modal-new-room');
   function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){} return null; }
   function J(k, d){ try { return JSON.parse(ls(k) || '') || d; } catch(e){ return d; } }
