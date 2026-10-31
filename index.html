@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.7.9';
+var APP_VERSION = '6.8.0';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -32515,7 +32515,7 @@ html,body{background:var(--bg) !important}
     var n = {}; Object.keys(map || {}).forEach(function(k){ var v = String(map[k]); n[v] = (n[v] || 0) + 1; });
     return Object.keys(map || {}).filter(function(k){ return n[String(map[k])] > 3; });   /* one timestamp on many records = a mass restore */
   }
-  function pruneBulk(map){ var ks = bulkKeys(map); ks.forEach(function(k){ delete map[k]; }); return ks.length; }
+  function pruneBulk(map){ return 0; }   /* v6.8.0: switched off — it removed jobs that were alive (Stan, Oct 31) */
   function enforce(){
     if (!window.DB) return 0;
     var removed = 0;
@@ -32529,7 +32529,7 @@ html,body{background:var(--bg) !important}
     Object.keys(DB).forEach(function(c){
       if (c === 'jobs' || c === 'recycle' || !Array.isArray(DB[c])) return;
       var gone = DB[c].filter(function(r){ return r && r.jobId && !live[r.jobId] && !merges[r.jobId] && DB.tombstones && DB.tombstones['jobs:' + r.jobId]; });
-      if (gone.length && typeof bpRemoveFrom === 'function') { var ids = {}; gone.forEach(function(r){ ids[r.id] = 1; }); bpRemoveFrom(c, function(r){ return !(r && ids[r.id]); }); }
+      if (false && gone.length && typeof bpRemoveFrom === 'function') { var ids = {}; gone.forEach(function(r){ ids[r.id] = 1; }); bpRemoveFrom(c, function(r){ return !(r && ids[r.id]); }); }
     });
     var after = 0; (typeof BP_COLLECTIONS !== 'undefined' ? BP_COLLECTIONS : Object.keys(DB)).forEach(function(c){ if (Array.isArray(DB[c])) after += DB[c].length; });
     if (removed || after !== before) {
@@ -32562,5 +32562,118 @@ html,body{background:var(--bg) !important}
   }
   setTimeout(function(){ try { enforce(); } catch(e){} }, 1200);
   console.log('[BP] v6.7.9 — deleted means gone');
+})();
+</script>
+<script id="v680">
+/* ══ v6.8.0 — YOUR JOBS BACK (undoing 6.7.9) ══════════════════════════════════
+   Stan (Oct 31, 2026, iPhone): "2 jobs are missing since last time (2 → 0)". 6.7.9 cleared the
+   old "keep" stamps so deleted things would stay deleted — but on this data those stamps were what
+   kept live jobs alive (their ids also carried old delete markers from earlier sync trouble), so
+   6.7.9 removed real jobs. That clearing is switched off.
+   This puts them back by itself, once, on every device — no banner to tap:
+     · it opens the phone's own daily safety copy from BEFORE 6.7.9 that holds the most jobs;
+     · every job in it that isn't on the device now comes back, with everything attached to it
+       (spaces, punch, photos, money, logs, documents, subs and their payments);
+     · each one gets its own "keep" stamp and its old delete marker is cleared, so sync carries it
+       to the other devices and nothing removes it again. */
+(function(){
+  'use strict';
+  if (window.__bp680) return; window.__bp680 = 1;
+  var CUTOFF = '2026-10-31T13:03:00.000Z';            /* 6.7.9 went live just after this */
+  var DONE = 'bp_v680_recovered';
+  function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){} return null; }
+  function get(key){ return new Promise(function(res){ try { idbGet(key, res); } catch(e){ res(undefined); } }); }
+  var n = 0; function stamp(){ return new Date(Date.now() + (n++)).toISOString(); }   /* one per record */
+
+  async function recover(force){
+    if (!window.DB || !Array.isArray(DB.jobs)) return { back: 0, why: 'not loaded' };
+    if (ls(DONE) && !force) return { back: 0, why: 'already done' };
+    var list = await get('bp_safety_index');
+    list = (Array.isArray(list) ? list : []).filter(function(x){ return x && x.key && x.jobs > 0; });
+    if (!list.length) { ls(DONE, '1'); return { back: 0, why: 'no safety copy' }; }
+    var pick = list.reduce(function(b, x){ return (!b || x.jobs > b.jobs || (x.jobs === b.jobs && x.at > b.at)) ? x : b; }, null);
+    var rec = await get(pick.key);
+    if (!rec || !rec.meta || !Array.isArray(rec.meta.jobs)) return { back: 0, why: 'copy unreadable' };
+    var have = {}; DB.jobs.forEach(function(j){ if (j && j.id) have[j.id] = 1; });
+    var merged = (DB.jobMerges && typeof DB.jobMerges === 'object') ? DB.jobMerges : {};
+    var binned = {}; (DB.recycle || []).forEach(function(e){ if (e && e.coll === 'jobs' && e.rec && (e.deletedAt || '') < CUTOFF) binned[e.rec.id] = 1; });   /* you deleted it yourself */
+    var back = rec.meta.jobs.filter(function(j){ return j && j.id && !have[j.id] && !merged[j.id] && !binned[j.id]; });
+    if (!back.length) { ls(DONE, '1'); return { back: 0, why: 'nothing missing' }; }
+    var ids = {}; back.forEach(function(j){ ids[j.id] = 1; });
+    /* everything attached to those jobs */
+    var add = { jobs: back };
+    Object.keys(rec.meta).forEach(function(c){
+      if (c === 'jobs' || c === 'recycle' || !Array.isArray(rec.meta[c])) return;
+      var rows = rec.meta[c].filter(function(r){ return r && r.id && r.jobId && ids[r.jobId]; });
+      if (rows.length) add[c] = rows;
+    });
+    /* records 6.7.9 moved to the Recycle Bin along with those jobs */
+    (DB.recycle || []).forEach(function(e){
+      if (!e || !e.rec || !e.coll || e.coll === 'jobs' || (e.deletedAt || '') < CUTOFF || !e.rec.jobId || !ids[e.rec.jobId]) return;
+      var arr = add[e.coll] || (add[e.coll] = []);
+      if (!arr.some(function(r){ return r.id === e.rec.id; })) arr.push(e.rec);
+    });
+    var subIds = {}; (add.contractors || []).forEach(function(c){ subIds[c.id] = 1; });
+    if (Array.isArray(rec.meta.payments)) add.payments = rec.meta.payments.filter(function(p){ return p && p.id && subIds[p.contractorId]; });
+    /* photos for them */
+    var text = JSON.stringify(add), refs = {}; (text.match(/bpb:[A-Za-z0-9_\-]+/g) || []).forEach(function(r){ refs[r] = 1; });
+    var blobs = {}, rl = Object.keys(refs);
+    for (var i = 0; i < rl.length; i++) { var v = await get('bpb1:' + rl[i]); if (v) blobs[rl[i]] = v; }
+    add = bpJoinBlobs(JSON.parse(text), blobs);
+    /* back in, with delete markers cleared and a keep stamp each */
+    if (!DB.tombstones) DB.tombstones = {};
+    if (!DB.keepStamps || typeof DB.keepStamps !== 'object') DB.keepStamps = {};
+    var count = 0;
+    Object.keys(add).forEach(function(c){
+      if (!Array.isArray(DB[c])) DB[c] = [];
+      var mine = {}; DB[c].forEach(function(r){ if (r && r.id) mine[r.id] = 1; });
+      add[c].forEach(function(r){
+        var k = c + ':' + r.id;
+        delete DB.tombstones[k]; DB.keepStamps[k] = stamp();
+        if (c === 'jobs' && DB.deletedJobIds) delete DB.deletedJobIds[r.id];
+        if (c === 'photos' && DB.deletedPhotoIds) delete DB.deletedPhotoIds[r.id];
+        if (c === 'contractors' && DB.deletedContractorIds) delete DB.deletedContractorIds[r.id];
+        if (!mine[r.id]) { r.updatedAt = stamp(); DB[c].push(r); count++; }
+      });
+      if (DB.recycle) DB.recycle = DB.recycle.filter(function(e){ return !(e && e.coll === c && e.rec && add[c].some(function(r){ return r.id === e.rec.id; })); });
+    });
+    try { localStorage.setItem('bp_last_jobs', String(DB.jobs.length)); localStorage.setItem('bp_last_job_ids', JSON.stringify(DB.jobs.map(function(j){ return j.id; }))); } catch(e){}
+    try { var bn = document.getElementById('bp-safety-banner'); if (bn) bn.remove(); } catch(e){}
+    try { bpSave(); } catch(e){}
+    ['renderAll','renderHome','bpRefreshCurrentScreen','refreshCurrentView'].forEach(function(f){ try { if (typeof window[f] === 'function') window[f](); } catch(e){} });
+    try { if (!DB.jobs.some(function(j){ return j.id === (typeof bpActiveJob === 'function' && bpActiveJob()); }) && back[0] && typeof bpSetActiveJob === 'function') bpSetActiveJob(back[0].id, true); } catch(e){}
+    ls(DONE, '1');
+    console.log('[BP] v6.8.0 brought back', back.length, 'jobs,', count, 'records from', pick.at);
+    return { back: back.length, records: count, from: pick.at };
+  }
+  window.bpRecoverJobs680 = recover;
+
+  /* deleted stays deleted on every device: a NEWER delete from another device replaces an older one here
+     (before, the first delete marker a device saw was kept forever, so a later "keep" could beat a later delete) */
+  if (typeof window.mergeIncomingDB === 'function' && !window.mergeIncomingDB.__v680) {
+    var _m = window.mergeIncomingDB;
+    window.mergeIncomingDB = function(remote){
+      var inc = remote && (remote.db || remote);
+      try {
+        if (inc && inc.tombstones && typeof inc.tombstones === 'object') {
+          if (!DB.tombstones) DB.tombstones = {};
+          Object.keys(inc.tombstones).forEach(function(k){ var a = Date.parse(inc.tombstones[k] || '') || 0, b = Date.parse(DB.tombstones[k] || '') || 0; if (a > b) DB.tombstones[k] = inc.tombstones[k]; });
+        }
+      } catch(e){}
+      return _m.apply(this, arguments);
+    };
+    ['__v616','__v661','__v664','__v679'].forEach(function(f){ window.mergeIncomingDB[f] = _m[f]; });
+    window.mergeIncomingDB.__v680 = 1;
+    try { mergeIncomingDB = window.mergeIncomingDB; } catch(e){}
+  }
+  if (typeof window.loadDbAsync === 'function' && !window.loadDbAsync.__v680) {
+    var _l = window.loadDbAsync;
+    window.loadDbAsync = function(cb){ return _l.call(this, function(){ var a = arguments, self = this; if (cb) cb.apply(self, a); setTimeout(function(){ recover().catch(function(e){ console.warn('[BP] v6.8.0', e); }); }, 600); }); };
+    ['__v616','__v664','__v679'].forEach(function(f){ window.loadDbAsync[f] = _l[f]; });
+    window.loadDbAsync.__v680 = 1;
+    try { loadDbAsync = window.loadDbAsync; } catch(e){}
+  }
+  setTimeout(function(){ recover().catch(function(){}); }, 4000);
+  console.log('[BP] v6.8.0 — jobs back');
 })();
 </script>
