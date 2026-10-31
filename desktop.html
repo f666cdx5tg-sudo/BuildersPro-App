@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.7.1';
+var APP_VERSION = '6.7.2';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -25354,11 +25354,13 @@ html,body{background:var(--bg) !important}
   'use strict';
   if (window.__bp670) return; window.__bp670 = 1;
   function caps(){ try { return (window.BPShell && BPShell.caps) || {}; } catch(e){ return {}; } }
+  /* v6.7.2: the old Apple sign-in sync is switched off for good — it never loads, signs in, or shows its red "signed out" bar */
+  try { localStorage.removeItem('bp_ck_on'); } catch(e){}
   if (!caps().drive) {
     /* v6.7.1: an older build of the app (or a web browser) — never show Apple's web sign-in box again
        (it hung on the iPad and Apple flagged the sign-in). Say what to do instead. */
     var st0 = document.createElement('style');
-    st0.textContent = '#bp-ck-signin,#bp-ck-signout,[id^="apple-sign-in-button"],[id^="apple-sign-out-button"]{display:none !important}';
+    st0.textContent = '#bp-ck-signin,#bp-ck-signout,[id^="apple-sign-in-button"],[id^="apple-sign-out-button"],#bp-ck-warn,#bp-ck-warn.on{display:none !important}';
     document.head.appendChild(st0);
     var inApp = !!window.BPShell;
     window.bpICloudTurnOn = function(){ try { (window.toast || alert)(inApp ? 'Sync needs the newest BuildersPro app: in Xcode pick this device and press Run.' : 'Sync works in the BuildersPro app on iPhone, iPad and Mac.'); } catch(e){} };
@@ -25473,7 +25475,7 @@ html,body{background:var(--bg) !important}
 
   /* hide the Apple sign-in box everywhere; say what sync does now */
   var st = document.createElement('style');
-  st.textContent = '#bp-ck-signin,#bp-ck-signout,[id^="apple-sign-in-button"],[id^="apple-sign-out-button"]{display:none !important}';
+  st.textContent = '#bp-ck-signin,#bp-ck-signout,[id^="apple-sign-in-button"],[id^="apple-sign-out-button"],#bp-ck-warn,#bp-ck-warn.on{display:none !important}';
   document.head.appendChild(st);
   function paint(msg){
     try { if (window.bpSaveChipPaint) bpSaveChipPaint(); } catch(e){}
