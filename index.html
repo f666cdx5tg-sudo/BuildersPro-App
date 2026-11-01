@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.7';
+var APP_VERSION = '6.9.8';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -33361,5 +33361,53 @@ html,body{background:var(--bg) !important}
   }
   setTimeout(run, 6000);
   console.log('[BP] v6.9.7 — Zelle progress payments → money in');
+})();
+</script>
+<script id="v698">
+/* ══ v6.9.8 — HOME SHOWS ONLY THE ON SITE JOB ═════════════════════════════════
+   Stan (Nov 1, 2026): "When on the home screen and chose a job the other jobs should not be visible.
+   Only active job". With a job picked in ON SITE, Home shows nothing from the other jobs:
+     · Recent jobs: only the On Site job's card;
+     · Time Clock: only the On Site job to clock in to.
+   (Needs your attention, the tiles and Money Left already follow the On Site job.)
+   Pick "— No active job —" and every job shows again. The ON SITE picker itself still lists every job
+   so you can switch. Field app (iPhone / iPad field view); the Mac Command Center has no On Site job. */
+(function(){
+  'use strict';
+  if (window.__bp698) return; window.__bp698 = 1;
+  if (document.getElementById('modal-new-room')) return;
+  function cur(){ try { return typeof bpActiveJob === 'function' ? bpActiveJob() : ''; } catch(e){ return ''; } }
+  function apply(){
+    var id = cur();
+    var rj = document.getElementById('home-recent-jobs');
+    if (rj) [].forEach.call(rj.querySelectorAll('[onclick*="openJobDetail("]'), function(c){
+      var m = c.getAttribute('onclick').match(/openJobDetail\('([^']+)'\)/);
+      var show = !id || !m || m[1] === id;
+      if (c.style.display !== (show ? '' : 'none')) c.style.display = show ? '' : 'none';
+    });
+    var tc = document.getElementById('tc-job-select');
+    if (tc) {
+      if (id && [].some.call(tc.options, function(o){ return o.value === id; })) {   /* iPhone pickers ignore hidden options: take the others out */
+        [].slice.call(tc.options).forEach(function(o){ if (o.value !== id) o.remove(); });
+        tc.value = id;
+      }
+    }
+  }
+  window.bpHomeOnlyActive = apply;
+  if (typeof window.bpSetActiveJob === 'function' && !window.bpSetActiveJob.__v698) {
+    var _s = window.bpSetActiveJob;
+    window.bpSetActiveJob = function(){
+      var r = _s.apply(this, arguments);
+      try { var h = document.getElementById('s-home'); if (h && h.classList.contains('active') && typeof renderHome === 'function') renderHome(); } catch(e){}
+      apply();
+      return r;
+    };
+    window.bpSetActiveJob.__v698 = 1;
+    try { bpSetActiveJob = window.bpSetActiveJob; } catch(e){}
+  }
+  var home = document.getElementById('s-home');
+  if (home) new MutationObserver(apply).observe(home, { childList: true, subtree: true });
+  apply(); setTimeout(apply, 1500);
+  console.log('[BP] v6.9.8 — Home shows only the On Site job');
 })();
 </script>
