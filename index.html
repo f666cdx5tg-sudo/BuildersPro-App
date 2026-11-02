@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.8';
+var APP_VERSION = '6.9.9';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -33409,5 +33409,85 @@ html,body{background:var(--bg) !important}
   if (home) new MutationObserver(apply).observe(home, { childList: true, subtree: true });
   apply(); setTimeout(apply, 1500);
   console.log('[BP] v6.9.8 — Home shows only the On Site job');
+})();
+</script>
+<script id="v699">
+/* ══ v6.9.9 — HOME: NOTES & COMMENTS FOR THE ON SITE JOB ═══════════════════════
+   Stan (Nov 1, 2026): "instead of 'recent jobs' being open at the bottom of the page, provide a summary
+   of notes and comments". With a job picked in ON SITE, the bottom of Home shows that job's
+   NOTES & COMMENTS instead of Recent Jobs:
+     · a count line: N notes · N comments;
+     · the newest 6, each with its date, where it came from (Note / Punch / Daily log) and the space,
+       two lines of text; tap one to open it (note → Notes, punch comment → the job, log → that day's log);
+     · "See all" opens the job's notes.
+   Notes = the job's notes (typed or spoken). Comments = notes written on punch items and the
+   client notes / still-open items written in daily logs. No job picked → Recent Jobs as before. */
+(function(){
+  'use strict';
+  if (window.__bp699) return; window.__bp699 = 1;
+  if (document.getElementById('modal-new-room')) return;
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function cur(){ try { return typeof bpActiveJob === 'function' ? bpActiveJob() : ''; } catch(e){ return ''; } }
+  function room(id){ var r = id && (DB.rooms || []).find(function(x){ return x.id === id; }); return r ? r.name : ''; }
+  function when(s){ var d = new Date(String(s || '').length === 10 ? s + 'T12:00' : s); return isNaN(d) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+  var IC = {
+    note: '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h4"/></svg>',
+    punch: '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><path d="M9 11l3 3l8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>',
+    log: '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 12h6M9 16h4"/></svg>'
+  };
+  function items(jobId){
+    var L = [];
+    (DB.jobNotes || []).forEach(function(n){ if (n && n.jobId === jobId && String(n.text || '').trim()) L.push({ k: 'note', label: 'Note', at: n.created || n.updatedAt || '', where: room(n.roomId), text: n.text, open: "bp699OpenNote('" + jobId + "')" }); });
+    (DB.punchlist || []).forEach(function(p){ if (p && p.jobId === jobId && String(p.extraNotes || '').trim()) L.push({ k: 'punch', label: 'Punch', at: p.updatedAt || p.created || '', where: room(p.roomId), text: (p.text ? p.text + ' — ' : '') + p.extraNotes, open: "openJobDetail('" + jobId + "')" }); });
+    (DB.reports || []).forEach(function(r){
+      if (!r || r.jobId !== jobId) return;
+      var t = [r.clientNotes, r.incomplete ? 'Still open: ' + r.incomplete : '', r.notes].filter(function(x){ return String(x || '').trim(); }).join(' · ');
+      if (t) L.push({ k: 'log', label: 'Daily log', at: r.date || r.updatedAt || r.createdAt || '', where: '', text: t, open: (typeof window.bpOpenDailyLog === 'function' ? "bpOpenDailyLog('" + jobId + "','" + String(r.date || '').slice(0, 10) + "')" : "openJobDetail('" + jobId + "')") });
+    });
+    L.sort(function(a, b){ return String(a.at) < String(b.at) ? 1 : -1; });
+    return L;
+  }
+  window.bp699Items = items;
+  window.bp699OpenNote = function(jobId){
+    try { if (typeof window.bpVoiceCapture === 'function') { window.bpVoiceCapture('note'); if (typeof window.bpVoiceJob === 'function') window.bpVoiceJob(jobId); return; } } catch(e){}
+    if (typeof openJobDetail === 'function') openJobDetail(jobId);
+  };
+  function html(jobId){
+    var L = items(jobId), notes = L.filter(function(x){ return x.k === 'note'; }).length, com = L.length - notes;
+    var head = '<div style="display:flex;align-items:baseline;gap:8px;margin:0 0 8px"><div class="section-header" style="margin:0;padding:0">Notes &amp; comments</div>'
+      + (notes ? '<button type="button" onclick="bp699OpenNote(\'' + jobId + '\')" style="margin-left:auto;background:none;border:none;color:#0A84FF;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;min-height:44px">See all</button>' : '') + '</div>';
+    if (!L.length) return head + '<div style="padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--border);color:var(--muted);font-size:14px">No notes or comments on this job yet. Tap the mic to add one.</div>';
+    return head
+      + '<div style="font-size:13px;font-weight:700;color:var(--muted);margin:0 0 8px">' + notes + ' note' + (notes === 1 ? '' : 's') + ' · ' + com + ' comment' + (com === 1 ? '' : 's') + '</div>'
+      + L.slice(0, 6).map(function(x){
+        return '<div onclick="' + x.open + '" style="cursor:pointer;padding:12px 14px;margin-bottom:8px;border-radius:14px;background:var(--card);border:1px solid var(--border)">'
+          + '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted)"><span style="color:#0A84FF;display:inline-flex">' + IC[x.k] + '</span>' + E(x.label) + (x.where ? ' · ' + E(x.where) : '') + '<span style="margin-left:auto">' + E(when(x.at)) + '</span></div>'
+          + '<div style="font-size:15px;line-height:1.4;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere">' + E(x.text) + '</div></div>';
+      }).join('');
+  }
+  var last = '';
+  function apply(){
+    var rj = document.getElementById('home-recent-jobs'); if (!rj) return;
+    var hdr = rj.previousElementSibling && /recent jobs/i.test(rj.previousElementSibling.textContent) ? rj.previousElementSibling : null;
+    var box = document.getElementById('bp-home-notes');
+    var id = cur();
+    if (!id) { rj.style.display = ''; if (hdr) hdr.style.display = ''; if (box) box.style.display = 'none'; last = ''; return; }
+    rj.style.display = 'none'; if (hdr) hdr.style.display = 'none';
+    if (!box) { box = document.createElement('div'); box.id = 'bp-home-notes'; box.style.cssText = 'margin:14px 16px 0'; rj.parentNode.insertBefore(box, rj.nextSibling); }
+    box.style.display = '';
+    var h = html(id);
+    if (h !== last) { last = h; box.innerHTML = h; }
+  }
+  window.bp699Apply = apply;
+  var home = document.getElementById('s-home');
+  if (home) new MutationObserver(function(m){ if (m.some(function(r){ return !(r.target.id === 'bp-home-notes' || (r.target.closest && r.target.closest('#bp-home-notes'))); })) apply(); }).observe(home, { childList: true, subtree: true });
+  if (typeof window.bpSetActiveJob === 'function' && !window.bpSetActiveJob.__v699) {
+    var _s = window.bpSetActiveJob;
+    window.bpSetActiveJob = function(){ var r = _s.apply(this, arguments); try { apply(); } catch(e){} return r; };
+    ['__v698'].forEach(function(k){ window.bpSetActiveJob[k] = _s[k]; }); window.bpSetActiveJob.__v699 = 1;
+    try { bpSetActiveJob = window.bpSetActiveJob; } catch(e){}
+  }
+  apply(); setTimeout(apply, 1500);
+  console.log('[BP] v6.9.9 — Home: notes & comments for the On Site job');
 })();
 </script>
