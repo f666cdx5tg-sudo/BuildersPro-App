@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.10';
+var APP_VERSION = '6.9.11';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -2461,48 +2461,62 @@ function bpShortPlace(city, state, zip) {
     // Last resort so the header never sits on "Detecting..." forever — matches the
     // field app's behavior when ipapi.co is blocked by an ad-blocker/tracking protection
     // or geolocation is denied at the OS level.
-    if(settled)return; settled=true;
-    setEl('tb-loc','Bergenfield NJ');
-    window._currentGeo='Bergenfield NJ';
+    if(settled)return;
+    var sp=(function(){ try{ return JSON.parse(localStorage.getItem('bp_desk_place')||'null'); }catch(e){ return null; } })();
+    if(sp&&sp.label){ settled=true; setEl('tb-loc',sp.label); window._currentGeo=sp.label; if(sp.lat){ window._geoLat=sp.lat; window._geoLng=sp.lng; doWx(sp.lat,sp.lng); } else doWx('40.9268','-73.9957'); return; }
+    settled=true;
+    setEl('tb-loc','Bergenfield NJ 07621');
+    window._currentGeo='Bergenfield NJ 07621';
     window._geoLat='40.9268'; window._geoLng='-73.9957';
     doWx('40.9268','-73.9957');
   }
 
+  /* v6.9.11 (Stan, Nov 3: "geo tag location is not correct" — the Mac showed "Wayne NJ 07470"): the city is
+     never taken from the internet address any more (that is the internet provider's location, miles off).
+     Order: the Mac's own location → the last place found on this Mac → the place you set by clicking the
+     location (default Bergenfield NJ 07621). */
+  var GKEY='bp_desk_place';
+  function saved(){ try{ return JSON.parse(localStorage.getItem(GKEY)||'null'); }catch(e){ return null; } }
+  function keep(o){ try{ localStorage.setItem(GKEY, JSON.stringify(o)); }catch(e){} }
   function byIP(){
-    fetch('https://ipapi.co/json/')
-      .then(function(r){return r.json();})
-      .then(function(d){
-        if(settled)return;
-        if(!d||!d.latitude)throw 0;
-        settled=true;
-        var lat=''+d.latitude,lng=''+d.longitude;
-        var loc=bpShortPlace(d.city,d.region_code||d.region,d.postal);
-        setEl('tb-loc',loc||(lat+', '+lng));
-        window._currentGeo=loc||(lat+', '+lng); window._geoLat=lat; window._geoLng=lng;
-        doWx(lat,lng);
-      }).catch(useFallback);
+    if(settled)return;
+    var p=saved();
+    if(p && p.label){ settled=true; setEl('tb-loc',p.label); window._currentGeo=p.label; if(p.lat){ window._geoLat=p.lat; window._geoLng=p.lng; doWx(p.lat,p.lng); } else doWx('40.9268','-73.9957'); return; }
+    useFallback();
   }
+  window.bpDeskSetPlace=function(){
+    var cur=(document.getElementById('tb-loc')||{}).textContent||'';
+    var v=prompt('Where is this computer? (for example: Bergenfield NJ 07621)', cur);
+    if(v==null)return; v=String(v).trim(); if(!v)return;
+    var o={label:v, set:true, at:Date.now()};
+    keep(o); setEl('tb-loc',v); window._currentGeo=v;
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(v)).then(function(r){return r.json();}).then(function(d){
+      if(d&&d[0]){ o.lat=(+d[0].lat).toFixed(4); o.lng=(+d[0].lon).toFixed(4); keep(o); window._geoLat=o.lat; window._geoLng=o.lng; doWx(o.lat,o.lng); }
+    }).catch(function(){});
+  };
+  setTimeout(function(){ var e=document.getElementById('tb-loc'); if(e&&!e.__bpSet){ e.__bpSet=1; e.style.cursor='pointer'; e.title='Click to set this computer\'s location'; e.addEventListener('click', window.bpDeskSetPlace); } }, 500);
 
-  if(navigator.geolocation){
+  var setByHand=(saved()||{}).set;   /* a place you typed in wins over everything */
+  if(setByHand) byIP();
+  else if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(function(p){
       if(settled)return; settled=true;
       var lat=p.coords.latitude.toFixed(4),lng=p.coords.longitude.toFixed(4);
       window._geoLat=lat; window._geoLng=lng;
-      setEl('tb-loc',lat+', '+lng);
+      var prev=saved(); setEl('tb-loc',(prev&&prev.label)||'Bergenfield NJ 07621');
       doWx(lat,lng);
       fetch('https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lng+'&format=json')
         .then(function(r){return r.json();})
         .then(function(d){
           var a=d.address||{};
-          var loc=bpShortPlace(a.city||a.town||a.village,a.state_code||a.state,a.postcode);
-          if(loc){setEl('tb-loc',loc);window._currentGeo=loc;}
+          var loc=bpShortPlace(a.city||a.town||a.village||a.hamlet||a.suburb,a.state_code||a.state,a.postcode);
+          if(loc){setEl('tb-loc',loc);window._currentGeo=loc;keep({label:loc,lat:lat,lng:lng,at:Date.now()});}
         }).catch(function(){});
-    },byIP,{timeout:6000,enableHighAccuracy:false});
+    },byIP,{timeout:15000,enableHighAccuracy:true,maximumAge:600000});
   } else byIP();
 
-  // Watchdog: if nothing has resolved within 9s (a silently-hanging blocked request,
-  // rather than one that actively fails), fall back rather than sit on "Detecting..." forever.
-  setTimeout(useFallback,9000);
+  // Watchdog: if nothing has resolved within 18s, fall back rather than sit on "Detecting..." forever.
+  setTimeout(useFallback,18000);
 })();
 
 /* ══ DASHBOARD ═══════════════════════════════════════════════ */
