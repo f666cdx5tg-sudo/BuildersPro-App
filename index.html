@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.9';
+var APP_VERSION = '6.9.10';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -33489,5 +33489,54 @@ html,body{background:var(--bg) !important}
   }
   apply(); setTimeout(apply, 1500);
   console.log('[BP] v6.9.9 — Home: notes & comments for the On Site job');
+})();
+</script>
+<script id="v6910">
+/* ══ v6.9.10 — COMMAND CENTER TOP BAR NEVER SPILLS OVER THE PAGE ══════════════════
+   Stan (Nov 3, 2026, Mac app at 110% text, light theme): "the heading is bunching together" — the logo,
+   location, clock and Save / Sync / Theme buttons were drawn on top of the sidebar and the Home tiles.
+   In Apple's WebKit (Mac + iPad app), when the top bar wraps onto 2–3 rows under the text-size zoom,
+   the page's grid row stays one row tall and the rest of the bar overflows onto the page.
+   Now the app measures the bar's real height and reserves exactly that much room — again whenever the
+   window, the text size or the bar's contents change — and the bar has a solid background. */
+(function(){
+  'use strict';
+  if (window.__bp6910) return; window.__bp6910 = 1;
+  if (!document.getElementById('modal-new-room')) return;          /* Command Center only */
+  var st = document.createElement('style'); st.id = 'bp-v6910';
+  st.textContent = '.topbar{overflow:visible;isolation:isolate}'
+    + '.topbar::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--card,#fff)}'
+    + '.topbar{position:sticky}';
+  document.head.appendChild(st);
+  var lastH = 0, raf = 0;
+  function measure(){
+    raf = 0;
+    var tb = document.querySelector('.topbar'), sh = document.querySelector('.shell');
+    if (!tb || !sh) return;
+    var top = tb.getBoundingClientRect().top, bottom = top;
+    [].forEach.call(tb.children, function(c){
+      var cs = getComputedStyle(c); if (cs.display === 'none' || cs.position === 'fixed') return;
+      var r = c.getBoundingClientRect(); if (r.height && r.bottom > bottom) bottom = r.bottom;
+    });
+    var pad = parseFloat(getComputedStyle(tb).paddingBottom) || 0;
+    var z = parseFloat(document.body.style.zoom || getComputedStyle(document.body).zoom || 1) || 1;
+    /* rects are in zoomed pixels in some engines and CSS pixels in others: compare with the box itself */
+    var boxH = tb.getBoundingClientRect().height, needCss = Math.ceil(bottom - top + pad);
+    var cssPerPx = boxH ? tb.offsetHeight / boxH : 1;
+    var h = Math.ceil(needCss * cssPerPx);
+    if (Math.abs(h - lastH) < 2 && tb.offsetHeight >= h - 1) return;
+    lastH = h;
+    tb.style.setProperty('min-height', h + 'px', 'important');
+    var narrow = window.matchMedia && window.matchMedia('(max-width:980px)').matches && getComputedStyle(sh).gridTemplateColumns.split(' ').length < 2;
+    sh.style.setProperty('grid-template-rows', narrow ? (h + 'px auto minmax(0,1fr)') : (h + 'px minmax(0,1fr)'), 'important');
+  }
+  function soon(){ if (!raf) raf = requestAnimationFrame(measure); }
+  window.bp6910Measure = measure;
+  window.addEventListener('resize', soon);
+  try { var tb0 = document.querySelector('.topbar'); if (tb0 && window.ResizeObserver) { var ro = new ResizeObserver(soon); ro.observe(tb0); [].forEach.call(tb0.children, function(c){ ro.observe(c); }); } } catch(e){}
+  try { new MutationObserver(soon).observe(document.body, { attributes: true, attributeFilter: ['style', 'class'] }); } catch(e){}
+  try { var t1 = document.querySelector('.topbar'); if (t1) new MutationObserver(soon).observe(t1, { childList: true, subtree: true, characterData: true }); } catch(e){}
+  soon(); setTimeout(measure, 300); setTimeout(measure, 1500); setTimeout(measure, 4000);
+  console.log('[BP] v6.9.10 — top bar room measured');
 })();
 </script>
