@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.11';
+var APP_VERSION = '6.9.12';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -22515,18 +22515,33 @@ console.log('[BP Desktop] v4.24 punchlist filter shelved — Status is Open / Co
   var st = document.createElement('style');
   st.textContent = '@media (min-width:981px){aside.sidebar{min-height:0;align-self:start;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))!important}}';
   document.head.appendChild(st);
+  /* v6.9.12 (Nov 5, 2026) — Stan: "I can not scroll down on command center sidebar on iPad".
+     With Text Size above 100% the whole page is zoomed, but the height was worked out in screen
+     pixels and then zoomed AGAIN — the menu ran past the bottom of the iPad screen, so its last
+     items could never scroll into view. The height is now converted to the page's own (unzoomed)
+     pixels, and re-fitted whenever the text size or the top bar's height changes. */
+  function zoomRatio(s){
+    var r = s.getBoundingClientRect();
+    if (r.height > 0 && s.offsetHeight > 0) return s.offsetHeight / r.height;   /* CSS px per screen px — right in every engine */
+    var z = parseFloat(document.body.style.zoom || 1) || 1; return 1 / z;
+  }
   function fit(){
     var s = document.querySelector('aside.sidebar'); if (!s) return;
     if (window.innerWidth <= 980) { s.style.height = ''; s.style.maxHeight = ''; return; }
     var top = Math.max(0, s.getBoundingClientRect().top);
-    var h = Math.max(200, Math.floor((window.visualViewport ? window.visualViewport.height : window.innerHeight) - top));
+    var screenH = (window.visualViewport ? window.visualViewport.height : window.innerHeight) - top;
+    var h = Math.max(200, Math.floor(screenH * zoomRatio(s)));
     s.style.height = h + 'px'; s.style.maxHeight = h + 'px';
   }
+  var raf = 0; function soon(){ if (!raf) raf = requestAnimationFrame(function(){ raf = 0; fit(); }); }
   window.bpFitSidebar = fit;
-  window.addEventListener('resize', fit);
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
-  fit(); setTimeout(fit, 500); setTimeout(fit, 2000);
-  console.log('[BP Mac] v6.2.5 — side menu scrolls to the bottom');
+  window.addEventListener('resize', soon);
+  window.addEventListener('orientationchange', function(){ setTimeout(fit, 300); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', soon);
+  try { new MutationObserver(soon).observe(document.body, { attributes: true, attributeFilter: ['style'] }); } catch(e){}   /* Text Size */
+  try { var tb = document.querySelector('.topbar'); if (tb && window.ResizeObserver) new ResizeObserver(soon).observe(tb); } catch(e){}
+  fit(); setTimeout(fit, 500); setTimeout(fit, 2000); setTimeout(fit, 4500);
+  console.log('[BP Mac] v6.2.5 / v6.9.12 — side menu scrolls to the bottom at any text size');
 })();
 </script>
 <script>
