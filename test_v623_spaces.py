@@ -1,4 +1,4 @@
-"""v6.2.3 — Spaces: photos on top as a stack that opens on request, checklist Open / Complete,
+"""(v6.9.13: Open / Complete are icons + counts, so the button text is just the count.) v6.2.3 — Spaces: photos on top as a stack that opens on request, checklist Open / Complete,
 complete items are ticked AND lined through everywhere, ticks are instant and stay in view,
 and Start / Completion date boxes are the same size. iPhone, iPad and Mac.
 Run from repo root: python3 test_v623_spaces.py      Exit 0 = all pass."""
@@ -60,7 +60,7 @@ async def field(b, name, vp):
     await pg.evaluate("openRoomDetail('r1')"); await pg.wait_for_timeout(300)
 
     seg = await pg.evaluate("[].map.call(document.querySelectorAll('#bp-clf-room .bp-seg button'), function(b){ return b.textContent + (b.classList.contains('on') ? '*' : ''); })")
-    ok(seg == ['Open2*', 'Complete1'], name + ': Open / Complete buttons with counts, Open first ' + str(seg))
+    ok(seg == ['2*', '1'], name + ': Open / Complete buttons with counts, Open first ' + str(seg))
     ok(await pg.evaluate("!document.querySelector('#bp-clf-room .bp-pm')"), name + ': old Status menu is gone')
     ok(await pg.evaluate(ROW_STATE, 'Paint ceiling') is None, name + ': Open hides complete items')
 
@@ -76,7 +76,7 @@ async def field(b, name, vp):
     st = await pg.evaluate(ROW_STATE, 'Hang cabinets')
     ok(st and st['ticked'] and st['lined'], name + ': ticked item stays in view on Open until you leave ' + str(st))
     seg = await pg.evaluate("[].map.call(document.querySelectorAll('#bp-clf-room .bp-seg button'), function(b){ return b.textContent; })")
-    ok(seg == ['Open1', 'Complete2'], name + ': counts update after a tick ' + str(seg))
+    ok(seg == ['1', '2'], name + ': counts update after a tick ' + str(seg))
     ok('33%' in await pg.inner_text('#s-room-detail .detail-header') or '67%' in await pg.inner_text('#s-room-detail .detail-header'), name + ': progress bar updates')
     await pg.tap('#bp-clf-room .bp-seg button[data-bp-show="done"]'); await pg.wait_for_timeout(200)
     a = await pg.evaluate(ROW_STATE, 'Paint ceiling'); c = await pg.evaluate(ROW_STATE, 'Hang cabinets')
@@ -134,7 +134,7 @@ async def mac(b):
     await pg.click('#bp-mrd-photos .bp-pst'); await pg.wait_for_timeout(200)
     ok(await pg.evaluate("document.querySelectorAll('#bp-mrd-photos .bp-pst-grid img').length") == 4, 'Mac: click opens all 4 photos')
     seg = await pg.evaluate("[].map.call(document.querySelectorAll('#bp-mrd-seg button'), function(b){ return b.textContent + (b.classList.contains('on') ? '*' : ''); })")
-    ok(seg == ['Open2*', 'Complete1'], 'Mac: Open / Complete buttons with counts ' + str(seg))
+    ok(seg == ['2*', '1'], 'Mac: Open / Complete buttons with counts ' + str(seg))
     ok(await pg.evaluate(ROW_STATE, 'Paint ceiling') is None, 'Mac: Open hides complete items')
     await pg.evaluate("toggleCheckInRoomDetail('p1','r1')"); await pg.wait_for_timeout(400)
     st = await pg.evaluate(ROW_STATE, 'Hang cabinets')

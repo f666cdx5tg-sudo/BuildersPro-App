@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.12';
+var APP_VERSION = '6.9.13';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -26664,5 +26664,80 @@ html,body{background:var(--bg) !important}
   try { var t1 = document.querySelector('.topbar'); if (t1) new MutationObserver(soon).observe(t1, { childList: true, subtree: true, characterData: true }); } catch(e){}
   soon(); setTimeout(measure, 300); setTimeout(measure, 1500); setTimeout(measure, 4000);
   console.log('[BP] v6.9.10 — top bar room measured');
+})();
+</script>
+<script id="v6913">
+/* ══ v6.9.13 — Spaces: tick, tick, tick (no reset) + Open / Complete as icons ══
+   Stan (Nov 7, 2026): "in spaces check off items on checklist, do not reset, allow me
+   to continue to check items off. Instead of the words open / complete use icon with
+   the count."
+   1. Command Center (Mac / iPad): each tick rebuilt the whole space window and threw it
+      back to the top, so after every check he had to scroll down to find his place.
+      The window now keeps its scroll position through every tick (and any redraw of
+      the same space), so he can keep checking items one after another.
+   2. Both apps: the Open / Complete buttons show a line icon + count — an empty box
+      with the open count (red = open work), a ticked box with the done count
+      (green = done). The words stay as the button's spoken label and hover title. */
+(function(){
+  'use strict';
+  if (window.__bp6913) return; window.__bp6913 = 1;
+  var IC = {
+    open: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"/></svg>',
+    done: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"/><polyline points="8.5 12.2 11 14.7 15.8 9.6"/></svg>'
+  };
+  var NAME = { open: 'Open', done: 'Complete' };
+  var st = document.createElement('style'); st.id = 'bp-v6913-css';
+  st.textContent =
+      '.bp-seg button[data-bp-ic]{display:inline-flex;align-items:center;justify-content:center;gap:7px;text-overflow:clip}'
+    + '.bp-seg button[data-bp-ic] svg{width:22px;height:22px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}'
+    + '.bp-seg button[data-bp-ic] b{margin-left:0!important;opacity:1;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}'
+    + '.bp-seg button[data-bp-ic="open"].on{background:rgba(255,69,58,.16);color:#FF453A}'
+    + '.bp-seg button[data-bp-ic="done"].on{background:rgba(48,209,88,.16);color:#30D158}';
+  document.head.appendChild(st);
+
+  function iconize(){
+    var bs = document.querySelectorAll('.bp-seg button[data-bp-show]');
+    for (var i = 0; i < bs.length; i++) {
+      var b = bs[i], k = b.getAttribute('data-bp-show') === 'done' ? 'done' : 'open';
+      var n = b.querySelector('b'), cnt = n ? n.textContent.trim() : '';
+      if (b.getAttribute('data-bp-ic') === k && b.getAttribute('data-bp-n') === cnt && b.querySelector('svg')) continue;
+      b.setAttribute('data-bp-ic', k); b.setAttribute('data-bp-n', cnt);
+      b.setAttribute('aria-label', NAME[k] + ' ' + cnt); b.title = NAME[k];
+      b.innerHTML = IC[k] + '<b>' + cnt + '</b>';
+    }
+  }
+  var q = 0;
+  new MutationObserver(function(){ if (!q) q = requestAnimationFrame(function(){ q = 0; iconize(); }); })
+    .observe(document.documentElement, { childList: true, subtree: true });
+  iconize();
+  window.bpSegIconize = iconize;
+
+  /* ── 1. Command Center: the space window keeps its place through every tick ── */
+  if (document.getElementById('modal-new-room') && typeof window.openRoomDetail === 'function' && !window.openRoomDetail.__v6913) {
+    var _ord = window.openRoomDetail, last = '';
+    window.openRoomDetail = function(roomId){
+      var mo = document.getElementById('modal-room-detail');
+      var keep = (mo && roomId === last) ? { o: mo.scrollTop, m: (mo.querySelector('.modal') || {}).scrollTop || 0, w: window.scrollY } : null;
+      last = roomId;
+      var r = _ord.apply(this, arguments);
+      if (keep) {
+        var put = function(){
+          var m2 = document.getElementById('modal-room-detail'); if (!m2) return;
+          m2.scrollTop = keep.o; var inner = m2.querySelector('.modal'); if (inner) inner.scrollTop = keep.m;
+          if (window.scrollY !== keep.w) window.scrollTo(0, keep.w);
+        };
+        put(); requestAnimationFrame(put); setTimeout(put, 140); setTimeout(put, 320);   /* after the trade filter / decorate passes */
+      }
+      iconize();
+      return r;
+    };
+    for (var k in _ord) if (Object.prototype.hasOwnProperty.call(_ord, k)) window.openRoomDetail[k] = _ord[k];
+    window.openRoomDetail.__v6913 = 1;
+    try { openRoomDetail = window.openRoomDetail; } catch(e){}
+    document.addEventListener('click', function(e){
+      if (e.target && e.target.closest && e.target.closest('#modal-room-detail .modal-close')) last = '';
+    }, true);
+  }
+  console.log('[BP] v6.9.13 — spaces: ticks keep your place; Open / Complete are icons with counts');
 })();
 </script>
