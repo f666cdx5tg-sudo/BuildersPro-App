@@ -36,7 +36,7 @@ async def run(b, name, url, **kw):
     await pg.route('**/*', lambda r: r.abort() if any(x in r.request.url for x in BLOCK) else r.continue_())
     await pg.goto('http://localhost:%d/%s' % (PORT, url)); await pg.wait_for_timeout(4000)
     await pg.evaluate("document.getElementById('bp-lock') && document.getElementById('bp-lock').remove()")
-    ok(await pg.evaluate("APP_VERSION") == '6.9.14', name + ': on v6.9.14')
+    ok(tuple(map(int, (await pg.evaluate("APP_VERSION")).split('.'))) >= (6, 9, 14), name + ': on v6.9.14 or newer')
     host = '#modal-room-detail' if mac else '#s-room-detail'
     await pg.evaluate(SEED); await pg.wait_for_timeout(300)
     async def open_room(rid):

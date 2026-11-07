@@ -1556,7 +1556,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.14';
+var APP_VERSION = '6.9.15';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -33844,5 +33844,203 @@ html,body{background:var(--bg) !important}
   }).observe(document.documentElement, { childList: true, subtree: true });
   window.bpSpaceSubs = { rows: rows, book: book, recompute: recompute, redraw: redraw };
   console.log('[BP] v6.9.14 — space contractors: dropdown, value, scope; job contract = total of space values');
+})();
+</script>
+<script id="v6915">
+/* ══ v6.9.15 — Spaces: check / uncheck without the jump ═══════════════════════
+   Stan (Nov 7, 2026): "test check and uncheck glitches it jumps".
+   Command Center (Mac / iPad): v6.9.13 still rebuilt the whole space window on every
+   tick, then put the scroll back in steps — so the row slid up to ~40px over a few
+   frames. Now a tick flips only that row in place: box, line-through, the Open /
+   Complete counts and the "Checklist (x/y)" header. Nothing else is redrawn, so the
+   page doesn't move at all. The row stays where it is in either view until you switch
+   Open / Complete or leave the space, so you can uncheck a mistake right away.
+   iPhone: an item unchecked in the Complete view (or checked in Open) stays on screen
+   too, instead of disappearing a second later and shifting the list.
+   Delete (same day, "deleting a item from checklist does not work"):
+   • Command Center: there was no Delete for a space's checklist item — it is now in the
+     Edit item window (red, beside Cancel); the space opens again after.
+   • iPhone: the slide-out Delete was hidden behind the next row; it now sits beside Cut. ═══ */
+(function(){
+  'use strict';
+  if (window.__bp6915) return; window.__bp6915 = 1;
+  var MAC = !!document.getElementById('modal-new-room');
+
+  if (MAC) {
+    function rowOf(itemId){
+      var mo = document.getElementById('modal-room-detail'); if (!mo) return null;
+      var cb = [].find.call(mo.querySelectorAll('#bp-desk-checklist input[type=checkbox]'), function(c){
+        var m = (c.getAttribute('onchange') || '').match(/toggleCheckInRoomDetail\('([^']+)'/); return m && m[1] === itemId;
+      });
+      return cb ? { cb: cb, row: cb.parentNode, mo: mo } : null;
+    }
+    function paintCounts(mo, roomId){
+      var all = (DB.punchlist || []).filter(function(n){ return n && n.roomId === roomId; });
+      var d = all.filter(function(n){ return n.done; }).length;
+      var seg = mo.querySelector('#bp-mrd-seg');
+      if (seg) [].forEach.call(seg.querySelectorAll('button[data-bp-show]'), function(b){
+        var n = b.getAttribute('data-bp-show') === 'done' ? d : all.length - d;
+        var bb = b.querySelector('b'); if (bb) bb.textContent = n;
+      });
+      if (window.bpSegIconize) window.bpSegIconize();
+      [].forEach.call(mo.querySelectorAll('.sec-hdr'), function(h){
+        var w = document.createTreeWalker(h, NodeFilter.SHOW_TEXT), t;
+        while ((t = w.nextNode())) if (/^\s*Checklist \(\d+\/\d+\)/.test(t.nodeValue)) { t.nodeValue = t.nodeValue.replace(/\(\d+\/\d+\)/, '(' + d + '/' + all.length + ')'); return; }
+      });
+    }
+    var _tc = window.toggleCheckInRoomDetail;
+    window.toggleCheckInRoomDetail = function(itemId, roomId){
+      var hit = rowOf(itemId);
+      if (!hit) return _tc.apply(this, arguments);           /* window not open — old way */
+      var mo = hit.mo, y = (tapY != null && Date.now() - tapAt < 1500) ? tapY : mo.scrollTop; tapY = null;
+      var real = window.renderDesktopPunchlist;
+      try {
+        toggleCheck(itemId);                                 /* saves; the Punch list behind redraws when idle */
+      } catch(e){ console.warn('[BP] v6.9.15 tick', e); }
+      var it = (DB.punchlist || []).find(function(n){ return n.id === itemId; }); if (!it) return;
+      hit.cb.checked = !!it.done;
+      var name = hit.cb.nextElementSibling;
+      if (name) { name.style.textDecoration = it.done ? 'line-through' : 'none'; name.style.color = it.done ? 'var(--muted)' : ''; }
+      hit.row.style.setProperty('display', 'flex', 'important');   /* stays put in either view until the view changes */
+      hit.row.setAttribute('data-bp-kept', '1');
+      paintCounts(mo, roomId);
+      if (mo.scrollTop !== y) mo.scrollTop = y;
+    };
+    window.toggleCheckInRoomDetail.__v6915 = 1;
+    /* the browser flips the box BEFORE onchange; for that instant the Open / Complete filter
+       hides the row and the window's scroll gets clamped (the 23px hop). Pin the row the
+       moment the tap lands, and remember where the window was. */
+    var tapY = null, tapAt = 0;
+    ['pointerdown', 'touchstart', 'mousedown'].forEach(function(ev){
+      document.addEventListener(ev, function(e){
+        var cb = e.target && e.target.closest && e.target.closest('#modal-room-detail #bp-desk-checklist input[type=checkbox]');
+        if (cb) { tapY = document.getElementById('modal-room-detail').scrollTop; tapAt = Date.now(); }
+      }, { capture: true, passive: true });
+    });
+    document.addEventListener('click', function(e){
+      var cb = e.target && e.target.closest && e.target.closest('#modal-room-detail #bp-desk-checklist input[type=checkbox]');
+      if (!cb) return;
+      cb.parentNode.style.setProperty('display', 'flex', 'important'); cb.parentNode.setAttribute('data-bp-kept', '1');   /* first — reading scroll would lay out with the row hidden */
+      var mo = document.getElementById('modal-room-detail');
+      if (tapY == null || Date.now() - tapAt > 1500) { tapY = mo.scrollTop; tapAt = Date.now(); }
+    }, true);
+
+    /* ── Delete a checklist item (Stan, Nov 7: "deleting a item from checklist does not work").
+       The space window had Edit / Cut / Copy but no Delete anywhere. Rows keep their icons
+       (no trash icon added — his rule); Delete lives in the Edit item window, red, beside
+       Cancel. After deleting, the space it came from opens again so he lands where he was.
+       Deleted items go to Recently Deleted like everything else. ── */
+    var editing = null;
+    if (typeof window.openModal === 'function') {
+      var _om = window.openModal;
+      window.openModal = function(id){
+        if (id === 'modal-new-check') {
+          var d = document.getElementById('bp-ec-del');
+          if (d) d.style.display = editing ? '' : 'none';
+          if (!editing) delete (document.getElementById('modal-new-check') || {}).dataset.bpEditId;
+        }
+        return _om.apply(this, arguments);
+      };
+      for (var k1 in _om) if (Object.prototype.hasOwnProperty.call(_om, k1)) window.openModal[k1] = _om[k1];
+      try { openModal = window.openModal; } catch(e){}
+    }
+    if (typeof window.editCheckItem === 'function') {
+      var _eci = window.editCheckItem;
+      window.editCheckItem = function(id){
+        var it = (DB.punchlist || []).find(function(n){ return n.id === id; });
+        var mo = document.getElementById('modal-new-check');
+        if (it && mo) {
+          var del = document.getElementById('bp-ec-del');
+          if (!del) {
+            var cancel = mo.querySelector('button[onclick*="closeModal(\'modal-new-check\')"].btn-ghost');
+            del = document.createElement('button'); del.id = 'bp-ec-del'; del.type = 'button'; del.className = 'btn btn-ghost';   /* ghost: the old Edit code rewires the first non-ghost .btn as Update */
+            del.setAttribute('aria-label', 'Delete item');
+            del.style.cssText = 'flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:rgba(255,69,58,.12);border:1px solid rgba(255,69,58,.45);color:#FF453A';
+            del.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete';
+            if (cancel && cancel.parentNode) cancel.parentNode.insertBefore(del, cancel); else (mo.querySelector('.modal') || mo).appendChild(del);
+            del.onclick = function(){
+              var eid = mo.dataset.bpEditId, n = (DB.punchlist || []).find(function(x){ return x.id === eid; }); if (!n) return;
+              if (!confirm('Delete "' + (n.text || 'this item') + '"?\n\nIt goes to Recently Deleted.')) return;
+              var roomId = n.roomId;
+              bpRemoveFrom('punchlist', function(x){ return x.id !== eid; });
+              saveDB();
+              closeModal('modal-new-check');
+              var main = mo.querySelector('.btn:not(.btn-ghost):not(#bp-ec-del)');
+              if (main) { main.textContent = 'Add Item'; main.onclick = saveNewCheck; }
+              var t = mo.querySelector('.modal-title'); if (t) t.textContent = 'New Checklist Item';
+              delete mo.dataset.bpEditId;
+              try { toast('Item deleted'); } catch(e){}
+              try { renderDesktopPunchlist(); } catch(e){}
+              try { if (document.getElementById('rooms-table-wrap')) renderDesktopRooms(); } catch(e){}
+              if (roomId && (DB.rooms || []).some(function(r){ return r.id === roomId; })) openRoomDetail(roomId);
+            };
+          }
+          mo.dataset.bpEditId = id;
+        }
+        editing = it ? id : null;
+        try { return _eci.apply(this, arguments); } finally { editing = null; }
+      };
+      try { editCheckItem = window.editCheckItem; } catch(e){}
+    }
+
+    try { toggleCheckInRoomDetail = window.toggleCheckInRoomDetail; } catch(e){}
+    /* switching Open / Complete = a fresh look: kept rows follow the filter again */
+    if (typeof window.bpMacSpaceShow === 'function') {
+      var _show = window.bpMacSpaceShow;
+      window.bpMacSpaceShow = function(){
+        [].forEach.call(document.querySelectorAll('#bp-desk-checklist > div[data-bp-kept]'), function(r){ r.style.setProperty('display', 'flex'); r.removeAttribute('data-bp-kept');   /* back to its own flex (not important) so the view filter applies again */ });
+        return _show.apply(this, arguments);
+      };
+    }
+    /* the Punch list behind the window redraws once things go quiet, not on every tick */
+    if (typeof window.renderDesktopPunchlist === 'function') {
+      var _rp = window.renderDesktopPunchlist, tq = 0;
+      window.renderDesktopPunchlist = function(){
+        var self = this, args = arguments;
+        if (!document.getElementById('modal-room-detail')) return _rp.apply(self, args);
+        clearTimeout(tq); tq = setTimeout(function(){ try { _rp.apply(self, args); } catch(e){} }, 900);
+      };
+      try { renderDesktopPunchlist = window.renderDesktopPunchlist; } catch(e){}
+    }
+  } else {
+
+    /* ── iPhone: the Delete that slides out of a checklist row sat UNDER Cut, behind the
+       next row (a text-size rule made the strip wrap), so a tap on it hit the row below.
+       The strip now stays one line: Cut and Delete side by side, inside the row's height. ── */
+    var dst = document.createElement('style'); dst.id = 'bp-v6915-del';
+    dst.textContent = '.bp-cl-row > .bp-cl-acts{flex-wrap:nowrap!important;width:max-content!important;max-width:none!important;z-index:2}'
+      + '.bp-cl-row > .bp-cl-acts button{flex:0 0 78px!important;min-height:0!important;height:auto!important}';
+    document.head.appendChild(dst);
+    /* iPhone: whatever you tick in this space stays in view, in Open AND Complete */
+    var keep = {}, keepRoom = '';
+    var F = window._bpClFilter = window._bpClFilter || {};
+    if (typeof window.toggleChecklistItem === 'function') {
+      var _tog = window.toggleChecklistItem;
+      window.toggleChecklistItem = function(id){
+        var a = document.querySelector('.screen.active');
+        if (a && a.id === 's-room-detail') { var rid = a.getAttribute('data-room-id'); if (rid !== keepRoom) { keep = {}; keepRoom = rid; } keep[id] = 1; }
+        return _tog.apply(this, arguments);
+      };
+      try { toggleChecklistItem = window.toggleChecklistItem; } catch(e){}
+    }
+    if (typeof window.bpApplyClFilter === 'function') {
+      var _apply = window.bpApplyClFilter;
+      window.bpApplyClFilter = function(items){
+        var out = _apply.apply(this, arguments);
+        if (F.show !== 'done' || !keepRoom) return out;
+        var extra = (items || []).filter(function(it){ return it && keep[it.id] && it.roomId === keepRoom && out.indexOf(it) < 0; });
+        if (!extra.length) return out;
+        var pos = new Map(); (items || []).forEach(function(it, i){ pos.set(it, i); });
+        return out.concat(extra).sort(function(a, b){ return pos.get(a) - pos.get(b); });
+      };
+    }
+    ['bpSpaceShow', 'closeRoomDetail'].forEach(function(fn){
+      if (typeof window[fn] !== 'function') return;
+      var _f = window[fn];
+      window[fn] = function(){ keep = {}; keepRoom = ''; return _f.apply(this, arguments); };
+      try { if (fn === 'closeRoomDetail') closeRoomDetail = window.closeRoomDetail; } catch(e){}
+    });
+  }
+  console.log('[BP] v6.9.15 — check / uncheck in a space without the jump');
 })();
 </script>
