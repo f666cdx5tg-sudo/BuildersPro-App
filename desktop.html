@@ -1612,7 +1612,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.13';
+var APP_VERSION = '6.9.14';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -26739,5 +26739,236 @@ html,body{background:var(--bg) !important}
     }, true);
   }
   console.log('[BP] v6.9.13 — spaces: ticks keep your place; Open / Complete are icons with counts');
+})();
+</script>
+<script id="v6914">
+/* ══ v6.9.14 — Spaces: contractors are assigned right in the space ══════════════
+   Stan (Nov 7, 2026): "how do I assign contractors? in a space have drop menu of
+   contractors and next to the contractor value, then scope of work."
+   Before, a space only took contractors through + Manage → Edit Space checkboxes, and
+   that list showed only subs already added to this job, so it was usually empty.
+   Now, in the space's Contractors section, each row is:
+       [ contractor ▾ ]  [ $ value ]
+       [ scope of work            ]
+   • The dropdown lists the whole phone book (plus any sub already on a job). Picking
+     one who isn't on this job yet adds them to the job automatically.
+   • Decided (Stan chose A): a sub's contract on the job = the total of his space values.
+     Bath $4,500 + Kitchen $3,000 → his job contract is $7,500, and Money Left subtracts
+     it once. A sub who already had a job contract typed in before is only switched over
+     when he gives that sub a space value, and the app asks first.
+   • To take a sub off a space, pick "Remove from this space" in his dropdown.
+   Same on the iPhone field app and the Mac / iPad Command Center. ═══════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp6914) return; window.__bp6914 = 1;
+  var MAC = !!document.getElementById('modal-new-room');
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function key(n){ return String(n || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+  function r2(n){ return Math.round((+n || 0) * 100) / 100; }
+  function money(n){ return '$' + r2(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function persist(){ try { if (MAC) saveDB(); else save(); } catch(e){ try { window.save(); } catch(e2){} } }
+  function room(id){ return (DB.rooms || []).find(function(r){ return r && r.id === id; }); }
+  function con(id){ return (DB.contractors || []).find(function(c){ return c && c.id === id; }); }
+  function tst(m){ try { toast(m); } catch(e){} }
+
+  /* the space's rows: room.subs, plus older checkbox picks (no value yet) */
+  function rows(r){
+    var out = (Array.isArray(r.subs) ? r.subs : []).filter(function(s){ return s && (!s.conId || con(s.conId)); });
+    var have = {}; out.forEach(function(s){ if (s.conId) have[s.conId] = 1; });
+    var old = Array.isArray(r.contractorIds) && r.contractorIds.length ? r.contractorIds : (r.contractorId ? [r.contractorId] : []);
+    old.forEach(function(id){ if (!have[id] && con(id)) { out.push({ id: 'old-' + id, conId: id, value: '', scope: '' }); have[id] = 1; }   /* stable id so edits find it */ });
+    return out;
+  }
+  function store(r, list){
+    r.subs = list.map(function(s){ return { id: s.id, conId: s.conId || '', value: s.value === '' || s.value == null ? '' : r2(s.value), scope: s.scope || '' }; });
+    var ids = []; r.subs.forEach(function(s){ if (s.conId && ids.indexOf(s.conId) < 0) ids.push(s.conId); });
+    r.contractorIds = ids; delete r.contractorId;
+    r.updatedAt = now();
+  }
+  /* A: the sub's job contract is the total of his space values */
+  function recompute(conId){
+    var c = con(conId); if (!c || !c.fromSpaces) return;
+    var t = 0;
+    (DB.rooms || []).forEach(function(r){ (Array.isArray(r.subs) ? r.subs : []).forEach(function(s){ if (s && s.conId === conId && s.value !== '') t += +s.value || 0; }); });
+    c.value = r2(t); c.updatedAt = now();
+  }
+
+  /* the phone book, one line per person/company */
+  function book(){
+    var out = [], seen = {};
+    function mark(){ for (var i = 0; i < arguments.length; i++) { var k = key(arguments[i]); if (k) seen[k] = 1; } }
+    function has(){ for (var i = 0; i < arguments.length; i++) { var k = key(arguments[i]); if (k && seen[k]) return true; } return false; }
+    (DB.contacts || []).forEach(function(b){
+      if (!b || b.type !== 'Contractor' || !b.name || has(b.name, b.company)) return;
+      mark(b.name, b.company);
+      out.push({ k: 'b:' + b.id, name: b.name, company: b.company || '', trade: (b.skills || [])[0] || '', phone: b.phone || '', email: b.email || '' });
+    });
+    (DB.contractors || []).forEach(function(c){
+      if (!c || !c.name || has(c.name, c.contact, c.company)) return;
+      mark(c.name, c.contact, c.company);
+      out.push({ k: 'c:' + c.id, name: c.contact || c.name, company: c.company || (c.contact ? c.name : ''), trade: c.trade || '', phone: c.phone || '', email: c.email || '' });
+    });
+    return out.sort(function(a, b){ return label(a).toLowerCase().localeCompare(label(b).toLowerCase()); });
+  }
+  /* iPhone: company only, so the whole name fits beside the value (names are never cut off) */
+  function label(e){ return e.company && key(e.company) !== key(e.name) ? (MAC ? e.company + ' — ' + e.name : e.company) : e.name; }
+  function sameSub(c, e){
+    var ks = [key(c.name), key(c.contact), key(c.company)].filter(Boolean);
+    return ks.indexOf(key(e.name)) > -1 || (e.company && ks.indexOf(key(e.company)) > -1);
+  }
+  /* this job's contract for that phone-book line — made if he isn't on the job yet */
+  function contractFor(jobId, e){
+    var c = (DB.contractors || []).find(function(x){ return x && x.jobId === jobId && sameSub(x, e); });
+    if (c) return c;
+    if (!DB.contractors) DB.contractors = [];
+    c = { id: uid(), name: e.company || e.name, contact: e.name, company: e.company || '', email: e.email || '', phone: e.phone || '',
+          jobId: jobId || '', trade: e.trade || 'General', value: 0, scope: '', status: 'Active', created: now(), updatedAt: now(), fromSpaces: true };
+    DB.contractors.push(c);
+    return c;
+  }
+
+  var CSS = document.createElement('style'); CSS.id = 'bp-v6914-css';
+  CSS.textContent =
+      '.bp-ssub{display:flex;flex-direction:column;gap:8px}'
+    + '.bp-ssub-row{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--card)}'
+    + '.bp-ssub-top{display:flex;gap:8px;align-items:center;min-width:0}'
+    + '.bp-ssub select,.bp-ssub input{font-family:inherit;color:var(--text);background:var(--card2,rgba(255,255,255,.05));border:1px solid var(--border);border-radius:9px;box-sizing:border-box;min-width:0;margin:0}'
+    + '.bp-ssub select{flex:1;height:42px;padding:0 30px 0 10px;font-size:15px;font-weight:700;-webkit-appearance:none;appearance:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+    +   'background-image:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%238E8E93\' stroke-width=\'2.4\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'6 9 12 15 18 9\'/></svg>");background-repeat:no-repeat;background-position:right 9px center;background-size:16px}'
+    + '.bp-ssub .bp-ssub-v{width:120px;flex:0 0 120px;height:42px;padding:0 10px;font-size:15px;font-weight:800;text-align:right;color:#FF9F0A;font-variant-numeric:tabular-nums}'
+    + '.bp-ssub .bp-ssub-s{width:100%;height:40px;padding:0 10px;font-size:14px}'
+    + (MAC ? '' : '.bp-ssub .bp-ssub-v{width:104px;flex:0 0 104px;padding:0 8px}.bp-ssub select{padding-right:26px;background-position:right 7px center}')
+    + '.bp-ssub-empty{font-size:13px;color:var(--muted);padding:2px 0}'
+    + '.bp-ssub-tot{font-size:12px;font-weight:800;color:#FF9F0A;text-transform:none;letter-spacing:0;margin-left:8px;font-variant-numeric:tabular-nums}'
+    + '.bp-ssub-add{background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:9px;color:#0A84FF;font-size:12px;font-weight:700;padding:5px 12px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0}';
+  document.head.appendChild(CSS);
+
+  function sectionHtml(r){
+    var list = rows(r), b = book();
+    if (!list.length) return '<div class="bp-ssub-empty">No contractors in this space yet — tap + Add.</div>';
+    return list.map(function(s){
+      var c = s.conId ? con(s.conId) : null, pick = '';
+      var opts = b.map(function(e){
+        var on = c && !pick && sameSub(c, e); if (on) pick = e.k;
+        return '<option value="' + E(e.k) + '"' + (on ? ' selected' : '') + '>' + E(label(e)) + '</option>';
+      }).join('');
+      if (c && !pick) opts = '<option value="c:' + E(c.id) + '" selected>' + E(c.name) + '</option>' + opts;
+      var first = c ? '' : '<option value="" selected disabled>Choose contractor</option>';
+      return '<div class="bp-ssub-row" data-sid="' + E(s.id) + '">'
+        + '<div class="bp-ssub-top"><select aria-label="Contractor" onchange="bpSpaceSubPick(\'' + r.id + '\',\'' + s.id + '\',this)">' + first + opts
+        + '<option value="__rm">Remove from this space</option></select>'
+        + '<input class="bp-ssub-v" type="text" inputmode="decimal" placeholder="$0.00" aria-label="Value" value="' + (s.value === '' ? '' : r2(s.value).toFixed(2)) + '" onchange="bpSpaceSubVal(\'' + r.id + '\',\'' + s.id + '\',this)"/></div>'
+        + '<input class="bp-ssub-s" type="text" placeholder="Scope of work" aria-label="Scope of work" value="' + E(s.scope) + '" onchange="bpSpaceSubScope(\'' + r.id + '\',\'' + s.id + '\',this)"/>'
+        + '</div>';
+    }).join('');
+  }
+  function total(r){ return rows(r).reduce(function(t, s){ return t + (s.value === '' ? 0 : +s.value || 0); }, 0); }
+
+  function decorate(){
+    var host = MAC ? document.getElementById('modal-room-detail') : document.getElementById('s-room-detail');
+    if (!host) return;
+    var rid = host.getAttribute('data-room-id'), r = rid && room(rid); if (!r) return;
+    var hdr = [].slice.call(host.querySelectorAll(MAC ? '.sec-hdr' : '.section-header')).find(function(h){ return /^\s*Contractors\s*\(/.test(h.textContent); });
+    if (!hdr || hdr.getAttribute('data-bp-ssub') === rid + ':' + (r.updatedAt || '')) return;
+    var body = hdr.nextElementSibling; if (!body) return;
+    var n = rows(r).length, t = total(r);
+    hdr.innerHTML = '<span>Contractors (' + n + ')' + (t ? '<span class="bp-ssub-tot">' + money(t) + '</span>' : '') + '</span>'
+      + '<button type="button" class="bp-ssub-add" onclick="bpSpaceSubAdd(\'' + rid + '\')">+ Add</button>';
+    hdr.style.display = 'flex'; hdr.style.alignItems = 'center'; hdr.style.justifyContent = 'space-between';
+    body.className = 'bp-ssub'; body.removeAttribute('style');
+    body.style.margin = MAC ? '0 0 16px' : '0 16px 14px';
+    body.innerHTML = sectionHtml(r);
+    hdr.setAttribute('data-bp-ssub', rid + ':' + (r.updatedAt || ''));
+  }
+  function redraw(){
+    var host = MAC ? document.getElementById('modal-room-detail') : document.getElementById('s-room-detail');
+    var h = host && host.querySelector('[data-bp-ssub]'); if (h) h.removeAttribute('data-bp-ssub');
+    decorate();
+  }
+
+  window.bpSpaceSubAdd = function(rid){
+    var r = room(rid); if (!r) return;
+    var list = rows(r);
+    if (list.some(function(s){ return !s.conId; })) { tst('Pick the contractor on the empty row first'); return; }
+    list.push({ id: uid(), conId: '', value: '', scope: '' });
+    store(r, list); persist(); redraw();
+    var host = MAC ? document.getElementById('modal-room-detail') : document.getElementById('s-room-detail');
+    var sel = host && host.querySelector('.bp-ssub-row:last-child select'); if (sel) { try { sel.focus(); } catch(e){} }
+  };
+  window.bpSpaceSubPick = function(rid, sid, el){
+    var r = room(rid); if (!r) return;
+    var list = rows(r), s = list.find(function(x){ return x.id === sid; }); if (!s) return;
+    var v = el.value, oldCon = s.conId;
+    if (v === '__rm') {
+      store(r, list.filter(function(x){ return x.id !== sid; }));
+      if (oldCon) recompute(oldCon);
+      persist(); redraw(); tst('Removed from this space'); return;
+    }
+    var e = book().find(function(x){ return x.k === v; });
+    var c = e ? contractFor(r.jobId, e) : (v.indexOf('c:') === 0 ? con(v.slice(2)) : null);
+    if (!c) return;
+    if (list.some(function(x){ return x.id !== sid && x.conId === c.id; })) { tst((c.contact || c.name) + ' is already in this space'); redraw(); return; }
+    s.conId = c.id;
+    store(r, list);
+    if (oldCon && oldCon !== c.id) recompute(oldCon);
+    if (s.value !== '' && !c.fromSpaces && (+c.value || 0) > 0) { /* moving a value onto a sub with a typed-in contract: ask, same as typing it */
+      if (confirm(swapMsg(c))) c.fromSpaces = true; else { s.value = ''; store(r, list); }
+    } else if (s.value !== '' && !c.fromSpaces) c.fromSpaces = true;
+    recompute(c.id);
+    persist(); redraw();
+  };
+  function swapMsg(c){
+    return (c.contact || c.name) + ' already has a ' + money(c.value) + ' contract on this job.\n\n'
+      + 'OK = his job contract becomes the total of his space values\n'
+      + 'Cancel = leave his contract as is (this space value is not saved)';
+  }
+  window.bpSpaceSubVal = function(rid, sid, el){
+    var r = room(rid); if (!r) return;
+    var list = rows(r), s = list.find(function(x){ return x.id === sid; }); if (!s) return;
+    var raw = String(el.value || '').replace(/[^0-9.\-]/g, '');
+    var v = raw === '' ? '' : r2(parseFloat(raw));
+    if (v !== '' && isNaN(v)) { el.value = s.value === '' ? '' : r2(s.value).toFixed(2); return; }
+    var c = s.conId ? con(s.conId) : null;
+    if (c && v !== '' && !c.fromSpaces) {
+      if ((+c.value || 0) > 0 && !confirm(swapMsg(c))) { el.value = s.value === '' ? '' : r2(s.value).toFixed(2); return; }
+      c.fromSpaces = true;
+    }
+    s.value = v; store(r, list);
+    if (c) recompute(c.id);
+    persist(); redraw();
+  };
+  window.bpSpaceSubScope = function(rid, sid, el){
+    var r = room(rid); if (!r) return;
+    var list = rows(r), s = list.find(function(x){ return x.id === sid; }); if (!s) return;
+    s.scope = String(el.value || '').trim(); store(r, list); persist();
+    var h = (MAC ? document.getElementById('modal-room-detail') : document.getElementById('s-room-detail'));
+    h = h && h.querySelector('[data-bp-ssub]'); if (h) h.setAttribute('data-bp-ssub', rid + ':' + (r.updatedAt || ''));
+  };
+
+  /* the Command Center window says which space it shows */
+  if (MAC && typeof window.openRoomDetail === 'function' && !window.openRoomDetail.__v6914) {
+    var _ord = window.openRoomDetail;
+    window.openRoomDetail = function(roomId){
+      var res = _ord.apply(this, arguments);
+      var m = document.getElementById('modal-room-detail'); if (m) m.setAttribute('data-room-id', roomId);
+      try { decorate(); } catch(e){ console.warn('[BP] v6.9.14', e); }
+      return res;
+    };
+    for (var k in _ord) if (Object.prototype.hasOwnProperty.call(_ord, k)) window.openRoomDetail[k] = _ord[k];
+    window.openRoomDetail.__v6914 = 1;
+    try { openRoomDetail = window.openRoomDetail; } catch(e){}
+  }
+  var q = 0;
+  new MutationObserver(function(){
+    if (q) return;
+    q = requestAnimationFrame(function(){
+      q = 0;
+      var a = document.activeElement;   /* never redraw under a field he is typing in */
+      if (a && a.closest && a.closest('.bp-ssub') && /INPUT|SELECT/.test(a.tagName)) return;
+      try { decorate(); } catch(e){}
+    });
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  window.bpSpaceSubs = { rows: rows, book: book, recompute: recompute, redraw: redraw };
+  console.log('[BP] v6.9.14 — space contractors: dropdown, value, scope; job contract = total of space values');
 })();
 </script>

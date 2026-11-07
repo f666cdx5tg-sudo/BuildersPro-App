@@ -32,7 +32,7 @@ async def cc(b, name, vp, ua=None):
     kw = {'viewport': vp}
     if ua: kw.update(user_agent=ua, has_touch=True)
     ctx, pg, errs = await start(b, 'desktop.html', **kw)
-    ok(await pg.evaluate("APP_VERSION") == '6.9.13', name + ': on v6.9.13')
+    ok(tuple(map(int, (await pg.evaluate("APP_VERSION")).split('.'))) >= (6, 9, 13), name + ': on v6.9.13 or newer')
     await pg.evaluate(SEED); await pg.evaluate("openRoomDetail('r1')"); await pg.wait_for_timeout(600)
     s = await pg.evaluate(SEG, '#bp-mrd-seg')
     ok(len(s) == 2 and all(x['svg'] for x in s) and [x['text'] for x in s] == ['10', '6'], name + ': Open / Complete are icons + counts, no words ' + str([x['text'] for x in s]))
