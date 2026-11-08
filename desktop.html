@@ -352,6 +352,32 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
+<!-- v6.9.16 — no jumping on launch. Stan (Nov 8): "The app is jumpy." Measured on the iPhone:
+     Home built itself in ~6 steps over 2 seconds ("No jobs yet" → tiles push it down → Recent Jobs
+     shows, then is taken away), so everything hopped around while he looked at it. Now the app
+     stays behind its own plain background until the screen has stopped moving (or 2.5 s at most),
+     then appears once, already settled. -->
+<div id="bp-boot" style="position:fixed;inset:0;z-index:999998;background:var(--bg,#000);transition:opacity .16s ease-out"></div>
+<script>
+(function(){
+  var t0 = performance.now(), last = t0, done = false;
+  try { new PerformanceObserver(function(l){ if (l.getEntries().length) last = performance.now(); }).observe({ type: 'layout-shift' }); } catch(e){}
+  try { new MutationObserver(function(){ last = Math.max(last, performance.now() - 250); }).observe(document.documentElement, { childList: true, subtree: true }); } catch(e){}
+  function reveal(){
+    if (done) return; done = true;
+    var c = document.getElementById('bp-boot'); if (!c) return;
+    c.style.opacity = '0'; c.style.pointerEvents = 'none';
+    setTimeout(function(){ if (c.parentNode) c.remove(); }, 200);
+  }
+  window.bpBootReveal = reveal;
+  (function check(){
+    if (done) return;
+    var n = performance.now();
+    if ((document.readyState === 'complete' && n - last > 350 && n - t0 > 600) || n - t0 > 2500) return reveal();
+    setTimeout(check, 80);
+  })();
+})();
+</script>
 <!-- ══ DEVICE LOCK — a local passcode screen. This is a deterrent for a lost/left-open
      computer, NOT real security: anyone who opens this file's dev tools or clears site
      data can bypass it. There is no per-user login here — that would need a real
@@ -382,6 +408,11 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 <script>
 (function(){
   var el = document.getElementById('bp-lock');
+  /* v6.9.16: inside the app (iPad / Mac), the app's own Face ID / Touch ID screen already let
+     you in — this second web lock screen is skipped there. Browser use keeps it. */
+  var IN_APP = false;
+  try { IN_APP = !!(window.BPShell && window.webkit && webkit.messageHandlers && webkit.messageHandlers.bp); } catch(e){}
+  if (IN_APP) el.style.display = 'none';
   var subEl = document.getElementById('bp-lock-sub');
   var input = document.getElementById('bp-lock-input');
   var input2wrap = document.getElementById('bp-lock-input2-wrap');
@@ -529,6 +560,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   };
   input.addEventListener('keydown', function(e){ if (e.key==='Enter') { if (input2wrap.style.display==='block') input2.focus(); else bpLockSubmit(); } });
   input2.addEventListener('keydown', function(e){ if (e.key==='Enter') bpLockSubmit(); });
+
+  if (IN_APP) { el.remove(); return; }   /* v6.9.16: the app's Face ID already did this */
 
   renderMode();
 
@@ -1612,7 +1645,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.15';
+var APP_VERSION = '6.9.16';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -2440,20 +2473,44 @@ function bpShortPlace(city, state, zip) {
   return [bpCityAbbr(city), bpStateAbbr(state), (zip||'').slice(0,5)].filter(Boolean).join(' ');
 }
 
+/* v6.9.16 — night weather icons. Stan (Nov 8, 3am): "The weather icons should be based on time of
+   day. It's 3am and it's showing a sun." Between sunset and sunrise a clear sky is a moon, partly
+   cloudy is a moon behind a cloud, and sun-showers are plain rain. */
+window.bpWxNightIcon = function(ico, night){
+  if (!night) return ico;
+  var k = String(ico || '').replace(/\uFE0F/g, '');
+  return { '\u2600': '\uD83C\uDF19', '\uD83C\uDF24': '\uD83C\uDF1B', '\u26C5': '\uD83C\uDF1B', '\uD83C\uDF26': '\uD83C\uDF27' }[k] || ico;
+};
+/* night = before sunrise or after sunset at the job site (from the forecast), else is_day, else the clock */
+window.bpWxIsNight = function(w){
+  var now = Date.now();
+  if (w && w.sr && w.ss) {
+    var off = (+w.off || 0) * 1000, sr = Date.parse(w.sr + 'Z') - off, ss = Date.parse(w.ss + 'Z') - off;
+    if (!isNaN(sr) && !isNaN(ss)) {
+      var day = 864e5; while (now - sr > day) { sr += day; ss += day; }   /* cached from an earlier day */
+      return now < sr || now >= ss;
+    }
+  }
+  if (w && w.isDay != null && w.at && now - w.at < 45 * 60 * 1000) return !+w.isDay;
+  var h = new Date().getHours(); return h < 6 || h >= 18;
+};
+
 (function pbGeo() {
   function setEl(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
   var settled=false; // guards against the watchdog firing after a real result already landed
 
   function doWx(lat,lng){
-    fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lng+'&current_weather=true&temperature_unit=fahrenheit')
+    fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lng+'&current_weather=true&daily=sunrise,sunset&timezone=auto&forecast_days=1&temperature_unit=fahrenheit')
       .then(function(r){return r.json();})
       .then(function(d){
         var cw=d&&d.current_weather;if(!cw)return;
         var temp=Math.round(cw.temperature),code=+cw.weathercode;
         var ico={0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',51:'🌦',61:'🌧',71:'🌨',80:'🌦',95:'⛈'}[code]||'🌡️';
         var txt={0:'Clear',1:'Clear',2:'Partly Cloudy',3:'Overcast',45:'Fog',51:'Light Rain',61:'Rain',71:'Snow',80:'Showers',95:'Storm'}[code]||'';
-        setEl('tb-wico',ico); setEl('tb-wtxt',temp+'°F '+txt);
-        window._currentWeather=ico+' '+temp+'°F '+txt;
+        var dl=d.daily||{}, w={isDay:cw.is_day, at:Date.now(), sr:dl.sunrise&&dl.sunrise[0], ss:dl.sunset&&dl.sunset[0], off:d.utc_offset_seconds};
+        function paint(){ var night=window.bpWxIsNight(w), i2=window.bpWxNightIcon(ico,night), t2=night&&txt==='Clear'?'Clear Night':txt;   /* v6.9.16: moon at night */
+          setEl('tb-wico',i2); setEl('tb-wtxt',temp+'°F '+t2); window._currentWeather=i2+' '+temp+'°F '+t2; }
+        paint(); clearInterval(window.__bpWxT); window.__bpWxT=setInterval(paint, 5*60*1000);
       }).catch(function(){setEl('tb-wtxt','N/A');});
   }
 
@@ -7480,7 +7537,7 @@ function bpToastUndo(msg, entryId) {
   btn.onclick = function(){ bpRestoreGroup(entryId); el.remove(); };
   el.appendChild(span); el.appendChild(btn);
   document.body.appendChild(el);
-  setTimeout(function(){ if (el.parentNode) el.remove(); }, 8000);  // longer than a normal toast
+  setTimeout(function(){ if (el.parentNode) el.remove(); }, 1000);  // v6.9.16: Stan wants it gone in a split second (Recently Deleted is the safety net)
 }
 
 /* The one place that knows a delete just happened and what it was. */
@@ -18003,6 +18060,8 @@ var ICONS = {
   chart:'<path d="M4 20h16M7 20v-7M12 20V6M17 20v-10"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
   disk:'<path d="M4 4h13l3 3v13H4z"/><path d="M8 4v5h8V4M8 20v-6h8v6"/>',
+  moon:'<path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/>',
+  mooncloud:'<path d="M13.5 3.5a4.6 4.6 0 006 5.9 4.6 4.6 0 01-6-5.9z"/><path d="M8 20a3.8 3.8 0 01-.3-7.6A5 5 0 0117 14a3 3 0 010 6z"/>',
   suncloud:'<circle cx="8.5" cy="8.5" r="3"/><path d="M8.5 2.5V4M2.5 8.5H4M4.3 4.3l1 1M12.7 4.3l-1 1"/><path d="M8 19a3.8 3.8 0 01-.3-7.6A5 5 0 0117 13a3 3 0 010 6z"/>',
   fog:'<path d="M7 13a4.5 4.5 0 01-.6-8.96A6 6 0 0118 5.5a4 4 0 010 7.5"/><path d="M4 17h16M7 21h10"/>',
   snowcloud:'<path d="M7 15a4.5 4.5 0 01-.6-8.96A6 6 0 0118 7.5a4 4 0 010 7.5"/><path d="M8 18.5v.1M12 19.5v.1M16 18.5v.1M10 21v.1M14 21.5v.1" stroke-width="2.6"/>',
@@ -18032,7 +18091,7 @@ var MAP = {
  '🔍':'search','🔎':'search','🌧':'rain','📍':'pin','🖨':'printer','🎨':'palette','🚗':'car','🧺':'basket','❄':'snow','🩹':'bandage',
  '🖤':'heart','🚀':'rocket','📲':'phone','🧨':'flame','🔥':'flame','🦺':'vest','👤':'user','👥':'users','🎯':'target','🧹':'broom',
  '🛣':'road','🪜':'ladder','🪵':'log','🚧':'barrier','🌿':'leaf','🪟':'window','🚰':'faucet','🕳':'hole','🔺':'triangle','📊':'chart',
- '🕰':'clock','🕒':'clock','💾':'disk','🌤':'suncloud','⛅':'suncloud','🌫':'fog','🌨':'snowcloud','⛈':'storm','🌦':'suncloudrain',
+ '🕰':'clock','🕒':'clock','💾':'disk','🌙':'moon','🌛':'mooncloud','🌤':'suncloud','⛅':'suncloud','🌫':'fog','🌨':'snowcloud','⛈':'storm','🌦':'suncloudrain',
  '🚫':'ban','☑':'checklist','🪚':'saw','🔒':'lock','📞':'tel','💬':'chat','🔄':'refresh','🧤':'glove','🖼':'image','🛒':'cart','🏪':'store','✨':'sparkle','🛖':'roof','🪣':'gutter','🏭':'chimney'
 };
 var keys = Object.keys(MAP).sort(function(a,b){ return b.length - a.length; });
@@ -26945,6 +27004,20 @@ html,body{background:var(--bg) !important}
     h = h && h.querySelector('[data-bp-ssub]'); if (h) h.setAttribute('data-bp-ssub', rid + ':' + (r.updatedAt || ''));
   };
 
+  /* iPhone: draw the rows in the same frame the space opens (v6.9.16 — they came one frame
+     late and nudged the checklist down ~8px: part of the "jumpy" Stan felt) */
+  if (!MAC && typeof window.openRoomDetail === 'function' && !window.openRoomDetail.__v6914) {
+    var _ordF = window.openRoomDetail;
+    window.openRoomDetail = function(){
+      var res = _ordF.apply(this, arguments);
+      try { decorate(); } catch(e){}
+      if (res && typeof res.then === 'function') res.then(function(){ try { decorate(); } catch(e){} });
+      return res;
+    };
+    for (var kf in _ordF) if (Object.prototype.hasOwnProperty.call(_ordF, kf)) window.openRoomDetail[kf] = _ordF[kf];
+    window.openRoomDetail.__v6914 = 1;
+    try { openRoomDetail = window.openRoomDetail; } catch(e){}
+  }
   /* the Command Center window says which space it shows */
   if (MAC && typeof window.openRoomDetail === 'function' && !window.openRoomDetail.__v6914) {
     var _ord = window.openRoomDetail;
@@ -27168,5 +27241,111 @@ html,body{background:var(--bg) !important}
     });
   }
   console.log('[BP] v6.9.15 — check / uncheck in a space without the jump');
+})();
+</script>
+<script id="v6916">
+/* ══ v6.9.16 — Adding checklist items: straight on to the next one ════════════
+   Stan (Nov 8, 2026): "When creating checklist item automatically progress to the next item."
+   + Add Item (or Return on the keyboard) saves the item and keeps the sheet open: the
+   description clears, the cursor stays in it with the keyboard up, the area / priority stay
+   as he set them, and a line under the title counts what he's added. ✕ closes when he's done.
+   No "Item added" pop-up for each one — the count in the sheet is the confirmation.
+   Command Center: the same in the New Checklist Item window, and closing it goes back to the
+   space it was opened from. ══════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp6916) return; window.__bp6916 = 1;
+  var MAC = !!document.getElementById('modal-new-room');
+  var CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:5px"><polyline points="5 12.5 10 17 19 7.5"/></svg>';
+  var added = 0, fromRoom = '';
+
+  function quiet(fn){   /* run fn with the close + "Item added" pop-up held back */
+    var cs = MAC ? window.closeModal : window.closeSheet, tt = window.toast, shut = false;
+    var SHEET = MAC ? 'modal-new-check' : 'sheet-add-note';
+    if (MAC) window.closeModal = function(id){ if (id === SHEET) { shut = true; return; } return cs.apply(this, arguments); };
+    else window.closeSheet = function(id){ if (id === SHEET) { shut = true; return; } return cs.apply(this, arguments); };
+    window.toast = function(m){ if (/item added/i.test(String(m))) return; return tt.apply(this, arguments); };
+    try { fn(); } finally { if (MAC) window.closeModal = cs; else window.closeSheet = cs; window.toast = tt; }
+    return shut;
+  }
+  function line(){
+    var id = 'bp-cl-added', host = MAC ? document.querySelector('#modal-new-check .modal-title') : document.getElementById('an-context');
+    if (!host) return;
+    var el = document.getElementById(id);
+    if (!el) { el = document.createElement('div'); el.id = id; el.style.cssText = 'font-size:13px;font-weight:800;color:#30D158;margin:4px 0 8px;text-transform:none;letter-spacing:0'; host.parentNode.insertBefore(el, host.nextSibling); }
+    el.style.display = added ? '' : 'none';
+    el.innerHTML = added ? CHECK + added + ' added — type the next one' : '';
+  }
+  function next(textId, clear){
+    clear.forEach(function(id){ var e = document.getElementById(id); if (e) e.value = ''; });
+    var t = document.getElementById(textId);
+    if (t) { t.value = ''; try { t.focus({ preventScroll: true }); } catch(e){ t.focus(); } }
+    line();
+  }
+
+  if (!MAC && typeof window.saveNote === 'function') {
+    var _sn = window.saveNote;
+    window.saveNote = function(){
+      var t = document.getElementById('an-text');
+      if (!t || !String(t.value || '').trim()) return _sn.apply(this, arguments);
+      var n0 = (DB.punchlist || []).length, self = this, args = arguments;
+      var shut = quiet(function(){ _sn.apply(self, args); });
+      if ((DB.punchlist || []).length > n0) { added++; next('an-text', ['an-notes', 'an-value']); }
+      else if (shut) closeSheet('sheet-add-note');
+    };
+    try { saveNote = window.saveNote; } catch(e){}
+    if (typeof window.openAddNote === 'function') {
+      var _oan = window.openAddNote;
+      window.openAddNote = function(){ added = 0; var r = _oan.apply(this, arguments); line(); return r; };
+      try { openAddNote = window.openAddNote; } catch(e){}
+    }
+    var t = document.getElementById('an-text');
+    if (t) {
+      t.setAttribute('enterkeyhint', 'next');
+      t.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); window.saveNote(); } });
+    }
+  }
+
+  if (MAC && typeof window.saveNewCheck === 'function') {
+    var _snc = window.saveNewCheck;
+    window.saveNewCheck = function(){
+      var t = document.getElementById('nc2-text');
+      if (!t || !String(t.value || '').trim()) return _snc.apply(this, arguments);
+      var n0 = (DB.punchlist || []).length, self = this, args = arguments;
+      quiet(function(){ _snc.apply(self, args); });
+      if ((DB.punchlist || []).length > n0) { added++; next('nc2-text', ['nc2-value']); }
+    };
+    try { saveNewCheck = window.saveNewCheck; } catch(e){}
+    var mo = document.getElementById('modal-new-check');
+    [].forEach.call(mo ? mo.querySelectorAll('button') : [], function(b){ if (/saveNewCheck/.test(b.getAttribute('onclick') || '')) b.onclick = function(){ window.saveNewCheck(); }; });
+    if (typeof window.openNewCheckItem === 'function') {
+      var _onc = window.openNewCheckItem;
+      window.openNewCheckItem = function(jobId, roomId){ added = 0; fromRoom = roomId || ''; var r = _onc.apply(this, arguments); line(); return r; };
+      try { openNewCheckItem = window.openNewCheckItem; } catch(e){}
+    }
+    if (typeof window.editCheckItem === 'function') {   /* editing is one item: no count, no return trip */
+      var _eci = window.editCheckItem;
+      window.editCheckItem = function(){ added = 0; fromRoom = ''; var r = _eci.apply(this, arguments); line(); return r; };
+      try { editCheckItem = window.editCheckItem; } catch(e){}
+    }
+    var _cm = window.closeModal;
+    window.closeModal = function(id){
+      var r = _cm.apply(this, arguments);
+      if (id === 'modal-new-check' && fromRoom) {
+        var rid = fromRoom; fromRoom = ''; added = 0;
+        if (!document.getElementById('modal-room-detail') && (DB.rooms || []).some(function(x){ return x.id === rid; })) try { openRoomDetail(rid); } catch(e){}
+      }
+      return r;
+    };
+    for (var k in _cm) if (Object.prototype.hasOwnProperty.call(_cm, k)) window.closeModal[k] = _cm[k];
+    try { closeModal = window.closeModal; } catch(e){}
+    var t2 = document.getElementById('nc2-text');
+    if (t2) t2.addEventListener('keydown', function(e){
+      if (e.key !== 'Enter' || e.isComposing) return;
+      var main = document.querySelector('#modal-new-check .btn:not(.btn-ghost)');
+      if (main && /add item/i.test(main.textContent)) { e.preventDefault(); window.saveNewCheck(); }
+    });
+  }
+  console.log('[BP] v6.9.16 — adding checklist items goes straight on to the next one');
 })();
 </script>
