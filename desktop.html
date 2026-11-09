@@ -1645,7 +1645,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.16';
+var APP_VERSION = '6.9.17';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -18012,7 +18012,8 @@ var ICONS = {
   bolt:'<path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/>',
   receipt:'<path d="M6 3.5h12V21l-2.2-1.5L14 21l-2-1.5L10 21l-1.8-1.5L6 21z"/><path d="M9 8.5h6M9 12h6M9 15.5h3"/>',
   folder:'<path d="M3 6.5A1.5 1.5 0 014.5 5h4l2 2.5h9A1.5 1.5 0 0121 9v9.5a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18.5z"/>',
-  crane:'<path d="M3 21h18M6 21V9h5v12M11 9l8-4.5M19 4.5V9M19 11v3"/><circle cx="19" cy="15.2" r="1.2"/>',
+  /* v6.9.17: the crane is gone for good (Stan: never use it) — outside spaces get a house + tree */
+  outside:'<path d="M1.5 20.5h21"/><path d="M3 20.5v-8l5.5-4.5 5.5 4.5v8"/><path d="M7 20.5v-4h3v4"/><circle cx="18.3" cy="10.5" r="3.3"/><path d="M18.3 13.8v6.7"/>',
   help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.6a2.6 2.6 0 114.2 2c-.9.7-1.7 1.2-1.7 2.4M12 17.2v.3"/>',
   link:'<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>',
   briefcase:'<rect x="3" y="7.5" width="18" height="12" rx="2"/><path d="M9 7.5V6a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0115 6v1.5M3 13h18"/>',
@@ -18086,7 +18087,7 @@ var MAP = {
  '✅':'check','❌':'xcircle','⚠':'alert','✏':'pencil','✍':'pencilline','📝':'pencilline','📋':'clipboard','🗑':'trash','📷':'camera','🏠':'home',
  '🏚':'basement','📦':'box','📅':'calendar','📄':'file','🚪':'door','🎤':'mic','🎙':'mic','🧱':'bricks','📤':'upload','📥':'download','📧':'mail',
  '📎':'clip','☁':'cloud','👷':'hardhat','⬇':'arrowdown','⬆':'arrowup','↗':'ext','🔧':'wrench','✂':'scissors','🏁':'flag','⚡':'bolt',
- '🧾':'receipt','📁':'folder','🏗':'crane','❓':'help','🔗':'link','💼':'briefcase','📐':'ruler','🚚':'truck','🔨':'hammer','💰':'dollar',
+ '🧾':'receipt','📁':'folder','🏗':'outside','❓':'help','🔗':'link','💼':'briefcase','📐':'ruler','🚚':'truck','🔨':'hammer','💰':'dollar',
  '💸':'dollar','🔑':'key','👁':'eye','🙈':'eyeoff','☀':'sun','🍳':'pan','🚿':'shower','🛏':'bed','🛋':'sofa','🌡':'thermo','🔌':'plug',
  '🔍':'search','🔎':'search','🌧':'rain','📍':'pin','🖨':'printer','🎨':'palette','🚗':'car','🧺':'basket','❄':'snow','🩹':'bandage',
  '🖤':'heart','🚀':'rocket','📲':'phone','🧨':'flame','🔥':'flame','🦺':'vest','👤':'user','👥':'users','🎯':'target','🧹':'broom',
@@ -18552,7 +18553,7 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
   IC.kitchen  = '<path d="M5 11h14"/><path d="M6.5 11v7a2.5 2.5 0 002.5 2.5h6a2.5 2.5 0 002.5-2.5v-7"/><path d="M2.5 13.5H6M18 13.5h3.5"/><path d="M10.5 8.2h3"/><path d="M9.5 3.5c0 1.2 1.3 1.3 1.3 2.5M14 3.5c0 1.2 1.3 1.3 1.3 2.5"/>';
   IC.bathroom = '<path d="M3 12h18v2.5a4.5 4.5 0 01-4.5 4.5h-9A4.5 4.5 0 013 14.5z"/><path d="M6 12V6.5A2.5 2.5 0 018.5 4H10"/><path d="M7 19l-1 2M17 19l1 2"/><circle class="f" cx="13" cy="7.5" r=".9"/><circle class="f" cx="16" cy="6" r=".9"/><circle class="f" cx="17" cy="9" r=".9"/>';
   IC.roof = '<path class="f" d="M1.5 12.5L12 4l10.5 8.5z"/><path d="M5 12.5V20h14v-7.5"/><path d="M10 20v-4.5h4V20"/>';
-  IC.gutter = '<path d="M2.5 5h12v3h-12z"/><path d="M12.5 8v7.5a2 2 0 002 2H20"/><path d="M20 15v5.5"/><path d="M5.5 11v2M8.5 11v3"/>';
+  IC.gutter = '<path d="M3.5 9.5L21 3.5"/><path d="M2.5 9.5h6.8v1.7a1.6 1.6 0 01-1.6 1.6H4.1a1.6 1.6 0 01-1.6-1.6z"/><path d="M6 12.8v3.2a2 2 0 001 1.7l1.6.9a2 2 0 011 1.7v1.2"/><path d="M15.5 13.5c-1 1.4-1.5 2.4-1.5 3.1a1.5 1.5 0 003 0c0-.7-.5-1.7-1.5-3.1z"/>';   /* v6.9.17: Stan's Option C — roof edge, gutter, spout, drop */
   IC.chimney = '<path d="M4 21V11l8-6 8 6v10z"/><path d="M15.5 8V4h3.2v7"/><path d="M10 21v-5h4v5"/>';
   IC.bedroom = '<path d="M5 11V6a1 1 0 011-1h12a1 1 0 011 1v5"/><path d="M3 11h18v6H3z"/><path d="M3 17v3M21 17v3"/><rect x="6.5" y="8" width="4.5" height="3" rx="1"/><rect x="13" y="8" width="4.5" height="3" rx="1"/>';
   IC.sidedoor = '<path d="M10 21V4.5A1.5 1.5 0 0111.5 3h6A1.5 1.5 0 0119 4.5V21M8 21h12"/><circle class="f" cx="16.6" cy="12.5" r=".9"/><path d="M2 12h5M5 9.5L7.5 12 5 14.5"/>';
@@ -18560,7 +18561,8 @@ console.log('[BP] v3.02 ready — dates MM/DD/YYYY · line icons · active job o
   window.bpRoomIconHtml = function(name, type){
     var n = String(name || '').toLowerCase(), t = String(type || '');
     if (/\bside (door|entrance)\b/.test(n)) return svgHtml('sidedoor');
-    if (/\b(front|back|rear) (door|entrance)\b/.test(n)) return (window.bpIcon && window.bpIcon('door')) || '';
+    if (/\b(back|rear)[ -]?(door|entrance)\b/.test(n)) return '<span class="bp-ic" role="img" aria-label="back door"><svg viewBox="0 0 24 24" aria-hidden="true"><path d=\"M6.5 20V3.5h11V20\"/><path d=\"M4.5 20.5h15\"/><rect x=\"9\" y=\"6\" width=\"6\" height=\"5.5\"/><path d=\"M12 6v5.5M9 8.75h6\"/><circle cx=\"15\" cy=\"14.5\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/></svg></span>';   /* v6.9.17: Stan's Option C back door */
+    if (/\bfront (door|entrance)\b/.test(n)) return (window.bpIcon && window.bpIcon('door')) || '';
     if (/bath|toilet|powder|restroom/.test(n) || t === 'Bathroom') return svgHtml('bathroom');
     if (/kitchen/.test(n) || t === 'Kitchen') return svgHtml('kitchen');
     if (/gutter|downspout/.test(n)) return svgHtml('gutter');
@@ -19051,7 +19053,7 @@ console.log('[BP] v3.12 ready — convert areas to rooms');
     if (/\bstairs?\b|\bsteps?\b|\bstoops?\b|stairway|staircase/.test(n) && L.stairs) return L.stairs;
     if (/\bwindows?\b/.test(n)) return ic('window');
     if (/water (service|line|main|meter)|\bmeter\b|\bhose bib|spigot/.test(n)) return WATER;
-    if (/\bmain (door|entrance)\b|\bentrance\b/.test(n)) return ic('door');
+    if (!/\b(back|rear)[ -]?(door|entrance)\b/.test(n) && /\bmain (door|entrance)\b|\bentrance\b/.test(n)) return ic('door');   /* v6.9.17: back / rear entrance → Option C door */
     return prev.apply(this, arguments);
   };
   window.bpRoomIconHtml.__v325 = 1;
@@ -19409,9 +19411,9 @@ console.log('[BP] v3.75 levels & rooms on New Job ready');
   'use strict';
   var prev = window.bpRoomIconHtml;
   if (typeof prev !== 'function' || prev.__v380) return;
-  var YARD = '<span class="bp-ic" data-v380="1" role="img" aria-label="yard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 21.5h21"/><circle cx="12" cy="9" r="5"/><path d="M12 14v7.5"/><path d="M4 21.5c.8-1.8.8-3.6 0-5.4M7.5 21.5c.6-1.8.6-3.6 0-5.4M16.5 21.5c-.6-1.8-.6-3.6 0-5.4M20 21.5c-.8-1.8-.8-3.6 0-5.4"/></svg></span>';
+  var YARD = '<span class="bp-ic" data-v380="1" role="img" aria-label="yard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20.5h20"/><path d="M3 20.5v-5l1.2-1.4 1.2 1.4v5M6.6 20.5v-5l1.2-1.4L9 15.1v5.4M2.5 17.3h7.3"/><path d="M15.5 20.5v-5.5"/><path d="M15.5 16.6l-1.8-1.6M15.5 17.3l1.8-1.6"/><path d="M12.6 15a3.1 3.1 0 01-.9-5.9 3.9 3.9 0 017.5-.6 3 3 0 01.3 6 2.7 2.7 0 01-1.3.5h-5.6"/><path d="M20 20.5l.6-1.7M21.6 20.5l-.2-1.5"/></svg></span>';
   window.bpRoomIconHtml = function(name, type){
-    if (/\b(yard|lawn|grading|landscap)/i.test(String(name || ''))) return YARD;
+    if (/\b(yard|backyard|lawn|grading|landscap|garden)/i.test(String(name || ''))) return YARD;   /* v6.9.17: Stan's Option C — tree + fence; gardens / backyards too */
     return prev.apply(this, arguments);
   };
   window.bpRoomIconHtml.__v380 = 1;
@@ -19588,7 +19590,7 @@ console.log('[BP] v3.88 ready — Mac text & button size matches the field app')
 (function(){
   'use strict';
   if (typeof window.bpRoomIconHtml !== 'function' || window.bpRoomIconHtml.__v391) return;
-  var E2N = { '🍳':'pan','🚿':'shower','🛏':'bed','🛋':'sofa','🏚':'basement','🏗':'crane','🏠':'home','🚗':'car','💼':'briefcase',
+  var E2N = { '🍳':'pan','🚿':'shower','🛏':'bed','🛋':'sofa','🏚':'basement','🏗':'outside','🏠':'home','🚗':'car','💼':'briefcase',
     '🚪':'door','🧺':'basket','❄':'snow','⚡':'bolt','🔧':'wrench','📦':'box','🔥':'flame','🛣':'road','🪟':'window','🔺':'triangle',
     '🧱':'bricks','🪵':'log','🌿':'leaf','🪜':'ladder','🚧':'barrier','🚰':'faucet','🕳':'hole','🔌':'plug','❓':'help' };
   var prev = window.bpRoomIconHtml, busy = false;
