@@ -357,7 +357,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
      shows, then is taken away), so everything hopped around while he looked at it. Now the app
      stays behind its own plain background until the screen has stopped moving (or 2.5 s at most),
      then appears once, already settled. -->
-<div id="bp-boot" style="position:fixed;inset:0;z-index:999998;background:var(--bg,#000);transition:opacity .16s ease-out"></div>
+<!-- v6.9.19 — Stan: "Add build number to splash page." The launch cover is now the splash: logo, name, build number. -->
+<div id="bp-boot" style="position:fixed;inset:0;z-index:999998;background:var(--bg,#000);transition:opacity .16s ease-out;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-family:-apple-system,BlinkMacSystemFont,Inter,Helvetica,sans-serif;color:var(--text,#f2f2f2)"><svg viewBox="0 0 100 100" width="96" height="96" style="color:var(--text);flex-shrink:0" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="4"/><text x="50" y="67" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-weight="700" font-size="54" fill="currentColor">B</text><rect x="27" y="76" width="46" height="6" rx="3" fill="#D4262C"/></svg><div style="font-size:22px;font-weight:800;letter-spacing:.02em">BuildersPro</div><div id="bp-boot-ver" style="font-size:15px;font-weight:700;color:var(--muted,#8e8e93);font-variant-numeric:tabular-nums;min-height:18px"></div></div>
 <script>
 (function(){
   var t0 = performance.now(), last = t0, done = false;
@@ -370,6 +371,11 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     setTimeout(function(){ if (c.parentNode) c.remove(); }, 200);
   }
   window.bpBootReveal = reveal;
+  (function ver(){   /* the build number, as soon as the app has said it */
+    var v = document.getElementById('bp-boot-ver'); if (!v) return;
+    if (window.APP_VERSION) { v.textContent = 'Build v' + window.APP_VERSION; return; }
+    setTimeout(ver, 30);
+  })();
   (function check(){
     if (done) return;
     var n = performance.now();
@@ -1645,7 +1651,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.18';
+var APP_VERSION = '6.9.19';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -27607,5 +27613,585 @@ html,body{background:var(--bg) !important}
   }
   window.bpScanDecorate = decorate;
   console.log('[BP] v6.9.18 — room scan: scan from the space, saved in the space, viewer with zoom / rotate / 3D');
+})();
+</script>
+<script id="v6919">
+/* ══ v6.9.19 — Slide for Save · Move · Delete, and Assign photos ═══════════════════════
+   Stan (Nov 9, 2026): "Add slide with these options to all necessary areas" (his picture: Share /
+   Move / Delete) — then "Use red - trash, yellow - files, green - save". And: "Add assign photos to
+   checklist and spaces." He approved both mockups with "Go".
+   • Slide a row left → green SAVE (iPhone share sheet: Save to Photos / Files, AirDrop, text),
+     yellow MOVE (folder), red DELETE (trash — still asks first).
+       Checklist items · Documents · Expenses — Save, Move, Delete
+       Invoices · Change orders · Estimates — Save, Delete
+       Shopping list — Move, Delete
+       Photos (grids) — Save, Move, Delete on the photo itself
+     Command Center (Mac / iPad): right-click or press-and-hold the same rows for the same three.
+   • ASSIGN PHOTOS: a space's "+ Assign photos", a checklist item's "Pick from job photos", and the
+     Photos screen's "Assign…" all open one picker: this job's photos (Unfiled first, or All spaces),
+     tick them, Assign. For a checklist item, pick Before or After.
+   • Stan chose: assigning / moving a photo MOVES it (one copy, never a duplicate in reports).
+   One picker serves Move and Assign so they always behave the same. ══════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp6919) return; window.__bp6919 = 1;
+  var MAC = !!document.getElementById('modal-new-room');
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function inShell(){ try { return !!(window.BPShell && window.webkit && webkit.messageHandlers && webkit.messageHandlers.bp); } catch(e){ return false; } }
+  function say(t){ try { toast(t); } catch(e){} }
+  function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (MAC) saveDB(); else save(); } catch(e){ try { saveDB(); } catch(e2){ try { save(); } catch(e3){} } } }
+  function nowIso(){ return new Date().toISOString(); }
+  function find(coll, id){ return (DB[coll] || []).find(function(x){ return x && x.id === id; }); }
+  function job(id){ return find('jobs', id); }
+  function room(id){ return find('rooms', id); }
+  function item(id){ return find('punchlist', id); }
+  function jobsList(){ return (DB.jobs || []).filter(function(j){ return j && !j.archived; }); }
+  function roomsOf(jid){
+    var list = (DB.rooms || []).filter(function(r){ return r && r.jobId === jid; });
+    try { if (window.bpRoomCmp) list = list.map(function(r, i){ return { r: r, i: i }; }).sort(function(x, y){ return window.bpRoomCmp(x.r, y.r) || x.i - y.i; }).map(function(o){ return o.r; }); } catch(e){}
+    return list;
+  }
+  function itemsOf(rid){ return (DB.punchlist || []).filter(function(p){ return p && p.roomId === rid; }); }
+  function activeJob(){ try { return (typeof bpActiveJob === 'function' && bpActiveJob()) || window.currentJobId || ''; } catch(e){ return ''; } }
+  function day(d){ try { var x = new Date(d); return isNaN(x) ? '' : (x.getMonth() + 1) + '/' + x.getDate() + '/' + x.getFullYear(); } catch(e){ return ''; } }
+  function money(n){ return '$' + (Math.round((+n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function unfiled(p){ try { if (window.BPX && BPX.isOrphanPhoto) return BPX.isOrphanPhoto(p); } catch(e){} return !p.roomId; }
+  function quietConfirm(fn){ var oc = window.confirm; window.confirm = function(){ return true; }; try { return fn(); } finally { window.confirm = oc; } }
+
+  /* everything on screen redraws after a change, wherever he is */
+  function refresh(){
+    var calls = MAC
+      ? ['renderDesktopPunchlist', 'renderDesktopPhotos', 'renderDesktopDocuments', 'renderDesktopFinance', 'renderDesktopRooms']
+      : ['refreshChecklistViews', 'renderPhotos', 'renderFinance', 'bpShopRender'];
+    calls.forEach(function(f){ try { if (typeof window[f] === 'function') window[f](); } catch(e){} });
+    try {
+      if (MAC) {
+        var m = document.getElementById('modal-room-detail'), rid = m && m.getAttribute('data-room-id');
+        if (rid && room(rid)) openRoomDetail(rid);
+        if (window.currentJobId && typeof renderDesktopJobDetail === 'function' && document.querySelector('#view-job-detail.active, .view.active #job-detail')) renderDesktopJobDetail(window.currentJobId);
+      } else {
+        var a = document.querySelector('.screen.active');
+        if (a && a.id === 's-room-detail') { var r2 = a.getAttribute('data-room-id'); if (r2 && room(r2)) openRoomDetail(r2); }
+        else if (a && a.id === 's-job-detail' && window.currentJobId) renderJobDetail(window.currentJobId);
+        else if (a && a.id === 's-punch' && typeof bpRenderPunch === 'function') bpRenderPunch();
+      }
+    } catch(e){}
+  }
+
+  /* ── look ── */
+  var PIC = {
+    save: '<path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/>',
+    move: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
+    del:  '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12"/><path d="M9 7V4h6v3"/>'
+  };
+  var PLAB = { save: 'Save', move: 'Move', del: 'Delete' };
+  window.bpPillsHtml = function(acts){
+    return acts.map(function(k){
+      return '<button type="button" class="bp-pill bp-pill-' + k + '" data-act="' + k + '" aria-label="' + PLAB[k] + '">'
+        + '<span class="bp-pill-b"><svg viewBox="0 0 24 24" aria-hidden="true">' + PIC[k] + '</svg></span><span class="bp-pill-l">' + PLAB[k] + '</span></button>';
+    }).join('');
+  };
+  window.bpPillsW = function(n){ return n * 62 + (n - 1) * 4 + 16; };
+  var CSS = document.createElement('style'); CSS.id = 'bp-v6919-css';
+  CSS.textContent =
+      '.bp-pill{width:62px!important;min-width:62px!important;min-height:0!important;height:auto!important;background:none!important;border:none!important;padding:0!important;margin:0!important;'
+    +   'display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;cursor:pointer;font-family:inherit;box-shadow:none!important;border-radius:0!important}'
+    + '.bp-pill,.bp-cl-row > .bp-cl-acts .bp-pill,.bp-doc-swipe > .bp-doc-acts .bp-pill{flex:0 0 62px!important}'
+    + '.bp-pill-b{width:58px;height:42px;border-radius:21px;display:flex;align-items:center;justify-content:center;flex-shrink:0}'
+    + '.bp-pill-b svg{width:22px!important;height:22px!important;fill:none!important;stroke:#fff!important;stroke-width:2.2!important;stroke-linecap:round;stroke-linejoin:round}'
+    + '.bp-pill-save .bp-pill-b{background:#30D158}.bp-pill-move .bp-pill-b{background:#FFD60A}.bp-pill-del .bp-pill-b{background:#FF453A}'
+    + '.bp-pill-move .bp-pill-b svg{stroke:#1c1c1e!important}'
+    + '.bp-pill-l{font-size:12px!important;font-weight:700!important;color:var(--muted,#a1a1a6)!important;line-height:1!important;white-space:nowrap}'
+    + '.bp-pills{display:flex;align-items:center;gap:4px;padding-left:6px}'
+    /* sheets */
+    + '.bp6919-ov{position:fixed;inset:0;z-index:2147481000;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;font-family:inherit}'
+    + '.bp6919-sh{width:100%;max-width:560px;max-height:92vh;display:flex;flex-direction:column;background:var(--card,#1c1c1e);color:var(--text,#f0f0f0);border-radius:20px 20px 0 0;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px));box-sizing:border-box}'
+    + '.bp6919-sh h3{margin:2px 2px 2px;font-size:19px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '.bp6919-sub{color:var(--muted,#8e8e93);font-size:13px;margin:0 2px 10px}'
+    + '.bp6919-seg{display:flex;background:var(--card2,#2c2c2e);border-radius:11px;padding:3px;margin-bottom:8px;flex-shrink:0}'
+    + '.bp6919-seg button{flex:1;min-height:38px;border:none;background:none;color:var(--muted,#8e8e93);font:800 14px inherit;font-family:inherit;border-radius:9px;cursor:pointer}'
+    + '.bp6919-seg button.on{background:var(--card,#3a3a3c);color:var(--text,#fff);box-shadow:0 1px 3px rgba(0,0,0,.35)}'
+    + '.bp6919-sel{width:100%;min-height:46px;border-radius:12px;border:1.5px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-weight:700;padding:0 12px;font-family:inherit;margin-bottom:8px;flex-shrink:0}'
+    + '.bp6919-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}'
+    + '.bp6919-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}'
+    + '.bp6919-g{position:relative;aspect-ratio:1/1;border-radius:9px;overflow:hidden;border:none;padding:0;background:#000;cursor:pointer}'
+    + '.bp6919-g img{width:100%;height:100%;object-fit:cover;display:block}'
+    + '.bp6919-g i{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,.3);box-sizing:border-box}'
+    + '.bp6919-g.on{outline:3px solid #30D158;outline-offset:-3px}.bp6919-g.on i{background:#30D158;border-color:#30D158}'
+    + '.bp6919-g.on i::after{content:"";position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #000;border-width:0 2.5px 2.5px 0;transform:rotate(45deg)}'
+    + '.bp6919-g span{position:absolute;left:4px;bottom:4px;max-width:calc(100% - 8px);font-size:10px;font-weight:800;color:#fff;background:rgba(0,0,0,.65);padding:2px 5px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '.bp6919-empty{color:var(--muted,#8e8e93);font-size:14px;text-align:center;padding:30px 10px}'
+    + '.bp6919-row{display:flex;align-items:center;gap:10px;width:100%;min-height:50px;padding:0 12px;border-radius:12px;border:1.5px solid transparent;background:var(--card2,#2a2a2a);color:var(--text,#fff);font:700 15px inherit;font-family:inherit;margin-bottom:6px;cursor:pointer;text-align:left;box-sizing:border-box}'
+    + '.bp6919-row b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}'
+    + '.bp6919-row small{color:var(--muted,#8e8e93);font-size:12px;font-weight:700}'
+    + '.bp6919-row.on{border-color:#30D158;background:rgba(48,209,88,.12)}'
+    + '.bp6919-row.it{margin-left:22px;width:calc(100% - 22px);min-height:44px;font-size:14px}'
+    + '.bp6919-x{border:none;background:none;color:var(--muted,#8e8e93);font-size:13px;font-weight:800;padding:4px 8px;cursor:pointer;font-family:inherit}'
+    + '.bp6919-foot{display:flex;gap:8px;margin-top:10px;flex-shrink:0}'
+    + '.bp6919-foot button{flex:1;min-height:52px;border-radius:14px;border:none;font:900 16px inherit;font-family:inherit;cursor:pointer}'
+    + '.bp6919-no{background:var(--card2,#2a2a2a);color:var(--text,#fff)}'
+    + '.bp6919-go{background:#30D158;color:#000}.bp6919-go[disabled]{opacity:.4}'
+    + '.bp6919-mv{background:#FFD60A;color:#1c1c1e}'
+    + '.bp6919-asg{display:inline-flex;align-items:center;gap:6px;background:rgba(48,209,88,.12);border:1px solid rgba(48,209,88,.4);border-radius:9px;color:#30D158;font-size:12px;font-weight:800;padding:5px 11px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0}'
+    /* photo tile slide (grids) */
+    + '.bp6919-tov{position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.72);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:inherit}'
+    + '.bp6919-tov .bp-pill{width:100%!important;min-width:0!important}'
+    + '.bp6919-tov .bp-pill-b{width:44px;height:30px;border-radius:15px}.bp6919-tov .bp-pill-b svg{width:18px!important;height:18px!important}.bp6919-tov .bp-pill-l{display:none}'
+    /* Command Center menu */
+    + '#bp6919-menu{position:fixed;z-index:2147482500;background:var(--card,#1c1c1e);border:1px solid var(--border,#333);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.55);padding:10px 8px 8px}'
+    + '#bp6919-menu .bp6919-mt{font-size:12px;font-weight:800;color:var(--muted,#8e8e93);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px 8px}'
+    + '#bp6919-menu .bp-pills{padding:0}'
+    + '#bp6919-menu .bp6919-extra{display:block;width:100%;margin-top:8px;min-height:40px;border-radius:10px;border:1px solid rgba(48,209,88,.4);background:rgba(48,209,88,.1);color:#30D158;font:800 14px inherit;font-family:inherit;cursor:pointer}';
+  document.head.appendChild(CSS);
+
+  function sheet(html){
+    var o = document.createElement('div'); o.className = 'bp6919-ov';
+    o.innerHTML = '<div class="bp6919-sh" role="dialog">' + html + '</div>';
+    o.addEventListener('click', function(e){ if (e.target === o) o.remove(); });
+    document.body.appendChild(o);
+    return o;
+  }
+
+  /* ── SAVE: the iPhone / iPad share sheet (Save to Photos, Save to Files, AirDrop, Messages) ── */
+  function b64Of(src){ var i = String(src || '').indexOf('base64,'); return i < 0 ? '' : String(src).slice(i + 7); }
+  function extOf(src, name){
+    var m = /^data:([^;,]+)/.exec(String(src || '')), t = m ? m[1] : '';
+    if (/\.[a-z0-9]{2,4}$/i.test(name || '')) return '';
+    return ({ 'image/jpeg': '.jpg', 'image/png': '.png', 'image/heic': '.heic', 'application/pdf': '.pdf', 'image/webp': '.webp' })[t] || (t.indexOf('image/') === 0 ? '.jpg' : '');
+  }
+  function safeName(s){ return String(s || 'file').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80) || 'file'; }
+  window.bpShareOut = function(files, text, title){
+    files = (files || []).filter(function(f){ return f && b64Of(f.src); }).map(function(f){ return { name: safeName(f.name) + extOf(f.src, f.name), src: f.src }; });
+    window.__bpLastShare = { files: files.map(function(f){ return f.name; }), text: text || '' };
+    if (inShell()) {
+      try { webkit.messageHandlers.bp.postMessage({ kind: 'share', files: files.map(function(f){ return { name: f.name, b64: b64Of(f.src) }; }), text: text || '' }); return true; } catch(e){}
+    }
+    try {
+      if (navigator.share) {
+        var fl = files.map(function(f){
+          var bin = atob(b64Of(f.src)), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+          var t = (/^data:([^;,]+)/.exec(f.src) || [])[1] || 'application/octet-stream';
+          return new File([u], f.name, { type: t });
+        });
+        var data = { title: title || 'BuildersPro', text: text || '' };
+        if (fl.length && navigator.canShare && navigator.canShare({ files: fl })) data.files = fl;
+        navigator.share(data).catch(function(){});
+        return true;
+      }
+    } catch(e){}
+    if (files[0]) { var a = document.createElement('a'); a.href = files[0].src; a.download = files[0].name; document.body.appendChild(a); a.click(); a.remove(); return true; }
+    try { navigator.clipboard.writeText(text || ''); say('Copied'); } catch(e){}
+    return true;
+  };
+  function lines(rec, fields){ return fields.map(function(f){ var v = rec[f[1]]; return (v === undefined || v === null || v === '') ? '' : f[0] + ': ' + (f[2] ? f[2](v) : v); }).filter(Boolean); }
+  window.bpSaveThing = function(kind, id){
+    var j, rm, t = [], files = [];
+    if (kind === 'photo') {
+      var p = find('photos', id); if (!p) return;
+      rm = room(p.roomId); j = job(p.jobId);
+      files.push({ name: [j && j.name, rm && rm.name, day(p.date)].filter(Boolean).join(' - ') || 'Photo', src: p.src });
+      if (p.caption) t.push(p.caption);
+      return window.bpShareOut(files, t.join('\n'), 'Photo');
+    }
+    if (kind === 'punch') {
+      var it = item(id); if (!it) return;
+      rm = room(it.roomId); j = job(it.jobId);
+      t.push((it.done ? '[Done] ' : '[Open] ') + (it.text || ''));
+      t.push([j && j.name, rm && rm.name].filter(Boolean).join(' · '));
+      if (it.extraNotes) t.push(it.extraNotes);
+      if (+it.value) t.push('Value: ' + money(it.value));
+      (it.photosBefore || []).forEach(function(ph, i){ files.push({ name: (it.text || 'Item') + ' - before ' + (i + 1), src: ph.src }); });
+      (it.photosAfter || []).forEach(function(ph, i){ files.push({ name: (it.text || 'Item') + ' - after ' + (i + 1), src: ph.src }); });
+      return window.bpShareOut(files, t.filter(Boolean).join('\n'), it.text);
+    }
+    if (kind === 'doc') {
+      var d = find('documents', id); if (!d) return;
+      return window.bpShareOut([{ name: d.fileName || d.name, src: d.fileSrc }], d.name + (d.notes ? '\n' + d.notes : ''), d.name);
+    }
+    /* money records: the facts as text, plus the receipt picture when there is one */
+    var coll = kind, r = find(coll, id); if (!r) return;
+    j = job(r.jobId);
+    var title = r.number || r.title || r.name || r.vendor || r.description || r.desc || ({ invoices: 'Invoice', changeOrders: 'Change order', estimates: 'Estimate', expenses: 'Expense' })[coll] || 'Record';
+    t.push(({ invoices: 'Invoice', changeOrders: 'Change order', estimates: 'Estimate', expenses: 'Expense' })[coll] + ': ' + title);
+    if (j) t.push('Job: ' + j.name + (j.address ? ' · ' + j.address : ''));
+    t = t.concat(lines(r, [['Client', 'client'], ['Vendor', 'vendor'], ['Category', 'category'], ['Description', 'description'], ['Description', 'desc'],
+      ['Amount', 'amount', money], ['Total', 'total', money], ['Status', 'status'], ['Date', 'date', day], ['Due', 'dueDate', day], ['Notes', 'notes']]));
+    var rows = r.items || r.lineItems || r.lines;
+    if (Array.isArray(rows) && rows.length) {
+      t.push('');
+      rows.forEach(function(x){ if (!x) return; var q = +x.qty || +x.quantity || 0, pr = +x.price || +x.rate || +x.unitPrice || 0, am = +x.amount || +x.total || (q && pr ? q * pr : 0);
+        t.push('• ' + (x.description || x.desc || x.name || x.text || '') + (q ? '  ' + q + ' × ' + money(pr) : '') + (am ? '  = ' + money(am) : '')); });
+    }
+    if (r.receiptSrc) files.push({ name: 'Receipt - ' + title, src: r.receiptSrc });
+    return window.bpShareOut(files, t.join('\n'), title);
+  };
+
+  /* ── MOVE / ASSIGN TARGET PICKER ── */
+  /* opts: { title, sub, jobId, spaces:bool, items:bool, noSpace:'Unfiled'|'No space', category:[list,current], go:'Move here' }
+     cb({ jobId, roomId, itemId, phase, category }) */
+  window.bpPickTarget = function(opts, cb){
+    opts = opts || {};
+    var st = { jobId: opts.jobId || activeJob() || ((jobsList()[0] || {}).id || ''), roomId: opts.roomId || '', itemId: '', phase: opts.phase || 'before', category: (opts.category || [])[1] || '', open: {} };
+    var o = sheet('<h3>' + E(opts.title || 'Move to') + '</h3>' + (opts.sub ? '<div class="bp6919-sub">' + E(opts.sub) + '</div>' : '<div style="height:8px"></div>')
+      + '<select class="bp6919-sel" data-k="job" aria-label="Job">' + jobsList().map(function(j){ return '<option value="' + E(j.id) + '"' + (j.id === st.jobId ? ' selected' : '') + '>' + E(j.name || j.address || 'Job') + '</option>'; }).join('') + '</select>'
+      + (opts.category ? '<select class="bp6919-sel" data-k="cat" aria-label="Category">' + opts.category[0].map(function(c){ return '<option' + (c === st.category ? ' selected' : '') + '>' + E(c) + '</option>'; }).join('') + '</select>' : '')
+      + (opts.items ? '<div class="bp6919-seg" data-k="phase" style="display:none"><button type="button" data-v="before">Before</button><button type="button" data-v="after">After</button></div>' : '')
+      + '<div class="bp6919-body"></div>'
+      + '<div class="bp6919-foot"><button type="button" class="bp6919-no">Cancel</button><button type="button" class="bp6919-go bp6919-mv">' + E(opts.go || 'Move here') + '</button></div>');
+    var body = o.querySelector('.bp6919-body'), seg = o.querySelector('[data-k="phase"]');
+    function paint(){
+      if (seg) {
+        seg.style.display = st.itemId ? '' : 'none';
+        [].forEach.call(seg.children, function(b){ b.classList.toggle('on', b.getAttribute('data-v') === st.phase); });
+      }
+      if (!opts.spaces) { body.innerHTML = ''; return; }
+      var h = '<button type="button" class="bp6919-row' + (!st.roomId && !st.itemId ? ' on' : '') + '" data-room=""><b>' + E(opts.noSpace || 'No space (Unfiled)') + '</b></button>';
+      roomsOf(st.jobId).forEach(function(r){
+        var its = opts.items ? itemsOf(r.id) : [];
+        h += '<button type="button" class="bp6919-row' + (st.roomId === r.id && !st.itemId ? ' on' : '') + '" data-room="' + E(r.id) + '"><b>' + E(r.name) + '</b>'
+          + (its.length ? '<small data-exp="' + E(r.id) + '">' + (st.open[r.id] ? 'Hide items ▴' : its.length + ' item' + (its.length === 1 ? '' : 's') + ' ▾') + '</small>' : '<small>space</small>') + '</button>';
+        if (st.open[r.id]) its.forEach(function(it){
+          h += '<button type="button" class="bp6919-row it' + (st.itemId === it.id ? ' on' : '') + '" data-item="' + E(it.id) + '" data-room="' + E(r.id) + '"><b>' + E(it.text || 'Item') + '</b><small>' + (it.done ? 'done' : 'open') + '</small></button>';
+        });
+      });
+      body.innerHTML = h;
+    }
+    o.addEventListener('click', function(e){
+      var x = e.target.closest('[data-exp]');
+      if (x) { e.stopPropagation(); var k = x.getAttribute('data-exp'); st.open[k] = !st.open[k]; paint(); return; }
+      var b = e.target.closest('.bp6919-row');
+      if (b) { st.roomId = b.getAttribute('data-room') || ''; st.itemId = b.getAttribute('data-item') || ''; if (st.roomId && opts.items && !st.itemId && itemsOf(st.roomId).length && !st.open[st.roomId]) st.open[st.roomId] = true; paint(); return; }
+      var sb = e.target.closest('[data-k="phase"] button'); if (sb) { st.phase = sb.getAttribute('data-v'); paint(); return; }
+      if (e.target.closest('.bp6919-no')) { o.remove(); return; }
+      if (e.target.closest('.bp6919-go')) { o.remove(); cb({ jobId: st.jobId, roomId: st.roomId, itemId: st.itemId, phase: st.phase, category: st.category }); }
+    });
+    o.querySelector('[data-k="job"]').addEventListener('change', function(){ st.jobId = this.value; st.roomId = ''; st.itemId = ''; st.open = {}; paint(); });
+    var cs = o.querySelector('[data-k="cat"]'); if (cs) cs.addEventListener('change', function(){ st.category = this.value; });
+    paint();
+    return o;
+  };
+
+  /* a photo goes where it was sent — MOVED, never copied */
+  function placePhoto(p, t){
+    if (!p) return false;
+    if (t.itemId) {
+      var it = item(t.itemId); if (!it) return false;
+      var arr = t.phase === 'after' ? (it.photosAfter = it.photosAfter || []) : (it.photosBefore = it.photosBefore || []);
+      arr.push({ src: p.src, date: p.date || p.created || nowIso(), geo: p.geo || '', weather: p.weather || '', caption: p.caption || '' });
+      it.updatedAt = nowIso();
+      DB.photos = (DB.photos || []).filter(function(x){ return x.id !== p.id; });
+      try { if (typeof bpTombstone === 'function') bpTombstone('photos', p.id); } catch(e){}
+      return true;
+    }
+    p.jobId = t.jobId || p.jobId; p.roomId = t.roomId || ''; p.updatedAt = nowIso();
+    return true;
+  }
+  function whereName(t){
+    if (t.itemId) { var it = item(t.itemId); return '"' + ((it && it.text) || 'item') + '" (' + (t.phase === 'after' ? 'After' : 'Before') + ')'; }
+    if (t.roomId) { var r = room(t.roomId); return (r && r.name) || 'the space'; }
+    return 'Unfiled';
+  }
+  window.bpMovePhotos = function(ids, t){
+    var n = 0;
+    ids.forEach(function(id){ if (placePhoto(find('photos', id), t)) n++; });
+    persist(); refresh();
+    say(n + ' photo' + (n === 1 ? '' : 's') + ' moved to ' + whereName(t));
+    return n;
+  };
+
+  /* ── MOVE (one record) ── */
+  window.bpMoveThing = function(kind, id){
+    if (kind === 'photo') {
+      var p = find('photos', id); if (!p) return;
+      return window.bpPickTarget({ title: 'Move photo to', sub: 'A space, or onto a checklist item', jobId: p.jobId, roomId: p.roomId, spaces: true, items: true }, function(t){ window.bpMovePhotos([id], t); });
+    }
+    if (kind === 'punch') {
+      var it = item(id); if (!it) return;
+      return window.bpPickTarget({ title: 'Move "' + (it.text || 'item') + '" to', jobId: it.jobId, roomId: it.roomId, spaces: true, noSpace: 'No space (job only)' }, function(t){
+        it.jobId = t.jobId; it.roomId = t.roomId || ''; it.updatedAt = nowIso(); persist(); refresh();
+        say('Moved to ' + (t.roomId ? whereName(t) : ((job(t.jobId) || {}).name || 'the job')));
+      });
+    }
+    if (kind === 'doc') {
+      var d = find('documents', id); if (!d) return;
+      var cats = ['Contract', 'Permit', 'Plans', 'Invoice', 'Receipt', 'Insurance', 'Warranty', 'Photo', 'Other'];
+      if (d.category && cats.indexOf(d.category) < 0) cats.unshift(d.category);
+      return window.bpPickTarget({ title: 'Move "' + (d.name || 'document') + '" to', sub: 'Job and category', jobId: d.jobId, category: [cats, d.category || 'Other'] }, function(t){
+        d.jobId = t.jobId; d.category = t.category || d.category; d.updatedAt = nowIso(); persist(); refresh();
+        say('Moved to ' + ((job(t.jobId) || {}).name || 'the job') + ' · ' + d.category);
+      });
+    }
+    /* expenses, shopping: another job */
+    var coll = kind === 'shop' ? 'shopping' : kind, r = find(coll, id); if (!r) return;
+    return window.bpPickTarget({ title: 'Move to another job', sub: r.name || r.vendor || r.description || r.text || '', jobId: r.jobId }, function(t){
+      r.jobId = t.jobId; r.updatedAt = nowIso(); persist(); refresh(); say('Moved to ' + ((job(t.jobId) || {}).name || 'the job'));
+    });
+  };
+
+  /* ── DELETE (one record) — always asks first ── */
+  function ask(label, run){
+    if (typeof window.bpSwipeAsk === 'function') return window.bpSwipeAsk({ tile: document.body, label: label, run: run });
+    if (confirm('Delete this?\n\n' + (label || ''))) quietConfirm(run);
+  }
+  window.bpDeleteThing = function(kind, id){
+    if (kind === 'photo') { var p = find('photos', id); return ask((p && p.caption) || 'Photo', function(){ quietConfirm(function(){ if (typeof deletePhoto === 'function') deletePhoto(id); else { bpRemoveFrom('photos', function(x){ return x.id !== id; }); persist(); } }); refresh(); }); }
+    if (kind === 'punch') { var it = item(id); return ask((it && it.text) || '', function(){ quietConfirm(function(){ (window.deleteChecklistItem || window.deletePunchItem)(id); }); refresh(); }); }
+    if (kind === 'doc') { var d = find('documents', id); return ask((d && d.name) || '', function(){ quietConfirm(function(){ deleteDocument(id); }); refresh(); }); }
+    if (kind === 'shop') { var s = find('shopping', id); return ask((s && (s.name || s.text)) || '', function(){ quietConfirm(function(){ window.bpShopDelete(id); }); }); }
+  };
+  window.bpDoAct = function(act, kind, id){
+    if (act === 'save') return window.bpSaveThing(kind, id);
+    if (act === 'move') return window.bpMoveThing(kind, id);
+    if (act === 'del') return window.bpDeleteThing(kind, id);
+  };
+
+  /* ── ASSIGN PHOTOS picker ── */
+  /* target: { jobId, roomId?, itemId? } — or none: pick photos first, then where they go */
+  window.bpAssignPhotos = function(target){
+    target = target || {};
+    var tit = target.itemId ? item(target.itemId) : null, rm = target.roomId ? room(target.roomId) : (tit ? room(tit.roomId) : null);
+    var jid = target.jobId || (tit && tit.jobId) || (rm && rm.jobId) || activeJob() || ((jobsList()[0] || {}).id || '');
+    var st = { tab: 'unf', phase: 'before', on: {}, jobId: jid };
+    var dest = tit ? '"' + (tit.text || 'item') + '"' : rm ? rm.name : '';
+    var o = sheet('<h3>' + (dest ? 'Assign to ' + E(dest) : 'Assign photos') + '</h3>'
+      + '<div class="bp6919-sub">' + (target.jobId || tit || rm ? E((job(jid) || {}).name || '') + ' · newest first' : 'Pick photos, then where they go') + '</div>'
+      + (!(tit || rm) ? '<select class="bp6919-sel" data-k="job" aria-label="Job">' + jobsList().map(function(j){ return '<option value="' + E(j.id) + '"' + (j.id === jid ? ' selected' : '') + '>' + E(j.name || 'Job') + '</option>'; }).join('') + '</select>' : '')
+      + (tit ? '<div class="bp6919-seg" data-k="phase"><button type="button" data-v="before">Before</button><button type="button" data-v="after">After</button></div>' : '')
+      + '<div class="bp6919-seg" data-k="tab"><button type="button" data-v="unf">Unfiled</button><button type="button" data-v="all">All spaces</button></div>'
+      + '<div class="bp6919-body"><div class="bp6919-grid"></div></div>'
+      + '<div class="bp6919-foot"><button type="button" class="bp6919-no">Cancel</button><button type="button" class="bp6919-go" disabled>Assign</button></div>');
+    var grid = o.querySelector('.bp6919-grid'), go = o.querySelector('.bp6919-go');
+    function list(){
+      return (DB.photos || []).filter(function(p){
+        if (!p || p.jobId !== st.jobId || p.deleted) return false;
+        if (rm && !tit && p.roomId === rm.id) return false;                   /* already in this space */
+        return st.tab === 'all' || unfiled(p);
+      }).sort(function(a, b){ return String(b.date || b.created || '').localeCompare(String(a.date || a.created || '')); });
+    }
+    function paint(){
+      [].forEach.call(o.querySelectorAll('.bp6919-seg'), function(sg){
+        var v = sg.getAttribute('data-k') === 'tab' ? st.tab : st.phase;
+        [].forEach.call(sg.children, function(b){ b.classList.toggle('on', b.getAttribute('data-v') === v); });
+      });
+      var L = list();
+      grid.innerHTML = L.length ? L.map(function(p){
+        var r = room(p.roomId);
+        return '<button type="button" class="bp6919-g' + (st.on[p.id] ? ' on' : '') + '" data-p="' + E(p.id) + '"><img src="' + E(p.src) + '" alt="" loading="lazy"/><i></i><span>' + E(r ? r.name : 'Unfiled') + '</span></button>';
+      }).join('') : '<div class="bp6919-empty" style="grid-column:1/-1">' + (st.tab === 'unf' ? 'No unfiled photos on this job — try All spaces.' : 'No other photos on this job.') + '</div>';
+      var n = Object.keys(st.on).length;
+      go.disabled = !n; go.textContent = n ? 'Assign ' + n + ' photo' + (n === 1 ? '' : 's') + (dest ? '' : '…') : 'Assign';
+    }
+    o.addEventListener('click', function(e){
+      var g = e.target.closest('.bp6919-g');
+      if (g) { var id = g.getAttribute('data-p'); if (st.on[id]) delete st.on[id]; else st.on[id] = 1; g.classList.toggle('on', !!st.on[id]); var n = Object.keys(st.on).length; go.disabled = !n; go.textContent = n ? 'Assign ' + n + ' photo' + (n === 1 ? '' : 's') + (dest ? '' : '…') : 'Assign'; return; }
+      var sb = e.target.closest('.bp6919-seg button');
+      if (sb) { if (sb.parentNode.getAttribute('data-k') === 'tab') st.tab = sb.getAttribute('data-v'); else st.phase = sb.getAttribute('data-v'); paint(); return; }
+      if (e.target.closest('.bp6919-no')) { o.remove(); return; }
+      if (e.target.closest('.bp6919-go') && !go.disabled) {
+        var ids = Object.keys(st.on); o.remove();
+        if (tit) return window.bpMovePhotos(ids, { jobId: jid, roomId: tit.roomId, itemId: tit.id, phase: st.phase });
+        if (rm) return window.bpMovePhotos(ids, { jobId: jid, roomId: rm.id });
+        window.bpPickTarget({ title: 'Assign ' + ids.length + ' photo' + (ids.length === 1 ? '' : 's') + ' to', sub: 'A space, or open one to pick a checklist item', jobId: st.jobId, spaces: true, items: true, go: 'Assign here' }, function(t){ window.bpMovePhotos(ids, t); });
+      }
+    });
+    var js = o.querySelector('[data-k="job"]'); if (js) js.addEventListener('change', function(){ st.jobId = this.value; st.on = {}; paint(); });
+    paint();
+    return o;
+  };
+
+  window.__bp6919core = { refresh: refresh, find: find, item: item, room: room, E: E, MAC: MAC };
+  console.log('[BP] v6.9.19 core — Save / Move / Delete and Assign photos');
+})();
+</script>
+<script id="v6919-entry">
+/* v6.9.19 (2/2) — where Save · Move · Delete and Assign photos show up. See the note on v6919 above. */
+(function(){
+  'use strict';
+  if (window.__bp6919e || !window.__bp6919core) return; window.__bp6919e = 1;
+  var C = window.__bp6919core, MAC = C.MAC, E = C.E;
+  var ASG_IC = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M21 15l-5-5L5 19"/></svg>';
+  var st = document.createElement('style'); st.id = 'bp-v6919e-css';
+  st.textContent = '.bp-sw-del.bp-pills{width:auto!important;background:none!important;border-radius:0!important;display:flex!important;align-items:center;gap:4px;padding:0 0 0 2px!important}'
+    + '.bp-cl-acts .bp-pills{height:100%}.bp-doc-swipe > .bp-doc-acts{align-items:center;padding-right:4px}'
+    + '.bp6919-hdr{display:flex;align-items:center;justify-content:space-between}'
+    + '#bp6919-ph-asg{display:flex;justify-content:flex-end;padding:0 16px 8px}#bp6919-ph-asg.mac{padding:0 0 10px}';
+  document.head.appendChild(st);
+
+  /* ── 1. ASSIGN PHOTOS entry points ── */
+  function spaceRow(){
+    var host = MAC ? document.getElementById('modal-room-detail') : document.getElementById('s-room-detail');
+    if (!host) return;
+    var rid = host.getAttribute('data-room-id'); if (!rid || !C.room(rid)) return;
+    var have = host.querySelector('#bp6919-sp-asg');
+    if (have && have.getAttribute('data-rid') === rid) return;
+    if (have) have.remove();
+    var row = document.createElement('div'); row.id = 'bp6919-sp-asg'; row.setAttribute('data-rid', rid);
+    row.className = (MAC ? 'sec-hdr' : 'section-header') + ' bp6919-hdr';
+    row.innerHTML = '<span>Photos</span><button type="button" class="bp6919-asg" onclick="bpAssignPhotos({roomId:\'' + rid + '\'})">' + ASG_IC + '+ Assign photos</button>';
+    if (MAC) {
+      var modal = host.querySelector('.modal'); if (!modal) return;
+      var stack = modal.querySelector('#bp-mrd-photos');
+      if (stack) modal.insertBefore(row, stack);
+      else { var hdr = modal.querySelector('.modal-header'), sub = hdr && hdr.nextElementSibling; modal.insertBefore(row, sub ? sub.nextSibling : modal.firstChild); }
+      row.style.margin = '6px 0 6px';
+    } else {
+      var stk = host.querySelector('#bp-rd-photos'), acts = host.querySelector('.bp-act-row');
+      if (stk) stk.parentNode.insertBefore(row, stk);
+      else if (acts && acts.parentNode) acts.parentNode.insertBefore(row, acts.nextSibling);
+      else return;
+    }
+  }
+  function itemSheet(){
+    var s = document.getElementById('bp-clphoto-sheet'); if (!s || s.querySelector('.bp6919-pick')) return;
+    var m = /bpClPhotoPicked\(this,'([^']+)'/.exec(s.innerHTML); if (!m) return;
+    var cancel = [].slice.call(s.querySelectorAll('button')).filter(function(b){ return /Cancel/.test(b.textContent); })[0];
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'bp6919-pick';
+    b.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:10px;width:100%;box-sizing:border-box;padding:16px;border-radius:14px;font-size:17px;font-weight:800;cursor:pointer;margin-bottom:10px;background:rgba(48,209,88,.12);color:#30D158;border:1.5px solid rgba(48,209,88,.45);font-family:inherit';
+    b.innerHTML = ASG_IC.replace('width="15" height="15"', 'width="22" height="22"') + 'Pick from job photos';
+    b.onclick = function(){ s.remove(); window.bpAssignPhotos({ itemId: m[1] }); };
+    if (cancel) cancel.parentNode.insertBefore(b, cancel); else (s.firstElementChild || s).appendChild(b);
+  }
+  function itemGrid(){
+    var g = document.getElementById('bp-clgrid'); if (!g || g.querySelector('.bp6919-pick')) return;
+    var add = g.querySelector('.bp-gf button'); if (!add) return;
+    var m = /bpClGridAdd\('([^']+)'\)/.exec(add.getAttribute('onclick') || ''); if (!m) return;
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'bp6919-pick';
+    b.style.cssText = 'margin-top:8px;border-color:rgba(48,209,88,.6)!important;background:rgba(48,209,88,.14)!important;color:#30D158!important';
+    b.textContent = 'Pick from job photos';
+    b.onclick = function(){ window.bpClGridClose(); window.bpAssignPhotos({ itemId: m[1] }); };
+    add.parentNode.appendChild(b);
+  }
+  function photosScreen(){
+    var grid = document.getElementById(MAC ? 'photos-grid-wrap' : 'photos-grid'); if (!grid || !grid.parentNode) return;
+    if (document.getElementById('bp6919-ph-asg')) return;
+    var d = document.createElement('div'); d.id = 'bp6919-ph-asg'; if (MAC) d.className = 'mac';
+    d.innerHTML = '<button type="button" class="bp6919-asg" onclick="bpAssignPhotos({jobId:(document.getElementById(\'' + (MAC ? 'photo-filter' : 'photo-job-filter') + '\')||{}).value||\'\'})">' + ASG_IC + 'Assign photos…</button>';
+    grid.parentNode.insertBefore(d, grid);
+  }
+  var q = 0;
+  new MutationObserver(function(){
+    if (q) return;
+    q = requestAnimationFrame(function(){ q = 0; try { spaceRow(); itemSheet(); itemGrid(); photosScreen(); } catch(e){ console.warn('[BP] v6.9.19 entry', e); } });
+  }).observe(document.documentElement, { childList: true, subtree: true });
+
+  /* ── 2. iPhone: a photo tile slides open to Save · Move · Delete ── */
+  if (!MAC) {
+    var pOpen = null, ps = null, swallow = 0;
+    function photoId(el){
+      var t = el.closest && el.closest('.photo-thumb'); if (!t) return null;
+      var m = /viewPhoto\('([^']+)'/.exec(t.getAttribute('onclick') || '');
+      if (!m || !C.find('photos', m[1])) return null;
+      return { tile: t, id: m[1] };
+    }
+    function shutP(){ if (!pOpen) return; var o = pOpen.tile.querySelector('.bp6919-tov'); if (o) o.remove(); pOpen = null; }
+    document.addEventListener('touchstart', function(e){
+      if (pOpen && !(e.target.closest && e.target.closest('.bp6919-tov'))) shutP();
+      if (e.touches.length !== 1) { ps = null; return; }
+      var h = photoId(e.target); ps = h ? { h: h, x: e.touches[0].clientX, y: e.touches[0].clientY, mode: null } : null;
+    }, { passive: true, capture: true });
+    document.addEventListener('touchmove', function(e){
+      if (!ps) return; var t = e.touches[0], dx = t.clientX - ps.x, dy = t.clientY - ps.y;
+      if (!ps.mode) { if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return; ps.mode = (dx < 0 && Math.abs(dx) > Math.abs(dy) * 1.4) ? 'h' : 'v'; }
+      if (ps.mode === 'h' && e.cancelable) e.preventDefault();
+      if (ps.mode === 'h') ps.dx = dx;
+    }, { passive: false, capture: true });
+    document.addEventListener('touchend', function(){
+      if (!ps) return; var s = ps; ps = null;
+      if (s.mode !== 'h' || (s.dx || 0) > -36) return;
+      swallow = Date.now(); shutP();
+      var o = document.createElement('div'); o.className = 'bp6919-tov';
+      o.innerHTML = window.bpPillsHtml(['save', 'move', 'del']);
+      if (getComputedStyle(s.h.tile).position === 'static') s.h.tile.style.position = 'relative';
+      s.h.tile.appendChild(o); pOpen = s.h;
+    }, { passive: true, capture: true });
+    document.addEventListener('click', function(e){
+      var pill = e.target.closest && e.target.closest('.bp6919-tov .bp-pill');
+      if (pill && pOpen) { e.stopPropagation(); e.preventDefault(); var id = pOpen.id; shutP(); window.bpDoAct(pill.getAttribute('data-act'), 'photo', id); return; }
+      if (Date.now() - swallow < 400 && e.target.closest && e.target.closest('.photo-thumb')) { e.stopPropagation(); e.preventDefault(); return; }
+      if (pOpen && pOpen.tile.contains(e.target)) { e.stopPropagation(); e.preventDefault(); shutP(); }
+    }, true);
+
+    /* documents: a tap on the row edits it (the slide holds Save · Move · Delete now) */
+    document.addEventListener('click', function(e){
+      var row = e.target.closest && e.target.closest('.bp-doc-swipe > .bp-doc-row');
+      if (!row || e.defaultPrevented) return;
+      if (e.target.closest('a,button,[onclick],img,video,input,label')) return;
+      var acts = row.parentNode && row.parentNode.querySelector('.bp-doc-acts');
+      var id = acts && acts.getAttribute('data-id'); if (id && typeof window.bpEditDoc === 'function') window.bpEditDoc(id);
+    });
+  }
+
+  /* ── 3. Command Center (Mac / iPad): right-click, or press and hold, a row for the same three ── */
+  if (MAC) {
+    var KIND = [
+      [/toggleCheckInRoomDetail\('([^']+)'|toggleCheck\('([^']+)'/, 'punch', ['save', 'move', 'del']],
+      [/deleteDocument\('([^']+)'/, 'doc', ['save', 'move', 'del']],
+      [/deleteExpense\('([^']+)'/, 'expenses', ['save', 'move', 'del']],
+      [/deleteInvoice\('([^']+)'/, 'invoices', ['save', 'del']],
+      [/deleteChangeOrder\('([^']+)'/, 'changeOrders', ['save', 'del']],
+      [/deleteEstimate\('([^']+)'/, 'estimates', ['save', 'del']],
+      [/bpShopDelete\('([^']+)'/, 'shop', ['move', 'del']]
+    ];
+    function codesIn(el){
+      var out = [];
+      [].forEach.call(el.querySelectorAll('[onclick],[onchange]'), function(x){ out.push((x.getAttribute('onclick') || '') + ' ' + (x.getAttribute('onchange') || '')); });
+      out.push((el.getAttribute('onclick') || '') + ' ' + (el.getAttribute('onchange') || ''));
+      return out;
+    }
+    function hit(t){
+      if (!t || !t.closest || t.closest('#bp6919-menu, .bp6919-ov, input[type=text], textarea, select')) return null;
+      /* a photo */
+      var ph = t.closest('[onclick*="viewPhoto(\'"]');
+      if (ph) { var pm = /viewPhoto\('([^']+)'/.exec(ph.getAttribute('onclick')); if (pm && C.find('photos', pm[1])) return { kind: 'photo', id: pm[1], acts: ['save', 'move', 'del'], el: ph }; }
+      /* a row: the nearest box that holds exactly one record's controls */
+      for (var a = t, d = 0; a && d < 7 && a !== document.body; a = a.parentElement, d++) {
+        if (a.id === 'modal-room-detail' || a.classList.contains('modal')) break;
+        var found = null, many = false;
+        codesIn(a).forEach(function(code){
+          KIND.forEach(function(k){ var m = k[0].exec(code); if (!m) return; var id = m[1] || m[2];
+            if (found && (found.id !== id || found.kind !== k[1])) many = true; else if (!found) found = { kind: k[1], id: id, acts: k[2], el: a }; });
+        });
+        if (many) return null;
+        if (found && a.offsetWidth >= 160) return found;
+      }
+      return null;
+    }
+    function shutM(){ var m = document.getElementById('bp6919-menu'); if (m) m.remove(); }
+    function label(h){
+      var r = h.kind === 'punch' ? C.item(h.id) : C.find(h.kind === 'doc' ? 'documents' : h.kind === 'photo' ? 'photos' : h.kind === 'shop' ? 'shopping' : h.kind, h.id);
+      return r ? (r.text || r.name || r.vendor || r.number || r.title || r.description || r.caption || '') : '';
+    }
+    function menu(h, x, y){
+      shutM();
+      var m = document.createElement('div'); m.id = 'bp6919-menu';
+      m.innerHTML = '<div class="bp6919-mt">' + E(label(h) || ({ photo: 'Photo', punch: 'Checklist item', doc: 'Document' })[h.kind] || '') + '</div>'
+        + '<div class="bp-pills">' + window.bpPillsHtml(h.acts) + '</div>'
+        + (h.kind === 'punch' ? '<button type="button" class="bp6919-extra">Assign photos</button>' : '');
+      document.body.appendChild(m);
+      var w = m.offsetWidth, hh = m.offsetHeight;
+      m.style.left = Math.max(8, Math.min(innerWidth - w - 8, x - w / 2)) + 'px';
+      m.style.top = Math.max(8, Math.min(innerHeight - hh - 8, y + 10)) + 'px';
+      m.addEventListener('click', function(e){
+        var p = e.target.closest('.bp-pill'); if (p) { shutM(); window.bpDoAct(p.getAttribute('data-act'), h.kind, h.id); return; }
+        if (e.target.closest('.bp6919-extra')) { shutM(); window.bpAssignPhotos({ itemId: h.id }); }
+      });
+    }
+    window.bp6919Hit = hit; window.bp6919Menu = menu;
+    document.addEventListener('contextmenu', function(e){ var h = hit(e.target); if (!h) return; e.preventDefault(); menu(h, e.clientX, e.clientY); });
+    var lp = null, lpFired = 0;
+    document.addEventListener('touchstart', function(e){
+      if (e.touches.length !== 1) { lp = null; return; }
+      var h = hit(e.target); if (!h) return;
+      var t = e.touches[0]; lp = { x: t.clientX, y: t.clientY, timer: setTimeout(function(){ lpFired = Date.now(); menu(h, lp ? lp.x : t.clientX, lp ? lp.y : t.clientY); lp = null; }, 550) };
+    }, { passive: true });
+    document.addEventListener('touchmove', function(e){ if (!lp) return; var t = e.touches[0]; if (Math.abs(t.clientX - lp.x) > 10 || Math.abs(t.clientY - lp.y) > 10) { clearTimeout(lp.timer); lp = null; } }, { passive: true });
+    document.addEventListener('touchend', function(){ if (lp) { clearTimeout(lp.timer); lp = null; } }, { passive: true });
+    document.addEventListener('click', function(e){
+      if (Date.now() - lpFired < 500) { e.stopPropagation(); e.preventDefault(); return; }
+      if (!(e.target.closest && e.target.closest('#bp6919-menu'))) shutM();
+    }, true);
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') shutM(); });
+  }
+  console.log('[BP] v6.9.19 — slide / right-click Save · Move · Delete, Assign photos');
 })();
 </script>

@@ -1,7 +1,7 @@
 """v6.9.15 — Spaces: check / uncheck never makes the page jump, and checklist items can be deleted.
 Command Center (iPad, Mac): a tick flips only its row (no rebuild), the window doesn't move a pixel in
 Open or Complete view; Delete is in the Edit item window and the space reopens after; Update still updates.
-iPhone: the slide-out Delete sits beside Cut (it was hidden behind the next row) and works; an item
+iPhone: the slide-out Delete is on screen beside Move (it was hidden behind the next row) and works; an item
 unchecked in Complete view stays put instead of vanishing a second later.
 Run from repo root: python3 test_v6915_tick_delete.py      Exit 0 = all pass."""
 import subprocess, time, asyncio, sys, os
@@ -76,16 +76,17 @@ async def phone(b):
     ctx, pg, errs = await page(b, 'index.html', viewport={'width': 390, 'height': 844}, has_touch=True, is_mobile=True)
     cdp = await ctx.new_cdp_session(pg)
     row = pg.locator('#s-room-detail .bp-cl-row').first; bb = await row.bounding_box()
+    await row.evaluate("e => e.scrollIntoView({ block: 'center' })"); await pg.wait_for_timeout(200); bb = await row.bounding_box()
     x, y = bb['x'] + bb['width'] * 0.55, bb['y'] + bb['height'] / 2
     await cdp.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': x, 'y': y}]})
-    for i in range(1, 9): await cdp.send('Input.dispatchTouchEvent', {'type': 'touchMove', 'touchPoints': [{'x': x - i * 25, 'y': y}]}); await pg.wait_for_timeout(16)
+    for i in range(1, 11): await cdp.send('Input.dispatchTouchEvent', {'type': 'touchMove', 'touchPoints': [{'x': x - i * 25, 'y': y}]}); await pg.wait_for_timeout(16)
     await cdp.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []}); await pg.wait_for_timeout(500)
-    g = await pg.evaluate("""(function(){ var d = document.querySelector('#s-room-detail .bp-cl-del'), r = d.closest('.bp-cl-row'), q = d.getBoundingClientRect(), rr = r.getBoundingClientRect();
+    g = await pg.evaluate("""(function(){ var d = document.querySelector('#s-room-detail .bp-pill-del'), r = d.closest('.bp-cl-row'), q = d.getBoundingClientRect(), rr = r.getBoundingClientRect();
       var h = document.elementFromPoint((q.left + q.right) / 2, (q.top + q.bottom) / 2);
-      return { inside: q.top >= rr.top - 1 && q.bottom <= rr.bottom + 1, onScreen: q.right <= innerWidth, hit: !!(h && h.closest('.bp-cl-del')) }; })()""")
-    ok(g['inside'] and g['onScreen'] and g['hit'], name + ': slide-out Delete sits beside Cut, on screen, nothing covering it ' + str(g))
+      return { inside: q.top >= rr.top - 1 && q.bottom <= rr.bottom + 1, onScreen: q.right <= innerWidth, hit: !!(h && h.closest('.bp-pill-del')) }; })()""")
+    ok(g['inside'] and g['onScreen'] and g['hit'], name + ': slide-out Delete is on screen beside Move, on screen, nothing covering it ' + str(g))
     n0 = await pg.evaluate("DB.punchlist.length")
-    await pg.click('#s-room-detail .bp-cl-del'); await pg.wait_for_timeout(300)
+    await pg.click('#s-room-detail .bp-pill-del'); await pg.wait_for_timeout(300)
     await pg.click('#bp-sw-confirm .bp-sw-yes'); await pg.wait_for_timeout(1500)
     ok(await pg.evaluate("DB.punchlist.length") == n0 - 1, name + ': Delete → confirm removes the item')
     await pg.evaluate("bpSpaceShow('done','room','r1')"); await pg.wait_for_timeout(500)

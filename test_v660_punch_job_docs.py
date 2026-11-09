@@ -90,9 +90,11 @@ async def main():
             for k in range(1, 11): await cdp.send('Input.dispatchTouchEvent', {'type':'touchMove','touchPoints':[{'x':x0 - k*20,'y':y}]})
             await cdp.send('Input.dispatchTouchEvent', {'type':'touchEnd','touchPoints':[]}); await pg.wait_for_timeout(400)
             acts = await pg.evaluate("(function(){ var a=document.querySelector('.bp-doc-swipe .bp-doc-acts'); return [].map.call(a.querySelectorAll('button'), function(b){ var r=b.getBoundingClientRect(), e=document.elementFromPoint(r.left+r.width/2, r.top+r.height/2); return [b.textContent.trim(), !!(e && b.contains(e))]; }); })()")
-            ok(acts == [['Edit', True], ['Delete', True]], 'slide left shows Edit and Delete %s' % acts)
-            await pg.evaluate("(function(){ var b=[].find.call(document.querySelectorAll('.bp-doc-acts button'), function(x){ return /Edit/.test(x.textContent); }); b.click(); })()"); await pg.wait_for_timeout(400)
-            ok(await pg.evaluate("!!document.getElementById('bpde-name') || !!document.querySelector('[id^=bp-edit-doc], #bp-doc-edit')"), 'Edit opens the document editor')
+            ok(acts == [['Save', True], ['Move', True], ['Delete', True]], 'slide left shows Save / Move / Delete (v6.9.19) %s' % acts)
+            # v6.9.19: Edit = tap the row
+            await pg.evaluate("(function(){ var r=document.querySelector('.bp-doc-swipe > .bp-doc-row'); r.querySelector('div[style*=\"min-width:0\"]').click(); })()"); await pg.wait_for_timeout(500)   # 1st tap closes the slide
+            await pg.evaluate("(function(){ var r=document.querySelector('.bp-doc-swipe > .bp-doc-row'); r.querySelector('div[style*=\"min-width:0\"]').click(); })()"); await pg.wait_for_timeout(400)   # 2nd tap edits
+            ok(await pg.evaluate("!!document.getElementById('bpde-name') || !!document.querySelector('[id^=bp-edit-doc], #bp-doc-edit')"), 'tapping the row opens the document editor')
             ok(not errs, 'no page errors %s' % errs[:3])
             await b.close()
     finally:
