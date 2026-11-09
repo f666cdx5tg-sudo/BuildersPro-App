@@ -1632,7 +1632,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.19';
+var APP_VERSION = '6.9.20';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -35133,5 +35133,145 @@ html,body{background:var(--bg) !important}
     document.addEventListener('keydown', function(e){ if (e.key === 'Escape') shutM(); });
   }
   console.log('[BP] v6.9.19 — slide / right-click Save · Move · Delete, Assign photos');
+})();
+</script>
+<script id="v6920">
+/* ══ v6.9.20 — Verbal contract on the job card ══════════════════════════════════════
+   Stan (Nov 9, 2026): "Offer a option for verbal contract, to jobs card."
+   Told him first: NJ (≥ $500) and PA (> $500) require home-improvement contracts in writing,
+   signed. He chose: verbal counts as DONE (green) on any job. So:
+   • The card's "Signed contract" Add button now asks: Signed (file the contract, as before)
+     or Verbal agreement.
+   • Verbal records the date, the agreed amount (starts at the job's contract value), who it was
+     with, how (in person / phone / text) and the scope. The row turns green: "Contract (verbal)".
+   • Optional: "Save & text confirmation" opens Messages to the client with the terms written out,
+     so there is a dated written record if he wants one.
+   • Tap the green verbal row any time to change it or remove it. A signed contract filed later
+     always takes over. Starting the job no longer asks about a contract when a verbal one is on file.
+   Same on the iPhone field app and the Command Center. ═══════════════════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp6920 || typeof window.bspSignedContract !== 'function') return; window.__bp6920 = 1;
+  var MAC = !!document.getElementById('modal-new-room');
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function job(id){ return (DB.jobs || []).find(function(j){ return j && j.id === id; }); }
+  function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (MAC) saveDB(); else save(); } catch(e){ try { saveDB(); } catch(e2){} } }
+  function money(n){ return '$' + (Math.round((+n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function day(d){ try { var x = new Date(d + (String(d).length === 10 ? 'T12:00:00' : '')); return (x.getMonth() + 1) + '/' + x.getDate() + '/' + x.getFullYear(); } catch(e){ return d || ''; } }
+  function today(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function rerender(jobId){
+    try { if (MAC) { if (typeof renderDesktopJobDetail === 'function') renderDesktopJobDetail(jobId); } else if (typeof renderJobDetail === 'function') renderJobDetail(jobId); } catch(e){}
+  }
+
+  var _signed = window.bspSignedContract;
+  window.bspSignedContract = function(jobId){
+    var d = _signed.apply(this, arguments); if (d) return d;
+    var j = job(jobId), v = j && j.verbalContract;
+    return v ? { verbal: true, name: 'Verbal · ' + day(v.date) + (v.amount ? ' · ' + money(v.amount) : '') } : null;
+  };
+  try { bspSignedContract = window.bspSignedContract; } catch(e){}
+  if (typeof window.bspChecklist === 'function') {
+    var _cl = window.bspChecklist;
+    window.bspChecklist = function(jobId){
+      var rows = _cl.apply(this, arguments) || [];
+      rows.forEach(function(r){ if (r.label === 'Signed contract' && r.done && /^Verbal ·/.test(r.value || '')) { r.label = 'Contract (verbal)'; r.verbal = true; } });
+      return rows;
+    };
+    try { bspChecklist = window.bspChecklist; } catch(e){}
+  }
+  var _addSigned = window.bspAddSignedContract;
+
+  var CSS = document.createElement('style'); CSS.id = 'bp-v6920-css';
+  CSS.textContent = '.bp20-ov{position:fixed;inset:0;z-index:2147481000;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;font-family:inherit}'
+    + '.bp20-sh{width:100%;max-width:520px;max-height:92vh;overflow-y:auto;background:var(--card,#1c1c1e);color:var(--text,#f0f0f0);border-radius:20px 20px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box}'
+    + '.bp20-sh h3{margin:2px 0 4px;font-size:19px;font-weight:900}.bp20-sub{color:var(--muted,#8e8e93);font-size:13px;margin-bottom:12px}'
+    + '.bp20-big{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:12px 14px;border-radius:14px;border:1.5px solid;margin-bottom:10px;font:800 17px inherit;font-family:inherit;cursor:pointer;text-align:left;box-sizing:border-box}'
+    + '.bp20-big small{display:block;font-size:12.5px;font-weight:600;opacity:.8;margin-top:2px}'
+    + '.bp20-big svg{width:26px;height:26px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
+    + '.bp20-l{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93);margin:12px 0 6px}'
+    + '.bp20-in{width:100%;min-height:48px;border-radius:12px;border:1.5px solid var(--border,#333);background:var(--card2,#222);color:var(--text,#f0f0f0);font-size:16px;font-weight:600;padding:0 12px;font-family:inherit;box-sizing:border-box}'
+    + 'textarea.bp20-in{padding:10px 12px;min-height:80px;resize:vertical}'
+    + '.bp20-seg{display:flex;background:var(--card2,#2c2c2e);border-radius:11px;padding:3px}.bp20-seg button{flex:1;min-height:40px;border:none;background:none;color:var(--muted,#8e8e93);font:800 14px inherit;font-family:inherit;border-radius:9px;cursor:pointer}.bp20-seg button.on{background:var(--card,#3a3a3c);color:var(--text,#fff)}'
+    + '.bp20-row{display:flex;gap:8px;margin-top:14px}.bp20-row button{flex:1;min-height:52px;border-radius:14px;border:none;font:900 16px inherit;font-family:inherit;cursor:pointer}'
+    + '.bp20-no{background:var(--card2,#2a2a2a);color:var(--text,#fff)}.bp20-go{background:#30D158;color:#000}.bp20-tx{background:transparent;border:1.5px solid rgba(10,132,255,.55)!important;color:#0A84FF;width:100%;margin-top:8px;min-height:50px;border-radius:14px;font:800 15px inherit;font-family:inherit;cursor:pointer}'
+    + '.bp20-rm{background:none;border:none;color:#FF453A;font:800 14px inherit;font-family:inherit;cursor:pointer;margin-top:12px;width:100%;min-height:40px}';
+  document.head.appendChild(CSS);
+  function sheet(html){
+    var o = document.createElement('div'); o.className = 'bp20-ov';
+    o.innerHTML = '<div class="bp20-sh" role="dialog">' + html + '</div>';
+    o.addEventListener('click', function(e){ if (e.target === o) o.remove(); });
+    document.body.appendChild(o); return o;
+  }
+  var DOC = '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>';
+  var TALK = '<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1121 12z"/><path d="M8.5 11h7M8.5 14h4"/></svg>';
+
+  /* Add → Signed or Verbal */
+  window.bspAddSignedContract = function(jobId){
+    var j = job(jobId); if (!j) return;
+    var o = sheet('<h3>Contract</h3><div class="bp20-sub">' + E(j.name || '') + '</div>'
+      + '<button type="button" class="bp20-big" data-k="signed" style="color:#0A84FF;border-color:rgba(10,132,255,.45);background:rgba(10,132,255,.1)">' + DOC + '<span>Signed contract<small>File the signed copy (photo or PDF)</small></span></button>'
+      + '<button type="button" class="bp20-big" data-k="verbal" style="color:#30D158;border-color:rgba(48,209,88,.45);background:rgba(48,209,88,.1)">' + TALK + '<span>Verbal agreement<small>Record what was agreed — date, amount, scope</small></span></button>'
+      + '<div class="bp20-row" style="margin-top:4px"><button type="button" class="bp20-no">Cancel</button></div>');
+    o.addEventListener('click', function(e){
+      var b = e.target.closest('[data-k]');
+      if (b) { o.remove(); if (b.getAttribute('data-k') === 'signed') { if (typeof _addSigned === 'function') _addSigned(jobId); } else window.bspVerbalContract(jobId); return; }
+      if (e.target.closest('.bp20-no')) o.remove();
+    });
+  };
+  try { bspAddSignedContract = window.bspAddSignedContract; } catch(e){}
+
+  function confirmText(j, v){
+    return 'Hi ' + (String(j.client || '').split(' ')[0] || 'there') + ', confirming what we agreed'
+      + (v.how === 'phone' ? ' on the phone' : v.how === 'text' ? ' by text' : '') + ' on ' + day(v.date) + ' for ' + (j.address || j.name || 'the job') + ':\n'
+      + (v.scope ? '• Work: ' + v.scope + '\n' : '')
+      + (v.amount ? '• Price: ' + money(v.amount) + '\n' : '')
+      + (j.startDate ? '• Start: ' + day(j.startDate) + '\n' : '')
+      + 'Please reply YES to confirm. Thank you! — STM Pro Build';
+  }
+  window.bspVerbalContract = function(jobId){
+    var j = job(jobId); if (!j) return;
+    var v = j.verbalContract || { date: today(), amount: +j.contractValue || '', with: j.client || '', how: 'person', scope: '' };
+    var o = sheet('<h3>Verbal agreement</h3><div class="bp20-sub">' + E(j.name || '') + (j.address ? ' · ' + E(j.address) : '') + '</div>'
+      + '<div class="bp20-l">Agreed on</div><input class="bp20-in" type="date" data-f="date" value="' + E(v.date || today()) + '"/>'
+      + '<div class="bp20-l">Amount</div><input class="bp20-in" type="text" inputmode="decimal" data-f="amount" placeholder="$0.00" value="' + (v.amount !== '' && v.amount != null ? (+v.amount).toFixed(2) : '') + '"/>'
+      + '<div class="bp20-l">With</div><input class="bp20-in" type="text" data-f="with" placeholder="Client name" value="' + E(v.with || '') + '"/>'
+      + '<div class="bp20-l">How</div><div class="bp20-seg" data-f="how"><button type="button" data-v="person">In person</button><button type="button" data-v="phone">Phone</button><button type="button" data-v="text">Text</button></div>'
+      + '<div class="bp20-l">Scope of work</div><textarea class="bp20-in" data-f="scope" placeholder="What was agreed">' + E(v.scope || '') + '</textarea>'
+      + '<div class="bp20-row"><button type="button" class="bp20-no">Cancel</button><button type="button" class="bp20-go">Save</button></div>'
+      + (j.clientPhone || j.clientEmail ? '<button type="button" class="bp20-tx">Save &amp; text confirmation to ' + E(String(j.client || 'client').split(' ')[0]) + '</button>' : '')
+      + (j.verbalContract ? '<button type="button" class="bp20-rm">Remove verbal agreement</button>' : ''));
+    var how = v.how || 'person';
+    function seg(){ [].forEach.call(o.querySelectorAll('[data-f="how"] button'), function(b){ b.classList.toggle('on', b.getAttribute('data-v') === how); }); }
+    seg();
+    function read(){
+      var f = function(k){ var el = o.querySelector('[data-f="' + k + '"]'); return el ? String(el.value || '').trim() : ''; };
+      var a = f('amount').replace(/[^0-9.\-]/g, '');
+      return { date: f('date') || today(), amount: a === '' ? '' : Math.round(parseFloat(a) * 100) / 100, with: f('with'), how: how, scope: f('scope'), recorded: new Date().toISOString() };
+    }
+    function store(nv){ j.verbalContract = nv; j.updatedAt = new Date().toISOString(); persist(); rerender(jobId); try { toast('Verbal agreement saved'); } catch(e){} }
+    o.addEventListener('click', function(e){
+      var hb = e.target.closest('[data-f="how"] button'); if (hb) { how = hb.getAttribute('data-v'); seg(); return; }
+      if (e.target.closest('.bp20-no')) { o.remove(); return; }
+      if (e.target.closest('.bp20-go')) { var nv = read(); o.remove(); store(nv); return; }
+      if (e.target.closest('.bp20-tx')) {
+        var nv2 = read(); o.remove(); store(nv2);
+        var txt = confirmText(j, nv2);
+        window.__bpLastVerbalText = txt;
+        if (j.clientPhone) { try { location.href = 'sms:' + String(j.clientPhone).replace(/[^0-9+]/g, '') + '&body=' + encodeURIComponent(txt); return; } catch(er){} }
+        if (j.clientEmail) { try { location.href = 'mailto:' + j.clientEmail + '?subject=' + encodeURIComponent('Our agreement — ' + (j.address || j.name || '')) + '&body=' + encodeURIComponent(txt); return; } catch(er){} }
+        return;
+      }
+      if (e.target.closest('.bp20-rm')) { if (!confirm('Remove the verbal agreement from ' + (j.name || 'this job') + '?')) return; o.remove(); delete j.verbalContract; j.updatedAt = new Date().toISOString(); persist(); rerender(jobId); }
+    });
+    return o;
+  };
+  /* tap the green "Contract (verbal)" row to change or remove it */
+  document.addEventListener('click', function(e){
+    var host = e.target.closest && e.target.closest('#bsp-ready, #bsp-ready-desk, .bsp-ready');
+    if (!host) return;
+    var row = e.target.closest('div'); var t = row ? row.textContent : '';
+    for (var a = e.target; a && a !== host; a = a.parentElement) { if (/Contract \(verbal\)/.test(a.textContent) && a.textContent.length < 120) { var jid = window.currentJobId || (typeof bpActiveJob === 'function' && bpActiveJob()); if (jid && job(jid) && job(jid).verbalContract) { e.stopPropagation(); window.bspVerbalContract(jid); } return; } }
+  }, true);
+  console.log('[BP] v6.9.20 — verbal contract on the job card');
 })();
 </script>
