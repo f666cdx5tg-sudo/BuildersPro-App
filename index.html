@@ -1632,7 +1632,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.21';
+var APP_VERSION = '6.9.22';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -35276,7 +35276,7 @@ html,body{background:var(--bg) !important}
 })();
 </script>
 <script id="v6921">
-/* ══ v6.9.21 — Rentals: tenants, rent, repairs, unit inventory ═══════════════════════════
+/* ══ v6.9.21 — Rentals: tenants, rent, repairs, unit inventory  (+ v6.9.22: lease, utilities, emergency contact, residents, statements) ═══════════════════════════
    Stan (Nov 9, 2026): "I want to add a tenant/management portal. Tenants name, move in date. Rent. Repairs"
    + "List of appliances windows buil[t-ins]" → "Yes".
    His choices: only he uses it (no tenant logins) · repairs become job items · rent is tracked, not collected.
@@ -35429,6 +35429,8 @@ html,body{background:var(--bg) !important}
     U.forEach(function(u){ var s = rentState(u); if (s.k === 'late') { late++; owed += s.owed; } if (u.tenant && u.tenant.name) monthRent += +u.rent || 0; openRep += repairs(u.id).filter(function(p){ return !p.done; }).length; });
     var h = '<div class="rt-acts" style="margin:0 0 12px"><button type="button" class="rt-add" data-a="prop">' + svg(I.plus, 18) + 'Property</button>'
       + (U.length ? '<button type="button" class="rt-add blue" data-a="fromtext">' + svg(I.text, 18) + 'Repair from text</button>' : '') + '</div>';
+    var SD = stmtWindow() ? stmtDue() : [];
+    if (SD.length) h += '<button type="button" class="rt-u rt-card" data-a="stmts" style="border:1.5px solid rgba(255,159,10,.5);background:rgba(255,159,10,.1);border-radius:16px;margin-bottom:12px"><span style="color:#FF9F0A">' + svg(I.cash) + '</span><div class="n"><b style="color:#FF9F0A">' + monTxt(stmtMonth()) + ' statements ready</b><small>' + SD.length + ' to send · tap to text or email</small></div></button>';
     if (!P.length) return h + '<div class="rt-card rt-empty">' + svg(I.rent, 40) + '<br><b style="color:var(--text,#fff);font-size:17px">No rentals yet</b><br>Add a property, then its units. Each unit holds the tenant, rent, repairs and a list of appliances, windows and built-ins.</div>';
     h += '<div class="rt-sum"><div><span>Rent</span><b>' + money(monthRent) + '</b></div><div><span>Late</span><b style="color:' + (late ? '#FF453A' : '#30D158') + '">' + (late ? money(owed) : 'None') + '</b></div><div><span>Repairs</span><b style="color:' + (openRep ? '#FF453A' : '#30D158') + '">' + openRep + '</b></div></div>';
     P.forEach(function(p){
@@ -35453,7 +35455,8 @@ html,body{background:var(--bg) !important}
     if (t.name) {
       h += '<div class="nm">' + E(t.name) + '</div><div class="ln">' + E(p.name || '') + (t.moveIn ? ' · Moved in ' + dayTxt(t.moveIn) : '') + '</div>'
         + '<div class="ln">' + (u.rent ? money(u.rent) + '/mo · due the ' + ord(+u.dueDay || 1) : 'No rent set') + (u.deposit ? ' · Deposit ' + money(u.deposit) : '') + '</div>'
-        + '<span class="rt-st" style="color:' + s.color + ';border-color:' + s.color + '">' + E(s.txt) + '</span>';
+        + (+u.residents || t.ecName ? '<div class="ln">' + [+u.residents ? u.residents + (+u.residents === 1 ? ' resident' : ' residents') : '', t.ecName ? 'Emergency: ' + E(t.ecName) + (t.ecRel ? ' (' + E(t.ecRel) + ')' : '') + (t.ecPhone ? ' · <a href="tel:' + digits(t.ecPhone) + '" style="color:#0A84FF;font-weight:800;text-decoration:none">' + E(t.ecPhone) + '</a>' : '') : ''].filter(Boolean).join(' · ') + '</div>' : '')
+        + '<span class="rt-st" style="color:' + s.color + ';border-color:' + s.color + '">' + E(s.txt) + '</span>' + (leaseState(u) ? ' <span class="rt-st" style="color:' + leaseState(u).color + ';border-color:' + leaseState(u).color + '">' + E(leaseState(u).txt) + '</span>' : '');
     } else h += '<div class="nm" style="color:var(--muted,#8e8e93)">Vacant</div><div class="ln">' + E(p.name || '') + '</div>';
     h += '<div class="rt-acts"><button type="button" class="rt-add blue" data-a="tenant">' + svg(I.person, 16) + (t.name ? 'Edit tenant' : 'Add tenant') + '</button>'
       + (t.phone ? '<button type="button" class="rt-add blue" data-a="call">' + svg(I.phone, 16) + 'Call</button><button type="button" class="rt-add blue" data-a="sms">' + svg(I.text, 16) + 'Text</button>' : '')
@@ -35461,7 +35464,7 @@ html,body{background:var(--bg) !important}
 
     /* rent */
     if (t.name && +u.rent) {
-      h += '<div class="rt-h"><b>Rent</b><button type="button" class="rt-add" data-a="pay">' + svg(I.plus, 16) + 'Log payment</button></div><div class="rt-card">';
+      h += '<div class="rt-h"><b>Rent</b><button type="button" class="rt-add blue" data-a="stmt">Statement</button><button type="button" class="rt-add" data-a="pay">' + svg(I.plus, 16) + 'Payment</button></div><div class="rt-card">';
       var ms = monthsFor(u, 1).reverse().slice(0, 13), tt = today();
       ms.forEach(function(k, ix){
         if (ix === 4 && !view.all) { h += '<div class="rt-row" data-a="allmonths" style="justify-content:center;color:#0A84FF;font-weight:800">Earlier months (' + (ms.length - 4) + ')</div>'; }
@@ -35488,6 +35491,8 @@ html,body{background:var(--bg) !important}
     });
     h += '</div><button type="button" class="rt-add blue" data-a="space" style="width:100%;margin-top:-4px">' + svg(I.open, 16) + 'Open unit — photos, subs, checklist</button>';
 
+    h += moreHtml(u);
+
     /* inventory */
     Object.keys(KINDS).forEach(function(k){
       var K = KINDS[k], L = (u.inventory || []).filter(function(x){ return x.kind === k; });
@@ -35513,6 +35518,7 @@ html,body{background:var(--bg) !important}
     if (a === 'allmonths') { view.all = true; draw(); return; }
     if (a === 'openunit') { view.all = false; view.u = b.getAttribute('data-u'); draw(); document.querySelector('#bp-rent .rt-body').scrollTop = 0; return; }
     if (a === 'fromtext') return textSheet(u ? u.id : null);
+    if (a === 'stmts') return window.bpRentStatements();
     if (!u) return;
     if (a === 'tenant') return tenantSheet(u);
     if (a === 'call') { location.href = 'tel:' + digits(u.tenant.phone); return; }
@@ -35522,6 +35528,10 @@ html,body{background:var(--bg) !important}
     if (a === 'repair') return repairSheet(u, '', '');
     if (a === 'toggle') { var x = (DB.punchlist || []).find(function(p){ return p.id === b.getAttribute('data-r'); }); if (x) { x.done = !x.done; x.completedAt = x.done ? iso() : null; x.updatedAt = iso(); persist(); draw(); } return; }
     if (a === 'space') { var rid = u.id; window.bpRentClose(); setTimeout(function(){ try { openRoomDetail(rid); } catch(er){} }, 60); return; }
+    if (a === 'lease') return leaseSheet(u);
+    if (a === 'leasefile') { var dd = (DB.documents || []).find(function(d){ return d.id === (u.lease || {}).docId; }); if (dd) { try { openDocSrc(dd.fileSrc); } catch(er){} } return; }
+    if (a === 'util') return utilSheet(u, b.getAttribute('data-k'));
+    if (a === 'stmt') return stmtSheet([u]);
     if (a === 'inv') return invSheet(u, b.getAttribute('data-k'), b.getAttribute('data-i'));
   }
 
@@ -35572,18 +35582,22 @@ html,body{background:var(--bg) !important}
       + field('Move-in date', 'moveIn', t.moveIn || '', '', 'date')
       + '<div class="rt-two"><div>' + field('Rent / month', 'rent', u.rent !== '' && u.rent != null ? (+u.rent).toFixed(2) : '', '$0.00', 'text', 'decimal') + '</div><div style="flex:0 0 96px">' + field('Due day', 'dueDay', u.dueDay || 1, '1', 'text', 'numeric') + '</div></div>'
       + field('Security deposit', 'deposit', u.deposit ? (+u.deposit).toFixed(2) : '', '$0.00', 'text', 'decimal')
+      + field('Residents in unit', 'residents', u.residents || '', 'Number of people', 'text', 'numeric')
+      + '<div class="bp20-l" style="margin-top:18px">Emergency contact</div>' + '<input class="bp20-in" data-f="ecName" placeholder="Name" value="' + E(t.ecName || '') + '"/>'
+      + '<div class="rt-two" style="margin-top:8px"><div><input class="bp20-in" data-f="ecRel" placeholder="Relation" value="' + E(t.ecRel || '') + '"/></div><div><input class="bp20-in" data-f="ecPhone" type="tel" inputmode="tel" placeholder="Cell" value="' + E(t.ecPhone || '') + '"/></div></div>'
       + btns('Save', t.name ? 'Tenant moved out' : ''));
     o.addEventListener('click', function(e){
       if (e.target.closest('.bp20-no')) return o.remove();
       if (e.target.closest('.bp20-rm')) {
         if (!confirm(t.name + ' moved out? The unit becomes vacant; the rent history is kept.')) return;
-        u.pastTenants = (u.pastTenants || []).concat([{ tenant: t, rent: u.rent, rentPays: u.rentPays || [], movedOut: today() }]);
-        u.tenant = {}; u.rentPays = []; u.updatedAt = iso(); o.remove(); persist(); draw(); return;
+        u.pastTenants = (u.pastTenants || []).concat([{ tenant: t, rent: u.rent, rentPays: u.rentPays || [], lease: u.lease || null, residents: u.residents || '', movedOut: today() }]);
+        u.tenant = {}; u.rentPays = []; u.lease = {}; u.residents = ''; u.updatedAt = iso(); o.remove(); persist(); draw(); return;
       }
       if (!e.target.closest('.bp20-go')) return;
       var dd = Math.max(1, Math.min(31, parseInt(val(o, 'dueDay'), 10) || 1));
       u.name = tc(val(o, 'unit')) || u.name;
-      u.tenant = { name: tc(val(o, 'name')), phone: val(o, 'phone'), email: val(o, 'email'), moveIn: val(o, 'moveIn') };
+      u.tenant = { name: tc(val(o, 'name')), phone: val(o, 'phone'), email: val(o, 'email'), moveIn: val(o, 'moveIn'), ecName: tc(val(o, 'ecName')), ecRel: val(o, 'ecRel'), ecPhone: val(o, 'ecPhone') };
+      u.residents = parseInt(val(o, 'residents'), 10) || '';
       u.rent = num(val(o, 'rent')); u.dueDay = dd; u.deposit = num(val(o, 'deposit')); u.updatedAt = iso();
       o.remove(); persist(); draw(); try { toast('Tenant saved'); } catch(er){}
     });
@@ -35722,6 +35736,149 @@ html,body{background:var(--bg) !important}
     });
   }
 
+
+  /* ══ v6.9.22 — lease + terms, utilities with account numbers, emergency contact, residents,
+     rent statements drafted from the 25th for the next month (text or email, one tap each) ══ */
+  var UT = { water: { lbl: 'Water', ic: '<path d="M12 3s6 6.2 6 10.5A6 6 0 016 13.5C6 9.2 12 3 12 3z"/>' },
+             electric: { lbl: 'Electric', ic: '<path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/>' },
+             gas: { lbl: 'Gas', ic: '<path d="M12 21a6 6 0 006-6c0-4-3-6-3.5-9.5C12 7 9 9.5 9 12.5c-1.2-.6-2-1.8-2-3.3C5.6 10.6 6 12.6 6 15a6 6 0 006 6z"/>' } };
+  function mask(s){ s = String(s || '').replace(/\s/g, ''); return s.length > 4 ? '•••• ' + s.slice(-4) : s; }
+  function leaseState(u){
+    var L = u.lease || {}; if (!L.end) return null;
+    var d = Math.round((new Date(L.end + 'T12:00:00') - new Date(today() + 'T12:00:00')) / 864e5);
+    if (d < 0) return { txt: 'Lease ended ' + dayTxt(L.end), color: '#FF453A' };
+    if (d <= 60) return { txt: 'Lease ends in ' + d + (d === 1 ? ' day' : ' days'), color: '#FF9F0A' };
+    return { txt: 'Lease to ' + dayTxt(L.end), color: '#30D158' };
+  }
+  function addDays(s, n){ var d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return ymd(d); }
+  function stmtMonth(){ var d = new Date(); return monKey(new Date(d.getFullYear(), d.getMonth() + 1, 1)); }
+  function stmtWindow(){ return new Date().getDate() >= 25; }
+  function stmtText(u, k){
+    var p = job(u.jobId) || {}, t = u.tenant || {}, L = u.lease || {}, rent = +u.rent || 0;
+    var due = dueDate(k, u), past = 0, s = rentState(u); if (s.k === 'late') past = s.owed || 0;
+    var pre = paidIn(u, k), total = Math.max(0, rent - pre) + past;
+    var lines = ['RENT STATEMENT — ' + monTxt(k), (p.landlord || 'STM Pro Build'), '',
+      'Tenant: ' + (t.name || ''), 'Unit: ' + [p.address || p.name, u.name].filter(Boolean).join(', '), '',
+      'Rent for ' + monTxt(k) + ': ' + money(rent)];
+    if (pre) lines.push('Already paid for ' + monTxt(k) + ': -' + money(pre));
+    if (past) lines.push('Past due balance: ' + money(past));
+    lines.push('Total due by ' + dayTxt(due) + ': ' + money(total));
+    if (+L.lateFee) lines.push('A late fee of ' + money(L.lateFee) + ' applies if not paid by ' + dayTxt(addDays(due, +L.grace || 0)) + '.');
+    if (p.payInfo) lines.push('', 'How to pay: ' + p.payInfo);
+    lines.push('', 'Thank you!');
+    return lines.join('\n');
+  }
+  window.bpRentStatement = stmtText;
+  function stmtDue(){ var k = stmtMonth(); return allUnits().filter(function(u){ return u.tenant && u.tenant.name && +u.rent && !(u.stmtSent && u.stmtSent[k]); }); }
+  function sendStmt(u, k, how){
+    var t = u.tenant || {}, txt = stmtText(u, k); window.__bpLastStatement = txt;
+    u.stmtSent = u.stmtSent || {}; u.stmtSent[k] = { date: today(), how: how }; u.updatedAt = iso(); persist();
+    try {
+      if (how === 'text') location.href = 'sms:' + digits(t.phone) + '&body=' + encodeURIComponent(txt);
+      else location.href = 'mailto:' + (t.email || '') + '?subject=' + encodeURIComponent('Rent statement — ' + monTxt(k) + ' — ' + u.name) + '&body=' + encodeURIComponent(txt);
+    } catch(e){}
+  }
+  function stmtSheet(list){
+    var k = stmtMonth(), first = list[0], p = job(first.jobId) || {};
+    var one = list.length === 1;
+    var h = '<h3>' + (one ? 'Rent statement' : monTxt(k) + ' statements') + '</h3><div class="bp20-sub">For ' + monTxt(k) + ' · send from the 25th</div>';
+    if (one) h += '<pre data-f="preview" style="white-space:pre-wrap;font:600 14px/1.45 inherit;font-family:inherit;background:var(--card2,#2a2a2a);border-radius:12px;padding:12px;margin:0 0 4px">' + E(stmtText(first, k)) + '</pre>';
+    list.forEach(function(u){
+      var t = u.tenant || {}, sent = u.stmtSent && u.stmtSent[k];
+      h += '<div class="rt-row" style="padding:10px 2px"><div class="n">' + E(u.name + ' · ' + (t.name || '')) + '<small style="color:' + (sent ? '#30D158' : 'var(--muted,#8e8e93)') + '">' + (sent ? 'Sent ' + dayTxt(sent.date) + ' by ' + sent.how : money(u.rent) + ' due ' + dayTxt(dueDate(k, u))) + '</small></div>'
+        + (t.phone ? '<button type="button" class="rt-add blue" data-st="text" data-u="' + E(u.id) + '" style="min-height:38px;padding:0 11px">' + svg(I.text, 16) + 'Text</button>' : '')
+        + (t.email ? '<button type="button" class="rt-add blue" data-st="email" data-u="' + E(u.id) + '" style="min-height:38px;padding:0 11px">Email</button>' : '')
+        + (!t.phone && !t.email ? '<span style="color:#FF9F0A;font-size:12.5px;font-weight:800">Add cell or email</span>' : '') + '</div>';
+    });
+    h += '<div class="bp20-l">Statement is from</div><input class="bp20-in" data-f="landlord" value="' + E(p.landlord || 'STM Pro Build') + '"/>'
+      + '<div class="bp20-l">How to pay (goes on every statement)</div><textarea class="bp20-in" data-f="payInfo" placeholder="e.g. Zelle to 201-555-0000 or check to STM Pro Build">' + E(p.payInfo || '') + '</textarea>'
+      + '<div class="bp20-row"><button type="button" class="bp20-no">Done</button></div>';
+    var o = sheet(h);
+    function keep(){ var lv = val(o, 'landlord'), pv = val(o, 'payInfo'); var ids = {}; list.forEach(function(u){ ids[u.jobId] = 1; }); Object.keys(ids).forEach(function(j){ var pj = job(j); if (pj && (pj.landlord !== lv || (pj.payInfo || '') !== pv)) { pj.landlord = lv; pj.payInfo = pv; pj.updatedAt = iso(); } }); persist(); }
+    o.addEventListener('input', function(){ keep(); var pr = o.querySelector('[data-f="preview"]'); if (pr) pr.textContent = stmtText(first, k); });
+    o.addEventListener('click', function(e){
+      var sb = e.target.closest('[data-st]');
+      if (sb) { keep(); var u = unit(sb.getAttribute('data-u')); if (u) { sendStmt(u, k, sb.getAttribute('data-st')); o.remove(); draw(); badge(); } return; }
+      if (e.target.closest('.bp20-no')) { keep(); o.remove(); draw(); }
+    });
+    return o;
+  }
+  window.bpRentStatements = function(){ var L = stmtDue(); if (!L.length) L = allUnits().filter(function(u){ return u.tenant && u.tenant.name && +u.rent; }); if (L.length) stmtSheet(L); };
+  function badge(){
+    var b = document.getElementById('nav-rentals'); if (!b) return;
+    var n = stmtWindow() ? stmtDue().length : 0, d = b.querySelector('.rt-dot');
+    if (!n) { if (d) d.remove(); return; }
+    if (!d) { d = document.createElement('span'); d.className = 'rt-dot'; d.style.cssText = 'margin-left:auto;min-width:20px;height:20px;border-radius:10px;background:#FF9F0A;color:#000;font:900 12px/20px inherit;font-family:inherit;text-align:center;padding:0 6px'; b.appendChild(d); }
+    d.textContent = n;
+  }
+  setTimeout(badge, 2500); setInterval(badge, 600000);
+
+  function leaseSheet(u){
+    var L = u.lease || {}, doc = L.docId && (DB.documents || []).find(function(d){ return d.id === L.docId; });
+    var o = sheet('<h3>Lease</h3><div class="bp20-sub">' + E(u.name) + (u.tenant && u.tenant.name ? ' · ' + E(u.tenant.name) : '') + '</div>'
+      + '<div class="rt-two"><div>' + field('Starts', 'start', L.start || (u.tenant && u.tenant.moveIn) || '', '', 'date') + '</div><div>' + field('Ends', 'end', L.end || '', '', 'date') + '</div></div>'
+      + '<div class="rt-two"><div>' + field('Late fee', 'lateFee', L.lateFee ? (+L.lateFee).toFixed(2) : '', '$0.00', 'text', 'decimal') + '</div><div>' + field('Grace days', 'grace', L.grace || '', '5', 'text', 'numeric') + '</div></div>'
+      + '<div class="bp20-l">Terms</div><textarea class="bp20-in" data-f="terms" style="min-height:120px" placeholder="Pets, parking, who pays utilities, snow removal, renewal, notice to move out…">' + E(L.terms || '') + '</textarea>'
+      + '<div class="bp20-l">Signed lease</div>'
+      + (doc ? '<div class="rt-row" style="padding:8px 2px"><div class="n">' + E(doc.fileName || doc.name) + '</div><button type="button" class="rt-add blue" data-l="view" style="min-height:38px">View</button></div>' : '')
+      + '<label class="rt-add blue" style="width:100%;min-height:46px;box-sizing:border-box">' + svg(I.plus, 16) + (doc ? 'Replace lease file' : 'Attach lease (PDF or photo)') + '<input type="file" accept="application/pdf,image/*" data-f="file" style="display:none"/></label>'
+      + '<div class="rt-match" data-f="filemsg"></div>' + btns('Save'));
+    var pending = null;
+    o.querySelector('[data-f="file"]').addEventListener('change', function(){
+      var f = this.files && this.files[0]; if (!f) return;
+      var m = o.querySelector('[data-f="filemsg"]'); m.style.color = 'var(--muted,#8e8e93)'; m.textContent = 'Reading ' + f.name + '…';
+      try { readDocumentFile(f, function(src, fname, type){ pending = { src: src, name: fname || f.name, type: type }; m.style.color = '#30D158'; m.textContent = 'Ready: ' + (fname || f.name); }); }
+      catch(e){ m.style.color = '#FF453A'; m.textContent = 'Could not read that file'; }
+    });
+    o.addEventListener('click', function(e){
+      if (e.target.closest('[data-l="view"]')) { try { openDocSrc(doc.fileSrc); } catch(er){} return; }
+      if (e.target.closest('.bp20-no')) return o.remove();
+      if (!e.target.closest('.bp20-go')) return;
+      var nl = { start: val(o, 'start'), end: val(o, 'end'), lateFee: num(val(o, 'lateFee')), grace: parseInt(val(o, 'grace'), 10) || 0, terms: val(o, 'terms'), docId: L.docId || '' };
+      if (pending) {
+        if (!DB.documents) DB.documents = [];
+        var d = { id: id(), jobId: u.jobId, roomId: u.id, name: 'Lease — ' + u.name + (u.tenant && u.tenant.name ? ' — ' + u.tenant.name : ''), category: 'Lease', fileSrc: pending.src, fileName: pending.name, fileType: pending.type, notes: '', created: iso() };
+        DB.documents.push(d); nl.docId = d.id;
+      }
+      u.lease = nl; u.updatedAt = iso(); o.remove(); persist(); draw(); try { toast('Lease saved'); } catch(er){}
+    });
+  }
+  function utilSheet(u, k){
+    var U = UT[k], x = (u.utilities || {})[k] || {}, by = x.paidBy || 'tenant';
+    var o = sheet('<h3>' + U.lbl + '</h3><div class="bp20-sub">' + E(u.name) + '</div>'
+      + field('Company', 'provider', x.provider, k === 'electric' ? 'e.g. PSE&G' : k === 'gas' ? 'e.g. PSE&G' : 'e.g. Veolia / town water')
+      + field('Account #', 'account', x.account, 'Account number', 'text', 'numeric') + field('Meter #', 'meter', x.meter, 'Optional')
+      + '<div class="bp20-l">Who pays</div><div class="bp20-seg" data-f="paidBy"><button type="button" data-v="tenant">Tenant</button><button type="button" data-v="me">Me</button><button type="button" data-v="split">Split</button></div>'
+      + '<div class="bp20-l">Notes</div><textarea class="bp20-in" data-f="notes" placeholder="Phone, login, due date">' + E(x.notes || '') + '</textarea>'
+      + btns('Save', x.provider || x.account ? 'Clear' : ''));
+    seg(o, 'paidBy', by);
+    o.addEventListener('click', function(e){
+      var sb = e.target.closest('[data-f="paidBy"] button'); if (sb) { by = sb.getAttribute('data-v'); seg(o, 'paidBy', by); return; }
+      if (e.target.closest('.bp20-no')) return o.remove();
+      u.utilities = u.utilities || {};
+      if (e.target.closest('.bp20-rm')) { delete u.utilities[k]; u.updatedAt = iso(); o.remove(); persist(); draw(); return; }
+      if (!e.target.closest('.bp20-go')) return;
+      u.utilities[k] = { provider: val(o, 'provider'), account: val(o, 'account'), meter: val(o, 'meter'), paidBy: by, notes: val(o, 'notes') };
+      u.updatedAt = iso(); o.remove(); persist(); draw();
+    });
+  }
+  function moreHtml(u){
+    var L = u.lease || {}, ls = leaseState(u), doc = L.docId && (DB.documents || []).find(function(d){ return d.id === L.docId; });
+    var h = '<div class="rt-h"><b>Lease</b><button type="button" class="rt-add' + (L.start || L.end || doc ? ' blue' : '') + '" data-a="lease">' + svg(L.start || L.end || doc ? I.open : I.plus, 16) + (L.start || L.end || doc ? 'Edit' : 'Lease') + '</button></div><div class="rt-card">';
+    if (!L.start && !L.end && !doc && !L.terms) h += '<div class="rt-empty" style="padding:14px">No lease on file.</div>';
+    else {
+      h += '<div class="rt-row" data-a="lease"><div class="n">' + (L.start || L.end ? dayTxt(L.start) + ' – ' + dayTxt(L.end) : 'Dates not set') + '<small>' + E([+L.lateFee ? 'Late fee ' + money(L.lateFee) + (L.grace ? ' after ' + L.grace + ' days' : '') : '', L.terms ? L.terms.replace(/\s+/g, ' ').slice(0, 90) : ''].filter(Boolean).join(' · ')) + '</small></div>' + (ls ? '<div class="v" style="color:' + ls.color + '">' + E(ls.txt.replace('Lease ', '').replace(/^ends/, 'Ends').replace(/^to/, 'To').replace(/^ended/, 'Ended')) + '</div>' : '') + '</div>';
+      if (doc) h += '<div class="rt-row" data-a="leasefile"><span style="color:#0A84FF">' + svg('<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>') + '</span><div class="n">Signed lease<small>' + E(doc.fileName || doc.name) + '</small></div><div class="v" style="color:#0A84FF">View</div></div>';
+    }
+    h += '</div><div class="rt-h"><b>Utilities</b></div><div class="rt-card">';
+    Object.keys(UT).forEach(function(k){
+      var x = (u.utilities || {})[k];
+      h += '<div class="rt-row" data-a="util" data-k="' + k + '"><span style="color:var(--muted,#8e8e93)">' + svg(UT[k].ic) + '</span><div class="n">' + UT[k].lbl + '<small>' + (x && (x.provider || x.account) ? E([x.provider, x.account ? 'Acct ' + mask(x.account) : ''].filter(Boolean).join(' · ')) : 'Tap to add company and account #') + '</small></div>'
+        + (x ? '<div class="v" style="color:' + (x.paidBy === 'me' ? '#FF9F0A' : 'var(--muted,#8e8e93)') + '">' + (x.paidBy === 'me' ? 'I pay' : x.paidBy === 'split' ? 'Split' : 'Tenant pays') + '</div>' : '') + '</div>';
+    });
+    return h + '</div>';
+  }
+
   /* ── menu entry: under Money on the iPhone drawer; under Finance in the Command Center sidebar ── */
   function addNav(){
     if (document.getElementById('nav-rentals')) return;
@@ -35742,6 +35899,6 @@ html,body{background:var(--bg) !important}
   }
   addNav(); setTimeout(addNav, 1200);
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.getElementById('bp-rent') && !document.querySelector('.bp20-ov')) window.bpRentClose(); });
-  console.log('[BP] v6.9.21 — Rentals: tenants, rent, repairs, inventory');
+  console.log('[BP] v6.9.22 — Rentals: lease, utilities, emergency contact, residents, rent statements');
 })();
 </script>

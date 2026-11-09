@@ -20,7 +20,7 @@ async def run(b, name, url, **kw):
     pg.on('dialog', lambda d: asyncio.ensure_future(d.accept()))
     await pg.route('**/*', lambda r: r.abort() if any(x in r.request.url for x in BLOCK) else r.continue_())
     await pg.goto('http://localhost:%d/%s' % (PORT, url)); await pg.wait_for_timeout(4000)
-    ok(await pg.evaluate("APP_VERSION") == '6.9.21', name + ': on v6.9.21')
+    ok(await pg.evaluate("APP_VERSION") in ('6.9.21','6.9.22'), name + ': on v6.9.21+')
     await pg.evaluate("DB.jobs = DB.jobs.filter(function(j){ return !j.rental; })")
     ok(await pg.locator('#nav-rentals').count() == 1, name + ': Rentals in the menu')
     await pg.evaluate("bpRentOpen()"); await pg.wait_for_timeout(300)
