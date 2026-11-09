@@ -1651,7 +1651,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.20';
+var APP_VERSION = '6.9.21';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -28333,5 +28333,475 @@ html,body{background:var(--bg) !important}
     for (var a = e.target; a && a !== host; a = a.parentElement) { if (/Contract \(verbal\)/.test(a.textContent) && a.textContent.length < 120) { var jid = window.currentJobId || (typeof bpActiveJob === 'function' && bpActiveJob()); if (jid && job(jid) && job(jid).verbalContract) { e.stopPropagation(); window.bspVerbalContract(jid); } return; } }
   }, true);
   console.log('[BP] v6.9.20 — verbal contract on the job card');
+})();
+</script>
+<script id="v6921">
+/* ══ v6.9.21 — Rentals: tenants, rent, repairs, unit inventory ═══════════════════════════
+   Stan (Nov 9, 2026): "I want to add a tenant/management portal. Tenants name, move in date. Rent. Repairs"
+   + "List of appliances windows buil[t-ins]" → "Yes".
+   His choices: only he uses it (no tenant logins) · repairs become job items · rent is tracked, not collected.
+   Model — nothing new to sync, it rides the collections that already sync:
+   • A property is a job with rental:true.  A unit is a space (room) of that job with unit:true.
+   • The unit carries tenant {name, phone, email, moveIn}, rent, dueDay, deposit, rentPays[], inventory[].
+   • A repair is a punch item (repair:true) in that unit — so it shows on Punch and in the space checklist,
+     red until done, with photos and a sub like any other item.
+   • "Repair from text": paste the tenant's text — the unit is matched by the tenant's cell number or name.
+   Colors keep his meanings: green = paid/done, orange = rent still coming, red = late / open repair.
+   Same on the iPhone field app and the Command Center. ══════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp6921) return; window.__bp6921 = 1;
+  var MAC = !!document.getElementById('modal-new-room') || !document.getElementById('s-home');
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function id(){ try { if (typeof uid === 'function') return uid(); } catch(e){} return 'pb' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+  function iso(){ return new Date().toISOString(); }
+  function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (MAC) saveDB(); else save(); } catch(e){ try { saveDB(); } catch(e2){ try { save(); } catch(e3){} } } }
+  function refreshApp(){ try { if (typeof renderAll === 'function') renderAll(); } catch(e){} }
+  function money(n){ return '$' + (Math.round((+n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function pad(n){ return ('0' + n).slice(-2); }
+  function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function today(){ return ymd(new Date()); }
+  function dayTxt(s){ if (!s) return ''; var p = String(s).slice(0,10).split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) + '/' + p[0] : s; }
+  var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function monKey(d){ return d.getFullYear() + '-' + pad(d.getMonth() + 1); }
+  function monTxt(k){ var p = k.split('-'); return MON[+p[1] - 1] + ' ' + p[0]; }
+  function digits(s){ return String(s || '').replace(/\D/g, '').slice(-10); }
+  function job(i){ return (DB.jobs || []).find(function(j){ return j && j.id === i; }); }
+  function unit(i){ return (DB.rooms || []).find(function(r){ return r && r.id === i; }); }
+  function props(){ return (DB.jobs || []).filter(function(j){ return j && j.rental && !j.archived; }); }
+  function units(jid){ return (DB.rooms || []).filter(function(r){ return r && r.jobId === jid && r.unit; }).sort(function(a, b){ return String(a.name).localeCompare(String(b.name), undefined, { numeric: true }); }); }
+  function allUnits(){ var ids = {}; props().forEach(function(p){ ids[p.id] = 1; }); return (DB.rooms || []).filter(function(r){ return r && r.unit && ids[r.jobId]; }); }
+  function repairs(rid){ return (DB.punchlist || []).filter(function(p){ return p && p.roomId === rid; }); }
+
+  /* ── rent math ── a month is owed once its due day has come; the first month is the move-in month */
+  function dueDate(k, u){ var p = k.split('-'); var last = new Date(+p[0], +p[1], 0).getDate(); return p[0] + '-' + p[1] + '-' + pad(Math.min(+u.dueDay || 1, last)); }
+  function paidIn(u, k){ return (u.rentPays || []).filter(function(x){ return x.month === k; }).reduce(function(s, x){ return s + (+x.amount || 0); }, 0); }
+  function monthsFor(u, ahead){
+    var out = [], now = new Date(), start = u.tenant && u.tenant.moveIn ? new Date(u.tenant.moveIn + 'T12:00:00') : new Date(now.getFullYear(), now.getMonth(), 1);
+    var d = new Date(start.getFullYear(), start.getMonth(), 1), end = new Date(now.getFullYear(), now.getMonth() + (ahead || 0), 1);
+    while (d <= end && out.length < 600) { out.push(monKey(d)); d = new Date(d.getFullYear(), d.getMonth() + 1, 1); }
+    return out;
+  }
+  function rentState(u){
+    var rent = +u.rent || 0;
+    if (!rent || !u.tenant || !u.tenant.name) return { k: 'none', txt: u.tenant && u.tenant.name ? 'No rent set' : 'Vacant', color: 'var(--muted,#8e8e93)' };
+    var t = today(), owed = 0, oldest = null;
+    monthsFor(u, 0).forEach(function(k){ var dd = dueDate(k, u); if (dd <= t) { var short = rent - paidIn(u, k); if (short > 0.004) { owed += short; if (!oldest) oldest = dd; } } });
+    if (owed > 0) { var days = Math.round((new Date(t + 'T12:00:00') - new Date(oldest + 'T12:00:00')) / 864e5); return { k: 'late', txt: (days > 0 ? 'Late ' + days + (days === 1 ? ' day' : ' days') + ' · ' : 'Due today · ') + money(owed), short: (days > 0 ? 'Late ' + days + 'd' : 'Due today'), color: '#FF453A', owed: owed }; }
+    var cur = monKey(new Date()), curDue = dueDate(cur, u);
+    if (curDue > t && paidIn(u, cur) < rent - 0.004) return { k: 'due', txt: 'Due ' + dayTxt(curDue), short: 'Due ' + (+curDue.slice(5, 7)) + '/' + (+curDue.slice(8)), color: '#FF9F0A' };
+    var nx = new Date(); nx = new Date(nx.getFullYear(), nx.getMonth() + 1, 1);
+    return { k: 'paid', txt: 'Paid ' + MON[new Date().getMonth()] + ' · next ' + dayTxt(dueDate(monKey(nx), u)), short: 'Paid', color: '#30D158' };
+  }
+
+  /* ── icons (line only) ── */
+  function svg(p, s){ return '<svg viewBox="0 0 24 24" style="width:' + (s || 22) + 'px;height:' + (s || 22) + 'px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0">' + p + '</svg>'; }
+  var I = {
+    rent: '<path d="M3 11l9-7 9 7"/><path d="M5 9.5V20h14V9.5"/><circle cx="10.5" cy="14.5" r="2"/><path d="M12.4 14.5H16v2"/>',
+    back: '<path d="M15 5l-7 7 7 7"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+    text: '<path d="M21 12a8 8 0 01-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1121 12z"/><path d="M8.5 11h7M8.5 14h4"/>',
+    phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/>',
+    wrench: '<path d="M14.7 6.3a4 4 0 00-5.4 5.1L4 16.7 7.3 20l5.3-5.3a4 4 0 005.1-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
+    person: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.5-5.5 7-5.5s6.2 1.9 7 5.5"/>',
+    cash: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v5M18 9.5v5"/>',
+    fridge: '<rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M6 9.5h12M9 5.5v2M9 12.5v3"/>',
+    window: '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M12 3v18M4 12h16"/>',
+    builtin: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 10h18M12 10v10M9 15h1.5M13.5 15H15M10.5 7h3"/>',
+    open: '<path d="M14 4h6v6M20 4l-8 8"/><path d="M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', box: '<rect x="4" y="4" width="16" height="16" rx="3"/>'
+  };
+  var KINDS = { appliance: { lbl: 'Appliances', one: 'Appliance', ic: I.fridge, sug: ['Refrigerator','Range / Stove','Dishwasher','Microwave','Washer','Dryer','Water heater','Boiler / Furnace','A/C unit','Garbage disposal'] },
+                window:    { lbl: 'Windows',    one: 'Window',    ic: I.window, sug: ['Living room','Kitchen','Bedroom 1','Bedroom 2','Bathroom'] },
+                builtin:   { lbl: 'Built-ins',  one: 'Built-in',  ic: I.builtin, sug: ['Kitchen cabinets','Vanity','Medicine cabinet','Closet shelving','Bookshelves','Countertop'] } };
+
+  /* ── styles ── */
+  var CSS = document.createElement('style'); CSS.id = 'bp-v6921-css';
+  CSS.textContent =
+    '#bp-rent{position:fixed;inset:0;z-index:2147480000;background:var(--bg,#000);color:var(--text,#f0f0f0);display:flex;flex-direction:column;font-family:inherit}'
+  + '#bp-rent .rt-top{display:flex;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px;border-bottom:1px solid var(--border,#2a2a2a);background:var(--card,#1c1c1e)}'
+  + '#bp-rent .rt-top b{flex:1;font-size:19px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  + '.rt-ib{width:42px;height:42px;border-radius:21px;border:none;background:var(--card2,#2c2c2e);color:var(--text,#fff);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}'
+  + '#bp-rent .rt-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 12px calc(28px + env(safe-area-inset-bottom,0px));width:100%;max-width:760px;margin:0 auto;box-sizing:border-box}'
+  + '.rt-sum{display:flex;gap:8px;margin-bottom:12px}.rt-sum div{flex:1;background:var(--card,#1c1c1e);border-radius:14px;padding:10px 12px;min-width:0}'
+  + '.rt-sum b{display:block;font-size:18px;font-weight:900;white-space:nowrap}.rt-sum span{white-space:nowrap;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted,#8e8e93)}'
+  + '.rt-card{background:var(--card,#1c1c1e);border-radius:16px;margin-bottom:12px;overflow:hidden}'
+  + '.rt-ph{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border,#2a2a2a)}'
+  + '.rt-ph .t{flex:1;min-width:0}.rt-ph .t b{display:block;font-size:17px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rt-ph .t small{color:var(--muted,#8e8e93);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}'
+  + '.rt-u{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border,#232323);cursor:pointer;width:100%;background:none;border-left:none;border-right:none;border-top:none;color:inherit;text-align:left;font-family:inherit}'
+  + '.rt-u:last-child{border-bottom:none}.rt-u .n{flex:1;min-width:0}.rt-u .n b{display:block;font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  + '.rt-u .n small{display:block;font-size:13px;color:var(--muted,#8e8e93);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  + '.rt-u .s{text-align:right;font-size:13px;font-weight:800;white-space:nowrap}.rt-u .s i{display:block;font-style:normal;font-weight:700;color:#FF453A;font-size:12.5px}'
+  + '.rt-add{display:flex;align-items:center;justify-content:center;gap:6px;min-height:42px;padding:0 14px;border-radius:21px;border:1.5px solid rgba(48,209,88,.5);background:rgba(48,209,88,.1);color:#30D158;font:800 14px inherit;font-family:inherit;cursor:pointer;white-space:nowrap}'
+  + '.rt-add.blue{border-color:rgba(10,132,255,.5);background:rgba(10,132,255,.1);color:#0A84FF}'
+  + '.rt-h{display:flex;align-items:center;gap:8px;margin:18px 2px 8px}.rt-h b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.rt-h .rt-add{padding:0 11px;min-height:38px}.rt-h b{flex:1;font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8e8e93)}'
+  + '.rt-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border,#232323);cursor:pointer}.rt-row:last-child{border-bottom:none}'
+  + '.rt-row .n{flex:1;min-width:0;font-size:15.5px;font-weight:700}.rt-row .n small{display:block;font-size:12.5px;font-weight:600;color:var(--muted,#8e8e93);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  + '.rt-row .v{font-size:14px;font-weight:800;white-space:nowrap;text-align:right}'
+  + '.rt-row.done .n{text-decoration:line-through;color:var(--muted,#8e8e93)}'
+  + '.rt-ten{padding:14px}.rt-ten .nm{font-size:21px;font-weight:900;margin-bottom:2px}.rt-ten .ln{font-size:14px;color:var(--muted,#8e8e93)}'
+  + '.rt-st{display:inline-block;margin-top:10px;padding:6px 12px;border-radius:14px;font-size:14px;font-weight:900;border:1.5px solid}'
+  + '.rt-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:nowrap}.rt-ten .rt-acts .rt-add{padding:0 12px}'
+  + '.rt-empty{padding:28px 18px;text-align:center;color:var(--muted,#8e8e93);font-size:15px;line-height:1.5}'
+  + '.rt-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.rt-chips button{min-height:34px;padding:0 12px;border-radius:17px;border:1px solid var(--border,#333);background:var(--card2,#2a2a2a);color:var(--text,#fff);font:700 13.5px inherit;font-family:inherit;cursor:pointer}'
+  + '.rt-sh .bp20-in + .bp20-in{margin-top:8px}.rt-two{display:flex;gap:8px}.rt-two > div{flex:1;min-width:0}'
+  + '.rt-match{margin-top:8px;font-size:13.5px;font-weight:700}';
+  document.head.appendChild(CSS);
+
+  /* sheets reuse the v6.9.20 sheet look (bp20-*) so every form in the app feels the same */
+  function sheet(html){
+    var o = document.createElement('div'); o.className = 'bp20-ov'; o.style.zIndex = '2147481500';
+    o.innerHTML = '<div class="bp20-sh rt-sh" role="dialog">' + html + '</div>';
+    o.addEventListener('click', function(e){ if (e.target === o) o.remove(); });
+    document.body.appendChild(o); return o;
+  }
+  function val(o, k){ var el = o.querySelector('[data-f="' + k + '"]'); return el ? String(el.value || '').trim() : ''; }
+  function num(s){ s = String(s || '').replace(/[^0-9.\-]/g, ''); return s === '' ? '' : Math.round(parseFloat(s) * 100) / 100; }
+  function seg(o, f, cur){ [].forEach.call(o.querySelectorAll('[data-f="' + f + '"] button'), function(b){ b.classList.toggle('on', b.getAttribute('data-v') === cur); }); }
+  function field(lbl, f, v, ph, type, mode){ return '<div class="bp20-l">' + lbl + '</div><input class="bp20-in" data-f="' + f + '" type="' + (type || 'text') + '"' + (mode ? ' inputmode="' + mode + '"' : '') + ' placeholder="' + E(ph || '') + '" value="' + E(v == null ? '' : v) + '"/>'; }
+  function btns(save, rm){ return '<div class="bp20-row"><button type="button" class="bp20-no">Cancel</button><button type="button" class="bp20-go">' + (save || 'Save') + '</button></div>' + (rm ? '<button type="button" class="bp20-rm">' + rm + '</button>' : ''); }
+
+  /* ── screen ── */
+  var view = { u: null };
+  function root(){
+    var r = document.getElementById('bp-rent');
+    if (!r) {
+      r = document.createElement('div'); r.id = 'bp-rent';
+      r.innerHTML = '<div class="rt-top"><button type="button" class="rt-ib" data-a="back" aria-label="Back">' + svg(I.back) + '</button><b></b><button type="button" class="rt-ib" data-a="close" aria-label="Close">' + svg(I.x) + '</button></div><div class="rt-body"></div>';
+      document.body.appendChild(r);
+      r.addEventListener('click', onClick);
+    }
+    return r;
+  }
+  window.bpRentOpen = function(uid){ view.u = uid || null; root(); draw(); };
+  window.bpRentClose = function(){ var r = document.getElementById('bp-rent'); if (r) r.remove(); view.u = null; refreshApp(); };
+  function draw(){
+    var r = document.getElementById('bp-rent'); if (!r) return;
+    var body = r.querySelector('.rt-body'), st = body.scrollTop;
+    if (view.u && !unit(view.u)) view.u = null;
+    r.querySelector('[data-a="back"]').style.visibility = view.u ? 'visible' : 'hidden';
+    r.querySelector('.rt-top b').textContent = view.u ? (unit(view.u).name || 'Unit') : 'Rentals';
+    body.innerHTML = view.u ? unitHtml(unit(view.u)) : listHtml();
+    body.scrollTop = st;
+  }
+
+  function listHtml(){
+    var P = props(), U = allUnits(), late = 0, owed = 0, monthRent = 0, openRep = 0;
+    U.forEach(function(u){ var s = rentState(u); if (s.k === 'late') { late++; owed += s.owed; } if (u.tenant && u.tenant.name) monthRent += +u.rent || 0; openRep += repairs(u.id).filter(function(p){ return !p.done; }).length; });
+    var h = '<div class="rt-acts" style="margin:0 0 12px"><button type="button" class="rt-add" data-a="prop">' + svg(I.plus, 18) + 'Property</button>'
+      + (U.length ? '<button type="button" class="rt-add blue" data-a="fromtext">' + svg(I.text, 18) + 'Repair from text</button>' : '') + '</div>';
+    if (!P.length) return h + '<div class="rt-card rt-empty">' + svg(I.rent, 40) + '<br><b style="color:var(--text,#fff);font-size:17px">No rentals yet</b><br>Add a property, then its units. Each unit holds the tenant, rent, repairs and a list of appliances, windows and built-ins.</div>';
+    h += '<div class="rt-sum"><div><span>Rent</span><b>' + money(monthRent) + '</b></div><div><span>Late</span><b style="color:' + (late ? '#FF453A' : '#30D158') + '">' + (late ? money(owed) : 'None') + '</b></div><div><span>Repairs</span><b style="color:' + (openRep ? '#FF453A' : '#30D158') + '">' + openRep + '</b></div></div>';
+    P.forEach(function(p){
+      var us = units(p.id);
+      h += '<div class="rt-card"><div class="rt-ph">' + svg(I.rent) + '<div class="t"><b>' + E(p.name) + '</b><small>' + E([p.address, p.city].filter(Boolean).join(', ') || (us.length + (us.length === 1 ? ' unit' : ' units'))) + '</small></div>'
+        + '<button type="button" class="rt-add" data-a="unit" data-p="' + E(p.id) + '">' + svg(I.plus, 16) + 'Unit</button></div>';
+      if (!us.length) h += '<div class="rt-empty" style="padding:16px">No units yet — tap + Unit.</div>';
+      us.forEach(function(u){
+        var s = rentState(u), t = u.tenant || {}, rep = repairs(u.id).filter(function(x){ return !x.done; }).length;
+        h += '<button type="button" class="rt-u" data-a="openunit" data-u="' + E(u.id) + '"><div class="n"><b>' + E(u.name) + (t.name ? ' · ' + E(t.name) : '') + '</b><small>'
+          + (t.name ? (t.moveIn ? 'In ' + dayTxt(t.moveIn) + ' · ' : '') + (u.rent ? money(u.rent) + '/mo' : 'No rent set') : 'Vacant') + '</small></div>'
+          + '<div class="s" style="color:' + s.color + '">' + E(s.short || s.txt) + (rep ? '<i>' + rep + ' repair' + (rep === 1 ? '' : 's') + '</i>' : '') + '</div></button>';
+      });
+      h += '</div>';
+    });
+    return h;
+  }
+
+  function unitHtml(u){
+    var t = u.tenant || {}, s = rentState(u), p = job(u.jobId) || {};
+    var h = '<div class="rt-card rt-ten">';
+    if (t.name) {
+      h += '<div class="nm">' + E(t.name) + '</div><div class="ln">' + E(p.name || '') + (t.moveIn ? ' · Moved in ' + dayTxt(t.moveIn) : '') + '</div>'
+        + '<div class="ln">' + (u.rent ? money(u.rent) + '/mo · due the ' + ord(+u.dueDay || 1) : 'No rent set') + (u.deposit ? ' · Deposit ' + money(u.deposit) : '') + '</div>'
+        + '<span class="rt-st" style="color:' + s.color + ';border-color:' + s.color + '">' + E(s.txt) + '</span>';
+    } else h += '<div class="nm" style="color:var(--muted,#8e8e93)">Vacant</div><div class="ln">' + E(p.name || '') + '</div>';
+    h += '<div class="rt-acts"><button type="button" class="rt-add blue" data-a="tenant">' + svg(I.person, 16) + (t.name ? 'Edit tenant' : 'Add tenant') + '</button>'
+      + (t.phone ? '<button type="button" class="rt-add blue" data-a="call">' + svg(I.phone, 16) + 'Call</button><button type="button" class="rt-add blue" data-a="sms">' + svg(I.text, 16) + 'Text</button>' : '')
+      + '</div></div>';
+
+    /* rent */
+    if (t.name && +u.rent) {
+      h += '<div class="rt-h"><b>Rent</b><button type="button" class="rt-add" data-a="pay">' + svg(I.plus, 16) + 'Log payment</button></div><div class="rt-card">';
+      var ms = monthsFor(u, 1).reverse().slice(0, 13), tt = today();
+      ms.forEach(function(k, ix){
+        if (ix === 4 && !view.all) { h += '<div class="rt-row" data-a="allmonths" style="justify-content:center;color:#0A84FF;font-weight:800">Earlier months (' + (ms.length - 4) + ')</div>'; }
+        if (ix >= 4 && !view.all) return;
+        var paid = paidIn(u, k), dd = dueDate(k, u), rent = +u.rent, pays = (u.rentPays || []).filter(function(x){ return x.month === k; });
+        var c, txt;
+        if (paid >= rent - 0.004) { c = '#30D158'; txt = 'Paid ' + money(paid); }
+        else if (dd <= tt) { c = '#FF453A'; txt = (paid ? 'Short ' + money(rent - paid) : 'Unpaid ' + money(rent)); }
+        else { c = '#FF9F0A'; txt = 'Due ' + dayTxt(dd); }
+        var sub = pays.map(function(x){ return dayTxt(x.date) + (x.method ? ' ' + x.method : '') + (pays.length > 1 ? ' ' + money(x.amount) : ''); }).join(' · ');
+        h += '<div class="rt-row" data-a="paymonth" data-m="' + k + '"><div class="n">' + monTxt(k) + (sub ? '<small>' + E(sub) + '</small>' : '') + '</div><div class="v" style="color:' + c + '">' + txt + '</div></div>';
+      });
+      h += '</div>';
+    }
+
+    /* repairs */
+    var R = repairs(u.id).sort(function(a, b){ return (a.done - b.done) || String(b.created || '').localeCompare(String(a.created || '')); });
+    var nOpen = R.filter(function(x){ return !x.done; }).length;
+    h += '<div class="rt-h"><b>Repairs' + (R.length ? ' · <span style="color:' + (nOpen ? '#FF453A' : '#30D158') + '">' + nOpen + ' open</span>' : '') + '</b><button type="button" class="rt-add blue" data-a="fromtext">' + svg(I.text, 16) + 'From text</button><button type="button" class="rt-add" data-a="repair">' + svg(I.plus, 16) + 'Repair</button></div><div class="rt-card">';
+    if (!R.length) h += '<div class="rt-empty" style="padding:16px">No repairs. When a tenant texts you a problem, copy the text and tap From text.</div>';
+    R.slice(0, 40).forEach(function(x){
+      h += '<div class="rt-row' + (x.done ? ' done' : '') + '" data-a="toggle" data-r="' + E(x.id) + '"><span style="color:' + (x.done ? '#30D158' : '#FF453A') + '">' + svg(x.done ? I.box + I.check : I.box, 24) + '</span><div class="n">' + E(x.text) + '<small>'
+        + E([dayTxt(String(x.created || '').slice(0, 10)), x.reportedBy ? 'from ' + x.reportedBy : '', x.value ? money(x.value) : ''].filter(Boolean).join(' · ')) + '</small></div></div>';
+    });
+    h += '</div><button type="button" class="rt-add blue" data-a="space" style="width:100%;margin-top:-4px">' + svg(I.open, 16) + 'Open unit — photos, subs, checklist</button>';
+
+    /* inventory */
+    Object.keys(KINDS).forEach(function(k){
+      var K = KINDS[k], L = (u.inventory || []).filter(function(x){ return x.kind === k; });
+      h += '<div class="rt-h"><b>' + K.lbl + (L.length ? ' · ' + L.length : '') + '</b><button type="button" class="rt-add" data-a="inv" data-k="' + k + '">' + svg(I.plus, 16) + K.one + '</button></div><div class="rt-card">';
+      if (!L.length) h += '<div class="rt-empty" style="padding:14px">None listed.</div>';
+      L.forEach(function(x){
+        var sub = [x.brand, x.model, x.serial ? 'S/N ' + x.serial : '', x.installed ? 'Installed ' + dayTxt(x.installed) : ''].filter(Boolean).join(' · ');
+        h += '<div class="rt-row" data-a="inv" data-k="' + k + '" data-i="' + E(x.id) + '"><span style="color:var(--muted,#8e8e93)">' + svg(K.ic) + '</span><div class="n">' + E(x.name) + (sub || x.notes ? '<small>' + E(sub || x.notes) + '</small>' : '') + '</div></div>';
+      });
+      h += '</div>';
+    });
+    return h;
+  }
+  function ord(n){ var s = ['th','st','nd','rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+
+  function onClick(e){
+    var b = e.target.closest('[data-a]'); if (!b) return;
+    var a = b.getAttribute('data-a'), u = view.u && unit(view.u);
+    if (a === 'close') return window.bpRentClose();
+    if (a === 'back') { view.u = null; draw(); return; }
+    if (a === 'prop') return propSheet();
+    if (a === 'unit') return unitSheet(b.getAttribute('data-p'));
+    if (a === 'allmonths') { view.all = true; draw(); return; }
+    if (a === 'openunit') { view.all = false; view.u = b.getAttribute('data-u'); draw(); document.querySelector('#bp-rent .rt-body').scrollTop = 0; return; }
+    if (a === 'fromtext') return textSheet(u ? u.id : null);
+    if (!u) return;
+    if (a === 'tenant') return tenantSheet(u);
+    if (a === 'call') { location.href = 'tel:' + digits(u.tenant.phone); return; }
+    if (a === 'sms') { location.href = 'sms:' + digits(u.tenant.phone); return; }
+    if (a === 'pay') return paySheet(u, null);
+    if (a === 'paymonth') return paySheet(u, b.getAttribute('data-m'));
+    if (a === 'repair') return repairSheet(u, '', '');
+    if (a === 'toggle') { var x = (DB.punchlist || []).find(function(p){ return p.id === b.getAttribute('data-r'); }); if (x) { x.done = !x.done; x.completedAt = x.done ? iso() : null; x.updatedAt = iso(); persist(); draw(); } return; }
+    if (a === 'space') { var rid = u.id; window.bpRentClose(); setTimeout(function(){ try { openRoomDetail(rid); } catch(er){} }, 60); return; }
+    if (a === 'inv') return invSheet(u, b.getAttribute('data-k'), b.getAttribute('data-i'));
+  }
+
+  /* ── property ── */
+  function propSheet(){
+    var others = (DB.jobs || []).filter(function(j){ return j && !j.rental && !j.archived; });
+    var o = sheet('<h3>New property</h3><div class="bp20-sub">A building you rent out. Units go inside it.</div>'
+      + field('Name', 'name', '', 'e.g. 12 Peach St') + field('Address', 'address', '', 'Street address')
+      + '<div class="rt-two"><div>' + field('City', 'city', '', 'City') + '</div><div style="flex:0 0 90px">' + field('State', 'state', 'NJ', 'NJ') + '</div></div>'
+      + (others.length ? '<div class="bp20-l">Or use a job you already have</div><select class="bp20-in" data-f="useJob"><option value="">— new property —</option>' + others.map(function(j){ return '<option value="' + E(j.id) + '">' + E(j.name) + '</option>'; }).join('') + '</select>' : '')
+      + btns('Add property'));
+    o.addEventListener('click', function(e){
+      if (e.target.closest('.bp20-no')) return o.remove();
+      if (!e.target.closest('.bp20-go')) return;
+      var use = val(o, 'useJob'), j;
+      if (use) { j = job(use); if (j) { j.rental = true; j.updatedAt = iso(); } }
+      else {
+        var nm = val(o, 'name') || val(o, 'address'); if (!nm) { try { toast('Name or address required'); } catch(er){} return; }
+        j = { id: id(), name: tc(nm), client: '', clientEmail: '', clientPhone: '', address: tc(val(o, 'address')), city: tc(val(o, 'city')), state: val(o, 'state').toUpperCase(), zip: '', status: 'Active', contract: '', notes: '', created: iso(), rental: true };
+        DB.jobs.push(j);
+      }
+      o.remove(); persist(); draw(); if (j) unitSheet(j.id);
+    });
+  }
+  function tc(s){ try { if (typeof toTitleCase === 'function') return toTitleCase(s); } catch(e){} return s; }
+
+  /* ── unit (new) ── */
+  function unitSheet(pid){
+    var p = job(pid); if (!p) return;
+    var n = units(pid).length + 1;
+    var o = sheet('<h3>New unit</h3><div class="bp20-sub">' + E(p.name) + '</div>' + field('Unit', 'name', 'Unit ' + n, 'e.g. Unit 2, 1st floor, Apt B') + btns('Add unit'));
+    var inp = o.querySelector('[data-f="name"]'); setTimeout(function(){ try { inp.focus(); inp.select(); } catch(e){} }, 50);
+    o.addEventListener('click', function(e){
+      if (e.target.closest('.bp20-no')) return o.remove();
+      if (!e.target.closest('.bp20-go')) return;
+      var nm = val(o, 'name') || 'Unit ' + n;
+      var r = { id: id(), name: tc(nm), type: 'Other', kind: 'room', jobId: pid, notes: '', contractValue: 0, created: iso(), unit: true, tenant: {}, rent: '', dueDay: 1, deposit: '', rentPays: [], inventory: [] };
+      DB.rooms.push(r); o.remove(); persist(); view.u = r.id; draw(); tenantSheet(r);
+    });
+  }
+
+  /* ── tenant ── */
+  function tenantSheet(u){
+    var t = u.tenant || {};
+    var o = sheet('<h3>Tenant</h3><div class="bp20-sub">' + E((job(u.jobId) || {}).name || '') + ' · ' + E(u.name) + '</div>'
+      + field('Unit name', 'unit', u.name, 'Unit') + field('Tenant name', 'name', t.name, 'Full name')
+      + field('Cell', 'phone', t.phone, '(201) 555-0100', 'tel', 'tel') + field('Email', 'email', t.email, 'name@email.com', 'email', 'email')
+      + field('Move-in date', 'moveIn', t.moveIn || '', '', 'date')
+      + '<div class="rt-two"><div>' + field('Rent / month', 'rent', u.rent !== '' && u.rent != null ? (+u.rent).toFixed(2) : '', '$0.00', 'text', 'decimal') + '</div><div style="flex:0 0 96px">' + field('Due day', 'dueDay', u.dueDay || 1, '1', 'text', 'numeric') + '</div></div>'
+      + field('Security deposit', 'deposit', u.deposit ? (+u.deposit).toFixed(2) : '', '$0.00', 'text', 'decimal')
+      + btns('Save', t.name ? 'Tenant moved out' : ''));
+    o.addEventListener('click', function(e){
+      if (e.target.closest('.bp20-no')) return o.remove();
+      if (e.target.closest('.bp20-rm')) {
+        if (!confirm(t.name + ' moved out? The unit becomes vacant; the rent history is kept.')) return;
+        u.pastTenants = (u.pastTenants || []).concat([{ tenant: t, rent: u.rent, rentPays: u.rentPays || [], movedOut: today() }]);
+        u.tenant = {}; u.rentPays = []; u.updatedAt = iso(); o.remove(); persist(); draw(); return;
+      }
+      if (!e.target.closest('.bp20-go')) return;
+      var dd = Math.max(1, Math.min(31, parseInt(val(o, 'dueDay'), 10) || 1));
+      u.name = tc(val(o, 'unit')) || u.name;
+      u.tenant = { name: tc(val(o, 'name')), phone: val(o, 'phone'), email: val(o, 'email'), moveIn: val(o, 'moveIn') };
+      u.rent = num(val(o, 'rent')); u.dueDay = dd; u.deposit = num(val(o, 'deposit')); u.updatedAt = iso();
+      o.remove(); persist(); draw(); try { toast('Tenant saved'); } catch(er){}
+    });
+  }
+
+  /* ── rent payment ── */
+  function paySheet(u, month){
+    var cur = month || (function(){ var ms = monthsFor(u, 1), tt = today(); for (var i = 0; i < ms.length; i++) { if (paidIn(u, ms[i]) < (+u.rent) - 0.004 && (dueDate(ms[i], u) <= tt || i === ms.length - 2)) return ms[i]; } return monKey(new Date()); })();
+    var pays = (u.rentPays || []).filter(function(x){ return x.month === cur; });
+    var left = Math.max(0, (+u.rent || 0) - paidIn(u, cur));
+    var opts = monthsFor(u, 2).reverse().map(function(k){ return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + monTxt(k) + '</option>'; }).join('');
+    var method = 'Zelle';
+    var o = sheet('<h3>Log rent payment</h3><div class="bp20-sub">' + E(u.tenant.name || '') + ' · ' + E(u.name) + '</div>'
+      + '<div class="bp20-l">For month</div><select class="bp20-in" data-f="month">' + opts + '</select>'
+      + field('Amount', 'amount', (left || +u.rent || 0).toFixed(2), '$0.00', 'text', 'decimal') + field('Paid on', 'date', today(), '', 'date')
+      + '<div class="bp20-l">How</div><div class="bp20-seg" data-f="method"><button type="button" data-v="Zelle">Zelle</button><button type="button" data-v="Check">Check</button><button type="button" data-v="Cash">Cash</button><button type="button" data-v="Other">Other</button></div>'
+      + (pays.length ? '<div class="bp20-l">Already logged for this month</div>' + pays.map(function(x){ return '<div class="rt-row" style="padding:8px 2px"><div class="n">' + dayTxt(x.date) + ' · ' + E(x.method || '') + '</div><div class="v" style="color:#30D158">' + money(x.amount) + '</div><button type="button" class="rt-ib" data-del="' + E(x.id) + '" aria-label="Remove" style="width:34px;height:34px;color:#FF453A">' + svg(I.x, 16) + '</button></div>'; }).join('') : '')
+      + btns('Save payment'));
+    seg(o, 'method', method);
+    o.addEventListener('click', function(e){
+      var mb = e.target.closest('[data-f="method"] button'); if (mb) { method = mb.getAttribute('data-v'); seg(o, 'method', method); return; }
+      var del = e.target.closest('[data-del]');
+      if (del) { u.rentPays = (u.rentPays || []).filter(function(x){ return x.id !== del.getAttribute('data-del'); }); u.updatedAt = iso(); persist(); o.remove(); draw(); return; }
+      if (e.target.closest('.bp20-no')) return o.remove();
+      if (!e.target.closest('.bp20-go')) return;
+      var amt = num(val(o, 'amount')); if (!amt) { try { toast('Amount required'); } catch(er){} return; }
+      u.rentPays = (u.rentPays || []).concat([{ id: id(), month: val(o, 'month') || cur, amount: amt, date: val(o, 'date') || today(), method: method }]);
+      u.updatedAt = iso(); o.remove(); persist(); draw(); try { toast('Rent logged · ' + money(amt)); } catch(er){}
+    });
+  }
+
+  /* ── repairs ── */
+  function addRepair(u, title, original, value){
+    if (!DB.punchlist) DB.punchlist = [];
+    var x = { id: id(), text: title, jobId: u.jobId, roomId: u.id, trade: '', value: +value || 0, priority: 'Normal', extraNotes: original || '', isVoice: false, done: false,
+      completionPhoto: null, completionPhotoDate: null, photosBefore: [], photosAfter: [], tasks: [], created: iso(), repair: true, reportedBy: (u.tenant && u.tenant.name) || '' };
+    DB.punchlist.push(x); persist(); return x;
+  }
+  function repairSheet(u, title, original){
+    var o = sheet('<h3>New repair</h3><div class="bp20-sub">' + E(u.name) + (u.tenant && u.tenant.name ? ' · ' + E(u.tenant.name) : '') + '</div>'
+      + field('What needs fixing', 'title', title, 'e.g. Kitchen sink leaking')
+      + field('Cost (optional)', 'value', '', '$0.00', 'text', 'decimal')
+      + '<div class="bp20-l">Notes</div><textarea class="bp20-in" data-f="orig" placeholder="Details">' + E(original || '') + '</textarea>' + btns('Add repair'));
+    var inp = o.querySelector('[data-f="title"]'); setTimeout(function(){ try { inp.focus(); } catch(e){} }, 50);
+    o.addEventListener('click', function(e){
+      if (e.target.closest('.bp20-no')) return o.remove();
+      if (!e.target.closest('.bp20-go')) return;
+      var t = val(o, 'title'); if (!t) { try { toast('Say what needs fixing'); } catch(er){} return; }
+      addRepair(u, t.charAt(0).toUpperCase() + t.slice(1), val(o, 'orig'), num(val(o, 'value'))); o.remove(); draw(); try { toast('Repair added to Punch'); } catch(er){}
+    });
+  }
+  /* match a pasted text to a unit: the tenant's cell number first, then the tenant's name */
+  function matchUnit(txt){
+    var U = allUnits().filter(function(u){ return u.tenant && u.tenant.name; });
+    var nums = (String(txt).match(/\+?1?[\s.\-(]*\d{3}[\s.\-)]*\d{3}[\s.\-]*\d{4}/g) || []).map(digits);
+    for (var i = 0; i < U.length; i++) { var d = digits(U[i].tenant.phone); if (d.length === 10 && nums.indexOf(d) >= 0) return { u: U[i], by: 'cell number' }; }
+    var low = ' ' + String(txt).toLowerCase().replace(/[^a-z0-9 ]/g, ' ') + ' ';
+    for (var k = 0; k < U.length; k++) { if (low.indexOf(' ' + U[k].tenant.name.toLowerCase() + ' ') >= 0) return { u: U[k], by: 'name' }; }
+    for (var m = 0; m < U.length; m++) { var f = U[m].tenant.name.toLowerCase().split(' ')[0]; if (f.length > 2 && low.indexOf(' ' + f + ' ') >= 0) return { u: U[m], by: 'first name' }; }
+    for (var q = 0; q < U.length; q++) { var un = String(U[q].name).toLowerCase(); if (un.length > 1 && low.indexOf(' ' + un.replace(/[^a-z0-9 ]/g, ' ') + ' ') >= 0) return { u: U[q], by: 'unit' }; }
+    return null;
+  }
+  window.bpRentMatchUnit = matchUnit;
+  function titleFrom(txt){
+    var s = String(txt || '').replace(/\s+/g, ' ').trim()
+      .replace(/^(hi|hello|hey|good (morning|afternoon|evening))[^a-z0-9]*(\w+[,!. ]+)?/i, '')
+      .replace(/^(stan|mr\.? robinson|sir)[,!. ]+/i, '')
+      .replace(/\+?1?[\s.\-(]*\d{3}[\s.\-)]*\d{3}[\s.\-]*\d{4}/g, '').trim();
+    var mm = s.match(/^.*?[.!?](?=\s|$)/); var first = (mm ? mm[0] : s).replace(/[.!?]+$/, '').trim();
+    if (first.length > 70) first = first.slice(0, 67).replace(/\s+\S*$/, '') + '…';
+    return first ? first.charAt(0).toUpperCase() + first.slice(1) : '';
+  }
+  window.bpRentTitleFrom = titleFrom;
+  function textSheet(uidHint){
+    var U = allUnits(); if (!U.length) { try { toast('Add a unit first'); } catch(e){} return; }
+    var o = sheet('<h3>Repair from text</h3><div class="bp20-sub">In Messages, press and hold the tenant\'s text → Copy. Then tap Paste.</div>'
+      + '<button type="button" class="rt-add blue" data-a2="paste" style="width:100%;min-height:48px">' + svg(I.text, 18) + 'Paste text</button>'
+      + '<div class="bp20-l">Their message</div><textarea class="bp20-in" data-f="msg" placeholder="Paste or type the tenant\'s message" style="min-height:96px"></textarea>'
+      + '<div class="bp20-l">Unit</div><select class="bp20-in" data-f="unit"><option value="">— choose —</option>' + U.map(function(u){ var p = job(u.jobId) || {}; return '<option value="' + E(u.id) + '">' + E(u.name + (u.tenant && u.tenant.name ? ' · ' + u.tenant.name : '') + ' — ' + (p.name || '')) + '</option>'; }).join('') + '</select>'
+      + '<div class="rt-match" data-f="matchtxt"></div>'
+      + field('Repair', 'title', '', 'What needs fixing') + btns('Add repair'));
+    var msg = o.querySelector('[data-f="msg"]'), sel = o.querySelector('[data-f="unit"]'), ttl = o.querySelector('[data-f="title"]'), mt = o.querySelector('[data-f="matchtxt"]');
+    var userPicked = false, userTitled = false;
+    if (uidHint) { sel.value = uidHint; }
+    function apply(){
+      var txt = msg.value;
+      if (!userTitled) ttl.value = titleFrom(txt);
+      if (!userPicked && txt.trim()) {
+        var m = matchUnit(txt);
+        if (m) { sel.value = m.u.id; mt.style.color = '#30D158'; mt.textContent = 'Matched ' + (m.u.tenant.name || '') + ' · ' + m.u.name + ' by ' + m.by; }
+        else if (!uidHint) { mt.style.color = '#FF9F0A'; mt.textContent = 'No tenant matched — choose the unit.'; }
+        else mt.textContent = '';
+      }
+    }
+    msg.addEventListener('input', apply);
+    sel.addEventListener('change', function(){ userPicked = true; mt.textContent = ''; });
+    ttl.addEventListener('input', function(){ userTitled = true; });
+    o.addEventListener('click', function(e){
+      if (e.target.closest('[data-a2="paste"]')) {
+        try { navigator.clipboard.readText().then(function(t){ msg.value = t || ''; apply(); }, function(){ msg.focus(); try { toast('Press and hold in the box → Paste'); } catch(er){} }); }
+        catch(er){ msg.focus(); }
+        return;
+      }
+      if (e.target.closest('.bp20-no')) return o.remove();
+      if (!e.target.closest('.bp20-go')) return;
+      var u = unit(sel.value); if (!u) { try { toast('Choose the unit'); } catch(er){} return; }
+      var t = ttl.value.trim() || titleFrom(msg.value); if (!t) { try { toast('Say what needs fixing'); } catch(er){} return; }
+      addRepair(u, t, msg.value.trim() ? 'Tenant text (' + dayTxt(today()) + '): ' + msg.value.trim() : '', 0);
+      o.remove(); view.u = u.id; if (document.getElementById('bp-rent')) draw(); try { toast('Repair added · ' + u.name); } catch(er){}
+    });
+    return o;
+  }
+  window.bpRentFromText = textSheet;
+
+  /* ── inventory ── */
+  function invSheet(u, k, iid){
+    var K = KINDS[k] || KINDS.appliance, x = iid ? (u.inventory || []).find(function(y){ return y.id === iid; }) : null;
+    var d = x || {};
+    var o = sheet('<h3>' + (x ? 'Edit ' : 'Add ') + K.one.toLowerCase() + '</h3><div class="bp20-sub">' + E(u.name) + '</div>'
+      + field(k === 'window' ? 'Location' : 'Item', 'name', d.name, k === 'window' ? 'e.g. Bedroom 1 — left' : 'e.g. ' + K.sug[0])
+      + (x ? '' : '<div class="rt-chips">' + K.sug.map(function(s){ return '<button type="button" data-sug="' + E(s) + '">' + E(s) + '</button>'; }).join('') + '</div>')
+      + '<div class="rt-two"><div>' + field('Brand', 'brand', d.brand, k === 'window' ? 'e.g. Andersen' : 'e.g. GE') + '</div><div>' + field(k === 'window' ? 'Size' : 'Model', 'model', d.model, k === 'window' ? 'e.g. 30 x 54' : 'Model #') + '</div></div>'
+      + (k === 'appliance' ? field('Serial #', 'serial', d.serial, 'Serial number') : '')
+      + field('Installed', 'installed', d.installed || '', '', 'date')
+      + '<div class="bp20-l">Notes</div><textarea class="bp20-in" data-f="notes" placeholder="Warranty, filter size, condition">' + E(d.notes || '') + '</textarea>'
+      + btns('Save', x ? 'Remove' : ''));
+    o.addEventListener('click', function(e){
+      var sg = e.target.closest('[data-sug]'); if (sg) { o.querySelector('[data-f="name"]').value = sg.getAttribute('data-sug'); return; }
+      if (e.target.closest('.bp20-no')) return o.remove();
+      if (e.target.closest('.bp20-rm')) { u.inventory = (u.inventory || []).filter(function(y){ return y.id !== iid; }); u.updatedAt = iso(); o.remove(); persist(); draw(); return; }
+      if (!e.target.closest('.bp20-go')) return;
+      var nm = val(o, 'name'); if (!nm) { try { toast('Name required'); } catch(er){} return; }
+      var rec = { id: x ? x.id : id(), kind: k, name: nm, brand: val(o, 'brand'), model: val(o, 'model'), serial: val(o, 'serial'), installed: val(o, 'installed'), notes: val(o, 'notes') };
+      if (x) Object.assign(x, rec); else u.inventory = (u.inventory || []).concat([rec]);
+      u.updatedAt = iso(); o.remove(); persist(); draw();
+    });
+  }
+
+  /* ── menu entry: under Money on the iPhone drawer; under Finance in the Command Center sidebar ── */
+  function addNav(){
+    if (document.getElementById('nav-rentals')) return;
+    var fin = document.getElementById('nav-s-finance');
+    if (fin) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'nav-btn'; b.id = 'nav-rentals';
+      b.innerHTML = svg(I.rent) + '<span>Rentals</span>';
+      b.onclick = function(){ try { closeNavDrawer(); } catch(e){} window.bpRentOpen(); };
+      fin.parentNode.insertBefore(b, fin.nextSibling); return;
+    }
+    var mf = document.querySelector('.sidebar .ni[onclick*="finance"], .ni[onclick*="showView(\'finance\')"]');
+    if (mf) {
+      var c = document.createElement('button'); c.className = 'ni c-gold'; c.id = 'nav-rentals';
+      c.innerHTML = '<svg viewBox="0 0 24 24">' + I.rent + '</svg>Rentals';
+      c.onclick = function(){ window.bpRentOpen(); };
+      mf.parentNode.insertBefore(c, mf.nextSibling);
+    }
+  }
+  addNav(); setTimeout(addNav, 1200);
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.getElementById('bp-rent') && !document.querySelector('.bp20-ov')) window.bpRentClose(); });
+  console.log('[BP] v6.9.21 — Rentals: tenants, rent, repairs, inventory');
 })();
 </script>
