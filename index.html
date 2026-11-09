@@ -1632,7 +1632,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.22';
+var APP_VERSION = '6.9.23';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -35295,7 +35295,7 @@ html,body{background:var(--bg) !important}
   function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function id(){ try { if (typeof uid === 'function') return uid(); } catch(e){} return 'pb' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
   function iso(){ return new Date().toISOString(); }
-  function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (MAC) saveDB(); else save(); } catch(e){ try { saveDB(); } catch(e2){ try { save(); } catch(e3){} } } }
+  function persist(){ try { if (window.bpRentPushNative) window.bpRentPushNative(); } catch(e){} try { if (typeof bpSave === 'function') bpSave(); else if (MAC) saveDB(); else save(); } catch(e){ try { saveDB(); } catch(e2){ try { save(); } catch(e3){} } } }
   function refreshApp(){ try { if (typeof renderAll === 'function') renderAll(); } catch(e){} }
   function money(n){ return '$' + (Math.round((+n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function pad(n){ return ('0' + n).slice(-2); }
@@ -35879,6 +35879,40 @@ html,body{background:var(--bg) !important}
     return h + '</div>';
   }
 
+
+  /* v6.9.23 — hand statements to the native app for the Shortcuts action "Get Rent Statements".
+     Next month and the month after, so the 25th is covered even if the app wasn't opened. */
+  var pushT = 0;
+  function pushNative(){
+    clearTimeout(pushT);
+    pushT = setTimeout(function(){
+      try {
+        if (!(window.BPShell && BPShell.caps && BPShell.caps.rentShortcuts && window.webkit && webkit.messageHandlers && webkit.messageHandlers.bp)) return;
+        var d = new Date(), ks = [monKey(new Date(d.getFullYear(), d.getMonth() + 1, 1)), monKey(new Date(d.getFullYear(), d.getMonth() + 2, 1))], items = [];
+        allUnits().forEach(function(u){
+          var t = u.tenant || {}; if (!t.name || !+u.rent) return;
+          var p = job(u.jobId) || {};
+          ks.forEach(function(k){ items.push({ unitId: u.id, month: k, tenant: t.name, unit: [p.name, u.name].filter(Boolean).join(' · '), phone: digits(t.phone), email: t.email || '',
+            subject: 'Rent statement — ' + monTxt(k) + ' — ' + u.name, body: stmtText(u, k) }); });
+        });
+        webkit.messageHandlers.bp.postMessage({ kind: 'rentStatements', items: items });
+        window.__bpRentPushed = items.length;
+      } catch(e){}
+    }, 400);
+  }
+  window.bpRentPushNative = pushNative;
+  /* what Shortcuts sent → the same "Sent" marks in the app */
+  window.bpRentNativeSent = function(map){
+    var changed = false;
+    Object.keys(map || {}).forEach(function(key){
+      var p = key.split('|'), u = unit(p[0]); if (!u || !p[1]) return;
+      u.stmtSent = u.stmtSent || {};
+      if (!u.stmtSent[p[1]]) { u.stmtSent[p[1]] = { date: map[key], how: 'Shortcuts' }; u.updatedAt = iso(); changed = true; }
+    });
+    if (changed) { persist(); if (document.getElementById('bp-rent')) draw(); badge(); }
+  };
+  setTimeout(pushNative, 3000);
+
   /* ── menu entry: under Money on the iPhone drawer; under Finance in the Command Center sidebar ── */
   function addNav(){
     if (document.getElementById('nav-rentals')) return;
@@ -35899,6 +35933,6 @@ html,body{background:var(--bg) !important}
   }
   addNav(); setTimeout(addNav, 1200);
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.getElementById('bp-rent') && !document.querySelector('.bp20-ov')) window.bpRentClose(); });
-  console.log('[BP] v6.9.22 — Rentals: lease, utilities, emergency contact, residents, rent statements');
+  console.log('[BP] v6.9.23 — Rentals: statements available to the Shortcuts app');
 })();
 </script>

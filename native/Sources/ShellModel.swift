@@ -141,6 +141,10 @@ final class ShellModel: NSObject, ObservableObject {
             #endif
         case "measure", "roomScan", "roomShare3D", "roomView3D":
             siteTool(kind, body)
+        case "rentStatements":
+            // v6.9.23: statements for the Shortcuts app ("Get Rent Statements"); reply with what Shortcuts already sent
+            RentStatementStore.save(body["items"] as? [[String: Any]] ?? [])
+            webView.evaluateJavaScript("window.bpRentNativeSent && window.bpRentNativeSent(\(RentStatementStore.sentJSON()))")
         case "backupBegin", "backupChunk", "backupEnd":
             DailyBackup.shared.handle(kind, body, reply: { [weak self] js in self?.webView.evaluateJavaScript(js) })
         default:

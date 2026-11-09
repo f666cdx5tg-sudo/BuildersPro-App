@@ -25,7 +25,7 @@ async def run(b, name, url, **kw):
     pg.on('dialog', lambda d: asyncio.ensure_future(d.accept()))
     await pg.route('**/*', lambda r: r.abort() if any(x in r.request.url for x in BLOCK) else r.continue_())
     await pg.goto('http://localhost:%d/%s' % (PORT, url)); await pg.wait_for_timeout(4000)
-    ok(await pg.evaluate("APP_VERSION") == '6.9.22', name + ': on v6.9.22')
+    ok(await pg.evaluate("APP_VERSION") in ('6.9.22','6.9.23'), name + ': on v6.9.22+')
     await pg.evaluate(SEED); await pg.evaluate("bpRentOpen('ru1')"); await pg.wait_for_timeout(300)
     # tenant: residents + emergency
     await pg.click('#bp-rent [data-a="tenant"]'); await pg.wait_for_timeout(200)
