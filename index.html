@@ -1626,7 +1626,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.17';
+var APP_VERSION = '6.9.18';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -34266,5 +34266,263 @@ html,body{background:var(--bg) !important}
     });
   }
   console.log('[BP] v6.9.16 — adding checklist items goes straight on to the next one');
+})();
+</script>
+<script id="v6918">
+/* ══ v6.9.18 — Room scan: scan from the space, it lands in the space, and you can open it again ══
+   Stan (Nov 9, 2026): "Add room scan function is not working properly" — "Won't save to the space.
+   Once scan is taken it's not able to be open and review. I can't scale, rotate."
+   Found:
+   • The iPad (Command Center) had no room scan at all: a scan finished on the iPad came back to a page
+     with nothing listening for it, so it was dropped — never saved anywhere.
+   • A space had no Scan button; a scan only landed in the space if you started it from the menu while
+     that space was open. Afterwards it was just one more picture in the Photos stack.
+   • Opening it showed a flat picture: no zoom, no rotate, no way back to the 3D model.
+   Now, in both apps:
+   • Every space has a ROOM SCAN section: + Scan (on a LiDAR iPhone / iPad) saves straight into that
+     space; each scan shows its floor plan, area, ceiling, walls, doors, windows.
+   • Tap a scan → full-screen floor plan: pinch or scroll to zoom, drag to move, two-finger twist or
+     the Rotate button to turn it, Fit to reset. View in 3D opens the 3D model (spin it, scale it,
+     place it in the room with AR) — needs the app rebuilt once in Xcode; until then it offers Share.
+   • A scan opened from Photos opens the same viewer. ════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if (window.__bp6918) return; window.__bp6918 = 1;
+  var MAC = !!document.getElementById('modal-new-room');
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function caps(){ try { return (window.BPShell && window.BPShell.caps) || {}; } catch(e){ return {}; } }
+  function post(m){ try { window.webkit.messageHandlers.bp.postMessage(m); return true; } catch(e){ return false; } }
+  function say(t){ try { toast(t); } catch(e){} }
+  function persist(){ try { if (typeof bpSave === 'function') bpSave(); else if (MAC) saveDB(); else save(); } catch(e){ try { saveDB(); } catch(e2){} } }
+  function nowIso(){ return new Date().toISOString(); }
+  function room(id){ return (DB.rooms || []).find(function(r){ return r && r.id === id; }); }
+  function scansOf(rid){ return (DB.photos || []).filter(function(p){ return p && p.roomId === rid && p.scan && !p.deleted; }).sort(function(a, b){ return String(b.date || '').localeCompare(String(a.date || '')); }); }
+  function day(d){ try { var x = new Date(d); return (x.getMonth() + 1) + '/' + x.getDate() + '/' + x.getFullYear(); } catch(e){ return ''; } }
+  function facts(s){
+    var f = [];
+    if (s.areaSqFt) f.push(Number(s.areaSqFt).toFixed(1) + ' sq ft');
+    if (s.ceiling) f.push('ceiling ' + s.ceiling);
+    function n(k, w){ return k + ' ' + w + (k === 1 ? '' : 's'); }
+    f.push(n(s.walls && s.walls.length || 0, 'wall') + ' · ' + n(s.doors || 0, 'door') + ' · ' + n(s.windows || 0, 'window'));
+    return f;
+  }
+  var SCAN_IC = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3"/><path d="M8 9.5l4-2.5 4 2.5v5L12 17l-4-2.5z"/></svg>';
+
+  /* ── 1. Starting a scan from a space ties it to that space ── */
+  var pending = null;
+  window.bpScanFromSpace = function(rid){
+    var r = room(rid); if (!r) return;
+    if (!caps().roomScan) { say('Room scan needs an iPhone Pro or iPad Pro (LiDAR) in the BuildersPro app'); return; }
+    pending = { roomId: rid, jobId: r.jobId, at: Date.now() };
+    post({ kind: 'roomScan' });
+  };
+  function saveScan(r, jobId, roomId, cap){
+    var t = nowIso(), id = (typeof uid === 'function') ? uid() : 'pb' + Date.now();
+    var ph = { id: id, src: r.image, jobId: jobId, roomId: roomId || '', date: t, created: t, updatedAt: t,
+      size: Math.round(r.image.length * 0.75 / 1024) + 'KB', caption: cap, tags: ['Room scan'],
+      scan: { areaSqFt: r.areaSqFt || 0, ceiling: r.ceiling || '', perimeter: r.perimeter || '', perimeterFt: r.perimeterFt || 0,
+              walls: r.walls || [], doors: r.doors || 0, windows: r.windows || 0, usdz: r.usdz || '' } };
+    DB.photos = DB.photos || []; DB.photos.push(ph); persist();
+    return ph;
+  }
+  function capOf(r){
+    var f = []; if (r.areaSqFt) f.push(Number(r.areaSqFt).toFixed(1) + ' sq ft'); if (r.ceiling) f.push('ceiling ' + r.ceiling);
+    if (r.perimeter) f.push('walls total ' + r.perimeter);
+    f.push((r.wallCount || 0) + ' walls, ' + (r.doors || 0) + ' doors, ' + (r.windows || 0) + ' windows');
+    return 'Room scan: ' + f.join(' · ');
+  }
+  var prevDone = window.bpNativeDone;
+  window.bpNativeDone = function(r){
+    r = r || {};
+    var p = pending && Date.now() - pending.at < 30 * 60 * 1000 ? pending : null;
+    if (r.tool === 'room') pending = null;
+    /* a room scan started from a space: straight into that space, no questions */
+    if (r.tool === 'room' && r.ok && r.image && p && room(p.roomId)) {
+      saveScan(r, p.jobId, p.roomId, capOf(r));
+      say('Room scan saved to ' + (room(p.roomId).name || 'the space'));
+      try { if (typeof renderPhotos === 'function') renderPhotos(); } catch(e){}
+      try { openRoomDetail(p.roomId); } catch(e){}
+      return;
+    }
+    if (typeof prevDone === 'function') return prevDone.apply(this, arguments);
+    /* Command Center had nothing here: never drop a scan — save it to the job on site */
+    if (r.tool === 'room' && r.ok && r.image) {
+      var j = (typeof bpActiveJob === 'function' && bpActiveJob()) || ((DB.jobs || [])[0] || {}).id || '';
+      if (!j) { say('Add a job first — the scan could not be saved'); return; }
+      saveScan(r, j, '', capOf(r)); say('Room scan saved to the job (no space picked) — open it from Photos');
+      return;
+    }
+    if (r.err) say(r.err);
+  };
+
+  /* ── 2. The space's ROOM SCAN section ── */
+  var CSS = document.createElement('style'); CSS.id = 'bp-v6918-css';
+  CSS.textContent =
+      '#bp-scan-sec .bp-sc-row{display:flex;align-items:center;gap:12px;padding:10px;border-radius:14px;border:1px solid var(--border);background:var(--card);cursor:pointer;margin-bottom:8px;min-width:0}'
+    + '#bp-scan-sec .bp-sc-row img{width:64px;height:64px;border-radius:10px;object-fit:contain;background:#fff;flex-shrink:0}'
+    + '#bp-scan-sec .bp-sc-t{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '#bp-scan-sec .bp-sc-s{font-size:13px;color:var(--muted);margin-top:2px;line-height:1.35}'
+    + '#bp-scan-sec .bp-sc-empty{font-size:13px;color:var(--muted);padding:2px 0 8px}'
+    + '.bp-sc-add{display:inline-flex;align-items:center;gap:6px;background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.3);border-radius:9px;color:#0A84FF;font-size:12px;font-weight:700;padding:5px 12px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0}'
+    + '#bp-scanv{position:fixed;inset:0;z-index:2147482000;background:#0b0f17;display:flex;flex-direction:column;color:#fff;font-family:inherit}'
+    + '#bp-scanv .bp-sv-top{display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;background:rgba(20,20,22,.96);border-bottom:1px solid rgba(255,255,255,.08)}'
+    + '#bp-scanv .bp-sv-title{flex:1;min-width:0;font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '#bp-scanv button{min-height:44px;min-width:44px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#fff;font:700 14px/1 inherit;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;cursor:pointer}'
+    + '#bp-scanv button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}'
+    + '#bp-scanv .bp-sv-stage{flex:1;position:relative;overflow:hidden;touch-action:none;background:#fff;cursor:grab}'
+    + '#bp-scanv .bp-sv-stage img{position:absolute;left:50%;top:50%;max-width:none;transform-origin:50% 50%;user-select:none;-webkit-user-drag:none;pointer-events:none}'
+    + '#bp-scanv .bp-sv-foot{padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 12px);background:rgba(20,20,22,.96);border-top:1px solid rgba(255,255,255,.08)}'
+    + '#bp-scanv .bp-sv-facts{font-size:14px;color:#c7c7cc;line-height:1.45;margin-bottom:10px}'
+    + '#bp-scanv .bp-sv-facts b{color:#fff}'
+    + '#bp-scanv .bp-sv-3d{width:100%;background:#0A84FF;border-color:#0A84FF;font-size:16px;min-height:50px}'
+    + '#bp-scanv .bp-sv-hint{font-size:12px;color:#8e8e93;text-align:center;margin-top:8px}';
+  document.head.appendChild(CSS);
+
+  function sectionHtml(rid){
+    var list = scansOf(rid);
+    if (!list.length) return '<div class="bp-sc-empty">No room scan yet' + (caps().roomScan ? ' — tap Scan and walk the room.' : ' — scan from the BuildersPro app on an iPhone Pro or iPad Pro.') + '</div>';
+    return list.map(function(p){
+      var s = p.scan || {};
+      return '<div class="bp-sc-row" role="button" onclick="bpScanView(\'' + E(p.id) + '\')">'
+        + '<img src="' + E(p.src) + '" alt="" loading="lazy"/>'
+        + '<div style="min-width:0;flex:1"><div class="bp-sc-t">Room scan · ' + E(day(p.date)) + '</div>'
+        + '<div class="bp-sc-s">' + E(facts(s).join(' · ')) + '</div></div>'
+        + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--muted)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></div>';
+    }).join('');
+  }
+  function decorate(){
+    var host = MAC ? document.getElementById('modal-room-detail') : document.getElementById('s-room-detail');
+    if (!host) return;
+    var rid = host.getAttribute('data-room-id'); if (!rid || !room(rid)) return;
+    var sig = rid + ':' + scansOf(rid).map(function(p){ return p.id; }).join(',') + ':' + !!caps().roomScan;
+    var sec = host.querySelector('#bp-scan-sec');
+    if (sec && sec.getAttribute('data-sig') === sig) return;
+    if (!sec) {
+      var anchor = [].slice.call(host.querySelectorAll(MAC ? '.sec-hdr' : '.section-header')).find(function(h){ return /^\s*Checklist\b/i.test(h.textContent); });
+      if (!anchor) return;
+      sec = document.createElement('div'); sec.id = 'bp-scan-sec';
+      anchor.parentNode.insertBefore(sec, anchor);
+    }
+    var list = scansOf(rid);
+    if (!list.length && !caps().roomScan && !MAC) { sec.innerHTML = ''; sec.setAttribute('data-sig', sig); return; }   /* nothing to show, can't scan here */
+    var hdrCls = MAC ? 'sec-hdr' : 'section-header';
+    sec.innerHTML = '<div class="' + hdrCls + '" style="display:flex;align-items:center;justify-content:space-between">'
+      + '<span>Room scan' + (list.length ? ' (' + list.length + ')' : '') + '</span>'
+      + (caps().roomScan ? '<button type="button" class="bp-sc-add" onclick="bpScanFromSpace(\'' + rid + '\')">' + SCAN_IC + 'Scan</button>' : '') + '</div>'
+      + '<div style="' + (MAC ? 'margin:0 0 16px' : 'margin:0 16px 14px') + '">' + sectionHtml(rid) + '</div>';
+    sec.setAttribute('data-sig', sig);
+  }
+  if (MAC && typeof window.openRoomDetail === 'function' && !window.openRoomDetail.__v6918) {
+    var _ord = window.openRoomDetail;
+    window.openRoomDetail = function(roomId){
+      var res = _ord.apply(this, arguments);
+      var m = document.getElementById('modal-room-detail'); if (m && !m.getAttribute('data-room-id')) m.setAttribute('data-room-id', roomId);
+      try { decorate(); } catch(e){}
+      return res;
+    };
+    for (var k in _ord) if (Object.prototype.hasOwnProperty.call(_ord, k)) window.openRoomDetail[k] = _ord[k];
+    window.openRoomDetail.__v6918 = 1;
+    try { openRoomDetail = window.openRoomDetail; } catch(e){}
+  } else if (!MAC && typeof window.openRoomDetail === 'function' && !window.openRoomDetail.__v6918) {
+    var _ordF = window.openRoomDetail;
+    window.openRoomDetail = function(){ var res = _ordF.apply(this, arguments); try { decorate(); } catch(e){} return res; };
+    for (var kf in _ordF) if (Object.prototype.hasOwnProperty.call(_ordF, kf)) window.openRoomDetail[kf] = _ordF[kf];
+    window.openRoomDetail.__v6918 = 1;
+    try { openRoomDetail = window.openRoomDetail; } catch(e){}
+  }
+  var q = 0;
+  new MutationObserver(function(){ if (!q) q = requestAnimationFrame(function(){ q = 0; try { decorate(); } catch(e){} }); })
+    .observe(document.documentElement, { childList: true, subtree: true });
+
+  /* ── 3. The scan viewer: zoom, move, rotate; 3D model ── */
+  var IC = {
+    x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    rot: '<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>',
+    fit: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+    cube: '<svg viewBox="0 0 24 24"><path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M3.5 7.3L12 12l8.5-4.7M12 12v9.5"/></svg>'
+  };
+  window.bpScanView = function(photoId){
+    var p = (DB.photos || []).find(function(x){ return x && x.id === photoId; }); if (!p) return;
+    var s = p.scan || {}, rm = room(p.roomId);
+    var old = document.getElementById('bp-scanv'); if (old) old.remove();
+    var v = document.createElement('div'); v.id = 'bp-scanv'; v.setAttribute('role', 'dialog');
+    var walls = (s.walls || []).length ? '<div><b>Walls:</b> ' + E((s.walls || []).join(' · ')) + '</div>' : '';
+    var can3D = !!s.usdz && (caps().roomView3D || caps().roomScan || window.BPShell);
+    v.innerHTML = '<div class="bp-sv-top"><button type="button" data-a="close" aria-label="Close">' + IC.x + '</button>'
+      + '<div class="bp-sv-title">' + E(rm ? rm.name : 'Room scan') + ' · ' + E(day(p.date)) + '</div>'
+      + '<button type="button" data-a="rot" aria-label="Rotate">' + IC.rot + '</button>'
+      + '<button type="button" data-a="fit" aria-label="Fit">' + IC.fit + '</button></div>'
+      + '<div class="bp-sv-stage"><img alt="Floor plan" src="' + E(p.src) + '"/></div>'
+      + '<div class="bp-sv-foot"><div class="bp-sv-facts"><div><b>' + E(facts(s).join(' · ')) + '</b></div>'
+      + (s.perimeter ? '<div>Walls total ' + E(s.perimeter) + '</div>' : '') + walls + '</div>'
+      + (can3D ? '<button type="button" class="bp-sv-3d" data-a="3d">' + IC.cube + (caps().roomView3D ? 'View in 3D' : 'Share 3D model') + '</button>' : '')
+      + '<div class="bp-sv-hint">Pinch or scroll to zoom · drag to move · twist or tap Rotate to turn</div></div>';
+    document.body.appendChild(v);
+    var stage = v.querySelector('.bp-sv-stage'), img = v.querySelector('img');
+    var T = { s: 1, r: 0, x: 0, y: 0 }, base = 1;
+    function paint(){ img.style.transform = 'translate(-50%,-50%) translate(' + T.x + 'px,' + T.y + 'px) rotate(' + T.r + 'deg) scale(' + (base * T.s) + ')'; }
+    function fit(){
+      var w = img.naturalWidth || 1000, h = img.naturalHeight || 1000, sw = stage.clientWidth, sh = stage.clientHeight;
+      var rot = Math.abs(Math.round(T.r / 90)) % 2 === 1;
+      base = Math.min(sw / (rot ? h : w), sh / (rot ? w : h)) * 0.94; T.s = 1; T.x = 0; T.y = 0; paint();
+    }
+    if (img.complete) fit(); else img.onload = fit;
+    window.addEventListener('resize', fit);
+    var pts = new Map(), g = null;
+    function snap(){
+      var a = Array.from(pts.values());
+      if (a.length === 1) g = { mode: 1, px: a[0].x, py: a[0].y, x: T.x, y: T.y };
+      else if (a.length >= 2) {
+        var dx = a[1].x - a[0].x, dy = a[1].y - a[0].y;
+        g = { mode: 2, d: Math.hypot(dx, dy) || 1, ang: Math.atan2(dy, dx), s: T.s, r: T.r, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, x: T.x, y: T.y };
+      } else g = null;
+    }
+    stage.addEventListener('pointerdown', function(e){ stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); snap(); });
+    stage.addEventListener('pointermove', function(e){
+      if (!pts.has(e.pointerId) || !g) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      var a = Array.from(pts.values());
+      if (g.mode === 1 && a.length === 1) { T.x = g.x + a[0].x - g.px; T.y = g.y + a[0].y - g.py; }
+      else if (g.mode === 2 && a.length >= 2) {
+        var dx = a[1].x - a[0].x, dy = a[1].y - a[0].y;
+        T.s = Math.max(0.3, Math.min(12, g.s * (Math.hypot(dx, dy) / g.d)));
+        T.r = g.r + (Math.atan2(dy, dx) - g.ang) * 180 / Math.PI;
+        T.x = g.x + (a[0].x + a[1].x) / 2 - g.mx; T.y = g.y + (a[0].y + a[1].y) / 2 - g.my;
+      }
+      paint();
+    });
+    function up(e){ pts.delete(e.pointerId); snap(); }
+    stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+    stage.addEventListener('wheel', function(e){ e.preventDefault(); T.s = Math.max(0.3, Math.min(12, T.s * (e.deltaY < 0 ? 1.12 : 1 / 1.12))); paint(); }, { passive: false });
+    stage.addEventListener('dblclick', fit);
+    /* Safari's own pinch / rotate gestures (iPad trackpad, older iOS) */
+    var gs = null;
+    stage.addEventListener('gesturestart', function(e){ e.preventDefault(); gs = { s: T.s, r: T.r }; });
+    stage.addEventListener('gesturechange', function(e){ e.preventDefault(); if (!gs || pts.size >= 2) return; T.s = Math.max(0.3, Math.min(12, gs.s * e.scale)); T.r = gs.r + e.rotation; paint(); });
+    v.addEventListener('click', function(e){
+      var b = e.target.closest('button[data-a]'); if (!b) return;
+      var a = b.getAttribute('data-a');
+      if (a === 'close') { window.removeEventListener('resize', fit); v.remove(); }
+      else if (a === 'rot') { T.r = Math.round((T.r + 90) / 90) * 90 % 360; var keep = T.s; fit(); T.s = keep; paint(); }
+      else if (a === 'fit') { T.r = 0; fit(); }
+      else if (a === '3d') { post({ kind: caps().roomView3D ? 'roomView3D' : 'roomShare3D', name: s.usdz }); }
+    });
+    window.__bpScanT = T;
+    return v;
+  };
+  /* a scan opened from Photos opens the scan viewer */
+  if (typeof window.viewPhoto === 'function' && !window.viewPhoto.__v6918) {
+    var _vp = window.viewPhoto;
+    window.viewPhoto = function(id){
+      var p = (DB.photos || []).find(function(x){ return x && (x.id === id || x.id === String(id)); });
+      if (p && p.scan) return window.bpScanView(p.id);
+      return _vp.apply(this, arguments);
+    };
+    for (var kv in _vp) if (Object.prototype.hasOwnProperty.call(_vp, kv)) window.viewPhoto[kv] = _vp[kv];
+    window.viewPhoto.__v6918 = 1;
+    try { viewPhoto = window.viewPhoto; } catch(e){}
+  }
+  window.bpScanDecorate = decorate;
+  console.log('[BP] v6.9.18 — room scan: scan from the space, saved in the space, viewer with zoom / rotate / 3D');
 })();
 </script>

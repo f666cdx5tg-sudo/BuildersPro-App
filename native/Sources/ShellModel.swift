@@ -139,7 +139,7 @@ final class ShellModel: NSObject, ObservableObject {
             #if os(iOS)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             #endif
-        case "measure", "roomScan", "roomShare3D":
+        case "measure", "roomScan", "roomShare3D", "roomView3D":
             siteTool(kind, body)
         case "backupBegin", "backupChunk", "backupEnd":
             DailyBackup.shared.handle(kind, body, reply: { [weak self] js in self?.webView.evaluateJavaScript(js) })

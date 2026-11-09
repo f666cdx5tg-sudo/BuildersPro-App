@@ -5,6 +5,7 @@ import UIKit
 import ARKit
 import RealityKit
 import Combine
+import QuickLook
 #if canImport(RoomPlan)
 import RoomPlan
 #endif
@@ -27,7 +28,7 @@ enum SiteTools {
         #if canImport(RoomPlan)
         room = RoomCaptureSession.isSupported
         #endif
-        return "{measure:\(ar),lidar:\(lidar),roomScan:\(room),ai:true,drive:true}"
+        return "{measure:\(ar),lidar:\(lidar),roomScan:\(room),roomView3D:true,ai:true,drive:true}"
         #else
         return "{measure:false,lidar:false,roomScan:false,ai:true,drive:true}"
         #endif
@@ -90,6 +91,20 @@ extension ShellModel {
             #else
             reply(["tool": "room", "ok": false, "err": "Room scan is not available on this device."])
             #endif
+        case "roomView3D":
+            // v6.9.18: open the scan's 3D model in Apple's viewer — spin it, pinch to scale, AR to place it in the room.
+            let name = (body["name"] as? String) ?? ""
+            guard !name.isEmpty, !name.contains("/"), let dir = SiteTools.scanFolder() else { return }
+            let url = dir.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+                reply(["tool": "view3d", "ok": false, "err": "The 3D model is still coming down from iCloud. Try again in a moment."]); return
+            }
+            let source = Scan3DSource(url)
+            Scan3DSource.current = source
+            let ql = QLPreviewController()
+            ql.dataSource = source
+            top.present(ql, animated: true)
         case "roomShare3D":
             let name = (body["name"] as? String) ?? ""
             guard !name.isEmpty, !name.contains("/"), let dir = SiteTools.scanFolder() else { return }
@@ -114,6 +129,15 @@ extension ShellModel {
 }
 
 #if os(iOS)
+
+/// v6.9.18 — hands one 3D model (USDZ) to Apple's Quick Look viewer. Kept alive while it shows.
+final class Scan3DSource: NSObject, QLPreviewControllerDataSource {
+    static var current: Scan3DSource?
+    let url: URL
+    init(_ url: URL) { self.url = url }
+    func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+    func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
+}
 
 // MARK: - Shared look
 
