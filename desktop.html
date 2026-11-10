@@ -1651,7 +1651,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.23';
+var APP_VERSION = '6.9.24';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -28973,6 +28973,25 @@ html,body{background:var(--bg) !important}
   };
   setTimeout(pushNative, 3000);
 
+
+  /* v6.9.24 — rental properties live in Rentals, not on the Jobs list (Stan: "you do it").
+     The Jobs list renderers draw with the rentals left out; everything else (punch, money, sync) still sees them. */
+  function hideRentals(name){
+    var orig = window[name]; if (typeof orig !== 'function' || orig.__v6924) return;
+    var w = function(){
+      var all = DB.jobs, r;
+      if (!all || !all.some(function(j){ return j && j.rental; })) return orig.apply(this, arguments);
+      DB.jobs = all.filter(function(j){ return !(j && j.rental); });
+      try { r = orig.apply(this, arguments); } finally { DB.jobs = all; }
+      return r;
+    };
+    for (var k in orig) { try { w[k] = orig[k]; } catch(e){} }
+    w.__v6924 = 1; window[name] = w;
+    try { if (name === 'renderJobs') renderJobs = w; else if (name === 'renderDesktopJobs') renderDesktopJobs = w; } catch(e){}
+  }
+  function wrapLists(){ hideRentals('renderJobs'); hideRentals('renderDesktopJobs'); }
+  wrapLists(); setTimeout(wrapLists, 1500); setTimeout(wrapLists, 5000);
+
   /* ── menu entry: under Money on the iPhone drawer; under Finance in the Command Center sidebar ── */
   function addNav(){
     if (document.getElementById('nav-rentals')) return;
@@ -28993,6 +29012,6 @@ html,body{background:var(--bg) !important}
   }
   addNav(); setTimeout(addNav, 1200);
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.getElementById('bp-rent') && !document.querySelector('.bp20-ov')) window.bpRentClose(); });
-  console.log('[BP] v6.9.23 — Rentals: statements available to the Shortcuts app');
+  console.log('[BP] v6.9.24 — Rentals: off the Jobs list');
 })();
 </script>
