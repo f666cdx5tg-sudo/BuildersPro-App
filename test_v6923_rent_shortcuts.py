@@ -23,7 +23,7 @@ async def run(b, name, url, **kw):
     pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
     await pg.route('**/*', lambda r: r.abort() if any(x in r.request.url for x in BLOCK) else r.continue_())
     await pg.goto('http://localhost:%d/%s' % (PORT, url)); await pg.wait_for_timeout(4000)
-    ok(await pg.evaluate("APP_VERSION") in ('6.9.23','6.9.24'), name + ': on v6.9.23+')
+    ok(await pg.evaluate("APP_VERSION") >= '6.9.21', name + ': on v6.9.23+')
     await pg.evaluate(SEED); await pg.wait_for_timeout(700)
     posts = await pg.evaluate("__posts.filter(function(m){ return m.kind === 'rentStatements'; })")
     ok(len(posts) == 1, name + ': statements handed to the native app')

@@ -1651,7 +1651,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ══ VERSION ═════════════════════════════════════════════════ bump on every shipped change, both apps together */
-var APP_VERSION = '6.9.24';
+var APP_VERSION = '6.9.25';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
 
@@ -28485,8 +28485,8 @@ html,body{background:var(--bg) !important}
   }
 
   function listHtml(){
-    var P = props(), U = allUnits(), late = 0, owed = 0, monthRent = 0, openRep = 0;
-    U.forEach(function(u){ var s = rentState(u); if (s.k === 'late') { late++; owed += s.owed; } if (u.tenant && u.tenant.name) monthRent += +u.rent || 0; openRep += repairs(u.id).filter(function(p){ return !p.done; }).length; });
+    var P = props(), U = allUnits(), late = 0, owed = 0, monthRent = 0, openRep = 0, depAlerts = 0;
+    U.forEach(function(u){ var s = rentState(u); if (s.k === 'late') { late++; owed += s.owed; } if (u.tenant && u.tenant.name) monthRent += +u.rent || 0; openRep += repairs(u.id).filter(function(p){ return !p.done; }).length; depAlerts += (u.depReturns || []).filter(function(r){ return !r.returned; }).length + depState(u).filter(function(s){ return s.c === '#FF453A'; }).length; });
     var h = '<div class="rt-acts" style="margin:0 0 12px"><button type="button" class="rt-add" data-a="prop">' + svg(I.plus, 18) + 'Property</button>'
       + (U.length ? '<button type="button" class="rt-add blue" data-a="fromtext">' + svg(I.text, 18) + 'Repair from text</button>' : '') + '</div>';
     var SD = stmtWindow() ? stmtDue() : [];
@@ -28502,7 +28502,7 @@ html,body{background:var(--bg) !important}
         var s = rentState(u), t = u.tenant || {}, rep = repairs(u.id).filter(function(x){ return !x.done; }).length;
         h += '<button type="button" class="rt-u" data-a="openunit" data-u="' + E(u.id) + '"><div class="n"><b>' + E(u.name) + (t.name ? ' · ' + E(t.name) : '') + '</b><small>'
           + (t.name ? (t.moveIn ? 'In ' + dayTxt(t.moveIn) + ' · ' : '') + (u.rent ? money(u.rent) + '/mo' : 'No rent set') : 'Vacant') + '</small></div>'
-          + '<div class="s" style="color:' + s.color + '">' + E(s.short || s.txt) + (rep ? '<i>' + rep + ' repair' + (rep === 1 ? '' : 's') + '</i>' : '') + '</div></button>';
+          + '<div class="s" style="color:' + s.color + '">' + E(s.short || s.txt) + (rep ? '<i>' + rep + ' repair' + (rep === 1 ? '' : 's') + '</i>' : '') + ((u.depReturns || []).some(function(r){ return !r.returned; }) || depState(u).some(function(s){ return s.c === '#FF453A'; }) ? '<i>Deposit</i>' : '') + '</div></button>';
       });
       h += '</div>';
     });
@@ -28588,6 +28588,9 @@ html,body{background:var(--bg) !important}
     if (a === 'repair') return repairSheet(u, '', '');
     if (a === 'toggle') { var x = (DB.punchlist || []).find(function(p){ return p.id === b.getAttribute('data-r'); }); if (x) { x.done = !x.done; x.completedAt = x.done ? iso() : null; x.updatedAt = iso(); persist(); draw(); } return; }
     if (a === 'space') { var rid = u.id; window.bpRentClose(); setTimeout(function(){ try { openRoomDetail(rid); } catch(er){} }, 60); return; }
+    if (a === 'dep') return depSheet(u);
+    if (a === 'depnotice') return depNoticeSheet(u);
+    if (a === 'depret') return depRetSheet(u, b.getAttribute('data-r'));
     if (a === 'lease') return leaseSheet(u);
     if (a === 'leasefile') { var dd = (DB.documents || []).find(function(d){ return d.id === (u.lease || {}).docId; }); if (dd) { try { openDocSrc(dd.fileSrc); } catch(er){} } return; }
     if (a === 'util') return utilSheet(u, b.getAttribute('data-k'));
@@ -28649,9 +28652,10 @@ html,body{background:var(--bg) !important}
     o.addEventListener('click', function(e){
       if (e.target.closest('.bp20-no')) return o.remove();
       if (e.target.closest('.bp20-rm')) {
-        if (!confirm(t.name + ' moved out? The unit becomes vacant; the rent history is kept.')) return;
-        u.pastTenants = (u.pastTenants || []).concat([{ tenant: t, rent: u.rent, rentPays: u.rentPays || [], lease: u.lease || null, residents: u.residents || '', movedOut: today() }]);
-        u.tenant = {}; u.rentPays = []; u.lease = {}; u.residents = ''; u.updatedAt = iso(); o.remove(); persist(); draw(); return;
+        if (!confirm(t.name + ' moved out? The unit becomes vacant; the rent history is kept.' + (+u.deposit ? ' The ' + money(u.deposit) + ' deposit must go back within 30 days.' : ''))) return;
+        u.pastTenants = (u.pastTenants || []).concat([{ tenant: t, rent: u.rent, rentPays: u.rentPays || [], lease: u.lease || null, residents: u.residents || '', deposit: u.deposit || '', dep: u.dep || null, movedOut: today() }]);
+        if (+u.deposit) u.depReturns = (u.depReturns || []).concat([{ id: id(), tenant: t.name || '', phone: t.phone || '', email: t.email || '', amount: +u.deposit, interest: 0, moveOut: today(), forward: '', deductions: [], returned: null }]);
+        u.tenant = {}; u.rentPays = []; u.lease = {}; u.residents = ''; u.deposit = ''; u.dep = {}; u.updatedAt = iso(); o.remove(); persist(); draw(); return;
       }
       if (!e.target.closest('.bp20-go')) return;
       var dd = Math.max(1, Math.min(31, parseInt(val(o, 'dueDay'), 10) || 1));
@@ -28922,9 +28926,159 @@ html,body{background:var(--bg) !important}
       u.updatedAt = iso(); o.remove(); persist(); draw();
     });
   }
+
+  /* ══ v6.9.25 — Security deposit (NJ Rent Security Deposit Act, N.J.S.A. 46:8-19 to -26)
+     • max 1.5 × monthly rent           • held in a separate deposit account (bank, address, account #, rate)
+     • written bank notice within 30 days of receiving it, then a balance/interest notice every year
+     • back within 30 days of move-out with an itemized list of deductions (wrongful withholding can cost double)
+     Amount stays in u.deposit (also on the tenant sheet); the rest in u.dep {received, bank, bankAddr, acct, type, rate, notices[]}.
+     At move-out the deposit becomes a "deposit to return" (u.depReturns[]) until it's marked returned. ══ */
+  function depLimit(u){ return Math.round((+u.rent || 0) * 1.5 * 100) / 100; }
+  function depState(u){
+    var d = u.dep || {}, amt = +u.deposit || 0, out = [];
+    if (!amt) return out;
+    if (+u.rent && amt > depLimit(u) + 0.004) out.push({ c: '#FF453A', t: 'Over NJ limit — max 1.5× rent = ' + money(depLimit(u)) });
+    var last = (d.notices || []).slice(-1)[0];
+    if (!d.received) out.push({ c: '#FF9F0A', t: 'Add the date you received it' });
+    else if (!last) {
+      var due = addDays(d.received, 30), left = Math.round((new Date(due + 'T12:00:00') - new Date(today() + 'T12:00:00')) / 864e5);
+      out.push(left < 0 ? { c: '#FF453A', t: 'Bank notice overdue (was due ' + dayTxt(due) + ')' } : { c: '#FF9F0A', t: 'Send bank notice by ' + dayTxt(due) });
+    } else {
+      var yr = addDays(last.date, 365);
+      if (yr <= today()) out.push({ c: '#FF9F0A', t: 'Yearly interest notice due' });
+      else out.push({ c: '#30D158', t: 'Notice sent ' + dayTxt(last.date) });
+    }
+    if (!d.bank) out.push({ c: '#FF9F0A', t: 'Add the bank holding it' });
+    return out;
+  }
+  function depNoticeText(u, yearly){
+    var d = u.dep || {}, p = job(u.jobId) || {}, t = u.tenant || {};
+    var L = [yearly ? 'SECURITY DEPOSIT — YEARLY NOTICE' : 'SECURITY DEPOSIT NOTICE', (p.landlord || 'STM Pro Build'), '',
+      'Tenant: ' + (t.name || ''), 'Unit: ' + [p.address || p.name, u.name].filter(Boolean).join(', '), '',
+      'Security deposit: ' + money(u.deposit) + (d.received ? ' (received ' + dayTxt(d.received) + ')' : '')];
+    if (yearly && d.balance) L.push('Current balance with interest: ' + money(d.balance));
+    L.push('Held at: ' + (d.bank || '') + (d.bankAddr ? ', ' + d.bankAddr : ''));
+    if (d.type) L.push('Account type: ' + d.type);
+    if (d.acct) L.push('Account #: ' + d.acct);
+    if (d.rate) L.push('Current interest rate: ' + d.rate + '%');
+    L.push('', 'Interest earned belongs to you and is paid or credited toward rent each year.', '', 'Thank you!');
+    return L.join('\n');
+  }
+  window.bpDepNotice = depNoticeText;
+  function depReturnTotals(r){
+    var ded = (r.deductions || []).reduce(function(s, x){ return s + (+x.amount || 0); }, 0);
+    var held = (+r.amount || 0) + (+r.interest || 0);
+    return { ded: ded, held: held, refund: Math.max(0, held - ded), owes: Math.max(0, ded - held) };
+  }
+  function depReturnText(u, r){
+    var p = job(u.jobId) || {}, T = depReturnTotals(r);
+    var L = ['SECURITY DEPOSIT — ITEMIZED RETURN', (p.landlord || 'STM Pro Build'), '',
+      'Tenant: ' + r.tenant, 'Unit: ' + [p.address || p.name, u.name].filter(Boolean).join(', '), 'Moved out: ' + dayTxt(r.moveOut), '',
+      'Security deposit: ' + money(r.amount)];
+    if (+r.interest) L.push('Interest: ' + money(r.interest));
+    if ((r.deductions || []).length) { L.push('', 'Deductions:'); r.deductions.forEach(function(x){ L.push('- ' + x.desc + ': ' + money(x.amount)); }); L.push('Total deductions: ' + money(T.ded)); }
+    L.push('', T.owes ? 'Balance you owe: ' + money(T.owes) : 'Refund to you: ' + money(T.refund));
+    if (r.forward) L.push('Mailed to: ' + r.forward);
+    L.push('', 'Receipts for repairs are available on request.', 'Thank you!');
+    return L.join('\n');
+  }
+  window.bpDepReturnText = depReturnText;
+  function sendText(phone, email, subject, txt, how){
+    try {
+      if (how === 'text') location.href = 'sms:' + digits(phone) + '&body=' + encodeURIComponent(txt);
+      else location.href = 'mailto:' + (email || '') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(txt);
+    } catch(e){}
+  }
+  function depHtml(u){
+    var t = u.tenant || {}, d = u.dep || {}, h = '';
+    (u.depReturns || []).filter(function(r){ return !r.returned; }).forEach(function(r){
+      var due = addDays(r.moveOut, 30), left = Math.round((new Date(due + 'T12:00:00') - new Date(today() + 'T12:00:00')) / 864e5), T = depReturnTotals(r);
+      var c = left < 0 ? '#FF453A' : left <= 7 ? '#FF9F0A' : '#FF9F0A';
+      h += '<div class="rt-card" style="border:1.5px solid ' + c + '"><div class="rt-row" data-a="depret" data-r="' + E(r.id) + '"><span style="color:' + c + '">' + svg(I.cash) + '</span><div class="n">Return deposit · ' + E(r.tenant) + '<small>' + (left < 0 ? 'Overdue — was due ' + dayTxt(due) : 'Due by ' + dayTxt(due) + ' (' + left + (left === 1 ? ' day' : ' days') + ')') + (T.ded ? ' · ' + money(T.ded) + ' deducted' : '') + '</small></div><div class="v" style="color:' + c + '">' + money(T.refund) + '</div></div></div>';
+    });
+    if (!t.name && !(+u.deposit)) return h;
+    var st = depState(u), amt = +u.deposit || 0;
+    h += '<div class="rt-h"><b>Security deposit</b>' + (amt && d.bank ? '<button type="button" class="rt-add blue" data-a="depnotice">Notice</button>' : '') + '<button type="button" class="rt-add' + (amt ? ' blue' : '') + '" data-a="dep">' + svg(amt ? I.open : I.plus, 16) + (amt ? 'Edit' : 'Deposit') + '</button></div><div class="rt-card">';
+    if (!amt) h += '<div class="rt-empty" style="padding:14px">No deposit recorded.' + (+u.rent ? ' NJ max is 1.5× rent = ' + money(depLimit(u)) + '.' : '') + '</div>';
+    else {
+      h += '<div class="rt-row" data-a="dep"><span style="color:var(--muted,#8e8e93)">' + svg(I.cash) + '</span><div class="n">' + money(amt) + (d.received ? '<small>Received ' + dayTxt(d.received) + (d.bank ? ' · ' + E(d.bank) : '') + (d.acct ? ' · Acct ' + mask(d.acct) : '') + (d.rate ? ' · ' + E(d.rate) + '%' : '') + '</small>' : '<small>' + (d.bank ? E(d.bank) : 'Tap to add bank, account and date') + '</small>') + '</div></div>';
+      st.forEach(function(s){ h += '<div class="rt-row" data-a="' + (/notice/i.test(s.t) && !/Add/.test(s.t) ? 'depnotice' : 'dep') + '" style="padding:8px 14px"><div class="n" style="color:' + s.c + ';font-size:14px;font-weight:800">' + E(s.t) + '</div></div>'; });
+    }
+    return h + '</div>';
+  }
+  function depSheet(u){
+    var d = u.dep || {};
+    var o = sheet('<h3>Security deposit</h3><div class="bp20-sub">' + E(u.name) + (u.tenant && u.tenant.name ? ' · ' + E(u.tenant.name) : '') + (+u.rent ? ' · NJ max ' + money(depLimit(u)) : '') + '</div>'
+      + '<div class="rt-two"><div>' + field('Amount', 'amount', +u.deposit ? (+u.deposit).toFixed(2) : '', '$0.00', 'text', 'decimal') + '</div><div>' + field('Received', 'received', d.received || (u.tenant && u.tenant.moveIn) || '', '', 'date') + '</div></div>'
+      + '<div class="rt-match" data-f="limitmsg"></div>'
+      + field('Bank holding it', 'bank', d.bank, 'Bank name') + field('Bank address', 'bankAddr', d.bankAddr, 'Street, city, NJ')
+      + '<div class="rt-two"><div>' + field('Account #', 'acct', d.acct, 'Deposit account', 'text', 'numeric') + '</div><div style="flex:0 0 110px">' + field('Rate %', 'rate', d.rate, '0.50', 'text', 'decimal') + '</div></div>'
+      + field('Account type', 'type', d.type || 'Interest-bearing savings', 'e.g. Interest-bearing savings')
+      + field('Balance with interest (optional)', 'balance', d.balance ? (+d.balance).toFixed(2) : '', '$0.00', 'text', 'decimal')
+      + ((d.notices || []).length ? '<div class="bp20-l">Notices sent</div>' + d.notices.map(function(n){ return '<div class="rt-row" style="padding:6px 2px"><div class="n" style="font-size:14px">' + dayTxt(n.date) + ' · ' + E(n.kind) + ' by ' + E(n.how) + '</div></div>'; }).join('') : '')
+      + btns('Save'));
+    var am = o.querySelector('[data-f="amount"]'), lm = o.querySelector('[data-f="limitmsg"]');
+    function chk(){ var v = num(am.value); if (+u.rent && v > depLimit(u) + 0.004) { lm.style.color = '#FF453A'; lm.textContent = 'Over the NJ limit of 1.5× rent (' + money(depLimit(u)) + ').'; } else lm.textContent = ''; }
+    am.addEventListener('input', chk); chk();
+    o.addEventListener('click', function(e){
+      if (e.target.closest('.bp20-no')) return o.remove();
+      if (!e.target.closest('.bp20-go')) return;
+      u.deposit = num(val(o, 'amount'));
+      u.dep = Object.assign({}, d, { received: val(o, 'received'), bank: val(o, 'bank'), bankAddr: val(o, 'bankAddr'), acct: val(o, 'acct'), rate: val(o, 'rate'), type: val(o, 'type'), balance: num(val(o, 'balance')), notices: d.notices || [] });
+      u.updatedAt = iso(); o.remove(); persist(); draw(); try { toast('Deposit saved'); } catch(er){}
+    });
+  }
+  function depNoticeSheet(u){
+    var d = u.dep || {}, t = u.tenant || {}, yearly = (d.notices || []).length > 0;
+    var txt = depNoticeText(u, yearly);
+    var o = sheet('<h3>' + (yearly ? 'Yearly deposit notice' : 'Deposit bank notice') + '</h3><div class="bp20-sub">' + (yearly ? 'Balance and interest — once a year' : 'NJ: within 30 days of receiving the deposit') + '</div>'
+      + '<pre style="white-space:pre-wrap;font:600 14px/1.45 inherit;font-family:inherit;background:var(--card2,#2a2a2a);border-radius:12px;padding:12px;margin:0 0 8px">' + E(txt) + '</pre>'
+      + '<div class="rt-acts" style="margin:0">' + (t.phone ? '<button type="button" class="rt-add blue" data-sd="text">' + svg(I.text, 16) + 'Text</button>' : '') + (t.email ? '<button type="button" class="rt-add blue" data-sd="email">Email</button>' : '') + '<button type="button" class="rt-add" data-sd="paper">Gave on paper</button></div>'
+      + '<div class="bp20-sub" style="margin-top:10px">NJ asks for written notice. A text or email you keep counts as a written record; paper by hand or mail is safest.</div>'
+      + '<div class="bp20-row"><button type="button" class="bp20-no">Close</button></div>');
+    o.addEventListener('click', function(e){
+      var b = e.target.closest('[data-sd]');
+      if (b) {
+        var how = b.getAttribute('data-sd');
+        u.dep = u.dep || {}; u.dep.notices = (u.dep.notices || []).concat([{ date: today(), kind: yearly ? 'yearly' : 'bank notice', how: how }]);
+        u.updatedAt = iso(); persist();
+        if (how !== 'paper') sendText(t.phone, t.email, (yearly ? 'Security deposit — yearly notice — ' : 'Security deposit notice — ') + u.name, txt, how);
+        o.remove(); draw(); return;
+      }
+      if (e.target.closest('.bp20-no')) o.remove();
+    });
+  }
+  function depRetSheet(u, rid){
+    var r = (u.depReturns || []).find(function(x){ return x.id === rid; }); if (!r) return;
+    function body(){
+      var T = depReturnTotals(r);
+      return '<h3>Return deposit</h3><div class="bp20-sub">' + E(r.tenant) + ' · moved out ' + dayTxt(r.moveOut) + ' · due by ' + dayTxt(addDays(r.moveOut, 30)) + '</div>'
+        + '<div class="rt-two"><div>' + field('Deposit', 'amount', (+r.amount).toFixed(2), '$0.00', 'text', 'decimal') + '</div><div>' + field('Interest', 'interest', +r.interest ? (+r.interest).toFixed(2) : '', '$0.00', 'text', 'decimal') + '</div></div>'
+        + field('Forwarding address', 'forward', r.forward, 'Where to mail it')
+        + '<div class="bp20-l">Deductions (damage beyond normal wear needs receipts)</div>'
+        + (r.deductions || []).map(function(x, i){ return '<div class="rt-row" style="padding:6px 2px"><div class="n" style="font-size:14.5px">' + E(x.desc) + '</div><div class="v">' + money(x.amount) + '</div><button type="button" class="rt-ib" data-dd="' + i + '" aria-label="Remove" style="width:32px;height:32px;color:#FF453A">' + svg(I.x, 14) + '</button></div>'; }).join('')
+        + '<div class="rt-two" style="margin-top:6px"><div><input class="bp20-in" data-f="ddesc" placeholder="e.g. Unpaid rent, broken door"/></div><div style="flex:0 0 100px"><input class="bp20-in" data-f="damt" inputmode="decimal" placeholder="$0.00"/></div></div>'
+        + '<button type="button" class="rt-add" data-dadd="1" style="width:100%;margin-top:6px">' + svg(I.plus, 16) + 'Add deduction</button>'
+        + '<div class="rt-match" style="font-size:16px;margin-top:12px;color:' + (T.owes ? '#FF453A' : '#30D158') + '">' + (T.owes ? 'Tenant owes ' + money(T.owes) : 'Refund ' + money(T.refund)) + '</div>'
+        + '<div class="rt-acts">' + (r.phone ? '<button type="button" class="rt-add blue" data-rs="text">' + svg(I.text, 16) + 'Text list</button>' : '') + (r.email ? '<button type="button" class="rt-add blue" data-rs="email">Email list</button>' : '') + '</div>'
+        + '<div class="bp20-row"><button type="button" class="bp20-no">Close</button><button type="button" class="bp20-go">Mark returned</button></div>';
+    }
+    var o = sheet(body()), sh = o.querySelector('.bp20-sh');
+    function keep(){ r.amount = num(val(o, 'amount')) || 0; r.interest = num(val(o, 'interest')) || 0; r.forward = val(o, 'forward'); u.updatedAt = iso(); persist(); }
+    function redraw(){ sh.innerHTML = body(); }
+    o.addEventListener('change', function(e){ if (e.target.matches('[data-f="amount"],[data-f="interest"],[data-f="forward"]')) { keep(); redraw(); } });
+    o.addEventListener('click', function(e){
+      if (e.target.closest('[data-dadd]')) { keep(); var ds = val(o, 'ddesc'), da = num(val(o, 'damt')); if (!ds || !da) { try { toast('What and how much'); } catch(er){} return; } r.deductions = (r.deductions || []).concat([{ desc: ds, amount: da }]); persist(); redraw(); return; }
+      var dd = e.target.closest('[data-dd]'); if (dd) { keep(); r.deductions.splice(+dd.getAttribute('data-dd'), 1); persist(); redraw(); return; }
+      var rs = e.target.closest('[data-rs]'); if (rs) { keep(); r.sent = { date: today(), how: rs.getAttribute('data-rs') }; persist(); sendText(r.phone, r.email, 'Security deposit — itemized return — ' + u.name, depReturnText(u, r), rs.getAttribute('data-rs')); return; }
+      if (e.target.closest('.bp20-no')) { keep(); o.remove(); draw(); return; }
+      if (e.target.closest('.bp20-go')) { keep(); r.returned = { date: today(), refund: depReturnTotals(r).refund }; persist(); o.remove(); draw(); try { toast('Deposit marked returned'); } catch(er){} }
+    });
+  }
+
   function moreHtml(u){
     var L = u.lease || {}, ls = leaseState(u), doc = L.docId && (DB.documents || []).find(function(d){ return d.id === L.docId; });
-    var h = '<div class="rt-h"><b>Lease</b><button type="button" class="rt-add' + (L.start || L.end || doc ? ' blue' : '') + '" data-a="lease">' + svg(L.start || L.end || doc ? I.open : I.plus, 16) + (L.start || L.end || doc ? 'Edit' : 'Lease') + '</button></div><div class="rt-card">';
+    var h = depHtml(u) + '<div class="rt-h"><b>Lease</b><button type="button" class="rt-add' + (L.start || L.end || doc ? ' blue' : '') + '" data-a="lease">' + svg(L.start || L.end || doc ? I.open : I.plus, 16) + (L.start || L.end || doc ? 'Edit' : 'Lease') + '</button></div><div class="rt-card">';
     if (!L.start && !L.end && !doc && !L.terms) h += '<div class="rt-empty" style="padding:14px">No lease on file.</div>';
     else {
       h += '<div class="rt-row" data-a="lease"><div class="n">' + (L.start || L.end ? dayTxt(L.start) + ' – ' + dayTxt(L.end) : 'Dates not set') + '<small>' + E([+L.lateFee ? 'Late fee ' + money(L.lateFee) + (L.grace ? ' after ' + L.grace + ' days' : '') : '', L.terms ? L.terms.replace(/\s+/g, ' ').slice(0, 90) : ''].filter(Boolean).join(' · ')) + '</small></div>' + (ls ? '<div class="v" style="color:' + ls.color + '">' + E(ls.txt.replace('Lease ', '').replace(/^ends/, 'Ends').replace(/^to/, 'To').replace(/^ended/, 'Ended')) + '</div>' : '') + '</div>';
@@ -29012,6 +29166,6 @@ html,body{background:var(--bg) !important}
   }
   addNav(); setTimeout(addNav, 1200);
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.getElementById('bp-rent') && !document.querySelector('.bp20-ov')) window.bpRentClose(); });
-  console.log('[BP] v6.9.24 — Rentals: off the Jobs list');
+  console.log('[BP] v6.9.25 — Rentals: security deposit');
 })();
 </script>

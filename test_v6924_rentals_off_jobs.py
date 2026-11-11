@@ -21,7 +21,7 @@ async def run(b, name, url, fn, box, **kw):
     pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
     await pg.route('**/*', lambda r: r.abort() if any(x in r.request.url for x in BLOCK) else r.continue_())
     await pg.goto('http://localhost:%d/%s' % (PORT, url)); await pg.wait_for_timeout(6000)
-    ok(await pg.evaluate("APP_VERSION") == '6.9.24', name + ': on v6.9.24')
+    ok(await pg.evaluate("APP_VERSION") >= '6.9.24', name + ': on v6.9.24+')
     await pg.evaluate(SEED); await pg.evaluate(fn + '()'); await pg.wait_for_timeout(300)
     t = await pg.evaluate("(document.getElementById('%s')||{}).innerText || ''" % box)
     ok('Kitchen Remodel Zeta' in t, name + ': construction job on the Jobs list')
