@@ -29034,7 +29034,7 @@ html,body{background:var(--bg) !important}
     var o = sheet('<h3>' + (yearly ? 'Yearly deposit notice' : 'Deposit bank notice') + '</h3><div class="bp20-sub">' + (yearly ? 'Balance and interest — once a year' : 'NJ: within 30 days of receiving the deposit') + '</div>'
       + '<pre style="white-space:pre-wrap;font:600 14px/1.45 inherit;font-family:inherit;background:var(--card2,#2a2a2a);border-radius:12px;padding:12px;margin:0 0 8px">' + E(txt) + '</pre>'
       + '<div class="rt-acts" style="margin:0">' + (t.phone ? '<button type="button" class="rt-add blue" data-sd="text">' + svg(I.text, 16) + 'Text</button>' : '') + (t.email ? '<button type="button" class="rt-add blue" data-sd="email">Email</button>' : '') + '<button type="button" class="rt-add" data-sd="paper">Gave on paper</button></div>'
-      + '<div class="bp20-sub" style="margin-top:10px">NJ asks for written notice. A text or email you keep counts as a written record; paper by hand or mail is safest.</div>'
+      + '<div class="bp20-sub" style="margin-top:10px">NJ requires written notice. A signed paper copy by hand or certified mail is the strongest proof; keep a copy either way.</div>'
       + '<div class="bp20-row"><button type="button" class="bp20-no">Close</button></div>');
     o.addEventListener('click', function(e){
       var b = e.target.closest('[data-sd]');
