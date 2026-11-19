@@ -1632,9 +1632,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.25';
+var APP_VERSION = '6.9.26';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
-function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: (a % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
+function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 /* v3.49: one reusable ☰ drop-down. items: [{icon,label,js,on,danger}|{sep:true}]  ->  html string */
 var _bpHmN = 0;
@@ -10521,7 +10521,7 @@ renderJobDetail = function(jobId) {
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 16px 14px">'
     + mkJdKpi('Contract', bpMoney((contractVal||0)), '#0A84FF', 'jd-invoices-section')
     + mkJdKpi('Invoiced', bpMoney(invoiced), '#66BB6A', 'jd-invoices-section')
-    + mkJdKpi('Balance', bpMoney(Math.max(0,balance)), balance>=0?'#0A84FF':'var(--red)', 'jd-expenses-section')
+    + mkJdKpi('Balance', bpMoney(balance), balance>=0?'#0A84FF':'var(--red)', 'jd-expenses-section')
     + mkJdKpi('Expenses', bpMoney(expenses), 'var(--red)', 'jd-expenses-section')
     + mkJdKpi('Sub Costs', bpMoney(subCosts), '#FFAA33', 'jd-contractors-section')
     + (timeCost ? mkKpi('Time Logged', bpMoney(timeCost), '#BF5AF2') : '')
@@ -11641,7 +11641,7 @@ window.saveEditJob = function(jobId) {
    instead of silently orphaned. Archiving itself is a Command Center (admin) only
    action — see the change log — but every device still has to honor the tombstone
    it produces, or an archived job could resurrect itself from a stale local copy. */
-var JOB_LINKED_ARRAYS = ['rooms','tasks','photos','notes','invoices','expenses','contractors','permits','punchlist','walkthroughs','documents','appointments','reports','timeEntries','contacts'];
+var JOB_LINKED_ARRAYS = ['rooms','tasks','photos','notes','invoices','expenses','contractors','permits','punchlist','walkthroughs','documents','appointments','reports','timeEntries','contacts','changeOrders'];
 function jobLinkedRecordCount(jobId) {
   var roomIds = (DB.rooms||[]).filter(function(r){ return r.jobId===jobId; }).map(function(r){ return r.id; });
   var conIds  = (DB.contractors||[]).filter(function(c){ return c.jobId===jobId; }).map(function(c){ return c.id; });
@@ -19655,6 +19655,7 @@ function owed(){
 function moneyLeft(){
   var sj = onSite();
   return (sj ? [sj] : active()).filter(function(j){ return j.contract || (typeof bpCOApproved === 'function' && bpCOApproved(j.id)); }).reduce(function(s, j){
+    if (typeof window.bpMoneyCheckData === 'function') return s + (+window.bpMoneyCheckData(j.id).left || 0);   /* v6.9.26: same math as the job's Money left */
     var c = (typeof bpRevisedContract === 'function') ? bpRevisedContract(j.id) : +j.contract || 0;
     var sp = (typeof jobActualSpend === 'function') ? jobActualSpend(j.id).total : 0;
     return s + c - sp;
@@ -19687,7 +19688,7 @@ window.bpAttentionItems = function(){
   var sel = onSite();   /* v3.76: a selected job is its own world — nothing from other jobs */
   (sel ? [sel] : active()).forEach(function(j){
     if (!j.contract || typeof jobActualSpend !== 'function') return;
-    var over = jobActualSpend(j.id).total - (typeof bpRevisedContract === 'function' ? bpRevisedContract(j.id) : +j.contract);
+    var over = (typeof window.bpMoneyCheckData === 'function') ? -window.bpMoneyCheckData(j.id).left : jobActualSpend(j.id).total - (typeof bpRevisedContract === 'function' ? bpRevisedContract(j.id) : +j.contract);   /* v6.9.26 */
     if (over > 0) items.push({ k:'over', tone:RED, icon:IC.over, text:E(j.name) + ' is ' + money(over) + ' over budget', action:"openJobDetail('" + j.id + "')" });
   });
   var cut = new Date(); cut.setDate(cut.getDate() - 30); cut = dk(cut);
@@ -36107,5 +36108,67 @@ html,body{background:var(--bg) !important}
   addNav(); setTimeout(addNav, 1200);
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.getElementById('bp-rent') && !document.querySelector('.bp20-ov')) window.bpRentClose(); });
   console.log('[BP] v6.9.25 — Rentals: security deposit');
+})();
+</script>
+
+<script id="v6926">
+/* ══ v6.9.26 — MONEY TEST FIXES (draft, Nov 19, 2026) ═════════════════════════
+   From the full test pass. Same block in the iPhone field app and the Command Center.
+   1. Deleting a space takes its contractor values out of that sub's job contract
+      (a sub's contract = the total of his space values, so a deleted space can't keep counting).
+   2. Restoring a deleted job from Recently Deleted brings back everything that was deleted
+      with it (subs, payments, expenses, invoices, change orders, spaces, checklist…),
+      not the job alone — Money left is right again the moment it comes back. */
+(function(){
+  'use strict';
+  if (window.__bp6926) return; window.__bp6926 = 1;
+  var MAC = !!document.getElementById('modal-new-room');
+  function r2(n){ return Math.round((+n || 0) * 100) / 100; }
+  function persist(){ try { if (MAC) saveDB(); else save(); } catch(e){ try { window.save(); } catch(e2){} } }
+  function recompute(){
+    var changed = 0;
+    (DB.contractors || []).forEach(function(c){
+      if (!c || !c.fromSpaces) return;
+      var t = 0;
+      (DB.rooms || []).forEach(function(r){ (Array.isArray(r && r.subs) ? r.subs : []).forEach(function(s){ if (s && s.conId === c.id && s.value !== '') t += +s.value || 0; }); });
+      t = r2(t);
+      if (r2(c.value) !== t) { c.value = t; c.updatedAt = new Date().toISOString(); changed++; }
+    });
+    return changed;
+  }
+  window.bpRecomputeSpaceSubs = recompute;
+  function wrap(fn, after){
+    var f = window[fn]; if (typeof f !== 'function' || f.__v6926) return;
+    var w = function(){ var r = f.apply(this, arguments); try { after.apply(this, [r].concat([].slice.call(arguments))); } catch(e){ console.warn('[BP] v6.9.26', fn, e); } return r; };
+    Object.keys(f).forEach(function(k){ w[k] = f[k]; }); w.__v6926 = 1;
+    window[fn] = w; try { (0, eval)(fn + ' = window.' + fn); } catch(e){}
+  }
+  wrap('deleteRoom', function(){ if (recompute()) persist(); });
+  var busy = false;
+  var _restore = window.bpRestore;
+  if (typeof _restore === 'function' && !_restore.__v6926) {
+    window.bpRestore = function(entryId, quiet){
+      var e = (DB.recycle || []).find(function(x){ return x && x.id === entryId; });
+      var ok = _restore.apply(this, arguments);
+      if (!ok || busy || !e || e.coll !== 'jobs' || !e.rec) return ok;
+      busy = true;
+      try {
+        var jid = e.rec.id, at = Date.parse(e.deletedAt || '') || 0, n = 0;
+        function sameDelete(x){ var t = Date.parse(x.deletedAt || '') || 0; return !at || !t || Math.abs(t - at) < 120000; }
+        var linked = (DB.recycle || []).filter(function(x){ return x && x.rec && x.rec.jobId === jid && sameDelete(x); });
+        linked.forEach(function(x){ if (_restore(x.id, true)) n++; });
+        var roomIds = (DB.rooms || []).filter(function(r){ return r.jobId === jid; }).map(function(r){ return r.id; });
+        var conIds = (DB.contractors || []).filter(function(c){ return c.jobId === jid; }).map(function(c){ return c.id; });
+        (DB.recycle || []).filter(function(x){ return x && x.rec && sameDelete(x) && ((x.rec.roomId && roomIds.indexOf(x.rec.roomId) > -1) || (x.coll === 'payments' && conIds.indexOf(x.rec.contractorId) > -1)); })
+          .forEach(function(x){ if (_restore(x.id, true)) n++; });
+        recompute(); persist();
+        if (n) try { toast('Job restored with ' + n + ' linked item' + (n === 1 ? '' : 's')); } catch(e2){}
+      } finally { busy = false; }
+      return ok;
+    };
+    window.bpRestore.__v6926 = 1;
+    try { (0, eval)('bpRestore = window.bpRestore'); } catch(e){}
+  }
+  console.log('[BP] v6.9.26 — money test fixes');
 })();
 </script>
