@@ -1632,7 +1632,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.26';
+var APP_VERSION = '6.9.27';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -2852,7 +2852,7 @@ function buildJobCard(job, mini) {
   // Balance = this job's Contract Value minus its own expenses and contractor/sub costs (same formula as Finance summary, job-scoped)
   var jobExpenses = (DB.expenses||[]).filter(function(e){return e.jobId===job.id;}).reduce(function(s,e){return s+(+e.amount||0);},0);
   var jobSubCosts = (DB.contractors||[]).filter(function(c){return c.jobId===job.id;}).reduce(function(s,c){return s+(+c.value||0);},0);
-  var jobBalance  = bpRevisedContract(job.id) - jobExpenses - jobSubCosts;
+  var jobBalance  = bpRevisedContract(job.id) - jobExpenses - jobSubCosts - (window.bpPermTimeCost?window.bpPermTimeCost(job.id):0);   /* v6.9.27 */
   /* v3.02: compact card — Job/Client/Contract on one block, Status+% together, "added" stamp
      removed and Start date shown instead, Started/Completed ticks folded into the chip row. */
   var contractNow = (job.contract || bpCOApproved(job.id)) ? bpRevisedContract(job.id) : 0;
@@ -7936,7 +7936,8 @@ function renderFinanceSummary() {
   var paid      = fInv.filter(function(i){return i.status==='Paid';}).reduce(function(s,i){return s+(+i.amount||0);},0);
   var expenses  = fExp.reduce(function(s,e){ return s+(+e.amount||0); }, 0);
   var subCosts  = fCon.reduce(function(s,c){ return s+(+c.value||0); }, 0);
-  var totalCost = expenses + subCosts;
+  var permTime  = jobs.reduce(function(s,j){ return s + (window.bpPermTimeCost?window.bpPermTimeCost(j.id):0); }, 0);   /* v6.9.27 */
+  var totalCost = expenses + subCosts + permTime;
   var balance   = contractTotal - totalCost;
   var margin    = contractTotal > 0 ? Math.round(balance/contractTotal*100) : 0;
 
@@ -10509,7 +10510,7 @@ renderJobDetail = function(jobId) {
   var invoiced    = inv.reduce(function(s,i){return s+(+i.amount||0);},0);
   var expenses    = exp.reduce(function(s,e){return s+(+e.amount||0);},0);
   var subCosts    = con.reduce(function(s,c){return s+(+c.value||0);},0);
-  var balance     = contractVal - expenses - subCosts;
+  var balance     = contractVal - expenses - subCosts - (window.bpPermTimeCost?window.bpPermTimeCost(jobId):0);   /* v6.9.27 */
   var timeCost    = (typeof jobTimeCost === 'function') ? jobTimeCost(jobId) : 0;
 
   if (!contractVal && !invoiced && !expenses && !subCosts && !timeCost) return;
@@ -19533,7 +19534,7 @@ function jobMoney(id){
   var c = (typeof bpRevisedContract === 'function') ? bpRevisedContract(id) : ((DB.jobs||[]).find(function(j){ return j.id === id; })||{}).contract || 0;
   var ex = (DB.expenses||[]).filter(function(e){ return e.jobId === id; }).reduce(function(s, e){ return s + (+e.amount||0); }, 0);
   var sub = (DB.contractors||[]).filter(function(x){ return x.jobId === id; }).reduce(function(s, x){ return s + (+x.value||0); }, 0);
-  return { contract:+c||0, left:(+c||0) - ex - sub };
+  return { contract:+c||0, left:(+c||0) - ex - sub - (window.bpPermTimeCost?window.bpPermTimeCost(id):0) };   /* v6.9.27 */
 }
 window.bpOnSiteCardHtml = function(id){
   var j = (DB.jobs||[]).find(function(x){ return x.id === id; }); if (!j) return '';
@@ -23382,11 +23383,13 @@ function financeBody(jobId){
   var fd = (typeof jobFunding === 'function') ? jobFunding(jobId) : { received:0, owed:0 };
   var ex = (DB.expenses||[]).filter(function(e){ return e.jobId === jobId; }).reduce(function(s,e){ return s + (+e.amount||0); }, 0);
   var sub = (DB.contractors||[]).filter(function(c){ return c.jobId === jobId; }).reduce(function(s,c){ return s + (+c.value||0); }, 0);
+  var pt = (window.bpPermTimeCost?window.bpPermTimeCost(jobId):0);   /* v6.9.27 */
   var contract = (typeof bpRevisedContract === 'function') ? bpRevisedContract(jobId) : (+job.contract||0);
   var L = function(a,b,c){ return '<div class="bp-jc-line"><span>' + a + '</span><b' + (c ? ' style="color:' + c + '"' : '') + '>' + b + '</b></div>'; };
   return '<div class="bp-acc-fin">' + L('Contract', fm(contract)) + L('Received to date', fm(fd.received), 'var(--green)')
     + L('Balance owed', fm(fd.owed), fd.owed > 0 ? '#FF453A' : 'var(--green)') + L('Expenses', fm(ex)) + L('Contractor costs', fm(sub))
-    + L('Left after costs', fm(contract - ex - sub), (contract - ex - sub) < 0 ? '#FF453A' : 'var(--green)')
+    + (pt ? L('Permits and time clock', fm(pt)) : '')
+    + L('Left after costs', fm(contract - ex - sub - pt), (contract - ex - sub - pt) < 0 ? '#FF453A' : 'var(--green)')
     + '<button onclick="bpJobOpenFinance(\'' + jobId + '\')" style="width:100%;min-height:44px;margin-top:8px;border-radius:10px;border:1px solid rgba(10,132,255,.35);background:rgba(10,132,255,.1);color:#0A84FF;font-weight:800;font-size:14px;font-family:inherit;cursor:pointer">Open Finance for this job ›</button></div>';
 }
 window.bpJobOpenFinance = function(jobId){
@@ -30588,7 +30591,7 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     return {
       job: job, base: base, co: co, contract: base + co, exps: exps.slice().sort(function(a, b){ return day(b.date) < day(a.date) ? -1 : day(b.date) > day(a.date) ? 1 : 0; }),
       subs: subs.map(function(s){ return { s: s, paid: pays.filter(function(p){ return p.contractorId === s.id; }).reduce(function(t, p){ return t + (+p.amount || 0); }, 0) }; }),
-      expTotal: expTotal, subTotal: subTotal, left: base + co - expTotal - subTotal,
+      expTotal: expTotal, subTotal: subTotal, permTime: (window.bpPermTimeParts ? window.bpPermTimeParts(jobId) : {perm:0,time:0}), left: base + co - expTotal - subTotal - (window.bpPermTimeCost?window.bpPermTimeCost(jobId):0),   /* v6.9.27 */
       flags: flags, flaggedCount: flagged.length, flaggedTotal: flagged.reduce(function(s, e){ return s + (+e.amount || 0); }, 0)
     };
   };
@@ -30632,6 +30635,8 @@ console.log('[BP] v4.24 checklist filter shelved — Status is Open / Complete')
     d.subs.forEach(function(x){
       h += '<div style="' + R + '"><span style="flex:1;min-width:0"><b style="display:block;font-weight:700;' + NM + '">' + E(x.s.name || x.s.company || 'Sub') + '</b><span style="display:block;color:var(--muted,#8e8e93);font-size:13px">Paid so far ' + M(x.paid) + '</span></span><span style="' + AM + '">' + M(x.s.value) + '</span></div>';
     });
+    if (d.permTime && d.permTime.perm) h += '<div style="' + H + '"><span>Permits</span><span>−' + M(d.permTime.perm) + '</span></div>';   /* v6.9.27 */
+    if (d.permTime && d.permTime.time) h += '<div style="' + H + '"><span>Time clock labor</span><span>−' + M(d.permTime.time) + '</span></div>';
     h += '<div style="display:flex;align-items:center;gap:10px;padding:14px 2px 4px;margin-top:6px;border-top:2px solid var(--border,#333);font-size:18px"><b style="flex:1">Money left</b><b style="' + AM + ';color:' + (d.left < 0 ? '#FF453A' : '#30D158') + '">' + M(d.left) + '</b></div>'
       + '<div data-bp-wrap="1" style="font-size:12.5px;color:var(--muted,#8e8e93);line-height:1.45;margin-top:6px">Contract + approved change orders − expenses − each sub\'s full contract value. Client invoices are money coming in and are not subtracted.</div>'
       + '<button type="button" onclick="bpMoneyCheckClose();bpMoneyCheckOpenMoney(\'' + E(d.job.id || '') + '\')" style="width:100%;min-height:50px;margin-top:12px;border-radius:14px;border:1.5px solid rgba(10,132,255,.5);background:transparent;color:#0A84FF;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer">Open Money screen</button>';
@@ -32984,6 +32989,18 @@ html,body{background:var(--bg) !important}
   function isObj(o){ return o && typeof o === 'object' && !Array.isArray(o); }
   function when(r){ return Date.parse((r && (r.updatedAt || r.modified || r.createdAt)) || '') || 0; }
   function byId(a){ var m = {}; (a || []).forEach(function(r){ m[r.id] = r; }); return m; }
+  function mergeRec(br, mr, tr){                                 /* FIX D: field by field */
+    var out = clone(tr), keys = {};
+    [br || {}, mr, tr].forEach(function(o){ Object.keys(o).forEach(function(k){ keys[k] = 1; }); });
+    Object.keys(keys).forEach(function(k){
+      if (k === 'updatedAt') return;
+      var mc = S(mr[k]) !== S((br || {})[k]), tc = S(tr[k]) !== S((br || {})[k]);
+      if (mc && (!tc || when(mr) >= when(tr))) { if (mr[k] === undefined) delete out[k]; else out[k] = clone(mr[k]); }
+    });
+    out.updatedAt = when(mr) >= when(tr) ? mr.updatedAt : tr.updatedAt;
+    if (out.updatedAt === undefined) delete out.updatedAt;
+    return out;
+  }
   function mergeArr(b, m, t){
     var B = byId(b), M = byId(m), T = byId(t), out = [], put = {};
     t.forEach(function(r){ if (!put[r.id]) { out.push(clone(r)); put[r.id] = out.length - 1; } });
@@ -32993,7 +33010,8 @@ html,body{background:var(--bg) !important}
         if (!tr) { out.push(clone(r)); put[id] = out.length - 1; }
         else if (S(r) !== S(tr) && when(r) >= when(tr)) out[put[id]] = clone(r);
       } else if (S(r) !== S(br)) {                                /* changed on this device */
-        if (tr && (S(tr) === S(br) || when(r) >= when(tr))) out[put[id]] = clone(r);
+        if (tr && S(tr) === S(br)) out[put[id]] = clone(r);
+        else if (tr) out[put[id]] = mergeRec(br, r, tr);
         /* changed here but deleted on the other device: the delete wins */
       }
     });
@@ -33018,6 +33036,8 @@ html,body{background:var(--bg) !important}
       else if (isObj(m) && isObj(t) && (b === undefined || isObj(b))) out[k] = mergeObj(b || {}, m, t);
       else out[k] = clone(m);
     });
+    var tb = out.tombstones || {}, ks = out.keepStamps || {};       /* FIX C: a delete marker always wins */
+    Object.keys(out).forEach(function(c){ if (isRecs(out[c])) out[c] = out[c].filter(function(r){ var t = tb[c + ':' + r.id]; return !t || (ks[c + ':' + r.id] && Date.parse(ks[c + ':' + r.id]) > Date.parse(t)); }); });
     return out;
   }
   window.bpOneMerge3 = merge3;
@@ -33126,6 +33146,7 @@ html,body{background:var(--bg) !important}
         }
       }
     }
+    dirtyAt = ls(DIRTY);                                          /* FIX A: same instant as the snapshot below */
     var blobs = {}, mine = bpSplitBlobs(DB, blobs), result, write = false, hist = remote ? (remote.history || []) : [];
     /* v6.9.3: a device whose own data is empty (still loading, or storage the phone dropped) never sends
        "everything deleted" — it takes the shared file instead */
@@ -33142,14 +33163,17 @@ html,body{background:var(--bg) !important}
     } else {
       var lost = base && hist.indexOf(base.rev) < 0 && base.dev === DEV;   /* my last save was overwritten before others saw it */
       var anc = base && hist.indexOf(base.rev) >= 0 ? base.db : (prev && prev.rev && hist.indexOf(prev.rev) >= 0 ? prev.db : null);
-      if (!dirtyAt && !lost && base && anc) result = remote.db;  /* nothing new here: just take the file */
+      if (!dirtyAt && !lost && base && hist.indexOf(base.rev) >= 0) result = remote.db;  /* FIX C: file grew from my copy: take it */
       else result = anc ? merge3(anc, mine, remote.db) : merge3({}, firstJoin(mine, remote.db), remote.db);   /* first time on this device: what it has is kept too, minus what was deleted */
       write = S(result) !== S(remote.db);
     }
     /* v6.9.3: a sync round may never wipe out jobs wholesale — losing 2+ jobs and more than half of them in one
        round means something went wrong on this device, not a decision: keep the shared file as it is */
     if (remote && write) {
-      var rj = (remote.db.jobs || []).length, nj = (result.jobs || []).length;
+      var keepIds = {}; (result.jobs || []).forEach(function(j){ keepIds[j.id] = 1; });
+      var rtomb = result.tombstones || {}, rmrg = result.jobMerges || {};
+      var vanished = (remote.db.jobs || []).filter(function(j){ return !keepIds[j.id] && !rtomb['jobs:' + j.id] && !rmrg[j.id]; }).length;   /* FIX B */
+      var rj = (remote.db.jobs || []).length, nj = rj - vanished;
       if (rj - nj >= 2 && nj < rj / 2) { console.warn('[BP] v6.9.3 refused a sync that would remove', rj - nj, 'jobs'); result = remote.db; write = false; ls(DIRTY, null); }
     }
     await photosUp(list, blobs);                                /* photos first, so the file never points at a missing photo */
@@ -36170,5 +36194,190 @@ html,body{background:var(--bg) !important}
     try { (0, eval)('bpRestore = window.bpRestore'); } catch(e){}
   }
   console.log('[BP] v6.9.26 — money test fixes');
+})();
+</script>
+<script id="v6927">
+/* v6.9.27: permit costs and time-clock labor come off Money left, everywhere Money left is shown. */
+(function(){
+  window.bpPermTimeCost = function(jobId){
+    var perm = (DB.permits||[]).filter(function(p){ return p && p.jobId === jobId; }).reduce(function(s,p){ return s + (+p.cost||0); }, 0);
+    var time = (typeof jobTimeCost === 'function') ? (+jobTimeCost(jobId) || 0) : 0;
+    return Math.round((perm + time) * 100) / 100;
+  };
+  window.bpPermTimeParts = function(jobId){
+    var perm = (DB.permits||[]).filter(function(p){ return p && p.jobId === jobId; }).reduce(function(s,p){ return s + (+p.cost||0); }, 0);
+    var time = (typeof jobTimeCost === 'function') ? (+jobTimeCost(jobId) || 0) : 0;
+    return { perm: perm, time: time };
+  };
+  console.log('[BP] v6.9.27 — permits and time-clock labor in Money left');
+})();
+</script>
+<script id="v6927-onsite">
+/* v6.9.27: On Site holds on every overview screen, and both apps reopen where you left off.
+   · Both apps: the Calendar (and today's events on Home) show only the On Site job; events with no job still show.
+   · Command Center: with a job On Site, Dashboard, Finance, Time and End of day show only that job, with a
+     "Show all jobs" bar on top. Pick "— No active job —" or tap Show all jobs and every job shows again.
+   · Command Center reopens the screen or job you left it on; the field app reopens the job section you had open. */
+(function(){
+  'use strict';
+  if (window.__bp6927os) return; window.__bp6927os = 1;
+  var DESK = !!document.getElementById('modal-new-room');
+  function cur(){ try { var id = typeof bpActiveJob === 'function' ? bpActiveJob() : ''; return id && (DB.jobs || []).some(function(j){ return j.id === id; }) ? id : ''; } catch(e){ return ''; } }
+  function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){} return null; }
+  function E(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  /* ── 1. calendar events follow On Site (both apps) ── */
+  if (typeof window.getCalendarEvents === 'function' && !window.getCalendarEvents.__v6927) {
+    var _ge = window.getCalendarEvents;
+    window.getCalendarEvents = function(){
+      var ev = _ge.apply(this, arguments), id = cur();
+      return id && Array.isArray(ev) ? ev.filter(function(e){ return !e || !e.jobId || e.jobId === id; }) : ev;
+    };
+    Object.keys(_ge).forEach(function(k){ window.getCalendarEvents[k] = _ge[k]; });
+    window.getCalendarEvents.__v6927 = 1;
+    try { getCalendarEvents = window.getCalendarEvents; } catch(e){}
+  }
+
+  if (DESK) {
+    /* ── 2. Command Center overview screens show only the On Site job ── */
+    var busy = false;
+    var GUARD = ['saveDB', 'bpPersist', 'bpSaveNow', 'bpICloudSync', 'populateJobSelects'];
+    function scoped(fn, view){
+      var w = function(){
+        var id = cur();
+        if (!id || busy) { bar(view, ''); return fn.apply(this, arguments); }
+        busy = true;
+        var keep = {}, shown = {}, held = {}, calls = [];
+        try {
+          Object.keys(DB).forEach(function(k){
+            var a = DB[k]; if (!Array.isArray(a)) return;
+            var f;
+            if (k === 'jobs') f = a.filter(function(j){ return j && j.id === id; });
+            else if (a.some(function(r){ return r && typeof r === 'object' && r.jobId; })) f = a.filter(function(r){ return !r || typeof r !== 'object' || !r.jobId || r.jobId === id; });
+            else return;
+            keep[k] = a; shown[k] = f; DB[k] = f;
+          });
+          /* nothing may be saved or synced while only one job is in view: hold those calls and run them after */
+          GUARD.forEach(function(n){ if (typeof window[n] === 'function') { held[n] = window[n]; window[n] = function(){ calls.push([n, [].slice.call(arguments)]); }; } });
+          return fn.apply(this, arguments);
+        } finally {
+          Object.keys(held).forEach(function(n){ window[n] = held[n]; });
+          Object.keys(keep).forEach(function(k){
+            var full = keep[k], f = shown[k], now = Array.isArray(DB[k]) ? DB[k] : [];
+            var inF = new Set(f), inNow = new Set(now), inFull = new Set(full);
+            DB[k] = full.filter(function(r){ return !inF.has(r) || inNow.has(r); })
+              .concat(now.filter(function(r){ return !inFull.has(r); }));
+          });
+          busy = false;
+          try { bar(view, id); } catch(e){}
+          if (calls.length) setTimeout(function(){ var seen = {}; calls.forEach(function(c){ if (seen[c[0]]) return; seen[c[0]] = 1; try { window[c[0]].apply(window, c[1]); } catch(e){} }); }, 0);
+        }
+      };
+      Object.keys(fn).forEach(function(k){ w[k] = fn[k]; });
+      w.__v6927 = 1;
+      return w;
+    }
+    var PIN = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/></svg>';
+    function bar(view, id){
+      var v = document.getElementById('view-' + view); if (!v) return;
+      var b = document.getElementById('bp-os-bar-' + view);
+      if (!id) { if (b) b.remove(); return; }
+      var j = (DB.jobs || []).find(function(x){ return x.id === id; }); if (!j) { if (b) b.remove(); return; }
+      if (!b) { b = document.createElement('div'); b.id = 'bp-os-bar-' + view; b.className = 'bp-os-bar'; }
+      if (v.firstElementChild !== b) v.insertBefore(b, v.firstChild);
+      b.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px;margin:0 0 14px;border-radius:10px;background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.4);color:#0A84FF;font-size:13px;font-weight:700';
+      b.innerHTML = PIN + '<span style="min-width:0;color:var(--text)">Showing only <b>' + E(j.name) + '</b> (On Site)</span>'
+        + '<button type="button" onclick="bpOnSiteShowAll()" style="margin-left:auto;flex-shrink:0;background:transparent;border:1px solid rgba(10,132,255,.5);border-radius:8px;color:#0A84FF;font-size:12.5px;font-weight:800;font-family:inherit;padding:6px 10px;cursor:pointer">Show all jobs</button>';
+    }
+    window.bpOnSiteShowAll = function(){ try { bpSetActiveJob('', true); } catch(e){} try { refreshCurrentView(); } catch(e){} };
+    var VIEWS = { dashboard: 'renderDashboard', finance: 'renderDesktopFinance', calendar: 'renderDesktopCalendar', time: 'renderDesktopTimeView', eod: 'renderDesktopEOD' };
+    function wrapAll(){
+      Object.keys(VIEWS).forEach(function(v){
+        var n = VIEWS[v], f = window[n];
+        if (typeof f !== 'function' || f.__v6927) return;
+        window[n] = scoped(f, v);
+      });
+      try { renderDashboard = window.renderDashboard; renderDesktopFinance = window.renderDesktopFinance; renderDesktopCalendar = window.renderDesktopCalendar; renderDesktopTimeView = window.renderDesktopTimeView; renderDesktopEOD = window.renderDesktopEOD; } catch(e){}
+    }
+    wrapAll(); setTimeout(wrapAll, 1500);
+    /* picking a job in the On Site picker redraws the screen you're on */
+    if (typeof window.bpSetActiveJob === 'function' && !window.bpSetActiveJob.__v6927) {
+      var _sa = window.bpSetActiveJob;
+      window.bpSetActiveJob = function(id, quiet){
+        var r = _sa.apply(this, arguments);
+        if (!quiet) try { var a = document.querySelector('.view.active'); if (a && VIEWS[a.id.slice(5)]) refreshCurrentView(); } catch(e){}
+        return r;
+      };
+      Object.keys(_sa).forEach(function(k){ window.bpSetActiveJob[k] = _sa[k]; });
+      window.bpSetActiveJob.__v6927 = 1;
+      try { bpSetActiveJob = window.bpSetActiveJob; } catch(e){}
+    }
+
+    /* ── 3. Command Center reopens where you left it ── */
+    var RK = 'bp_resume_desk_v1', ready = false;
+    function remember(view){
+      if (!ready || !view) return;
+      ls(RK, JSON.stringify({ at: Date.now(), view: view, job: view === 'job-detail' ? (window.currentJobId || '') : '' }));
+    }
+    if (typeof window.showView === 'function' && !window.showView.__v6927) {
+      var _sv = window.showView;
+      window.showView = function(id){ var r = _sv.apply(this, arguments); try { remember(id); } catch(e){} return r; };
+      Object.keys(_sv).forEach(function(k){ window.showView[k] = _sv[k]; });
+      window.showView.__v6927 = 1;
+      try { showView = window.showView; } catch(e){}
+    }
+    var t0 = Date.now();
+    (function waitLoad(){
+      var loaded = typeof DB !== 'undefined' && Array.isArray(DB.jobs) && DB.jobs.length > 0;
+      if (!loaded && Date.now() - t0 < 8000) return setTimeout(waitLoad, 250);
+      setTimeout(function(){
+        try {
+          var r = JSON.parse(ls(RK) || 'null'), a = document.querySelector('.view.active');
+          if (r && r.view && r.view !== 'dashboard' && a && a.id === 'view-dashboard') {
+            if (r.view === 'job-detail') { if (r.job && (DB.jobs || []).some(function(j){ return j.id === r.job; }) && typeof openJobDetail === 'function') openJobDetail(r.job); }
+            else if (document.getElementById('view-' + r.view)) showView(r.view);
+          }
+        } catch(e){}
+        ready = true;
+        try { var a2 = document.querySelector('.view.active'); if (a2) remember(a2.id.slice(5)); } catch(e){}
+      }, 900);
+    })();
+  } else {
+    /* ── 4. field app reopens the job section you had open ── */
+    var SK = 'bp_resume_sec_v1', saved = null;
+    try { saved = JSON.parse(ls(SK) || 'null'); } catch(e){}
+    function hook(){
+      if (typeof window.bpOpenJobSection === 'function' && !window.bpOpenJobSection.__v6927) {
+        var _o = window.bpOpenJobSection;
+        window.bpOpenJobSection = function(key, jobId){ var r = _o.apply(this, arguments); try { if (key && jobId) ls(SK, JSON.stringify({ at: Date.now(), key: key, job: jobId })); } catch(e){} return r; };
+        Object.keys(_o).forEach(function(k){ window.bpOpenJobSection[k] = _o[k]; });
+        window.bpOpenJobSection.__v6927 = 1;
+      }
+      if (typeof window.bpCloseSectionFocus === 'function' && !window.bpCloseSectionFocus.__v6927) {
+        var _c = window.bpCloseSectionFocus;
+        window.bpCloseSectionFocus = function(){ var r = _c.apply(this, arguments); if (!saved) ls(SK, null); return r; };
+        window.bpCloseSectionFocus.__v6927 = 1;
+      }
+      if (typeof window.bpGoHome === 'function' && !window.bpGoHome.__v6927) {
+        var _h = window.bpGoHome;
+        window.bpGoHome = function(){
+          var r = _h.apply(this, arguments), s = saved; saved = null;
+          if (s && s.key && s.job) setTimeout(function(){
+            try {
+              var a = document.querySelector('.screen.active'), cj = typeof currentJobId !== 'undefined' ? currentJobId : window.currentJobId;
+              var scr = document.getElementById('s-job-detail');
+              if (a && a.id === 's-job-detail' && cj === s.job && scr && !scr.classList.contains('bp-sec-full')) window.bpOpenJobSection(s.key, s.job);
+              else ls(SK, null);
+            } catch(e){}
+          }, 600);
+          return r;
+        };
+        Object.keys(_h).forEach(function(k){ window.bpGoHome[k] = _h[k]; });
+        window.bpGoHome.__v6927 = 1;
+      }
+    }
+    hook(); setTimeout(hook, 0);
+  }
+  console.log('[BP] v6.9.27 — On Site holds on every overview screen; reopens where you left off');
 })();
 </script>
