@@ -625,10 +625,26 @@ enum DriveSync {
         return ok && err == nil
     }
 
+    /// 6.9.28: true only when this device holds iCloud's newest copy of the file. A file iCloud is still
+    /// updating reads as its OLD copy, and saving over that brought deleted items back (Nov 2026 sync test).
+    static func isCurrent(_ url: URL) -> Bool {
+        var u = url
+        u.removeAllCachedResourceValues()
+        guard let v = try? u.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]) else { return true }
+        if v.isUbiquitousItem != true { return true }
+        return v.ubiquitousItemDownloadingStatus == .current
+    }
+
     static func read(_ name: String) -> String? {
         guard let r = root(), let n = safe(name) else { return nil }
         let url = r.appendingPathComponent(n)
         try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        if !isCurrent(url) {
+            // a state file gets up to 3 seconds to finish arriving; otherwise the page waits and tries again
+            var tries = n.hasPrefix("state-") ? 15 : 0
+            while tries > 0 && !isCurrent(url) { Thread.sleep(forTimeInterval: 0.2); tries -= 1 }
+            if !isCurrent(url) { return nil }
+        }
         var out: String?, err: NSError?
         NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &err) { u in
             if let d = try? Data(contentsOf: u) { out = String(data: d, encoding: .utf8) }
@@ -650,6 +666,10 @@ enum DriveSync {
                 states.append(["name": name, "at": 0, "pending": true]); continue
             }
             guard name.hasPrefix("state-") && name.hasSuffix(".json") else { continue }
+            if !isCurrent(u) {                                      // 6.9.28: a newer copy is still on its way
+                try? fm.startDownloadingUbiquitousItem(at: u)
+                states.append(["name": name, "at": 0, "pending": true]); continue
+            }
             let t = (try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?.timeIntervalSince1970 ?? 0
             states.append(["name": name, "at": t * 1000])
         }

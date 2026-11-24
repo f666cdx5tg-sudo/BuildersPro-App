@@ -1632,7 +1632,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.27';
+var APP_VERSION = '6.9.28';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -36379,5 +36379,26 @@ html,body{background:var(--bg) !important}
     hook(); setTimeout(hook, 0);
   }
   console.log('[BP] v6.9.27 — On Site holds on every overview screen; reopens where you left off');
+})();
+</script>
+<script id="v6928">
+/* v6.9.28: when iCloud is still bringing a newer copy of the shared file, the app now says "not yet"
+   instead of handing over the old copy (native change). This device then waits and tries again a few
+   seconds later, instead of saving over newer work and bringing deleted items back. */
+(function(){
+  if (typeof window.bpDriveSync !== 'function' || window.bpDriveSync.__v6928) return;
+  var orig = window.bpDriveSync, tries = 0, t = 0;
+  var w = function(){
+    var p = orig.apply(this, arguments);
+    Promise.resolve(p).then(function(r){
+      if (r && r.waiting) {
+        if (tries < 12) { tries++; clearTimeout(t); t = setTimeout(function(){ t = 0; window.bpDriveSync(); }, 5000); }
+      } else if (r) tries = 0;
+    }).catch(function(){});
+    return p;
+  };
+  w.__v6928 = 1;
+  window.bpDriveSync = w;
+  console.log('[BP] v6.9.28 — sync waits for iCloud\'s newest copy before saving');
 })();
 </script>
