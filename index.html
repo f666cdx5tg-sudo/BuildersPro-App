@@ -1632,7 +1632,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 <script>
 /* ── Version ── bump this on every shipped change, both apps together */
-var APP_VERSION = '6.9.28';
+var APP_VERSION = '6.9.29';
 /* v6.2.2: one money format everywhere — whole dollars stay clean ($45,000), anything with cents always shows two digits ($30.30, never $30.3) */
 function bpMoney(n){ var v = Math.round((+n || 0) * 100) / 100, a = Math.abs(v); return (v < 0 ? '-$' : '$') + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -36400,5 +36400,105 @@ html,body{background:var(--bg) !important}
   w.__v6928 = 1;
   window.bpDriveSync = w;
   console.log('[BP] v6.9.28 — sync waits for iCloud\'s newest copy before saving');
+})();
+</script>
+<script id="v6929">
+/* v6.9.29: fewer taps. On Home and the Money overview the blue + in the dock opens an Add menu:
+   Expense, Pay a sub (lists the On Site job's subs and what each is still owed), Change order,
+   Punch item, Photo, Invoice. Each opens its form with the On Site job filled in. Other screens
+   keep their own +. The + shows an x while the menu is open (an icon swap, not a rotate, so the
+   button-size balancer doesn't stretch the dock). */
+(function(){
+  if (window.__bpV6929) return; window.__bpV6929 = 1;
+  function $(s){ return document.querySelector(s); }
+  var I = {
+    exp:'<svg viewBox="0 0 24 24"><path d="M5 3h14v18l-2.5-1.5L14 21l-2-1.5L10 21l-2.5-1.5L5 21z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12" y2="16"/></svg>',
+    sub:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><line x1="19" y1="7" x2="19" y2="15"/><path d="M21 8.5c-.4-.7-1.1-1-2-1-1.2 0-2 .6-2 1.5 0 2 4 1 4 3 0 .9-.8 1.5-2 1.5-.9 0-1.7-.4-2-1"/></svg>',
+    co:'<svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>',
+    punch:'<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="8 12 11 15 16 9"/></svg>',
+    photo:'<svg viewBox="0 0 24 24"><path d="M22 18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5l2-3h5l2 3H20a2 2 0 0 1 2 2z"/><circle cx="12" cy="12.5" r="3.8"/></svg>',
+    inv:'<svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>',
+    chev:'<svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>',
+    back:'<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>'
+  };
+  function money(tab){ return function(){ showScreen('s-finance'); setFinanceTab(tab); openFinanceAdd(); }; }
+  var ITEMS = [
+    { k:'exp',   label:'Expense',      go:money('expenses') },
+    { k:'sub',   label:'Pay a sub',    go:function(){ subs(); }, more:1 },
+    { k:'co',    label:'Change order', go:money('changeorders'), c:'#BF5AF2' },
+    { k:'punch', label:'Punch item',   go:function(){ showScreen('s-punch'); setTimeout(function(){ var b = $('#punch-add-btn'); if (b) b.click(); }, 50); } },
+    { k:'photo', label:'Photo',        go:function(){ showScreen('s-photos'); setTimeout(function(){ var i = $('#s-photos .topbar input[type=file]'); if (i) i.click(); }, 50); } },
+    { k:'inv',   label:'Invoice',      go:money('invoices') }
+  ];
+  var css = document.createElement('style'); css.id = 'bp-v6929-css';
+  css.textContent = [
+    '#bp-addm-veil{position:fixed;inset:0;z-index:97;background:rgba(0,0,0,.28);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}',
+    '#bp-addm{position:fixed;z-index:98;right:12px;bottom:72px;width:min(292px,calc(100vw - 24px));border-radius:18px;padding:6px;',
+    ' background:color-mix(in srgb,var(--card) 62%,transparent);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);',
+    ' border:1px solid rgba(255,255,255,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 14px 36px rgba(0,0,0,.4);transform-origin:100% 100%;animation:bpAddIn .16s ease-out}',
+    '@keyframes bpAddIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}',
+    '#bp-addm .hd{padding:8px 10px 6px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}',
+    '#bp-addm .hd b{display:block;margin-top:2px;font-size:14px;letter-spacing:0;text-transform:none;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#bp-addm button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:12px;width:100%;min-height:46px;padding:6px 10px;border-radius:12px;font-size:16px;font-weight:600;color:var(--text);cursor:pointer;white-space:nowrap}',
+    '#bp-addm button:active{background:rgba(127,127,127,.18)}',
+    '#bp-addm .ic{flex:0 0 32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(10,132,255,.16);color:#0A84FF}',
+    '#bp-addm svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+    '#bp-addm .nm{flex:1;overflow:hidden;text-overflow:ellipsis}',
+    '#bp-addm .sv{color:var(--muted);font-size:13px;font-weight:600}',
+    '#bp-addm .ch{color:var(--muted);display:flex}',
+    '#bp-addm .sep{height:1px;margin:2px 10px;background:rgba(127,127,127,.22)}',
+    'body.bp-addm-open #bp-dock{z-index:99;transform:none !important;opacity:1 !important;pointer-events:auto !important}'
+  ].join('\n');
+  document.head.appendChild(css);
+
+  function jobName(){ var id = (window.bpActiveJob && bpActiveJob()) || ''; var j = (DB.jobs || []).find(function(x){ return x.id === id; }); return j ? j.name : ''; }
+  function close(){ var m = $('#bp-addm'), v = $('#bp-addm-veil'); if (m) m.remove(); if (v) v.remove(); document.body.classList.remove('bp-addm-open'); var a = document.getElementById('bp-dock-add'); if (a && a.__plus) { a.innerHTML = a.__plus; a.__plus = 0; } }
+  function shell(head){
+    close();
+    var v = document.createElement('div'); v.id = 'bp-addm-veil'; v.onclick = close; document.body.appendChild(v);
+    var m = document.createElement('div'); m.id = 'bp-addm'; m.setAttribute('role', 'menu'); m.setAttribute('data-bp-nozoom', '');
+    m.innerHTML = head; document.body.appendChild(m); document.body.classList.add('bp-addm-open'); var a = document.getElementById('bp-dock-add'); if (a && !a.__plus) { a.__plus = a.innerHTML; a.innerHTML = '<svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>'; } return m;
+  }
+  function row(icon, label, side, color){
+    return '<button type="button" role="menuitem"><span class="ic"' + (color ? ' style="color:' + color + ';background:' + color + '29"' : '') + '>' + icon + '</span><span class="nm">' + label + '</span>' + (side || '') + '</button>';
+  }
+  function open(){
+    var jn = jobName();
+    var m = shell('<div class="hd">Add to<b>' + (jn ? esc(jn) : 'Pick a job on the form') + '</b></div>');
+    ITEMS.forEach(function(it, i){
+      if (i === 2 || i === 4) m.insertAdjacentHTML('beforeend', '<div class="sep"></div>');
+      m.insertAdjacentHTML('beforeend', row(I[it.k], it.label, it.more ? '<span class="ch">' + I.chev + '</span>' : '', it.c));
+      var b = m.lastElementChild; b.onclick = function(){ if (!it.more) close(); it.go(); };
+    });
+  }
+  function subs(){
+    var id = (window.bpActiveJob && bpActiveJob()) || '';
+    var list = (DB.contractors || []).filter(function(c){ return !id || c.jobId === id; });
+    var m = shell('');
+    m.insertAdjacentHTML('beforeend', row(I.back, 'Pay a sub', ''));
+    m.lastElementChild.onclick = open;
+    m.insertAdjacentHTML('beforeend', '<div class="sep"></div>');
+    list.forEach(function(c){
+      var paid = (DB.payments || []).filter(function(p){ return p.contractorId === c.id; }).reduce(function(s, p){ return s + (+p.amount || 0); }, 0);
+      var left = (+c.value || 0) - paid;
+      m.insertAdjacentHTML('beforeend', row(I.sub, esc(c.name || c.company || 'Sub'), '<span class="sv">$' + left.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' left</span>'));
+      m.lastElementChild.onclick = function(){ close(); openLogPayment(c.id); };
+    });
+    if (!list.length) m.insertAdjacentHTML('beforeend', '<div class="hd" style="text-transform:none;letter-spacing:0;font-size:14px;font-weight:600;padding:10px">No subs on this job yet</div>');
+  }
+  window.bpOpenAddMenu = open; window.bpCloseAddMenu = close;
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && $('#bp-addm')) close(); });
+  var _ss = window.showScreen;
+  if (typeof _ss === 'function' && !_ss.__v6929) { window.showScreen = function(){ if ($('#bp-addm')) close(); return _ss.apply(this, arguments); }; window.showScreen.__v6929 = 1; }
+
+  var add = document.getElementById('bp-dock-add'); if (!add) return;
+  function wantsMenu(){ var s = document.querySelector('.screen.active'); if (!s) return false; if (s.id === 's-home') return true; return s.id === 's-finance' && (window._financeTab === 'overview' || window._financeTab === 'spending'); }
+  var PLUS = '<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+  function fix(){ if (wantsMenu()) { if (add.hidden) add.hidden = false; if (add.getAttribute('aria-label') !== 'Add') { add.setAttribute('aria-label', 'Add'); add.innerHTML = PLUS; } } }
+  new MutationObserver(fix).observe(add, { attributes:true, attributeFilter:['hidden'] });
+  var orig = add.onclick;
+  add.onclick = function(e){ if (wantsMenu() || $('#bp-addm')) { if ($('#bp-addm')) close(); else open(); return; } close(); return orig && orig.call(this, e); };
+  setInterval(fix, 500); fix();
+  console.log('[BP] v6.9.29 — dock + opens an Add menu on Home and Money');
 })();
 </script>
